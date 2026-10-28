@@ -10,8 +10,20 @@
 <meta property="og:description" content="Compare preço, distância e horário de exames de imagem e agende em segundos.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:image" content="assets/img/rm.webp">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='14' fill='%230E7C9C'/%3E%3Cpath d='M20 12h8v8h8v8h-8v8h-8v-8h-8v-8h8z' fill='%23fff'/%3E%3Ccircle cx='37' cy='11' r='5' fill='%23FF6B4A'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -295,6 +307,42 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
   .fav{top:10px;right:10px;width:32px;height:32px;font-size:14px;background:var(--bg2);color:#9fb0ba;border:0}
 }
 
+.install-hero{align-self:flex-start;display:flex;align-items:center;gap:12px;margin-top:16px;padding:8px 16px 8px 8px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;text-align:left;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.install-hero .ic img{width:40px;height:40px;border-radius:11px}
+.install-hero b{display:block;font-size:14px}
+.install-hero small{color:rgba(255,255,255,.7);font-size:12px}
+.install-hero>i{margin-left:8px;color:var(--aqua2)}
+.inst-app{display:flex;gap:14px;align-items:center;padding:14px;border-radius:18px;background:var(--bg2);margin-bottom:8px}
+.inst-app img{width:56px;height:56px;border-radius:14px}
+.inst-app b{display:block;color:var(--ink);font-size:17px}
+.inst-app small{color:var(--muted)}
+.inst h4{display:flex;gap:8px;align-items:center;margin:18px 0 8px;font-size:16px}
+.inst ol{padding-left:22px;display:grid;gap:6px;color:var(--text);line-height:1.5}
+.cover .x.r2{right:62px}
+
+.prep-link{color:var(--primary);font-weight:700;white-space:nowrap}
+.prep-link::after{content:" →"}
+.prep-box{display:grid;gap:8px;margin-top:16px;text-align:left}
+.prep-box a{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:14px;background:var(--bg2);font-size:14px;color:var(--text)}
+.prep-box a:hover{background:var(--primary-s)}
+.prep-box img{width:38px;height:38px;object-fit:contain}
+.prep-box i{margin-left:auto;color:var(--muted);font-size:12px}
+
+/* clínicas reais */
+.realbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 18px;margin-bottom:6px;border-radius:18px;background:var(--primary-s);color:var(--primary-d);font-size:14.5px}
+.realbar i{color:var(--primary);margin-right:4px}
+.cc.rc{padding:18px;gap:16px;justify-content:space-between;min-height:170px}
+.rc-top{display:flex;gap:14px;align-items:center}
+.rc .cc-logo{position:static;flex-shrink:0;width:52px;height:52px;border-radius:16px;font-size:16px;border:0;box-shadow:none}
+.rc h3{padding-right:0}
+.rc h3 span{white-space:normal}
+.rc-act{display:flex;gap:8px;flex-wrap:wrap}
+.rc-act .btn{padding:10px 14px;font-size:14px}
+.hchip-real{background:rgba(46,230,214,.16);border-color:rgba(127,240,228,.4)}
+.osm-map{height:230px;background:#e6eef1}
+.osm-map iframe{width:100%;height:100%;border:0;display:block}
+@media (max-width:640px){.cc.rc{display:flex;min-height:0}}
+
 /* como funciona + celular 3D */
 .how{position:relative;overflow:hidden;border-radius:40px;color:#fff;padding:72px 56px;background:radial-gradient(800px 500px at 20% 30%,rgba(46,230,214,.18),transparent 60%),radial-gradient(700px 500px at 90% 100%,rgba(255,107,74,.16),transparent 60%),linear-gradient(160deg,#071f2a,#05161e)}
 .how::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(127,240,228,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(127,240,228,.06) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(ellipse at 30% 50%,#000 20%,transparent 70%);-webkit-mask-image:radial-gradient(ellipse at 30% 50%,#000 20%,transparent 70%)}
@@ -395,6 +443,31 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
 .feat p{color:var(--muted);font-size:14.5px;line-height:1.55;margin-top:6px}
 @media (max-width:980px){.life{grid-template-columns:1fr;gap:40px}.bubble{right:10px}}
 @media (max-width:520px){.feats{grid-template-columns:1fr}.life-photo img{aspect-ratio:4/4.6}}
+
+/* lista de espera */
+.wl{position:relative;overflow:hidden;border-radius:40px;padding:60px 56px;color:#fff;display:grid;grid-template-columns:1.25fr .75fr;gap:30px;align-items:center;background:radial-gradient(600px 400px at 85% 20%,rgba(46,230,214,.35),transparent 60%),radial-gradient(500px 400px at 100% 100%,rgba(255,107,74,.28),transparent 60%),linear-gradient(135deg,#0E7C9C 0%,#0A5C76 52%,#082a37 100%)}
+.wl h2{color:#fff;font-size:clamp(28px,3.2vw,44px);letter-spacing:-.035em;margin:12px 0 12px}
+.wl p{color:rgba(255,255,255,.82);font-size:17px;line-height:1.6;max-width:560px}
+.wl-form{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;max-width:640px}
+.wl-form select{flex-basis:230px!important}
+.wl-form input,.wl-form select{flex:1 1 180px;min-width:0;height:52px;border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:0 16px;background:rgba(255,255,255,.96);color:var(--ink);font-size:15px;outline:none}
+.wl-form input:focus,.wl-form select:focus{box-shadow:0 0 0 3px rgba(127,240,228,.6)}
+.wl-form input.bad{box-shadow:0 0 0 3px rgba(255,107,74,.75)}
+.wl-form .btn{flex:1 1 100%;height:54px}
+.wl-msg{display:none;margin-top:14px;font-weight:600}
+.wl-msg.show{display:block}
+.wl-msg.ok{color:#B9F5DA}.wl-msg.err{color:#FFD2C7}
+.wl-legal{font-size:12.5px!important;margin-top:12px;color:rgba(255,255,255,.6)!important}
+.wl-legal a{color:#fff;text-decoration:underline}
+.wl-art{position:relative;height:320px}
+.wl-art img{position:absolute;width:132px;height:132px;object-fit:contain;filter:drop-shadow(0 18px 24px rgba(0,0,0,.3));animation:floaty 6s ease-in-out infinite}
+.wl-art .a1{left:8%;top:0;width:150px;height:150px}
+.wl-art .a2{right:2%;top:14%;animation-delay:-2s}
+.wl-art .a3{left:30%;top:40%;width:160px;height:160px;animation-delay:-4s}
+.wl-art .a4{left:0;bottom:0;width:110px;height:110px;animation-delay:-1s}
+.wl-art .a5{right:10%;bottom:-6%;width:120px;height:120px;animation-delay:-3s}
+.hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+@media (max-width:900px){.wl{grid-template-columns:1fr;padding:40px 24px;border-radius:30px}.wl-art{height:150px;order:-1}.wl-art img{width:86px!important;height:86px!important}.wl-art .a3{left:42%;top:10%}.wl-art .a5{bottom:0}}
 
 /* parceiros CTA */
 .partner{position:relative;overflow:hidden;border-radius:40px;min-height:460px;display:flex;align-items:center;isolation:isolate;color:#fff}
@@ -600,6 +673,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
           <div class="hs-sug" id="heroSug" hidden></div>
         </form>
         <div class="hchips" id="hchips"></div>
+        <button class="install-hero install-auto hide" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt=""></span><span><b>Instale o app IMED</b><small>Abre em tela cheia e funciona sem internet</small></span><i class="fa-solid fa-download"></i></button>
         <div class="trust">
           <span class="avs"><img src="assets/img/av-paciente.webp" alt=""><span style="background:#0E7C9C">RS</span><span style="background:#FF6B4A">TA</span><span style="background:#6C4BD8">HM</span></span>
           <span><span class="st">★★★★★</span><br><b>4,9</b> de nota média dos pacientes</span>
@@ -614,7 +688,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
   <div class="sheet-top">
     <main class="wrap">
       <section class="sec rv" style="margin-top:40px">
-        <div class="sec-h"><div><span class="kicker">Exames</span><h2>O que você precisa?</h2></div><button id="catClear" class="link hide">Limpar filtro</button></div>
+        <div class="sec-h"><div><span class="kicker">Exames</span><h2>O que você precisa?</h2></div><div style="display:flex;gap:16px;align-items:center"><button id="catClear" class="link hide">Limpar filtro</button><a class="link" href="exames/">Guias dos exames <i class="fa-solid fa-arrow-right"></i></a></div></div>
         <div class="cats" id="cats"></div>
       </section>
 
@@ -636,6 +710,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
       <section class="sec" id="lojas">
         <div class="sec-h"><div><span class="kicker">Perto de você</span><h2 id="listTitle">Clínicas</h2></div></div>
+        <div class="realbar" id="realbar"></div>
         <div class="chips" id="chips"></div>
         <p class="count" id="count"></p>
         <div class="list" id="list"></div>
@@ -724,6 +799,28 @@ footer .logo{--hc:#fff;margin-bottom:12px}
         </div>
       </section>
 
+      <section class="sec rv" id="lista">
+        <div class="wl">
+          <div class="wl-txt">
+            <span class="kicker light">Lançamento</span>
+            <h2>Seja o primeiro a usar o app IMED</h2>
+            <p>Deixe seu e-mail e avisamos quando o app chegar à sua cidade. Sem spam: só o aviso de lançamento.</p>
+            <form class="wl-form" id="wlForm" novalidate>
+              <input type="email" name="email" placeholder="Seu e-mail" required autocomplete="email" maxlength="254" aria-label="Seu e-mail">
+              <input name="city" placeholder="Sua cidade" maxlength="80" autocomplete="address-level2" aria-label="Sua cidade">
+              <select name="interest" aria-label="O que você quer usar"><option value="ambos">Exames e teleconsulta</option><option value="exames">Exames de imagem</option><option value="teleconsulta">Teleconsulta</option></select>
+              <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+              <button class="btn btn-coral" type="submit" id="wlBtn">Quero ser avisado <i class="fa-solid fa-bell"></i></button>
+            </form>
+            <p class="wl-msg" id="wlMsg" role="status"></p>
+            <p class="wl-legal">Ao enviar, você concorda com a <a href="privacidade.html">política de privacidade</a>.</p>
+          </div>
+          <div class="wl-art" aria-hidden="true">
+            <img class="a1" src="assets/img/ico-rm.webp" alt="" loading="lazy"><img class="a2" src="assets/img/ico-usg.webp" alt="" loading="lazy"><img class="a3" src="assets/img/ico-ecg.webp" alt="" loading="lazy"><img class="a4" src="assets/img/ico-mamo.webp" alt="" loading="lazy"><img class="a5" src="assets/img/ico-rx.webp" alt="" loading="lazy">
+          </div>
+        </div>
+      </section>
+
       <section class="sec rv">
         <div class="partner">
           <img src="assets/img/fachada.webp" alt="Fachada de clínica parceira" loading="lazy">
@@ -787,6 +884,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
     <button class="row-link" data-go="agenda"><i class="fa-solid fa-calendar-check"></i>Meus agendamentos<i class="fa-solid fa-chevron-right"></i></button>
     <button class="row-link" id="favLink"><i class="fa-solid fa-heart"></i>Clínicas favoritas<i class="fa-solid fa-chevron-right"></i></button>
     <button class="row-link" data-act="pedido"><i class="fa-solid fa-file-medical"></i>Meu pedido médico<i class="fa-solid fa-chevron-right"></i></button>
+    <button class="row-link" data-install><i class="fa-solid fa-mobile-screen-button"></i>Instalar o app no celular<i class="fa-solid fa-chevron-right"></i></button>
     <a class="row-link" href="parceiros.html"><i class="fa-solid fa-store"></i>Cadastrar minha clínica<i class="fa-solid fa-chevron-right"></i></a>
     <a class="row-link" href="versao-anterior.html"><i class="fa-solid fa-clock-rotate-left"></i>Ver a primeira versão do site<i class="fa-solid fa-chevron-right"></i></a>
   </div>
@@ -796,9 +894,9 @@ footer .logo{--hc:#fff;margin-bottom:12px}
   <div class="wrap">
     <div class="f-grid">
       <div><a class="logo" href="#" data-go="inicio"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a><p style="max-width:340px;line-height:1.6">Clínicas de imagem e teleconsulta perto de você, com preço, nota e horário na palma da mão.</p></div>
-      <div><h5>Pacientes</h5><button data-go="inicio">Buscar clínicas</button><button data-act="pedido">Montar pedido</button><button data-go="tele">Telemedicina</button><button data-go="agenda">Agendamentos</button></div>
+      <div><h5>Pacientes</h5><button data-go="inicio">Buscar clínicas</button><a href="exames/">Guias de exames</a><button data-act="pedido">Montar pedido</button><button data-go="tele">Telemedicina</button><button data-go="agenda">Agendamentos</button><button data-install>Instalar o app</button></div>
       <div><h5>Clínicas</h5><a href="parceiros.html">Seja parceiro</a><a href="parceiros.html#planos">Planos</a><a href="parceiros.html#faq">Dúvidas</a></div>
-      <div><h5>Contato</h5><a href="mailto:contato@imed.com.br">contato@imed.com.br</a><span style="display:block;padding:4px 0">São Paulo, SP</span></div>
+      <div><h5>Contato</h5><a href="mailto:contato@imed.com.br">contato@imed.com.br</a><a href="privacidade.html">Política de privacidade</a><span style="display:block;padding:4px 0">São Paulo, SP</span></div>
     </div>
     <div class="f-bottom"><span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span><span><i class="fa-solid fa-circle-info"></i> Protótipo: clínicas, médicos, preços, números e depoimentos são ilustrativos. Fotos geradas por IA.</span></div>
   </div>
@@ -816,57 +914,11 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 <div class="ov" id="ov" aria-hidden="true"><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
 <div class="toast" id="toast" role="status"></div>
 
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/db.js"></script>
+<script src="assets/js/data.js"></script>
 <script>
-/* ======================= DADOS (exemplos) ======================= */
-const EXAMS = {
-  rx:   {n:'Raio-X',         full:'Raio-X de tórax',                 d:'Ossos, tórax e articulações. Resultado em poucas horas.', p:90},
-  usg:  {n:'Ultrassom',      full:'Ultrassom de abdome total',       d:'Órgãos internos e gestação, sem radiação.',               p:150},
-  tc:   {n:'Tomografia',     full:'Tomografia de crânio',            d:'Imagens em cortes, alta precisão. Com ou sem contraste.', p:360},
-  rm:   {n:'Ressonância',    full:'Ressonância magnética de joelho', d:'Tecidos moles, coluna e articulações em detalhe.',       p:450},
-  mamo: {n:'Mamografia',     full:'Mamografia digital bilateral',    d:'Prevenção e diagnóstico precoce do câncer de mama.',     p:170},
-  dens: {n:'Densitometria',  full:'Densitometria óssea',             d:'Avalia a densidade dos ossos e o risco de osteoporose.', p:200},
-  ecg:  {n:'Eletro',         full:'Eletrocardiograma',               d:'Ritmo do coração em 10 minutos, com laudo.',             p:70},
-  eco:  {n:'Ecocardiograma', full:'Ecocardiograma transtorácico',    d:'Ultrassom do coração: estrutura e funcionamento.',       p:260}
-};
-const GRP = {rx:'img',usg:'img',tc:'img',rm:'img',mamo:'img',dens:'img',ecg:'card',eco:'card'};
 const ico = k => `assets/img/ico-${k}.webp`;
-const PLACES = {
-  paulista:{n:'Av. Paulista, Bela Vista', s:'Av. Paulista', lat:-23.5650, lng:-46.6520},
-  pinheiros:{n:'Pinheiros', s:'Pinheiros', lat:-23.5667, lng:-46.6930},
-  vilamariana:{n:'Vila Mariana', s:'Vila Mariana', lat:-23.5890, lng:-46.6340},
-  moema:{n:'Moema', s:'Moema', lat:-23.6010, lng:-46.6640},
-  centro:{n:'Centro', s:'Centro', lat:-23.5455, lng:-46.6390},
-  tatuape:{n:'Tatuapé', s:'Tatuapé', lat:-23.5400, lng:-46.5760},
-  santana:{n:'Santana', s:'Santana', lat:-23.5020, lng:-46.6250}
-};
-// f = fator de preço por exame (1 = preço médio da região); img/pos = foto de capa
-const CLINICS = [
-  {id:'dcp', n:'DiagnoCenter Paulista', ini:'DC', c:'#0E7C9C', b:'Bela Vista', lat:-23.5614,lng:-46.6559, r:4.9, rv:2140, laudo:'24h', next:[0,'14:30'], open:true, sup:true, conv:true, pix:10, f:{rx:1.05,usg:1.05,tc:1.05,rm:.95,mamo:1,dens:1,ecg:1}, top:['rm','tc'], img:'rm', pos:'55% 50%'},
-  {id:'cvi', n:'Clínica Visão Imagem', ini:'VI', c:'#6C4BD8', b:'Pinheiros', lat:-23.5667,lng:-46.6930, r:4.6, rv:860, laudo:'48h', next:[0,'16:00'], open:true, sup:false, conv:true, pix:5, f:{rx:1.2,usg:1,tc:.97,rm:1.05,mamo:.95}, top:['tc','usg'], img:'tc', pos:'40% 50%'},
-  {id:'cdi', n:'CDI Vila Mariana', ini:'CD', c:'#16A6A6', b:'Vila Mariana', lat:-23.5890,lng:-46.6340, r:4.8, rv:1530, laudo:'24h', next:[0,'17:30'], open:true, sup:true, conv:true, pix:0, f:{rx:1,usg:.93,tc:1.1,rm:1,mamo:1.05,dens:.9,eco:1}, top:['usg','dens'], img:'usg', pos:'45% 50%'},
-  {id:'ims', n:'Imagem+ Saúde', ini:'I+', c:'#FF6B4A', b:'Moema', lat:-23.6010,lng:-46.6640, r:4.5, rv:410, laudo:'72h', next:[0,'18:00'], open:true, sup:false, conv:false, pix:15, f:{rx:1,usg:1,tc:1.02,rm:1.02}, top:['rx','rm'], promo:'Ressonância com 15% off no Pix', img:'rx', pos:'50% 50%'},
-  {id:'rvc', n:'RadioVida Centro', ini:'RV', c:'#2C7BE5', b:'Centro', lat:-23.5455,lng:-46.6390, r:4.4, rv:690, laudo:'48h', next:[0,'13:15'], open:true, sup:false, conv:true, pix:10, f:{rx:.85,usg:.9,tc:.92,dens:.95}, top:['rx','tc'], img:'recepcao', pos:'30% 50%'},
-  {id:'eco', n:'Ecocor Cardiologia', ini:'EC', c:'#D63A5A', b:'Jardins', lat:-23.5700,lng:-46.6620, r:4.9, rv:1220, laudo:'Na hora', next:[0,'15:00'], open:true, sup:true, conv:true, pix:0, f:{ecg:1,eco:.95,usg:1.1}, top:['eco','ecg'], img:'eco', pos:'35% 50%'},
-  {id:'lum', n:'Lumina Diagnósticos', ini:'LU', c:'#F5A524', b:'Itaim Bibi', lat:-23.5850,lng:-46.6800, r:4.7, rv:980, laudo:'24h', next:[1,'08:00'], open:true, sup:true, conv:true, pix:5, f:{rx:1.15,usg:1.15,tc:1.15,rm:1.15,mamo:1.1,dens:1.1,ecg:1.1,eco:1.1}, top:['rm','mamo'], promo:'Check-up da mulher: mamografia + densitometria', img:'mamo', pos:'60% 50%'},
-  {id:'son', n:'Sonar Ultrassom', ini:'SO', c:'#1E9E5A', b:'Tatuapé', lat:-23.5400,lng:-46.5760, r:4.6, rv:540, laudo:'Na hora', next:[0,'11:40'], open:true, sup:false, conv:false, pix:10, f:{usg:.82,eco:.9}, top:['usg'], img:'fachada', pos:'40% 50%'},
-  {id:'hor', n:'Clínica Horizonte', ini:'HZ', c:'#0A5C76', b:'Santana', lat:-23.5020,lng:-46.6250, r:4.3, rv:320, laudo:'48h', next:[1,'09:30'], open:true, sup:false, conv:true, pix:0, f:{rx:.9,usg:.95,mamo:.9,dens:.88,ecg:.9}, top:['mamo','rx'], img:'recepcao', pos:'78% 50%'},
-  {id:'msb', n:'MedScan Butantã', ini:'MS', c:'#5A6B78', b:'Butantã', lat:-23.5710,lng:-46.7080, r:4.5, rv:470, laudo:'24h', next:[0,'19:00'], open:true, sup:false, conv:true, pix:5, f:{rx:.95,tc:.9,rm:.88}, top:['rm','tc'], img:'tc', pos:'78% 50%'},
-  {id:'pri', n:'Prime Imagem Brooklin', ini:'PI', c:'#111827', b:'Brooklin', lat:-23.6150,lng:-46.6920, r:4.8, rv:760, laudo:'24h', next:[2,'10:00'], open:true, sup:true, conv:false, pix:0, f:{tc:1.2,rm:1.25,mamo:1.2,usg:1.2}, top:['rm','tc'], img:'rm', pos:'82% 50%'},
-  {id:'nov', n:'Nova Diagnose Lapa', ini:'ND', c:'#8B5E3C', b:'Lapa', lat:-23.5270,lng:-46.7050, r:4.2, rv:210, laudo:'72h', next:[1,'07:00'], open:false, sup:false, conv:true, pix:10, f:{rx:.88,usg:.88,ecg:.85}, top:['rx'], img:'rx', pos:'25% 50%'}
-];
-const REVIEWS = ['Atendimento pontual e equipe muito educada.','Agendei pelo app em 1 minuto, sem fila na recepção.','Laudo saiu antes do prazo. Recomendo!','Lugar limpo, moderno e fácil de chegar.','Preço bem melhor do que no meu bairro.'];
-const SPECS = [['todas','Todas'],['clinico','Clínico geral'],['cardio','Cardiologia'],['derma','Dermatologia'],['pedi','Pediatria'],['gine','Ginecologia'],['psiq','Psiquiatria'],['orto','Ortopedia']];
-const DOCS = [
-  {id:'d1', n:'Dra. Camila Ruiz', s:'cardio', sn:'Cardiologia', p:120, r:4.9, rv:312, wait:'Agora', c:'#D63A5A', on:true, img:'assets/img/av-camila.webp'},
-  {id:'d2', n:'Dr. Marcos Lima', s:'clinico', sn:'Clínico geral', p:80, r:4.8, rv:540, wait:'Em 10 min', c:'#0E7C9C', on:true},
-  {id:'d3', n:'Dra. Beatriz Nunes', s:'derma', sn:'Dermatologia', p:100, r:4.9, rv:205, wait:'Em 30 min', c:'#6C4BD8', on:true},
-  {id:'d4', n:'Dr. Paulo Mendes', s:'orto', sn:'Ortopedia', p:120, r:4.7, rv:188, wait:'Hoje 17:00', c:'#2C7BE5', on:false},
-  {id:'d5', n:'Dra. Lúcia Ferraz', s:'pedi', sn:'Pediatria', p:90, r:5.0, rv:421, wait:'Agora', c:'#1E9E5A', on:true},
-  {id:'d6', n:'Dra. Renata Alves', s:'gine', sn:'Ginecologia', p:110, r:4.8, rv:276, wait:'Em 20 min', c:'#FF6B4A', on:true},
-  {id:'d7', n:'Dr. Felipe Rocha', s:'psiq', sn:'Psiquiatria', p:150, r:4.9, rv:164, wait:'Amanhã 09:00', c:'#0A5C76', on:false},
-  {id:'d8', n:'Dr. André Souza', s:'clinico', sn:'Clínico geral', p:80, r:4.6, rv:390, wait:'Agora', c:'#F5A524', on:true}
-];
-const COUPONS = {IMED10:.10};
 
 /* ======================= ESTADO ======================= */
 const store = {
@@ -877,15 +929,14 @@ const S = {
   view:'inicio', place:store.get('place','paulista'), here:null,
   cat:null, pedido:[], q:'', sort:'rel', flt:new Set(), onlyFav:false, hl:null,
   spec:'todas', fav:new Set(store.get('fav',[])), appts:store.get('appts',[]),
-  bag:{clinic:null, items:[]}, booking:{day:0, time:null, pay:'pix', coupon:null}
+  bag:{clinic:null, items:[]}, booking:{day:0, time:null, pay:'pix', coupon:null},
+  realMode:false, real:[]
 };
 if(!PLACES[S.place])S.place='paulista';
 
 /* ======================= UTIL ======================= */
 const $ = s=>document.querySelector(s);
 const brl = n=>'R$ '+Math.round(n).toLocaleString('pt-BR');
-const r5 = n=>Math.round(n/5)*5;
-const price = (c,ex)=>c.f[ex]!=null ? r5(EXAMS[ex].p*c.f[ex]) : null;
 const esc = s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const norm = s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
 function km(a,b){const R=6371,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dg=t(b.lng-a.lng);const h=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dg/2)**2;return 2*R*Math.asin(Math.sqrt(h))*1.25}
@@ -914,6 +965,7 @@ function go(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.go===v));
   document.querySelectorAll('.bnav button').forEach(t=>t.classList.toggle('on',t.dataset.go===v));
   if(v==='agenda')renderAppts();
+  if(v==='inicio'){if(/^#(tele|agenda|perfil)$/.test(location.hash))setHash('')}else setHash('#'+v);
   if(focus){$('#lojas').scrollIntoView({behavior:'smooth'});setTimeout(()=>$('#q').focus({preventScroll:true}),500)}
   else window.scrollTo({top:0,behavior:reduceMotion?'auto':'smooth'});
   headerState();
@@ -927,7 +979,7 @@ document.addEventListener('click',e=>{
     if(a.dataset.act==='cupom'){try{navigator.clipboard.writeText('IMED10')}catch(err){} toast('Cupom IMED10 copiado! Use no agendamento.')}
   }
   const pd=e.target.closest('[data-ped]');
-  if(pd){e.preventDefault();S.pedido=[pd.dataset.ped];S.cat=null;renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
+  if(pd){e.preventDefault();leaveReal();S.pedido=[pd.dataset.ped];S.cat=null;renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
 });
 function headerState(){
   const h=$('#hero');
@@ -939,12 +991,14 @@ addEventListener('scroll',headerState,{passive:true});
 /* ======================= HERO ======================= */
 function renderHeroChips(){
   const chips=[['rm'],['usg'],['rx'],['mamo'],['tele']];
-  $('#hchips').innerHTML=chips.map(([k])=>k==='tele'?`<button class="hchip" data-go="tele"><i class="fa-solid fa-video"></i>Teleconsulta</button>`:`<button class="hchip" data-hcat="${k}"><img src="${ico(k)}" alt="">${EXAMS[k].n}</button>`).join('');
-  const open=CLINICS.filter(c=>c.open).length;
-  $('#livePill').textContent=`${open} clínicas abertas perto de você agora`;
+  $('#hchips').innerHTML=chips.map(([k])=>k==='tele'?`<button class="hchip" data-go="tele"><i class="fa-solid fa-video"></i>Teleconsulta</button>`:`<button class="hchip" data-hcat="${k}"><img src="${ico(k)}" alt="">${EXAMS[k].n}</button>`).join('')+`<button class="hchip hchip-real" data-real-go><i class="fa-solid fa-location-crosshairs"></i>Clínicas reais perto de mim</button>`;
+  updatePill();
+}
+function updatePill(){
+  $('#livePill').textContent=S.realMode?`${S.real.length} clínicas reais encontradas perto de você`:`${CLINICS.filter(c=>c.open).length} clínicas abertas perto de você agora`;
 }
 $('#hchips').addEventListener('click',e=>{const b=e.target.closest('[data-hcat]');if(!b)return;pickExam(b.dataset.hcat)});
-function pickExam(k){S.cat=k;S.pedido=[];S.q='';$('#q').value='';$('#heroQ').value=EXAMS[k].n;renderAll();hideSug();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),60)}
+function pickExam(k){leaveReal();S.cat=k;S.pedido=[];S.q='';$('#q').value='';$('#heroQ').value=EXAMS[k].n;renderAll();hideSug();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),60)}
 let sugIdx=-1,sugItems=[];
 function sugFor(qs){
   const q=norm(qs.trim());
@@ -988,7 +1042,7 @@ function renderCats(){
   $('#cats').innerHTML=Object.entries(EXAMS).map(([k,e])=>{const mn=Math.min(...CLINICS.filter(c=>c.f[k]!=null).map(c=>price(c,k)));return `<button class="cat ${S.cat===k?'on':''}" data-cat="${k}"><img src="${ico(k)}" alt="" loading="lazy"><b>${e.n}</b><small>a partir de ${brl(mn)}</small></button>`}).join('');
   $('#catClear').classList.toggle('hide',!S.cat);
 }
-$('#cats').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;S.cat=S.cat===b.dataset.cat?null:b.dataset.cat;S.pedido=[];renderAll();if(S.cat)$('#lojas').scrollIntoView({behavior:'smooth'})});
+$('#cats').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;leaveReal();S.cat=S.cat===b.dataset.cat?null:b.dataset.cat;S.pedido=[];renderAll();if(S.cat)$('#lojas').scrollIntoView({behavior:'smooth'})});
 $('#catClear').onclick=()=>{S.cat=null;$('#heroQ').value='';renderAll()};
 
 function renderPedidoBtn(){
@@ -1011,6 +1065,7 @@ function renderHighlights(){
 const CHIPS=[['sort','Ordenar','fa-arrow-down-wide-short'],['hoje','Horário hoje',''],['conv','Aceita convênio',''],['pix','Desconto no Pix',''],['sup','Super Clínica','fa-award'],['laudo','Laudo na hora',''],['fav','Favoritas','fa-heart']];
 const SORTS={rel:'Relevância',dist:'Distância',price:'Menor preço',rate:'Avaliação',next:'Próximo horário'};
 function renderChips(){
+  $('#chips').classList.toggle('hide',S.realMode);
   $('#chips').innerHTML=CHIPS.map(([k,l,ic])=>{
     const on=k==='sort'?S.sort!=='rel':(k==='fav'?S.onlyFav:S.flt.has(k));
     const label=k==='sort'&&S.sort!=='rel'?SORTS[S.sort]:l;
@@ -1072,7 +1127,25 @@ function cardHTML(c){
     <button class="fav ${S.fav.has(c.id)?'on':''}" data-fav="${c.id}" aria-label="Favoritar ${esc(c.n)}"><i class="fa-${S.fav.has(c.id)?'solid':'regular'} fa-heart"></i></button>
   </article>`;
 }
+function renderRealBar(){
+  $('#realbar').innerHTML=S.realMode
+    ?`<span><i class="fa-solid fa-map-location-dot"></i> Mostrando <b>clínicas reais</b> do OpenStreetMap perto de você.</span><button class="link" data-real-off>Ver clínicas parceiras (exemplos)</button>`
+    :`<span><i class="fa-solid fa-location-crosshairs"></i> Estas são clínicas de exemplo. Quer ver as <b>clínicas de imagem reais</b> perto de você?</span><button class="btn btn-primary" data-real-go style="padding:10px 16px;font-size:14px">Buscar perto de mim</button>`;
+}
+function realCardHTML(c){
+  return `<article class="cc rc" data-real="${c.id}" tabindex="0" role="button" aria-label="${esc(c.n)}">
+    <div class="rc-top"><span class="cc-logo" style="background:${c.c}">${esc(c.ini)}</span><div style="min-width:0"><h3><span>${esc(c.n)}</span></h3><div class="meta"><span><i class="fa-solid fa-location-dot" style="color:var(--coral)"></i> ${fmtKm(dist(c))}</span>${c.addr?`<span class="dot">${esc(c.addr)}</span>`:''}</div></div></div>
+    <div class="rc-act"><a class="btn btn-primary" href="${dirUrl(c)}" target="_blank" rel="noopener"><i class="fa-solid fa-route"></i> Como chegar</a>${c.phone?`<a class="btn btn-ghost" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}"><i class="fa-solid fa-phone"></i> Ligar</a>`:''}</div>
+  </article>`;
+}
 function renderList(){
+  renderRealBar();
+  if(S.realMode){
+    $('#listTitle').textContent='Clínicas reais perto de você';
+    $('#count').innerHTML=`${S.real.length} lugar${S.real.length===1?'':'es'} no OpenStreetMap · preços e horários: confirme com a clínica`;
+    $('#list').innerHTML=S.real.map(realCardHTML).join('');
+    return;
+  }
   const arr=filtered();
   const t=S.pedido.length?'Clínicas que fazem todo o seu pedido':(S.cat?`Clínicas com ${EXAMS[S.cat].n}`:(S.q?`Resultados para “${esc(S.q)}”`:'Clínicas perto de você'));
   $('#listTitle').innerHTML=t;
@@ -1087,14 +1160,20 @@ document.addEventListener('click',e=>{
   const o=e.target.closest('[data-open]');
   if(o)openClinic(o.dataset.open);
 });
-document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.cc')){e.preventDefault();openClinic(e.target.dataset.open)}});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.cc')){e.preventDefault();e.target.dataset.real?openReal(e.target.dataset.real):openClinic(e.target.dataset.open)}});
+document.addEventListener('click',e=>{
+  if(e.target.closest('[data-real-go]')){e.preventDefault();findReal();return}
+  if(e.target.closest('[data-real-off]')){e.preventDefault();realOff();return}
+  const r=e.target.closest('[data-real]');
+  if(r&&!e.target.closest('a'))openReal(r.dataset.real);
+});
 let qT;$('#q').addEventListener('input',e=>{clearTimeout(qT);qT=setTimeout(()=>{S.q=e.target.value;if(S.view!=='inicio')go('inicio');renderList()},150)});
 $('#favLink').onclick=()=>{S.onlyFav=true;go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),300)};
 
 /* ======================= SHEETS ======================= */
 const ov=$('#ov'),sheet=$('#sheet');
 function openSheet(html,cls='',keep=false){const st=sheet.scrollTop;sheet.className='sheet '+cls;sheet.innerHTML=html;ov.classList.add('open');ov.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';sheet.scrollTop=keep?st:0}
-function closeSheet(){ov.classList.remove('open');ov.setAttribute('aria-hidden','true');document.body.style.overflow='';S.hl=null}
+function closeSheet(){ov.classList.remove('open');ov.setAttribute('aria-hidden','true');document.body.style.overflow='';S.hl=null;if(/^#clinica-/.test(location.hash))setHash('')}
 ov.addEventListener('click',e=>{if(e.target===ov||e.target.closest('[data-close]'))closeSheet()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSheet()});
 const head=t=>`<div class="sh-head"><h3>${t}</h3><button class="x" data-close aria-label="Fechar"><i class="fa-solid fa-xmark"></i></button></div>`;
@@ -1128,7 +1207,7 @@ function openPedido(){
   const draw=()=>{
     const n=sel.size, ok=CLINICS.filter(c=>has(c,[...sel])).length;
     sheet.querySelector('#pdFoot').innerHTML=`<button class="btn btn-primary" style="width:100%" id="pdGo" ${n?'':'disabled'}>${n?`Ver ${ok} clínica${ok===1?'':'s'} que faz${ok===1?'':'em'} ${n>1?'todos':'o exame'}`:'Marque pelo menos 1 exame'}</button>`;
-    sheet.querySelector('#pdGo').onclick=()=>{S.pedido=[...sel];S.cat=null;closeSheet();go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),250)};
+    sheet.querySelector('#pdGo').onclick=()=>{leaveReal();S.pedido=[...sel];S.cat=null;closeSheet();go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),250)};
   };
   openSheet(head('Montar meu pedido')+`<div class="sh-body">
     <label class="upload"><i class="fa-solid fa-camera"></i><span><b>Enviar foto do pedido médico</b><br>Anexe a foto e confira os exames abaixo.</span><input type="file" accept="image/*,application/pdf" class="sr" id="pdFile"></label>
@@ -1146,16 +1225,16 @@ function openPedido(){
 /* ======================= PÁGINA DA CLÍNICA ======================= */
 function openClinic(id){
   const c=CLINICS.find(x=>x.id===id);if(!c)return;
-  S.hl=id;
+  S.hl=id;setHash('#clinica-'+id);
   const ex=Object.keys(c.f);
   const tops=(c.top||[]).filter(e=>c.f[e]!=null);
   const itemHTML=e=>{const p=price(c,e),inBag=S.bag.clinic===c.id&&S.bag.items.includes(e);const old=c.promo&&tops[0]===e?r5(p*1.18):null;
-    return `<div class="item"><span class="thumb"><img src="${ico(e)}" alt="" loading="lazy"></span><div style="flex:1;min-width:0"><b>${EXAMS[e].full}</b><p>${EXAMS[e].d}</p><span class="pr">${brl(p)}${old?`<s>${brl(old)}</s>`:''}${c.pix?`<small>${brl(p*(1-c.pix/100))} no Pix</small>`:''}</span></div>
+    return `<div class="item"><span class="thumb"><img src="${ico(e)}" alt="" loading="lazy"></span><div style="flex:1;min-width:0"><b>${EXAMS[e].full}</b><p>${EXAMS[e].d} <a class="prep-link" href="exames/${EXAMS[e].slug}.html#preparo">Preparo</a></p><span class="pr">${brl(p)}${old?`<s>${brl(old)}</s>`:''}${c.pix?`<small>${brl(p*(1-c.pix/100))} no Pix</small>`:''}</span></div>
       <button class="add ${inBag?'in':''}" data-add="${e}" aria-label="${inBag?'Remover':'Adicionar'} ${EXAMS[e].full}"><i class="fa-solid ${inBag?'fa-check':'fa-plus'}"></i></button></div>`};
   const sec=(t,list)=>list.length?`<div class="menu-sec"><h4>${t}</h4>${list.map(itemHTML).join('')}</div>`:'';
   const rv=[0,1,2].map(i=>REVIEWS[(c.id.charCodeAt(0)+i*2)%REVIEWS.length]);
   openSheet(`
-    <div class="cover"><img src="${photo(c)}" alt="${esc(c.n)}" style="object-position:${c.pos}"><button class="x l" data-close aria-label="Voltar"><i class="fa-solid fa-arrow-left"></i></button><button class="x r" data-fav2="${c.id}" aria-label="Favoritar"><i class="fa-${S.fav.has(c.id)?'solid':'regular'} fa-heart" style="color:var(--coral)"></i></button></div>
+    <div class="cover"><img src="${photo(c)}" alt="${esc(c.n)}" style="object-position:${c.pos}"><button class="x l" data-close aria-label="Voltar"><i class="fa-solid fa-arrow-left"></i></button><button class="x r2" data-share="${c.id}" aria-label="Compartilhar"><i class="fa-solid fa-arrow-up-from-bracket"></i></button><button class="x r" data-fav2="${c.id}" aria-label="Favoritar"><i class="fa-${S.fav.has(c.id)?'solid':'regular'} fa-heart" style="color:var(--coral)"></i></button></div>
     <div class="store-top">
       <span class="lg" style="background:${c.c}">${c.ini}</span>
       <h2>${esc(c.n)}${c.sup?'<i class="fa-solid fa-award sup-ic" title="Super Clínica"></i>':''}</h2>
@@ -1259,6 +1338,7 @@ function openBag(){
 function confirmBooking(c,tot){
   const B=S.booking,code='IMED-'+Math.random().toString(36).slice(2,7).toUpperCase();
   const d=new Date();d.setDate(d.getDate()+B.day);
+  const B_items=[...S.bag.items];
   const ap={code,type:'exame',clinic:c.id,name:c.n,ini:c.ini,c:c.c,img:photo(c,'sm'),items:S.bag.items.map(e=>EXAMS[e].full),date:d.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'}),time:B.time,total:tot,pay:B.pay};
   S.appts.unshift(ap);store.set('appts',S.appts);
   S.bag={clinic:null,items:[]};S.booking={day:0,time:null,pay:'pix',coupon:null};renderBag();
@@ -1266,6 +1346,7 @@ function confirmBooking(c,tot){
     <p><b>${esc(c.n)}</b><br>${ap.date} às ${ap.time}<br>${ap.items.join(' + ')}</p>
     <span class="code">${code}</span>
     <p style="font-size:14px">Leve um documento com foto e o pedido médico. Você recebe as orientações de preparo e o lembrete no app.</p>
+    <div class="prep-box">${B_items.map(e=>`<a href="exames/${EXAMS[e].slug}.html#preparo"><img src="${ico(e)}" alt=""><span>Como se preparar para <b>${EXAMS[e].n}</b></span><i class="fa-solid fa-chevron-right"></i></a>`).join('')}</div>
     <p class="note" style="text-align:left">Protótipo: este agendamento é só uma demonstração e não foi enviado à clínica.</p>
     <div style="display:grid;gap:10px;margin-top:18px"><button class="btn btn-primary" data-go="agenda">Ver meus agendamentos</button><button class="btn btn-ghost" data-close>Voltar para o início</button></div></div>`,'sm');
 }
@@ -1349,11 +1430,133 @@ function fillDynamicCopy(){
   const d=CLINICS.find(c=>c.id==='dcp');$('#pf2').innerHTML=`${brl(price(d,'rm')*(1-d.pix/100))} no Pix<small>Ressonância · -${d.pix}%</small>`;
 }
 
+/* ======================= CLÍNICAS REAIS (OpenStreetMap) ======================= */
+const OSM_COLORS=['#0E7C9C','#6C4BD8','#16A6A6','#FF6B4A','#2C7BE5','#D63A5A','#F5A524','#1E9E5A','#0A5C76','#8B5E3C'];
+const dirUrl=c=>`https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
+function osmIni(n){const w=n.replace(/[^\p{L}\p{N} ]/gu,' ').split(/\s+/).filter(x=>x&&!/^(cl[ií]nica|centro|de|da|do|das|dos|e|instituto|laborat[oó]rio|hospital|med|medicina)$/i.test(x));return ((w[0]||n)[0]+((w[1]||'')[0]||'')).toUpperCase()}
+function overpass(lat,lon,rad){
+  const a=`(around:${rad},${lat},${lon})`;
+  const q=`[out:json][timeout:20];(nwr["healthcare"="radiology"]${a};nwr["healthcare:speciality"~"radiology"]${a};nwr["amenity"~"clinic|doctors"]["name"~"imagem|diagn|radiolog|tomograf|resson|ultrass|ultra-s|mamogr|raio|rx|densitom|ecocard|cardio",i]${a};nwr["healthcare"~"clinic|centre"]["name"~"imagem|diagn|radiolog|tomograf|resson|ultrass|mamogr|raio",i]${a};);out center 80;`;
+  const ask=url=>fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)}).then(r=>{if(!r.ok)throw new Error('http '+r.status);return r.json()});
+  return ask('https://overpass-api.de/api/interpreter').catch(()=>ask('https://overpass.kumi.systems/api/interpreter')).then(j=>{
+    const seen=new Set(),out=[];
+    (j.elements||[]).forEach(e=>{
+      const t=e.tags||{},la=e.lat!=null?e.lat:e.center&&e.center.lat,lo=e.lon!=null?e.lon:e.center&&e.center.lon;
+      if(!t.name||la==null)return;
+      const k=t.name.toLowerCase()+'|'+la.toFixed(3)+lo.toFixed(3);if(seen.has(k))return;seen.add(k);
+      const street=[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(', ');
+      out.push({id:'osm-'+e.type[0]+e.id,n:t.name,lat:la,lng:lo,addr:[street,t['addr:suburb']||t['addr:city']].filter(Boolean).join(' · '),phone:t.phone||t['contact:phone']||'',web:t.website||t['contact:website']||'',real:true,open:true,sup:false,r:4.5});
+    });
+    return out;
+  });
+}
+function findReal(){
+  if(!navigator.geolocation)return toast('Seu navegador não permite localização');
+  toast('Buscando sua localização…');
+  navigator.geolocation.getCurrentPosition(p=>{
+    const lat=p.coords.latitude,lng=p.coords.longitude;
+    toast('Procurando clínicas de imagem perto de você…');
+    overpass(lat,lng,7000).then(l=>l.length>=3?l:overpass(lat,lng,20000)).then(list=>{
+      if(!list.length){toast('Não encontramos clínicas de imagem mapeadas perto de você.');return}
+      const here={lat,lng};
+      list.sort((a,b)=>km(here,a)-km(here,b));
+      S.real=list.slice(0,12).map((c,i)=>Object.assign(c,{ini:osmIni(c.n),c:OSM_COLORS[i%OSM_COLORS.length]}));
+      S.here=here;S.realMode=true;closeSheet();go('inicio');placeChanged();
+      toast(`${S.real.length} clínicas reais encontradas perto de você`);
+      setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),300);
+    }).catch(()=>toast('Não foi possível buscar agora. Tente de novo em instantes.'));
+  },()=>toast('Não foi possível obter sua localização'),{timeout:10000,maximumAge:60000});
+}
+function leaveReal(){if(!S.realMode)return;S.realMode=false;S.real=[];if(window.HERO)HERO.setOrigin()}
+function realOff(){leaveReal();renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
+function openReal(id){
+  const c=S.real.find(x=>x.id===id);if(!c)return;
+  S.hl=id;
+  const d=.006,bbox=[c.lng-d,c.lat-d*.7,c.lng+d,c.lat+d*.7].map(v=>v.toFixed(5)).join(',');
+  openSheet(head('Clínica no mapa')+`
+    <div class="osm-map"><iframe title="Mapa de ${esc(c.n)}" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}"></iframe></div>
+    <div class="sh-body">
+      <div style="display:flex;gap:14px;align-items:center"><span class="cc-logo" style="position:static;background:${c.c};width:56px;height:56px;border-radius:17px;display:grid;place-items:center;color:#fff;font:800 17px Sora">${esc(c.ini)}</span><div><h3 style="font-size:20px">${esc(c.n)}</h3><div class="meta"><span><i class="fa-solid fa-location-dot" style="color:var(--coral)"></i> ${fmtKm(dist(c))} de você</span></div></div></div>
+      <div class="store-info" style="grid-template-columns:1fr 1fr">
+        <div>Endereço<b>${esc(c.addr||'Veja no mapa')}</b></div>
+        <div>Telefone<b>${esc(c.phone||'Não informado')}</b></div>
+      </div>
+      <div style="display:grid;gap:10px">
+        <a class="btn btn-coral" href="${dirUrl(c)}" target="_blank" rel="noopener"><i class="fa-solid fa-route"></i> Como chegar</a>
+        ${c.phone?`<a class="btn btn-ghost" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}"><i class="fa-solid fa-phone"></i> Ligar para a clínica</a>`:''}
+        ${/^https?:\/\//.test(c.web)?`<a class="btn btn-ghost" href="${esc(c.web)}" target="_blank" rel="noopener"><i class="fa-solid fa-globe"></i> Site da clínica</a>`:''}
+      </div>
+      <p class="note">Dados do OpenStreetMap, mantidos por voluntários. Preços, convênios e horários: confirme direto com a clínica. Esta clínica ainda não é parceira do IMED.</p>
+    </div>`,'sm');
+}
+
+/* ======================= LISTA DE ESPERA ======================= */
+(function(){
+  const f=$('#wlForm');if(!f)return;
+  const msg=$('#wlMsg'),btn=$('#wlBtn');
+  const say=(t,cls)=>{msg.textContent=t;msg.className='wl-msg show '+cls};
+  if(store.get('wl',false))say('Você já está na lista. Avisaremos no seu e-mail quando o app lançar.','ok');
+  f.addEventListener('submit',e=>{
+    e.preventDefault();
+    const email=f.email.value.trim().toLowerCase(),city=f.city.value.trim();
+    const bad=!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+    f.email.classList.toggle('bad',bad);
+    if(bad){say('Digite um e-mail válido.','err');f.email.focus();return}
+    const ok=()=>{store.set('wl',true);f.reset();say('Pronto! Você está na lista. Avisaremos assim que o app chegar à sua cidade.','ok');btn.disabled=false;btn.innerHTML='Quero ser avisado <i class="fa-solid fa-bell"></i>'};
+    if(f.website.value){ok();return}
+    btn.disabled=true;btn.innerHTML='Enviando…';
+    imedInsert('app_waitlist',{email,city:city||null,interest:f.interest.value}).then(ok).catch(()=>{say('Não foi possível enviar agora. Verifique sua internet e tente de novo.','err');btn.disabled=false;btn.innerHTML='Tentar de novo <i class="fa-solid fa-rotate-right"></i>'});
+  });
+})();
+
+/* ======================= LINKS DIRETOS ======================= */
+function setHash(h){try{history.replaceState(history.state,'',location.pathname+location.search+(h||''))}catch(e){}}
+function route(){
+  const h=decodeURIComponent(location.hash||'');let m;
+  if((m=h.match(/^#clinica-([\w-]+)$/))&&CLINICS.some(c=>c.id===m[1])){if(S.view!=='inicio')go('inicio');openClinic(m[1]);return}
+  if((m=h.match(/^#exame-(\w+)$/))&&EXAMS[m[1]]){if(S.view!=='inicio')go('inicio');pickExam(m[1]);return}
+  if(/^#(tele|agenda|perfil)$/.test(h)){go(h.slice(1));return}
+  if(h==='#pedido'){openPedido();return}
+  if(h==='#perto'){findReal();return}
+}
+addEventListener('hashchange',route);
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-share]');if(!b)return;
+  const c=CLINICS.find(x=>x.id===b.dataset.share);if(!c)return;
+  const url=location.origin+location.pathname+'#clinica-'+c.id;
+  if(navigator.share){navigator.share({title:c.n+' · IMED',text:`${c.n}: ★ ${fmtR(c.r)}, próximo horário ${nextTxt(c)}. Veja no IMED:`,url}).catch(()=>{});return}
+  (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject()).then(()=>toast('Link da clínica copiado')).catch(()=>toast(url));
+});
+
+/* ======================= APP INSTALÁVEL ======================= */
+let installEvt=null;
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const showInstall=on=>document.querySelectorAll('.install-auto').forEach(b=>b.classList.toggle('hide',!on));
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;if(!isStandalone())showInstall(true)});
+addEventListener('appinstalled',()=>{installEvt=null;showInstall(false);toast('App IMED instalado!')});
+if(isIOS&&!isStandalone())showInstall(true);
+if(isStandalone())document.querySelectorAll('[data-install]').forEach(b=>b.classList.add('hide'));
+document.addEventListener('click',e=>{
+  if(!e.target.closest('[data-install]'))return;
+  if(installEvt){installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;showInstall(false)});return}
+  openSheet(head('Instalar o app IMED')+`<div class="sh-body inst">
+    <div class="inst-app"><img src="assets/icons/icon-192.png" alt=""><div><b>IMED</b><small>Exames e teleconsulta perto de você</small></div></div>
+    <h4><i class="fa-brands fa-apple"></i> iPhone (Safari)</h4>
+    <ol><li>Toque em <b>Compartilhar</b> <i class="fa-solid fa-arrow-up-from-bracket"></i> na barra do Safari.</li><li>Escolha <b>Adicionar à Tela de Início</b>.</li><li>Toque em <b>Adicionar</b>.</li></ol>
+    <h4><i class="fa-brands fa-android"></i> Android (Chrome)</h4>
+    <ol><li>Toque no menu <b>⋮</b> do Chrome.</li><li>Escolha <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</li></ol>
+    <p class="note">O app abre em tela cheia, como os da loja, e as telas que você já visitou funcionam mesmo sem internet.</p>
+  </div>`,'sm');
+});
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+
 /* ======================= MAPA 3D ======================= */
 window.HERO=null;
 const API={
-  clinics:()=>CLINICS, origin, onPick:id=>openClinic(id), highlighted:()=>S.hl,
-  meta:c=>`★ ${fmtR(c.r)} · ${fmtKm(dist(c))} · ${c.open?nextTxt(c):'Fechada'}`
+  clinics:()=>S.realMode?S.real:CLINICS, origin, highlighted:()=>S.hl,
+  onPick:id=>String(id).startsWith('osm-')?openReal(id):openClinic(id),
+  meta:c=>c.real?`${fmtKm(dist(c))} · OpenStreetMap`:`★ ${fmtR(c.r)} · ${fmtKm(dist(c))} · ${c.open?nextTxt(c):'Fechada'}`
 };
 function startHero(){
   const el=$('#hero3d');
@@ -1364,9 +1567,10 @@ function startHero(){
 }
 
 /* ======================= INIT ======================= */
-function renderAll(){renderCats();renderPedidoBtn();renderHighlights();renderChips();renderList();if(window.HERO)HERO.refreshLabels()}
+function renderAll(){renderCats();renderPedidoBtn();renderHighlights();renderChips();renderList();updatePill();if(window.HERO)HERO.refreshLabels()}
 setPlaceLabels();renderHeroChips();renderAll();renderTele();renderBag();fillDynamicCopy();headerState();
 startHero();
+route();
 </script>
 </body>
 </html>

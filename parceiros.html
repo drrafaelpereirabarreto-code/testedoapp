@@ -6,6 +6,16 @@
 <title>IMED Parceiros — Cadastre sua clínica</title>
 <meta name="description" content="Coloque sua clínica de imagem no IMED e receba novos pacientes todos os dias: agenda online, pagamento pelo app e painel de gestão.">
 <meta name="theme-color" content="#0A2E3D">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:title" content="IMED Parceiros — Cadastre sua clínica">
+<meta property="og:description" content="Receba novos pacientes todos os dias: agenda online, pagamento pelo app e painel de gestão.">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/fachada.webp">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='14' fill='%230E7C9C'/%3E%3Cpath d='M20 12h8v8h8v8h-8v8h-8v-8h-8v-8h8z' fill='%23fff'/%3E%3Ccircle cx='37' cy='11' r='5' fill='%23FF6B4A'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -61,7 +71,13 @@ button{cursor:pointer;border:0;background:none}
 .fld span{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
 .fld input,.fld select{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px 13px;outline:none;background:#fff;font-size:15px}
 .fld input:focus,.fld select:focus{border-color:var(--primary)}
-.fld input.bad{border-color:var(--coral)}
+.fld input.bad,.fld select.bad{border-color:var(--coral);background:#FFF7F5}
+.hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.ferr{display:none;color:var(--coral-dark);font-size:13.5px;line-height:1.5;margin:-4px 0 12px}
+.ferr.show{display:block}
+.ferr a{color:var(--primary);font-weight:700}
+.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
 .check{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin:6px 0 14px}
 .check input{accent-color:var(--primary);margin-top:2px;width:16px;height:16px;flex-shrink:0}
 .form-card .btn{width:100%}
@@ -233,20 +249,23 @@ footer a{color:var(--primary);font-weight:600}
           <button type="button" data-kind="medico">Médico (teleconsulta)</button>
         </div>
         <form id="pform" novalidate>
-          <label class="fld"><span id="nameLbl">Nome da clínica</span><input name="nome" required autocomplete="organization"></label>
+          <label class="fld"><span id="nameLbl">Nome da clínica</span><input name="nome" required autocomplete="organization" maxlength="200"></label>
           <div class="grid2">
-            <label class="fld"><span id="docLbl">CNPJ</span><input name="doc" required inputmode="numeric" placeholder="00.000.000/0000-00"></label>
-            <label class="fld"><span>Celular (WhatsApp)</span><input name="tel" required inputmode="tel" placeholder="(11) 90000-0000" autocomplete="tel"></label>
+            <label class="fld"><span id="docLbl">CNPJ</span><input name="doc" required inputmode="numeric" placeholder="00.000.000/0000-00" maxlength="18"></label>
+            <label class="fld"><span>Celular (WhatsApp)</span><input name="tel" required inputmode="tel" placeholder="(11) 90000-0000" autocomplete="tel" maxlength="15"></label>
           </div>
-          <label class="fld"><span>E-mail</span><input name="email" type="email" required autocomplete="email"></label>
+          <label class="fld hide" id="crmFld"><span>CRM / UF</span><input name="crm" placeholder="123456-SP" maxlength="20" autocapitalize="characters"></label>
+          <label class="fld"><span>E-mail</span><input name="email" type="email" required autocomplete="email" maxlength="200"></label>
           <div class="grid2">
-            <label class="fld"><span>Cidade</span><input name="cidade" required autocomplete="address-level2"></label>
+            <label class="fld"><span>Cidade</span><input name="cidade" required autocomplete="address-level2" maxlength="120"></label>
             <label class="fld"><span id="espLbl">Principal exame</span>
               <select name="esp" id="esp"></select>
             </label>
           </div>
-          <label class="check"><input type="checkbox" required name="lgpd"> Aceito que o IMED use estes dados para entrar em contato sobre a parceria (LGPD).</label>
-          <button class="btn btn-coral" type="submit">Quero ser parceiro <i class="fa-solid fa-arrow-right"></i></button>
+          <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <label class="check"><input type="checkbox" required name="lgpd"> Aceito que o IMED use estes dados para entrar em contato sobre a parceria, conforme a <a href="privacidade.html" style="color:var(--primary);font-weight:600">política de privacidade</a> (LGPD).</label>
+          <p class="ferr" id="ferr" role="alert"></p>
+          <button class="btn btn-coral" type="submit" id="pSend">Quero ser parceiro <i class="fa-solid fa-arrow-right"></i></button>
         </form>
       </div>
     </div>
@@ -439,41 +458,77 @@ footer a{color:var(--primary);font-weight:600}
 <footer>
   <div class="wrap">
     <span><b style="color:var(--ink)">IMED Parceiros</b> · Criado por Rafael Pereira Barreto Silva</span>
-    <span><a href="index.html">App para pacientes</a> · <a href="mailto:contato@imed.com.br">contato@imed.com.br</a></span>
+    <span><a href="index.html">App para pacientes</a> · <a href="exames/">Guias de exames</a> · <a href="privacidade.html">Privacidade</a> · <a href="mailto:contato@imed.com.br">contato@imed.com.br</a></span>
   </div>
 </footer>
 
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/db.js"></script>
 <script>
-// E-mail que recebe os cadastros de parceiros. Troque pelo e-mail real do IMED.
+// E-mail mostrado como alternativa se o envio pelo site falhar. Troque pelo e-mail real do IMED.
 const PARTNER_EMAIL = 'contato@imed.com.br';
 
 const OPTS = {
   clinica:{name:'Nome da clínica',doc:'CNPJ',docPh:'00.000.000/0000-00',esp:'Principal exame',list:['Raio-X','Ultrassom','Tomografia','Ressonância magnética','Mamografia','Densitometria','Cardiologia (eletro/eco)','Vários exames']},
-  medico:{name:'Nome completo',doc:'CRM / UF',docPh:'000000-SP',esp:'Especialidade',list:['Clínico geral','Cardiologia','Dermatologia','Pediatria','Ginecologia','Psiquiatria','Ortopedia','Outra']}
+  medico:{name:'Nome completo',doc:'CPF ou CNPJ',docPh:'000.000.000-00',esp:'Especialidade',list:['Clínico geral','Cardiologia','Dermatologia','Pediatria','Ginecologia','Psiquiatria','Ortopedia','Outra']}
 };
 let kind='clinica', plan='';
 const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const digits=s=>s.replace(/\D/g,'');
+const fmtCPF=d=>{d=d.slice(0,11);let o=d.slice(0,3);if(d.length>3)o+='.'+d.slice(3,6);if(d.length>6)o+='.'+d.slice(6,9);if(d.length>9)o+='-'+d.slice(9);return o};
+const fmtCNPJ=d=>{d=d.slice(0,14);let o=d.slice(0,2);if(d.length>2)o+='.'+d.slice(2,5);if(d.length>5)o+='.'+d.slice(5,8);if(d.length>8)o+='/'+d.slice(8,12);if(d.length>12)o+='-'+d.slice(12);return o};
+const fmtTel=d=>{d=d.slice(0,11);if(!d)return '';if(d.length<=2)return '('+d;const r=d.slice(2);let o='('+d.slice(0,2)+') ';if(r.length<=4)return o+r;return o+(d.length===11?r.slice(0,5)+'-'+r.slice(5):r.slice(0,4)+'-'+r.slice(4))};
 function setKind(k){
   kind=k;const o=OPTS[k];
   document.querySelectorAll('[data-kind]').forEach(b=>b.classList.toggle('on',b.dataset.kind===k));
   $('#nameLbl').textContent=o.name;$('#docLbl').textContent=o.doc;$('#espLbl').textContent=o.esp;
-  $('[name=doc]').placeholder=o.docPh;$('[name=doc]').inputMode=k==='clinica'?'numeric':'text';
+  const doc=$('[name=doc]');doc.placeholder=o.docPh;doc.value='';doc.classList.remove('bad');
+  $('#crmFld').classList.toggle('hide',k!=='medico');
+  $('[name=nome]').autocomplete=k==='clinica'?'organization':'name';
   $('#esp').innerHTML=o.list.map(x=>`<option>${x}</option>`).join('');
 }
 document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
 document.querySelectorAll('[data-plan]').forEach(a=>a.addEventListener('click',()=>{plan=a.dataset.plan}));
 setKind('clinica');
 
+$('[name=doc]').addEventListener('input',e=>{const d=digits(e.target.value);e.target.value=kind==='clinica'||d.length>11?fmtCNPJ(d):fmtCPF(d)});
+$('[name=tel]').addEventListener('input',e=>{e.target.value=fmtTel(digits(e.target.value))});
+
+function check(f){
+  const v=n=>(f.elements[n].value||'').trim();
+  const bad={
+    nome:v('nome').length<2,
+    doc:kind==='clinica'?digits(v('doc')).length!==14:![11,14].includes(digits(v('doc')).length),
+    tel:![10,11].includes(digits(v('tel')).length),
+    crm:kind==='medico'&&v('crm').length<4,
+    email:!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v('email')),
+    cidade:v('cidade').length<2,
+    lgpd:!f.elements.lgpd.checked
+  };
+  Object.entries(bad).forEach(([n,b])=>f.elements[n].classList.toggle('bad',b));
+  const first=Object.keys(bad).find(n=>bad[n]);
+  return first?{first,msg:{doc:kind==='clinica'?'Confira o CNPJ (14 números).':'Confira o CPF (11 números) ou CNPJ (14 números).',tel:'Confira o celular com DDD.',email:'Confira o e-mail.',crm:'Informe o CRM e o estado (ex.: 123456-SP).',lgpd:'Para continuar, aceite o uso dos dados para contato.'}[first]||'Preencha os campos destacados.'}:null;
+}
+
 $('#pform').addEventListener('submit',e=>{
   e.preventDefault();
-  const f=e.target;let ok=true;
-  f.querySelectorAll('input[required]').forEach(i=>{const bad=i.type==='checkbox'?!i.checked:!i.value.trim()||(i.type==='email'&&!/^\S+@\S+\.\S+$/.test(i.value));i.classList.toggle('bad',bad);if(bad)ok=false});
-  if(!ok){const first=f.querySelector('.bad');if(first)first.focus();return}
+  const f=e.target, err=$('#ferr'), btn=$('#pSend');
+  err.classList.remove('show');
+  const bad=check(f);
+  if(bad){err.textContent=bad.msg;err.classList.add('show');f.elements[bad.first].focus();return}
   const d=Object.fromEntries(new FormData(f));
-  const body=`Novo cadastro de parceiro IMED\n\nTipo: ${kind==='clinica'?'Clínica de imagem':'Médico (teleconsulta)'}\n${OPTS[kind].name}: ${d.nome}\n${OPTS[kind].doc}: ${d.doc}\nCelular: ${d.tel}\nE-mail: ${d.email}\nCidade: ${d.cidade}\n${OPTS[kind].esp}: ${d.esp}${plan?'\nPlano de interesse: '+plan:''}`;
-  const link=`mailto:${PARTNER_EMAIL}?subject=${encodeURIComponent('Cadastro de parceiro: '+d.nome)}&body=${encodeURIComponent(body)}`;
-  $('#formWrap').innerHTML=`<div class="done"><div class="ic"><i class="fa-solid fa-check"></i></div><h2>Recebemos seus dados!</h2><p>Obrigado, <b>${d.nome.replace(/[<>&]/g,'')}</b>. Para concluir, envie o e-mail que abriu com seus dados. Nossa equipe responde em até 1 dia útil.</p><a class="btn btn-coral" style="margin-top:16px;width:100%" href="${link}"><i class="fa-regular fa-envelope"></i> Enviar meus dados por e-mail</a></div>`;
-  window.location.href=link;
+  const services=[`${OPTS[kind].esp}: ${d.esp}`,kind==='medico'?`CRM ${d.crm.trim().toUpperCase()}`:'',plan?`Plano de interesse: ${plan}`:''].filter(Boolean).join(' · ');
+  const row={partner_type:kind,name:d.nome.trim(),cnpj:d.doc.trim(),phone:d.tel.trim(),email:d.email.trim().toLowerCase(),address:d.cidade.trim(),services,online_only:kind==='medico'};
+  const done=()=>{$('#formWrap').innerHTML=`<div class="done"><div class="ic"><i class="fa-solid fa-check"></i></div><h2>Cadastro recebido!</h2><p>Obrigado, <b>${esc(row.name)}</b>. Nossa equipe vai entrar em contato pelo WhatsApp <b>${esc(row.phone)}</b> ou pelo e-mail <b>${esc(row.email)}</b> em até 1 dia útil.</p></div>`;$('#formCard').scrollIntoView({behavior:'smooth',block:'center'})};
+  if(d.website){done();return}
+  btn.disabled=true;btn.innerHTML='<span class="spin"></span> Enviando…';
+  imedInsert('partner_leads',row).then(done).catch(()=>{
+    const body=`Cadastro de parceiro IMED\n\nTipo: ${kind==='clinica'?'Clínica de imagem':'Médico (teleconsulta)'}\nNome: ${row.name}\n${OPTS[kind].doc}: ${row.cnpj}\nCelular: ${row.phone}\nE-mail: ${row.email}\nCidade: ${row.address}\n${services}`;
+    const link=`mailto:${PARTNER_EMAIL}?subject=${encodeURIComponent('Cadastro de parceiro: '+row.name)}&body=${encodeURIComponent(body)}`;
+    err.innerHTML=`Não conseguimos enviar agora (verifique sua internet). Tente de novo ou <a href="${link}">envie seus dados por e-mail</a>.`;err.classList.add('show');
+    btn.disabled=false;btn.innerHTML='Tentar de novo <i class="fa-solid fa-rotate-right"></i>';
+  });
 });
 
 // simulador
@@ -489,6 +544,7 @@ function calc(){
 $('#rPac').oninput=calc;$('#rTk').oninput=calc;
 document.querySelectorAll('#calcPlan button').forEach(b=>b.onclick=()=>{cp=b.dataset.p;document.querySelectorAll('#calcPlan button').forEach(x=>x.classList.toggle('on',x===b));calc()});
 calc();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 </script>
 </body>
 </html>
