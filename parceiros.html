@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
 <style>
 :root{
   --primary:#0E7C9C; --primary-dark:#0A5C76; --primary-soft:#E6F4F8; --navy:#0A2E3D; --ink:#14232D;
@@ -39,7 +39,7 @@ button{cursor:pointer;border:0;background:none}
 .btn-sm{padding:10px 16px;font-size:14px}
 @media (max-width:820px){.top nav{display:none}.top .btn{margin-left:auto}}
 
-.hero{background:radial-gradient(1200px 500px at 10% -10%,#16A6A6 0%,transparent 60%),linear-gradient(135deg,#0A2E3D,#0E7C9C);color:#fff;padding:56px 0 64px}
+.hero{position:relative;background:linear-gradient(100deg,rgba(5,22,30,.96) 0%,rgba(5,22,30,.86) 42%,rgba(8,42,55,.55) 100%),url(assets/img/fachada.webp) center 40%/cover;color:#fff;padding:72px 0 84px}
 .hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
 .hero .eyebrow{display:inline-flex;gap:8px;align-items:center;background:rgba(255,255,255,.12);padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600}
 .hero h1{color:#fff;font-size:44px;margin:16px 0 14px}
@@ -119,6 +119,28 @@ section.gray{background:var(--bg2)}
 @media (max-width:520px){.steps{grid-template-columns:1fr}}
 
 .split{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.appsec{display:grid;grid-template-columns:.9fr 1.1fr;gap:56px;align-items:center}
+.appsec h2{font-size:34px;letter-spacing:-.03em}
+.appsec p{color:var(--muted);margin-top:12px;line-height:1.6;font-size:17px}
+.appsec ul{list-style:none;margin-top:20px;display:grid;gap:14px}
+.appsec li{display:flex;gap:12px;align-items:flex-start}
+.appsec li i{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary);font-size:13px;flex-shrink:0}
+.stage{position:relative;perspective:1400px;display:grid;place-items:center;min-height:600px}
+.mphone{position:relative;width:280px;height:582px;border-radius:52px;padding:11px;background:linear-gradient(150deg,#4b636e,#16242b 35%,#0b151a 70%,#2a3c45);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22),inset 0 0 0 7px #0a1216,0 50px 90px -20px rgba(5,22,30,.5);transform:rotateY(-18deg) rotateX(6deg) rotateZ(2deg);transform-style:preserve-3d}
+.mphone img{width:100%;height:100%;object-fit:cover;object-position:top;border-radius:42px}
+.mphone .isl{position:absolute;top:21px;left:50%;transform:translateX(-50%);width:92px;height:27px;border-radius:20px;background:#04080a}
+.mfl{position:absolute;display:flex;align-items:center;gap:10px;padding:11px 15px;border-radius:18px;background:#fff;color:var(--ink);font-weight:700;font-size:14px;box-shadow:0 24px 50px rgba(15,31,40,.2);white-space:nowrap}
+.mfl small{display:block;color:var(--muted);font-weight:600;font-size:11.5px}
+.mfl .ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#fff;font-size:15px}
+.mfl.a{top:80px;left:2%}.mfl.b{bottom:110px;right:0}
+@media (max-width:900px){.appsec{grid-template-columns:1fr}.stage{min-height:560px}.mfl.a{left:0}.appsec h2{font-size:26px}}
+.gallery{display:grid;grid-template-columns:1.4fr 1fr 1fr;grid-template-rows:220px 220px;gap:14px}
+.gallery figure{position:relative;border-radius:22px;overflow:hidden}
+.gallery figure:first-child{grid-row:span 2}
+.gallery img{width:100%;height:100%;object-fit:cover;transition:transform 1.2s cubic-bezier(.2,.8,.2,1)}
+.gallery figure:hover img{transform:scale(1.07)}
+.gallery figcaption{position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:10px;background:rgba(7,32,43,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;font-size:12.5px;font-weight:700}
+@media (max-width:760px){.gallery{grid-template-columns:1fr 1fr;grid-template-rows:200px 160px 160px}.gallery figure:first-child{grid-column:span 2;grid-row:auto}}
 .split h2{font-size:32px}
 .split p{color:var(--muted);margin-top:12px;line-height:1.6;font-size:17px}
 .split ul{list-style:none;margin-top:18px;display:grid;gap:10px}
@@ -253,6 +275,26 @@ footer a{color:var(--primary);font-weight:600}
   </div>
 </section>
 
+<section>
+  <div class="wrap appsec">
+    <div class="stage">
+      <div class="mphone"><img src="assets/img/screen-2.webp" alt="Clínicas listadas no app do IMED" loading="lazy"><span class="isl"></span></div>
+      <div class="mfl a"><span class="ic" style="background:linear-gradient(145deg,#1290B3,#0E7C9C)"><i class="fa-solid fa-location-dot"></i></span><span>705 m do paciente<small>aparece primeiro na busca</small></span></div>
+      <div class="mfl b"><span class="ic" style="background:linear-gradient(145deg,#34C27C,#1E9E5A)"><i class="fa-solid fa-calendar-check"></i></span><span>Novo agendamento<small>Ressonância · hoje 16:00</small></span></div>
+    </div>
+    <div>
+      <span class="k" style="color:var(--coral-dark);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Sua vitrine</span>
+      <h2 style="margin-top:8px">É assim que os pacientes encontram sua clínica</h2>
+      <p>Como um app de delivery: a clínica aparece com foto, nota, distância, preço de cada exame e o próximo horário livre. O paciente escolhe, paga e chega com tudo pronto.</p>
+      <ul>
+        <li><i class="fa-solid fa-image"></i><span><b>Fotos e selo de qualidade</b><br><span style="color:var(--muted)">Mostre sua estrutura e ganhe o selo Super Clínica com boas avaliações.</span></span></li>
+        <li><i class="fa-solid fa-tags"></i><span><b>Preço por exame e desconto no Pix</b><br><span style="color:var(--muted)">Você controla valores, promoções e convênios aceitos.</span></span></li>
+        <li><i class="fa-solid fa-file-medical"></i><span><b>Pedidos completos</b><br><span style="color:var(--muted)">Quem manda o pedido médico vê só as clínicas que fazem todos os exames.</span></span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
 <section class="gray" id="planos">
   <div class="wrap">
     <div class="head"><span class="k">Planos</span><h2>Escolha como quer aparecer</h2><p>Você só paga quando o paciente agenda. Troque de plano quando quiser.</p></div>
@@ -305,6 +347,20 @@ footer a{color:var(--primary);font-weight:600}
       </div>
       <div class="out"><small>Faturamento extra estimado por mês</small><b id="oVal">R$ 0</b><small id="oNet"></small></div>
     </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="head"><span class="k">Rede IMED</span><h2>Clínicas como a sua já estão no mapa</h2><p>Estruturas de todos os tamanhos: do consultório de ultrassom ao centro de diagnóstico completo.</p></div>
+    <div class="gallery">
+      <figure><img src="assets/img/recepcao.webp" alt="Recepção de clínica parceira" loading="lazy"><figcaption>Recepção · Bela Vista</figcaption></figure>
+      <figure><img src="assets/img/rm-sm.webp" alt="Sala de ressonância magnética" loading="lazy"><figcaption>Ressonância</figcaption></figure>
+      <figure><img src="assets/img/usg-sm.webp" alt="Sala de ultrassom" loading="lazy"><figcaption>Ultrassom</figcaption></figure>
+      <figure><img src="assets/img/mamo-sm.webp" alt="Sala de mamografia" loading="lazy"><figcaption>Mamografia</figcaption></figure>
+      <figure><img src="assets/img/eco-sm.webp" alt="Sala de cardiologia" loading="lazy"><figcaption>Cardiologia</figcaption></figure>
+    </div>
+    <p class="note">Imagens ilustrativas geradas por IA.</p>
   </div>
 </section>
 
