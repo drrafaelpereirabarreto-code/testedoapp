@@ -39,13 +39,13 @@ const REVIEWS = ['Atendimento pontual e equipe muito educada.','Agendei pelo app
 const SPECS = [['todas','Todas'],['clinico','Clínico geral'],['cardio','Cardiologia'],['derma','Dermatologia'],['pedi','Pediatria'],['gine','Ginecologia'],['psiq','Psiquiatria'],['orto','Ortopedia']];
 const DOCS = [
   {id:'d1', n:'Dra. Camila Ruiz', s:'cardio', sn:'Cardiologia', p:120, r:4.9, rv:312, wait:'Agora', c:'#D63A5A', on:true, img:'assets/img/av-camila.webp'},
-  {id:'d2', n:'Dr. Marcos Lima', s:'clinico', sn:'Clínico geral', p:80, r:4.8, rv:540, wait:'Em 10 min', c:'#0E7C9C', on:true},
-  {id:'d3', n:'Dra. Beatriz Nunes', s:'derma', sn:'Dermatologia', p:100, r:4.9, rv:205, wait:'Em 30 min', c:'#6C4BD8', on:true},
-  {id:'d4', n:'Dr. Paulo Mendes', s:'orto', sn:'Ortopedia', p:120, r:4.7, rv:188, wait:'Hoje 17:00', c:'#2C7BE5', on:false},
-  {id:'d5', n:'Dra. Lúcia Ferraz', s:'pedi', sn:'Pediatria', p:90, r:5.0, rv:421, wait:'Agora', c:'#1E9E5A', on:true},
-  {id:'d6', n:'Dra. Renata Alves', s:'gine', sn:'Ginecologia', p:110, r:4.8, rv:276, wait:'Em 20 min', c:'#FF6B4A', on:true},
-  {id:'d7', n:'Dr. Felipe Rocha', s:'psiq', sn:'Psiquiatria', p:150, r:4.9, rv:164, wait:'Amanhã 09:00', c:'#0A5C76', on:false},
-  {id:'d8', n:'Dr. André Souza', s:'clinico', sn:'Clínico geral', p:80, r:4.6, rv:390, wait:'Agora', c:'#F5A524', on:true}
+  {id:'d2', n:'Dr. Marcos Lima', s:'clinico', sn:'Clínico geral', p:80, r:4.8, rv:540, wait:'Em 10 min', c:'#0E7C9C', on:true, img:'assets/img/av-marcos.webp'},
+  {id:'d3', n:'Dra. Beatriz Nunes', s:'derma', sn:'Dermatologia', p:100, r:4.9, rv:205, wait:'Em 30 min', c:'#6C4BD8', on:true, img:'assets/img/av-beatriz.webp'},
+  {id:'d4', n:'Dr. Paulo Mendes', s:'orto', sn:'Ortopedia', p:120, r:4.7, rv:188, wait:'Hoje 17:00', c:'#2C7BE5', on:false, img:'assets/img/av-paulo.webp'},
+  {id:'d5', n:'Dra. Lúcia Ferraz', s:'pedi', sn:'Pediatria', p:90, r:5.0, rv:421, wait:'Agora', c:'#1E9E5A', on:true, img:'assets/img/av-lucia.webp'},
+  {id:'d6', n:'Dra. Renata Alves', s:'gine', sn:'Ginecologia', p:110, r:4.8, rv:276, wait:'Em 20 min', c:'#FF6B4A', on:true, img:'assets/img/av-renata.webp'},
+  {id:'d7', n:'Dr. Felipe Rocha', s:'psiq', sn:'Psiquiatria', p:150, r:4.9, rv:164, wait:'Amanhã 09:00', c:'#0A5C76', on:false, img:'assets/img/av-felipe.webp'},
+  {id:'d8', n:'Dr. André Souza', s:'clinico', sn:'Clínico geral', p:80, r:4.6, rv:390, wait:'Agora', c:'#F5A524', on:true, img:'assets/img/av-andre.webp'}
 ];
 const COUPONS = {IMED10:.10};
 const r5 = n=>Math.round(n/5)*5;
