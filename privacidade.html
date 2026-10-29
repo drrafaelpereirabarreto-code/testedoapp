@@ -40,11 +40,11 @@
 
 <main class="pv">
   <h1>Política de privacidade</h1>
-  <p class="upd">Última atualização: 28 de outubro de 2026</p>
+  <p class="upd">Última atualização: 29 de outubro de 2026</p>
 
   <div class="sum">
-    <div><i class="fa-solid fa-location-dot"></i>Sua localização é usada no seu aparelho para calcular distâncias. Não guardamos onde você está.</div>
-    <div><i class="fa-solid fa-envelope-open-text"></i>Só guardamos o que você envia nos formulários: lista de espera e cadastro de parceiros.</div>
+    <div><i class="fa-solid fa-location-dot"></i>Sua localização só é usada com a sua permissão, arredondada (cerca de 100 m), para buscar clínicas por perto. Não guardamos onde você está.</div>
+    <div><i class="fa-solid fa-envelope-open-text"></i>Só guardamos o que você envia nos formulários: lista de espera, cadastro de parceiros e pedidos de agendamento.</div>
     <div><i class="fa-solid fa-user-shield"></i>Você pode pedir para ver, corrigir ou apagar seus dados a qualquer momento.</div>
   </div>
 
@@ -57,24 +57,28 @@
     <tbody>
       <tr><td><b>Lista de espera do app</b></td><td>E-mail, cidade (opcional) e interesse</td><td>Avisar você quando o app lançar na sua cidade.</td></tr>
       <tr><td><b>Cadastro de parceiros</b></td><td>Nome ou razão social, CNPJ ou CPF, CRM (médicos), celular, e-mail, cidade e especialidade</td><td>Entrar em contato sobre a parceria e avaliar o cadastro.</td></tr>
-      <tr><td><b>Localização</b></td><td>Coordenadas do seu aparelho, só quando você permite</td><td>Calcular distâncias no seu navegador. Ao tocar em “Clínicas reais perto de mim”, as coordenadas são enviadas ao serviço público do OpenStreetMap (Overpass) apenas para buscar clínicas próximas.</td></tr>
-      <tr><td><b>Dados no seu aparelho</b></td><td>Favoritos, bairro escolhido e agendamentos de demonstração</td><td>Lembrar suas escolhas. Ficam só no seu navegador e não são enviados para nós.</td></tr>
+      <tr><td><b>Localização</b></td><td>Coordenadas do seu aparelho, só quando você permite no navegador. Antes de sair do aparelho, são arredondadas para cerca de 100 metros.</td><td>Buscar e ordenar por distância as clínicas, laboratórios e centros de diagnóstico perto de você. As coordenadas arredondadas vão para o servidor de busca do IMED e para o serviço de mapas usado na busca (OpenStreetMap ou Google Maps). Não são gravadas no banco, nos registros do servidor nem no seu aparelho.</td></tr>
+      <tr><td><b>Busca por CEP, cidade ou endereço</b></td><td>O texto que você digita</td><td>Encontrar o ponto no mapa. É enviado ao servidor do IMED e aos serviços de endereço (ViaCEP, BrasilAPI, Photon/OpenStreetMap ou Google) e não é guardado.</td></tr>
+      <tr><td><b>Pedido de agendamento</b></td><td>Nome, celular, e-mail (opcional), exame ou atendimento desejado, data e período preferidos, observações e o estabelecimento escolhido</td><td>Encaminhar o pedido ao estabelecimento e entrar em contato com você para confirmar o horário. A sua localização não faz parte do pedido.</td></tr>
+      <tr><td><b>Dados no seu aparelho</b></td><td>Favoritos, bairro escolhido, agendamentos de demonstração e o resumo dos pedidos enviados (sem localização)</td><td>Lembrar suas escolhas e mostrar seus pedidos em “Agendados”. Ficam só no seu navegador.</td></tr>
     </tbody>
   </table>
 
   <h2>Base legal</h2>
-  <p>Tratamos os dados dos formulários com base no seu <b>consentimento</b>, dado ao enviar cada formulário. Você pode revogá-lo quando quiser, sem custo.</p>
+  <p>Tratamos os dados dos formulários com base no seu <b>consentimento</b>, dado ao enviar cada formulário. No pedido de agendamento, o exame desejado é um dado de saúde: por isso o consentimento é pedido de forma específica e destacada, só para encaminhar o pedido e falar com você sobre ele (LGPD, art. 11). A localização só é usada depois que você a permite no navegador. Você pode revogar o consentimento quando quiser, sem custo.</p>
 
   <h2>Onde os dados ficam e quem acessa</h2>
   <ul>
     <li>Os formulários são guardados em um banco de dados do Supabase, em servidores na região de São Paulo.</li>
     <li>O banco só aceita novos envios pelo site. Ler os dados é permitido apenas para a equipe administradora do IMED.</li>
     <li>Não vendemos nem compartilhamos seus dados com anunciantes.</li>
-    <li>Links como “Como chegar” abrem o Google Maps, e o mapa da clínica vem do OpenStreetMap. Esses serviços têm políticas de privacidade próprias.</li>
+    <li>Os pedidos de agendamento só podem ser lidos pela equipe administradora do IMED, que os encaminha ao estabelecimento escolhido.</li>
+    <li>O mapa e a busca usam serviços de terceiros: imagens do mapa do OpenStreetMap, estabelecimentos do OpenStreetMap (Overpass) ou do Google Maps Platform, e endereços do ViaCEP, BrasilAPI e Photon. Links como “Como chegar” abrem o Google Maps. Esses serviços têm políticas de privacidade próprias.</li>
+    <li>As chaves secretas dos serviços de mapas ficam só no servidor, nunca no site.</li>
   </ul>
 
   <h2>Por quanto tempo</h2>
-  <p>Guardamos os dados da lista de espera até o lançamento do app na sua cidade ou até você pedir a exclusão. Os cadastros de parceiros ficam guardados enquanto a conversa sobre a parceria estiver ativa, ou até você pedir a exclusão.</p>
+  <p>Guardamos os dados da lista de espera até o lançamento do app na sua cidade ou até você pedir a exclusão. Os cadastros de parceiros ficam guardados enquanto a conversa sobre a parceria estiver ativa, ou até você pedir a exclusão. Os pedidos de agendamento ficam guardados enquanto o atendimento estiver em andamento e por até 6 meses depois, para suporte, ou até você pedir a exclusão.</p>
 
   <h2>Seus direitos</h2>
   <p>Pela LGPD, você pode, a qualquer momento:</p>

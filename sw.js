@@ -1,11 +1,13 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-const VERSION = 'imed-v1';
+const VERSION = 'imed-v2';
 const CORE = [
-  './', './index.html', './parceiros.html', './privacidade.html', './exames/',
+  './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './manifest.webmanifest',
-  './assets/js/data.js', './assets/js/db.js', './assets/js/hero3d.js',
+  './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js', './assets/js/db.js', './assets/js/hero3d.js',
+  './assets/js/geo-core.js', './assets/js/perto.js', './assets/css/perto.css',
   './assets/vendor/three.module.min.js', './assets/vendor/fa/css/all.min.css',
+  './assets/vendor/leaflet/leaflet.js', './assets/vendor/leaflet/leaflet.css',
   './assets/vendor/fa/webfonts/fa-solid-900.woff2', './assets/vendor/fa/webfonts/fa-regular-400.woff2', './assets/vendor/fa/webfonts/fa-brands-400.woff2',
   './assets/icons/icon-192.png',
   './assets/img/ico-rx.webp', './assets/img/ico-usg.webp', './assets/img/ico-tc.webp', './assets/img/ico-rm.webp',

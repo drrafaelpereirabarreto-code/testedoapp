@@ -12,7 +12,7 @@
   document.head.appendChild(css);
   var d = document.createElement('div');
   d.className = 'lgpd'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Aviso de privacidade');
-  d.innerHTML = '<i class="fa-solid fa-shield-halved"></i><span>Usamos só o necessário: sua localização fica no seu aparelho e os formulários seguem a LGPD. <a href="' + base + 'privacidade.html">Política de privacidade</a></span><button type="button">Entendi</button>';
+  d.innerHTML = '<i class="fa-solid fa-shield-halved"></i><span>Usamos só o necessário: a localização só com sua permissão, para buscar clínicas, e sem guardá-la. Os formulários seguem a LGPD. <a href="' + base + 'privacidade.html">Política de privacidade</a></span><button type="button">Entendi</button>';
   d.querySelector('button').onclick = function () { try { localStorage.setItem('imed_lgpd', '1'); } catch (e) {} d.remove(); };
   var add = function () { document.body.appendChild(d); };
   if (document.body) add(); else addEventListener('DOMContentLoaded', add);

@@ -331,17 +331,16 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
 /* clínicas reais */
 .realbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 18px;margin-bottom:6px;border-radius:18px;background:var(--primary-s);color:var(--primary-d);font-size:14.5px}
 .realbar i{color:var(--primary);margin-right:4px}
-.cc.rc{padding:18px;gap:16px;justify-content:space-between;min-height:170px}
-.rc-top{display:flex;gap:14px;align-items:center}
-.rc .cc-logo{position:static;flex-shrink:0;width:52px;height:52px;border-radius:16px;font-size:16px;border:0;box-shadow:none}
-.rc h3{padding-right:0}
-.rc h3 span{white-space:normal}
-.rc-act{display:flex;gap:8px;flex-wrap:wrap}
-.rc-act .btn{padding:10px 14px;font-size:14px}
-.hchip-real{background:rgba(46,230,214,.16);border-color:rgba(127,240,228,.4)}
-.osm-map{height:230px;background:#e6eef1}
-.osm-map iframe{width:100%;height:100%;border:0;display:block}
-@media (max-width:640px){.cc.rc{display:flex;min-height:0}}
+
+/* botão "Encontrar clínicas perto de mim" */
+.near-cta{align-self:flex-start;display:flex;align-items:center;gap:14px;margin-top:18px;padding:12px 22px 12px 12px;border-radius:20px;background:linear-gradient(135deg,rgba(46,230,214,.24),rgba(14,124,156,.38));border:1px solid rgba(127,240,228,.5);color:#fff;text-align:left;box-shadow:0 18px 44px rgba(46,230,214,.2);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);transition:transform .25s var(--ease),box-shadow .25s}
+.near-cta:hover{transform:translateY(-2px);box-shadow:0 24px 54px rgba(46,230,214,.3)}
+.near-cta .ic{position:relative;width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(145deg,#7FF0E4,#2EE6D6 45%,#13A9C4);color:var(--navy);font-size:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+.near-cta .ic::after{content:"";position:absolute;inset:0;border-radius:15px;animation:ping 2s infinite}
+.near-cta b{display:block;font-family:'Sora';font-size:17px;letter-spacing:-.015em}
+.near-cta small{display:block;color:rgba(255,255,255,.76);font-size:13px;margin-top:2px}
+.near-cta>i{margin-left:8px;color:var(--aqua2)}
+@media (max-width:520px){.near-cta{align-self:stretch;padding-right:16px}.near-cta b{font-size:16px}}
 
 /* como funciona + celular 3D */
 .how{position:relative;overflow:hidden;border-radius:40px;color:#fff;padding:72px 56px;background:radial-gradient(800px 500px at 20% 30%,rgba(46,230,214,.18),transparent 60%),radial-gradient(700px 500px at 90% 100%,rgba(255,107,74,.16),transparent 60%),linear-gradient(160deg,#071f2a,#05161e)}
@@ -534,6 +533,8 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .appt b{color:var(--ink)}
 .appt p{font-size:14px;color:var(--muted);margin-top:3px}
 .appt .status{margin-left:auto;font-size:12px;font-weight:700;color:var(--green);background:var(--green-s);padding:4px 10px;border-radius:999px;white-space:nowrap}
+.appt .status.wait{color:#9A5B00;background:#FFF6E3}
+@media (max-width:520px){.appt{flex-wrap:wrap}.appt>div:last-child{flex-basis:100%;display:flex!important;justify-content:space-between;align-items:center;padding-left:70px}}
 .panel{border:1px solid var(--line);border-radius:22px;padding:20px;margin-bottom:14px;background:#fff}
 .row-link{display:flex;align-items:center;gap:14px;padding:15px 4px;border-bottom:1px solid var(--line);font-weight:500;width:100%;text-align:left}
 .row-link:last-child{border-bottom:0}
@@ -541,10 +542,12 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .row-link i:last-child{margin-left:auto;color:var(--muted);font-size:12px}
 
 /* bottom nav + sacola */
-.bnav{position:fixed;left:0;right:0;bottom:0;z-index:45;background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid var(--line);display:none;grid-template-columns:repeat(4,1fr);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
-.bnav button{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted);padding:4px 0}
-.bnav button i{font-size:19px}
+.bnav{position:fixed;left:0;right:0;bottom:0;z-index:45;background:rgba(255,255,255,.94);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);border-top:1px solid var(--line);display:none;grid-template-columns:repeat(5,1fr);padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+.bnav button,.bnav a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600;color:var(--muted);padding:4px 0;white-space:nowrap}
+.bnav button i,.bnav a i{font-size:19px}
 .bnav button.on{color:var(--primary)}
+.bnav a.near{color:var(--primary-d)}
+.bnav a.near i{color:var(--coral)}
 @media (max-width:860px){.bnav{display:grid}}
 .bagbar{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:44;width:min(560px,calc(100% - 24px));background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;border-radius:18px;display:flex;align-items:center;gap:12px;padding:14px 18px;box-shadow:0 20px 50px rgba(14,124,156,.45);font-weight:600}
 .bagbar .n{background:rgba(255,255,255,.2);border-radius:8px;padding:4px 9px;font-size:13px}
@@ -642,6 +645,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
     <a class="logo" href="#" data-go="inicio" aria-label="IMED início"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
     <nav class="tabs" aria-label="Seções">
       <button class="tab on" data-go="inicio">Início</button>
+      <a class="tab" href="perto.html">Perto de mim</a>
       <button class="tab" data-go="tele">Telemedicina</button>
       <button class="tab" data-go="agenda">Agendamentos</button>
     </nav>
@@ -672,6 +676,11 @@ footer .logo{--hc:#fff;margin-bottom:12px}
           <button class="hs-go" type="submit">Buscar</button>
           <div class="hs-sug" id="heroSug" hidden></div>
         </form>
+        <a class="near-cta" href="perto.html?usar=localizacao" id="nearCta">
+          <span class="ic"><i class="fa-solid fa-location-crosshairs"></i></span>
+          <span><b>Encontrar clínicas perto de mim</b><small>Clínicas, laboratórios e centros de diagnóstico reais, no mapa</small></span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </a>
         <div class="hchips" id="hchips"></div>
         <button class="install-hero install-auto hide" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt=""></span><span><b>Instale o app IMED</b><small>Abre em tela cheia e funciona sem internet</small></span><i class="fa-solid fa-download"></i></button>
         <div class="trust">
@@ -710,7 +719,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
       <section class="sec" id="lojas">
         <div class="sec-h"><div><span class="kicker">Perto de você</span><h2 id="listTitle">Clínicas</h2></div></div>
-        <div class="realbar" id="realbar"></div>
+        <div class="realbar" id="realbar"><span><i class="fa-solid fa-location-crosshairs"></i> Estas são clínicas de exemplo. Quer ver <b>clínicas, laboratórios e centros de diagnóstico reais</b> perto de você?</span><a class="btn btn-primary" href="perto.html?usar=localizacao" style="padding:10px 16px;font-size:14px">Encontrar perto de mim</a></div>
         <div class="chips" id="chips"></div>
         <p class="count" id="count"></p>
         <div class="list" id="list"></div>
@@ -894,7 +903,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
   <div class="wrap">
     <div class="f-grid">
       <div><a class="logo" href="#" data-go="inicio"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a><p style="max-width:340px;line-height:1.6">Clínicas de imagem e teleconsulta perto de você, com preço, nota e horário na palma da mão.</p></div>
-      <div><h5>Pacientes</h5><button data-go="inicio">Buscar clínicas</button><a href="exames/">Guias de exames</a><button data-act="pedido">Montar pedido</button><button data-go="tele">Telemedicina</button><button data-go="agenda">Agendamentos</button><button data-install>Instalar o app</button></div>
+      <div><h5>Pacientes</h5><a href="perto.html">Clínicas perto de mim</a><button data-go="inicio">Buscar clínicas</button><a href="exames/">Guias de exames</a><button data-act="pedido">Montar pedido</button><button data-go="tele">Telemedicina</button><button data-go="agenda">Agendamentos</button><button data-install>Instalar o app</button></div>
       <div><h5>Clínicas</h5><a href="parceiros.html">Seja parceiro</a><a href="parceiros.html#planos">Planos</a><a href="parceiros.html#faq">Dúvidas</a></div>
       <div><h5>Contato</h5><a href="mailto:contato@imed.com.br">contato@imed.com.br</a><a href="privacidade.html">Política de privacidade</a><span style="display:block;padding:4px 0">São Paulo, SP</span></div>
     </div>
@@ -905,6 +914,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 <nav class="bnav" aria-label="Navegação">
   <button class="on" data-go="inicio"><i class="fa-solid fa-house"></i>Início</button>
   <button data-go="busca"><i class="fa-solid fa-magnifying-glass"></i>Busca</button>
+  <a class="near" href="perto.html?usar=localizacao"><i class="fa-solid fa-location-crosshairs"></i>Perto de mim</a>
   <button data-go="agenda"><i class="fa-solid fa-calendar-check"></i>Agendados</button>
   <button data-go="perfil"><i class="fa-solid fa-user"></i>Perfil</button>
 </nav>
@@ -915,6 +925,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
 <script src="assets/js/db.js"></script>
 <script src="assets/js/data.js"></script>
 <script>
@@ -929,8 +940,7 @@ const S = {
   view:'inicio', place:store.get('place','paulista'), here:null,
   cat:null, pedido:[], q:'', sort:'rel', flt:new Set(), onlyFav:false, hl:null,
   spec:'todas', fav:new Set(store.get('fav',[])), appts:store.get('appts',[]),
-  bag:{clinic:null, items:[]}, booking:{day:0, time:null, pay:'pix', coupon:null},
-  realMode:false, real:[]
+  bag:{clinic:null, items:[]}, booking:{day:0, time:null, pay:'pix', coupon:null}
 };
 if(!PLACES[S.place])S.place='paulista';
 
@@ -979,7 +989,7 @@ document.addEventListener('click',e=>{
     if(a.dataset.act==='cupom'){try{navigator.clipboard.writeText('IMED10')}catch(err){} toast('Cupom IMED10 copiado! Use no agendamento.')}
   }
   const pd=e.target.closest('[data-ped]');
-  if(pd){e.preventDefault();leaveReal();S.pedido=[pd.dataset.ped];S.cat=null;renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
+  if(pd){e.preventDefault();S.pedido=[pd.dataset.ped];S.cat=null;renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
 });
 function headerState(){
   const h=$('#hero');
@@ -991,14 +1001,14 @@ addEventListener('scroll',headerState,{passive:true});
 /* ======================= HERO ======================= */
 function renderHeroChips(){
   const chips=[['rm'],['usg'],['rx'],['mamo'],['tele']];
-  $('#hchips').innerHTML=chips.map(([k])=>k==='tele'?`<button class="hchip" data-go="tele"><i class="fa-solid fa-video"></i>Teleconsulta</button>`:`<button class="hchip" data-hcat="${k}"><img src="${ico(k)}" alt="">${EXAMS[k].n}</button>`).join('')+`<button class="hchip hchip-real" data-real-go><i class="fa-solid fa-location-crosshairs"></i>Clínicas reais perto de mim</button>`;
+  $('#hchips').innerHTML=chips.map(([k])=>k==='tele'?`<button class="hchip" data-go="tele"><i class="fa-solid fa-video"></i>Teleconsulta</button>`:`<button class="hchip" data-hcat="${k}"><img src="${ico(k)}" alt="">${EXAMS[k].n}</button>`).join('');
   updatePill();
 }
 function updatePill(){
-  $('#livePill').textContent=S.realMode?`${S.real.length} clínicas reais encontradas perto de você`:`${CLINICS.filter(c=>c.open).length} clínicas abertas perto de você agora`;
+  $('#livePill').textContent=`${CLINICS.filter(c=>c.open).length} clínicas abertas perto de você agora`;
 }
 $('#hchips').addEventListener('click',e=>{const b=e.target.closest('[data-hcat]');if(!b)return;pickExam(b.dataset.hcat)});
-function pickExam(k){leaveReal();S.cat=k;S.pedido=[];S.q='';$('#q').value='';$('#heroQ').value=EXAMS[k].n;renderAll();hideSug();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),60)}
+function pickExam(k){S.cat=k;S.pedido=[];S.q='';$('#q').value='';$('#heroQ').value=EXAMS[k].n;renderAll();hideSug();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),60)}
 let sugIdx=-1,sugItems=[];
 function sugFor(qs){
   const q=norm(qs.trim());
@@ -1042,7 +1052,7 @@ function renderCats(){
   $('#cats').innerHTML=Object.entries(EXAMS).map(([k,e])=>{const mn=Math.min(...CLINICS.filter(c=>c.f[k]!=null).map(c=>price(c,k)));return `<button class="cat ${S.cat===k?'on':''}" data-cat="${k}"><img src="${ico(k)}" alt="" loading="lazy"><b>${e.n}</b><small>a partir de ${brl(mn)}</small></button>`}).join('');
   $('#catClear').classList.toggle('hide',!S.cat);
 }
-$('#cats').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;leaveReal();S.cat=S.cat===b.dataset.cat?null:b.dataset.cat;S.pedido=[];renderAll();if(S.cat)$('#lojas').scrollIntoView({behavior:'smooth'})});
+$('#cats').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;S.cat=S.cat===b.dataset.cat?null:b.dataset.cat;S.pedido=[];renderAll();if(S.cat)$('#lojas').scrollIntoView({behavior:'smooth'})});
 $('#catClear').onclick=()=>{S.cat=null;$('#heroQ').value='';renderAll()};
 
 function renderPedidoBtn(){
@@ -1065,7 +1075,6 @@ function renderHighlights(){
 const CHIPS=[['sort','Ordenar','fa-arrow-down-wide-short'],['hoje','Horário hoje',''],['conv','Aceita convênio',''],['pix','Desconto no Pix',''],['sup','Super Clínica','fa-award'],['laudo','Laudo na hora',''],['fav','Favoritas','fa-heart']];
 const SORTS={rel:'Relevância',dist:'Distância',price:'Menor preço',rate:'Avaliação',next:'Próximo horário'};
 function renderChips(){
-  $('#chips').classList.toggle('hide',S.realMode);
   $('#chips').innerHTML=CHIPS.map(([k,l,ic])=>{
     const on=k==='sort'?S.sort!=='rel':(k==='fav'?S.onlyFav:S.flt.has(k));
     const label=k==='sort'&&S.sort!=='rel'?SORTS[S.sort]:l;
@@ -1127,25 +1136,7 @@ function cardHTML(c){
     <button class="fav ${S.fav.has(c.id)?'on':''}" data-fav="${c.id}" aria-label="Favoritar ${esc(c.n)}"><i class="fa-${S.fav.has(c.id)?'solid':'regular'} fa-heart"></i></button>
   </article>`;
 }
-function renderRealBar(){
-  $('#realbar').innerHTML=S.realMode
-    ?`<span><i class="fa-solid fa-map-location-dot"></i> Mostrando <b>clínicas reais</b> do OpenStreetMap perto de você.</span><button class="link" data-real-off>Ver clínicas parceiras (exemplos)</button>`
-    :`<span><i class="fa-solid fa-location-crosshairs"></i> Estas são clínicas de exemplo. Quer ver as <b>clínicas de imagem reais</b> perto de você?</span><button class="btn btn-primary" data-real-go style="padding:10px 16px;font-size:14px">Buscar perto de mim</button>`;
-}
-function realCardHTML(c){
-  return `<article class="cc rc" data-real="${c.id}" tabindex="0" role="button" aria-label="${esc(c.n)}">
-    <div class="rc-top"><span class="cc-logo" style="background:${c.c}">${esc(c.ini)}</span><div style="min-width:0"><h3><span>${esc(c.n)}</span></h3><div class="meta"><span><i class="fa-solid fa-location-dot" style="color:var(--coral)"></i> ${fmtKm(dist(c))}</span>${c.addr?`<span class="dot">${esc(c.addr)}</span>`:''}</div></div></div>
-    <div class="rc-act"><a class="btn btn-primary" href="${dirUrl(c)}" target="_blank" rel="noopener"><i class="fa-solid fa-route"></i> Como chegar</a>${c.phone?`<a class="btn btn-ghost" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}"><i class="fa-solid fa-phone"></i> Ligar</a>`:''}</div>
-  </article>`;
-}
 function renderList(){
-  renderRealBar();
-  if(S.realMode){
-    $('#listTitle').textContent='Clínicas reais perto de você';
-    $('#count').innerHTML=`${S.real.length} lugar${S.real.length===1?'':'es'} no OpenStreetMap · preços e horários: confirme com a clínica`;
-    $('#list').innerHTML=S.real.map(realCardHTML).join('');
-    return;
-  }
   const arr=filtered();
   const t=S.pedido.length?'Clínicas que fazem todo o seu pedido':(S.cat?`Clínicas com ${EXAMS[S.cat].n}`:(S.q?`Resultados para “${esc(S.q)}”`:'Clínicas perto de você'));
   $('#listTitle').innerHTML=t;
@@ -1160,13 +1151,7 @@ document.addEventListener('click',e=>{
   const o=e.target.closest('[data-open]');
   if(o)openClinic(o.dataset.open);
 });
-document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.cc')){e.preventDefault();e.target.dataset.real?openReal(e.target.dataset.real):openClinic(e.target.dataset.open)}});
-document.addEventListener('click',e=>{
-  if(e.target.closest('[data-real-go]')){e.preventDefault();findReal();return}
-  if(e.target.closest('[data-real-off]')){e.preventDefault();realOff();return}
-  const r=e.target.closest('[data-real]');
-  if(r&&!e.target.closest('a'))openReal(r.dataset.real);
-});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches&&e.target.matches('.cc')){e.preventDefault();openClinic(e.target.dataset.open)}});
 let qT;$('#q').addEventListener('input',e=>{clearTimeout(qT);qT=setTimeout(()=>{S.q=e.target.value;if(S.view!=='inicio')go('inicio');renderList()},150)});
 $('#favLink').onclick=()=>{S.onlyFav=true;go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),300)};
 
@@ -1190,7 +1175,8 @@ function setPlaceLabels(){
 function placeChanged(){setPlaceLabels();renderAll();if(window.HERO)HERO.setOrigin()}
 function openPlace(){
   openSheet(head('Onde você está?')+`<div class="sh-body">
-    <button class="upload" id="geo"><i class="fa-solid fa-location-crosshairs"></i><span><b>Usar minha localização atual</b><br>Mostra as distâncias reais a partir de onde você está.</span></button>
+    <a class="upload" href="perto.html?usar=localizacao"><i class="fa-solid fa-map-location-dot"></i><span><b>Ver clínicas reais perto de mim</b><br>Clínicas, laboratórios e centros de diagnóstico no mapa, com contato.</span></a>
+    <button class="upload" id="geo"><i class="fa-solid fa-location-crosshairs"></i><span><b>Usar minha localização atual</b><br>Mostra as distâncias até as clínicas de exemplo a partir de onde você está.</span></button>
     ${Object.entries(PLACES).map(([k,p])=>`<label class="opt"><input type="radio" name="pl" value="${k}" ${!S.here&&S.place===k?'checked':''}>${p.n}<small>São Paulo, SP</small></label>`).join('')}
   </div>`,'sm');
   sheet.querySelectorAll('input').forEach(i=>i.onchange=()=>{S.here=null;S.place=i.value;store.set('place',S.place);closeSheet();placeChanged()});
@@ -1207,7 +1193,7 @@ function openPedido(){
   const draw=()=>{
     const n=sel.size, ok=CLINICS.filter(c=>has(c,[...sel])).length;
     sheet.querySelector('#pdFoot').innerHTML=`<button class="btn btn-primary" style="width:100%" id="pdGo" ${n?'':'disabled'}>${n?`Ver ${ok} clínica${ok===1?'':'s'} que faz${ok===1?'':'em'} ${n>1?'todos':'o exame'}`:'Marque pelo menos 1 exame'}</button>`;
-    sheet.querySelector('#pdGo').onclick=()=>{leaveReal();S.pedido=[...sel];S.cat=null;closeSheet();go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),250)};
+    sheet.querySelector('#pdGo').onclick=()=>{S.pedido=[...sel];S.cat=null;closeSheet();go('inicio');renderAll();setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),250)};
   };
   openSheet(head('Montar meu pedido')+`<div class="sh-body">
     <label class="upload"><i class="fa-solid fa-camera"></i><span><b>Enviar foto do pedido médico</b><br>Anexe a foto e confira os exames abaixo.</span><input type="file" accept="image/*,application/pdf" class="sr" id="pdFile"></label>
@@ -1385,9 +1371,16 @@ function openDoc(id){
 
 /* ======================= AGENDAMENTOS ======================= */
 function renderAppts(){
-  $('#appts').innerHTML=S.appts.length?S.appts.map((a,i)=>`<div class="appt"><span class="lg" style="background:${a.c}">${a.img?`<img src="${a.img}" alt="">`:(a.type==='tele'?'<i class="fa-solid fa-video"></i>':a.ini)}</span><div style="flex:1;min-width:0"><b>${esc(a.name)}</b><p>${a.items.map(esc).join(' + ')}</p><p><i class="fa-regular fa-calendar"></i> ${a.date}${a.time?' · '+a.time:''} · ${brl(a.total)}</p><p style="font-size:12px">Código ${a.code}</p></div><div style="display:grid;gap:8px;justify-items:end"><span class="status">Confirmado</span><button style="color:var(--coral-d);font-size:13px;font-weight:600" data-cancel="${i}">Cancelar</button></div></div>`).join('')
-  :`<div class="empty"><i class="fa-regular fa-calendar"></i>Você ainda não tem agendamentos.<br><button class="btn btn-primary" style="margin-top:14px" data-go="inicio">Encontrar uma clínica</button></div>`;
-  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>{if(!confirm('Cancelar este agendamento?'))return;S.appts.splice(+b.dataset.cancel,1);store.set('appts',S.appts);renderAppts();toast('Agendamento cancelado')});
+  // "pedido" = pedido de agendamento feito em perto.html, ainda sem confirmação da clínica
+  $('#appts').innerHTML=S.appts.length?S.appts.map((a,i)=>{
+    const ped=a.type==='pedido';
+    const ic=a.img?`<img src="${esc(a.img)}" alt="">`:(a.type==='tele'?'<i class="fa-solid fa-video"></i>':ped?'<i class="fa-solid fa-calendar-check"></i>':esc(a.ini));
+    return `<div class="appt"><span class="lg" style="background:${esc(a.c)}">${ic}</span><div style="flex:1;min-width:0"><b>${esc(a.name)}</b><p>${a.items.map(esc).join(' + ')}</p><p><i class="fa-regular fa-calendar"></i> ${ped?'Preferência: ':''}${esc(a.date)}${a.time?' · '+esc(a.time):''}${a.total!=null?' · '+brl(a.total):''}</p><p style="font-size:12px">${ped?'Protocolo':'Código'} ${esc(a.code)}</p></div><div style="display:grid;gap:8px;justify-items:end"><span class="status${ped?' wait':''}">${ped?'Aguardando confirmação':'Confirmado'}</span><button style="color:var(--coral-d);font-size:13px;font-weight:600" data-cancel="${i}">${ped?'Remover da lista':'Cancelar'}</button></div></div>`}).join('')
+  :`<div class="empty"><i class="fa-regular fa-calendar"></i>Você ainda não tem agendamentos.<br><a class="btn btn-primary" style="margin-top:14px" href="perto.html?usar=localizacao">Encontrar uma clínica perto de mim</a></div>`;
+  document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>{
+    const ped=S.appts[+b.dataset.cancel]?.type==='pedido';
+    if(!confirm(ped?'Remover este pedido da lista? Para cancelar o pedido, fale com o IMED pelo contato@imed.com.br.':'Cancelar este agendamento?'))return;
+    S.appts.splice(+b.dataset.cancel,1);store.set('appts',S.appts);renderAppts();toast(ped?'Pedido removido da lista':'Agendamento cancelado')});
 }
 
 /* ======================= EFEITOS ======================= */
@@ -1430,66 +1423,6 @@ function fillDynamicCopy(){
   const d=CLINICS.find(c=>c.id==='dcp');$('#pf2').innerHTML=`${brl(price(d,'rm')*(1-d.pix/100))} no Pix<small>Ressonância · -${d.pix}%</small>`;
 }
 
-/* ======================= CLÍNICAS REAIS (OpenStreetMap) ======================= */
-const OSM_COLORS=['#0E7C9C','#6C4BD8','#16A6A6','#FF6B4A','#2C7BE5','#D63A5A','#F5A524','#1E9E5A','#0A5C76','#8B5E3C'];
-const dirUrl=c=>`https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`;
-function osmIni(n){const w=n.replace(/[^\p{L}\p{N} ]/gu,' ').split(/\s+/).filter(x=>x&&!/^(cl[ií]nica|centro|de|da|do|das|dos|e|instituto|laborat[oó]rio|hospital|med|medicina)$/i.test(x));return ((w[0]||n)[0]+((w[1]||'')[0]||'')).toUpperCase()}
-function overpass(lat,lon,rad){
-  const a=`(around:${rad},${lat},${lon})`;
-  const q=`[out:json][timeout:20];(nwr["healthcare"="radiology"]${a};nwr["healthcare:speciality"~"radiology"]${a};nwr["amenity"~"clinic|doctors"]["name"~"imagem|diagn|radiolog|tomograf|resson|ultrass|ultra-s|mamogr|raio|rx|densitom|ecocard|cardio",i]${a};nwr["healthcare"~"clinic|centre"]["name"~"imagem|diagn|radiolog|tomograf|resson|ultrass|mamogr|raio",i]${a};);out center 80;`;
-  const ask=url=>fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'data='+encodeURIComponent(q)}).then(r=>{if(!r.ok)throw new Error('http '+r.status);return r.json()});
-  return ask('https://overpass-api.de/api/interpreter').catch(()=>ask('https://overpass.kumi.systems/api/interpreter')).then(j=>{
-    const seen=new Set(),out=[];
-    (j.elements||[]).forEach(e=>{
-      const t=e.tags||{},la=e.lat!=null?e.lat:e.center&&e.center.lat,lo=e.lon!=null?e.lon:e.center&&e.center.lon;
-      if(!t.name||la==null)return;
-      const k=t.name.toLowerCase()+'|'+la.toFixed(3)+lo.toFixed(3);if(seen.has(k))return;seen.add(k);
-      const street=[t['addr:street'],t['addr:housenumber']].filter(Boolean).join(', ');
-      out.push({id:'osm-'+e.type[0]+e.id,n:t.name,lat:la,lng:lo,addr:[street,t['addr:suburb']||t['addr:city']].filter(Boolean).join(' · '),phone:t.phone||t['contact:phone']||'',web:t.website||t['contact:website']||'',real:true,open:true,sup:false,r:4.5});
-    });
-    return out;
-  });
-}
-function findReal(){
-  if(!navigator.geolocation)return toast('Seu navegador não permite localização');
-  toast('Buscando sua localização…');
-  navigator.geolocation.getCurrentPosition(p=>{
-    const lat=p.coords.latitude,lng=p.coords.longitude;
-    toast('Procurando clínicas de imagem perto de você…');
-    overpass(lat,lng,7000).then(l=>l.length>=3?l:overpass(lat,lng,20000)).then(list=>{
-      if(!list.length){toast('Não encontramos clínicas de imagem mapeadas perto de você.');return}
-      const here={lat,lng};
-      list.sort((a,b)=>km(here,a)-km(here,b));
-      S.real=list.slice(0,12).map((c,i)=>Object.assign(c,{ini:osmIni(c.n),c:OSM_COLORS[i%OSM_COLORS.length]}));
-      S.here=here;S.realMode=true;closeSheet();go('inicio');placeChanged();
-      toast(`${S.real.length} clínicas reais encontradas perto de você`);
-      setTimeout(()=>$('#lojas').scrollIntoView({behavior:'smooth'}),300);
-    }).catch(()=>toast('Não foi possível buscar agora. Tente de novo em instantes.'));
-  },()=>toast('Não foi possível obter sua localização'),{timeout:10000,maximumAge:60000});
-}
-function leaveReal(){if(!S.realMode)return;S.realMode=false;S.real=[];if(window.HERO)HERO.setOrigin()}
-function realOff(){leaveReal();renderAll();$('#lojas').scrollIntoView({behavior:'smooth'})}
-function openReal(id){
-  const c=S.real.find(x=>x.id===id);if(!c)return;
-  S.hl=id;
-  const d=.006,bbox=[c.lng-d,c.lat-d*.7,c.lng+d,c.lat+d*.7].map(v=>v.toFixed(5)).join(',');
-  openSheet(head('Clínica no mapa')+`
-    <div class="osm-map"><iframe title="Mapa de ${esc(c.n)}" loading="lazy" src="https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${c.lat},${c.lng}"></iframe></div>
-    <div class="sh-body">
-      <div style="display:flex;gap:14px;align-items:center"><span class="cc-logo" style="position:static;background:${c.c};width:56px;height:56px;border-radius:17px;display:grid;place-items:center;color:#fff;font:800 17px Sora">${esc(c.ini)}</span><div><h3 style="font-size:20px">${esc(c.n)}</h3><div class="meta"><span><i class="fa-solid fa-location-dot" style="color:var(--coral)"></i> ${fmtKm(dist(c))} de você</span></div></div></div>
-      <div class="store-info" style="grid-template-columns:1fr 1fr">
-        <div>Endereço<b>${esc(c.addr||'Veja no mapa')}</b></div>
-        <div>Telefone<b>${esc(c.phone||'Não informado')}</b></div>
-      </div>
-      <div style="display:grid;gap:10px">
-        <a class="btn btn-coral" href="${dirUrl(c)}" target="_blank" rel="noopener"><i class="fa-solid fa-route"></i> Como chegar</a>
-        ${c.phone?`<a class="btn btn-ghost" href="tel:${esc(c.phone.replace(/[^\d+]/g,''))}"><i class="fa-solid fa-phone"></i> Ligar para a clínica</a>`:''}
-        ${/^https?:\/\//.test(c.web)?`<a class="btn btn-ghost" href="${esc(c.web)}" target="_blank" rel="noopener"><i class="fa-solid fa-globe"></i> Site da clínica</a>`:''}
-      </div>
-      <p class="note">Dados do OpenStreetMap, mantidos por voluntários. Preços, convênios e horários: confirme direto com a clínica. Esta clínica ainda não é parceira do IMED.</p>
-    </div>`,'sm');
-}
-
 /* ======================= LISTA DE ESPERA ======================= */
 (function(){
   const f=$('#wlForm');if(!f)return;
@@ -1517,7 +1450,7 @@ function route(){
   if((m=h.match(/^#exame-(\w+)$/))&&EXAMS[m[1]]){if(S.view!=='inicio')go('inicio');pickExam(m[1]);return}
   if(/^#(tele|agenda|perfil)$/.test(h)){go(h.slice(1));return}
   if(h==='#pedido'){openPedido();return}
-  if(h==='#perto'){findReal();return}
+  if(h==='#perto'){location.replace('perto.html?usar=localizacao');return}
 }
 addEventListener('hashchange',route);
 document.addEventListener('click',e=>{
@@ -1554,9 +1487,9 @@ if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventLi
 /* ======================= MAPA 3D ======================= */
 window.HERO=null;
 const API={
-  clinics:()=>S.realMode?S.real:CLINICS, origin, highlighted:()=>S.hl,
-  onPick:id=>String(id).startsWith('osm-')?openReal(id):openClinic(id),
-  meta:c=>c.real?`${fmtKm(dist(c))} · OpenStreetMap`:`★ ${fmtR(c.r)} · ${fmtKm(dist(c))} · ${c.open?nextTxt(c):'Fechada'}`
+  clinics:()=>CLINICS, origin, highlighted:()=>S.hl,
+  onPick:id=>openClinic(id),
+  meta:c=>`★ ${fmtR(c.r)} · ${fmtKm(dist(c))} · ${c.open?nextTxt(c):'Fechada'}`
 };
 function startHero(){
   const el=$('#hero3d');

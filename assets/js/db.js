@@ -1,11 +1,13 @@
 // Envio dos formulários para o banco do IMED (Supabase).
-// A chave abaixo é pública: as regras do banco só permitem inserir
-// cadastros, e só administradores conseguem ler o que foi enviado.
+// A chave usada (assets/js/config.js) é pública: as regras do banco só permitem inserir
+// cadastros e pedidos, e só administradores conseguem ler o que foi enviado.
 (function () {
-  var URL = 'https://pyoqiecupxhdzigjudyd.supabase.co';
-  var KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5b3FpZWN1cHhoZHppZ2p1ZHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxODMwNjAsImV4cCI6MjEwODc1OTA2MH0.a0tD8O7CASKLr50kEkEaBIHDSiuySqPNfyVvQ3fzq7Q';
+  var CFG = window.IMED_CONFIG || {};
+  var URL = CFG.supabaseUrl;
+  var KEY = CFG.supabaseAnonKey;
 
   window.imedInsert = function (table, row) {
+    if (!URL || !KEY) return Promise.reject(new Error('IMED_CONFIG ausente: carregue assets/js/config.js antes de db.js'));
     var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     var timer = ctrl && setTimeout(function () { ctrl.abort(); }, 15000);
     return fetch(URL + '/rest/v1/' + table, {
