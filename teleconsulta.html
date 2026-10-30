@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Teleconsulta | IMED</title>
+<meta name="description" content="Consulta por vídeo com médico de cadastro aprovado pelo IMED, que confere a identidade e o CRM do médico no Conselho Federal de Medicina. Pedido de exames, documentos assinados pelo médico e orientações na mesma página.">
+<meta name="theme-color" content="#05161e">
+<meta property="og:title" content="Teleconsulta | IMED">
+<meta property="og:description" content="Consulta por vídeo com médico de cadastro aprovado pelo IMED. Teleconsulta não é para emergência: ligue 192.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="IMED">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/teleconsulta.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/teleconsulta.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style data-fontes="Sora:600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
+<link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
+<link rel="stylesheet" href="assets/css/perto.css">
+<link rel="stylesheet" href="assets/css/tele.css">
+<link rel="stylesheet" href="assets/css/rodape.css">
+</head>
+<body class="tl-page">
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="teleconsulta.html" aria-current="page">Teleconsulta</a>
+      <a href="conta.html">Minha conta</a>
+    </nav>
+    <a class="pt-partner" href="medico.html">Sou médico</a>
+  </div>
+</header>
+
+<div class="tl-sos" role="note" aria-label="Emergência">
+  <i class="fa-solid fa-truck-medical" aria-hidden="true"></i>
+  <p><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro. Teleconsulta não é para emergência.</p>
+</div>
+
+<main id="main" class="tl" tabindex="-1">
+  <section class="tl-hero" aria-labelledby="tlTitle">
+    <div class="tl-wrap">
+      <span class="tl-kicker"><i class="fa-solid fa-video" aria-hidden="true"></i>Teleconsulta</span>
+      <h1 id="tlTitle">Consulta por vídeo com médico</h1>
+      <p>Fale com um médico pelo celular ou pelo computador, sem sair de casa. Atendem só médicos com cadastro aprovado pela equipe do IMED, que confere a identidade do médico e o CRM no Conselho Federal de Medicina.</p>
+    </div>
+  </section>
+
+  <div class="tl-wrap tl-main">
+    <p class="tl-flash" id="flash" role="status" aria-live="polite" hidden></p>
+    <p class="tl-load" id="boot" role="status"><span class="spin" aria-hidden="true"></span>Carregando…</p>
+    <p class="tl-net" id="netNote" role="status" hidden><span class="spin" aria-hidden="true"></span>Sem conexão com o servidor. Tentando de novo…</p>
+
+    <!-- ===================== INÍCIO ===================== -->
+    <div class="tl-view" id="vStart" hidden>
+      <section class="tl-card" id="nowCard" aria-labelledby="nowTitle">
+        <h2 id="nowTitle">Quem atende agora</h2>
+        <div id="docs" aria-live="polite"><p class="tl-load"><span class="spin" aria-hidden="true"></span>Verificando os médicos atendendo agora…</p></div>
+        <div id="noDoc" hidden>
+          <p>Quando houver médico atendendo, ele aparece aqui, com nome e CRM. Quer receber um aviso por e-mail com os horários da teleconsulta?</p>
+          <form class="tl-wl" id="wlForm" novalidate>
+            <div class="fld"><label for="wlEmail">Seu e-mail</label><input id="wlEmail" type="email" name="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="voce@exemplo.com" aria-describedby="wlMsg"></div>
+            <div class="fld"><label for="wlCity">Sua cidade <small class="h">(opcional)</small></label><input id="wlCity" name="city" maxlength="80" autocomplete="address-level2"></div>
+            <label class="tl-check"><input type="checkbox" id="wlNews"><span>Também quero novidades sobre exames</span></label>
+            <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+            <button class="btn btn-primary" type="submit" id="wlBtn"><i class="fa-solid fa-bell" aria-hidden="true"></i>Quero receber avisos</button>
+            <p class="tl-msg" id="wlMsg" role="status"></p>
+            <p class="tl-small">Seu e-mail fica só com o IMED, sem spam. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p>
+          </form>
+          <div class="tl-anyway">
+            <p>Você também pode entrar na fila agora e esperar um médico ficar disponível. Se ninguém atender em 2 horas, o pedido expira.</p>
+            <button class="btn btn-ghost" type="button" id="anywayBtn">Quero entrar na fila mesmo assim</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="tl-card" id="howCard" aria-labelledby="howTitle">
+        <h2 id="howTitle">Como funciona</h2>
+        <ol class="tl-how">
+          <li><b>Preencha o pedido</b> e aceite o termo de consentimento. Não precisa de conta.</li>
+          <li><b>Espere na fila</b>, nesta página. Você vê a sua posição.</li>
+          <li><b>O médico chama por vídeo.</b> Antes, aparecem o nome e o CRM dele.</li>
+          <li><b>Exames, documentos e orientações</b> ficam nesta página: o PDF assinado pelo médico (receita simples, atestado, pedido de exames) e os locais perto de você para fazer os exames.</li>
+        </ol>
+        <p class="tl-free"><i class="fa-solid fa-shield-heart" aria-hidden="true"></i><span>O IMED não cobra nada pelo site nesta fase e nunca pede Pix, senha ou código por telefone ou WhatsApp.</span></p>
+      </section>
+
+      <section class="tl-card" id="formCard" aria-labelledby="formTitle">
+        <h2 id="formTitle" tabindex="-1">Pedir teleconsulta</h2>
+        <form id="reqForm" novalidate>
+          <fieldset class="fld">
+            <legend>Para quem é a consulta?</legend>
+            <div class="seg">
+              <label><input type="radio" name="who" value="me" id="whoMe" checked><span>Para mim</span></label>
+              <label><input type="radio" name="who" value="other" id="whoOther"><span>Para outra pessoa</span></label>
+            </div>
+          </fieldset>
+          <div class="tl-other" id="otherBox" hidden>
+            <div class="fld"><label for="fReq">Seu nome completo</label><input id="fReq" autocomplete="name" maxlength="120" aria-describedby="eReq"><span class="err" id="eReq"></span></div>
+            <div class="fld"><label for="fRel">Você é o quê do paciente?</label>
+              <select id="fRel" aria-describedby="hRel eRel"><option value="">Escolha</option></select><small class="h" id="hRel" hidden>Paciente com menos de 18 anos: só a mãe, o pai ou o responsável legal podem pedir.</small><span class="err" id="eRel"></span></div>
+            <label class="consent" id="agreesBox" hidden><input type="checkbox" id="fAgrees" aria-describedby="eAgrees"><span>O paciente está comigo e concorda com a teleconsulta (ou sou o representante legal dele, como curador ou procurador).</span></label>
+            <span class="err tl-err-c" id="eAgrees"></span>
+          </div>
+          <div class="fld"><label for="fName">Nome completo do paciente</label><input id="fName" maxlength="120" autocomplete="name" required aria-describedby="eName"><span class="err" id="eName"></span></div>
+          <div class="row2">
+            <div class="fld"><label for="fBirth">Data de nascimento do paciente</label><input id="fBirth" type="date" min="1900-01-01" required aria-describedby="eBirth"><span class="err" id="eBirth"></span></div>
+            <div class="fld"><label for="fPhone">Celular com DDD</label><input id="fPhone" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="20" placeholder="(11) 98765-4321" required aria-describedby="hPhone ePhone"><small class="h" id="hPhone">Se o vídeo não funcionar, o médico liga para este número.</small><span class="err" id="ePhone"></span></div>
+          </div>
+          <div class="tl-minor" id="minorBox" hidden>
+            <p><i class="fa-solid fa-child" aria-hidden="true"></i><span><b>Paciente com menos de 18 anos.</b> A consulta precisa ser pedida pelo pai, pela mãe ou pelo responsável legal, que deve ficar junto durante toda a consulta.</span></p>
+            <span class="err" id="eMinor"></span>
+            <label class="consent" id="guardianBox" hidden><input type="checkbox" id="fGuardian" aria-describedby="eGuardian"><span>Sou o pai, a mãe ou o responsável legal do paciente e vou estar presente durante toda a consulta.</span></label>
+            <span class="err" id="eGuardian"></span>
+          </div>
+          <div class="fld"><label for="fReason">Motivo da consulta</label><textarea id="fReason" rows="3" maxlength="1000" required aria-describedby="hReason eReason"></textarea><small class="h" id="hReason">Conte os sintomas e há quanto tempo começaram. <span id="reasonCount">0</span>/1000</small><span class="err" id="eReason"></span></div>
+
+          <fieldset class="fld tl-alerts" id="alertSet" aria-describedby="hAlerts eAlerts">
+            <legend>Agora, o paciente tem algum destes sinais?</legend>
+            <small class="h" id="hAlerts">Se tiver, não espere pela teleconsulta: é caso de emergência.</small>
+            <ul id="alertList"></ul>
+            <label class="tl-check tl-none"><input type="checkbox" id="fNone"><span>Não, nenhum destes sinais</span></label>
+            <span class="err" id="eAlerts"></span>
+          </fieldset>
+          <div class="tl-sosbox" id="sosBox" role="alert" tabindex="-1" hidden>
+            <h3><i class="fa-solid fa-truck-medical" aria-hidden="true"></i>Pode ser uma emergência</h3>
+            <p>Não espere pela teleconsulta. Ligue agora para o <b>192 (SAMU)</b> ou vá ao pronto-socorro mais próximo.</p>
+            <p id="sosCvv" hidden>Se você está pensando em se machucar, você não está sozinho(a): ligue <b>188 (CVV)</b>, ligação grátis, 24 horas. Se houver perigo agora, ligue 192.</p>
+            <div class="tl-row"><a class="btn btn-coral" href="tel:192"><i class="fa-solid fa-phone" aria-hidden="true"></i>Ligar 192</a><a class="btn btn-ghost" href="tel:188" id="sosCvvBtn" hidden><i class="fa-solid fa-phone" aria-hidden="true"></i>Ligar 188 (CVV)</a></div>
+          </div>
+
+          <details class="tl-tcle">
+            <summary>Resumo do termo de consentimento</summary>
+            <ul>
+              <li>Teleconsulta é consulta por vídeo, com o médico em outro lugar. Pela tela não há exame físico completo: o médico pode pedir exames, indicar consulta presencial ou encerrar a teleconsulta.</li>
+              <li>Você pode recusar, sair da fila ou encerrar a consulta quando quiser (botão “Encerrar a consulta”), e pode preferir atendimento presencial.</li>
+              <li>Não é para emergência: nesse caso, ligue 192.</li>
+              <li>O IMED não grava a chamada. O vídeo vai direto entre o seu aparelho e o do médico.</li>
+              <li>O médico registra a consulta (prontuário), guardado com segurança por no mínimo 20 anos. O médico que atender vê os seus dados, inclusive o celular. Além dele, só a equipe médica do IMED pode abrir o registro, e cada acesso fica anotado.</li>
+              <li>O médico pode emitir pedido de exames, receita simples, atestado e outros documentos: só vale o PDF com a assinatura digital (ICP-Brasil) dele. Para isso, ele confere o seu documento com foto e pode pedir o seu CPF e endereço, que ficam guardados com a consulta e vão impressos nos documentos.</li>
+              <li>Se nenhum médico atender o pedido, o nome, a data de nascimento, o celular e o motivo informados são apagados em 30 dias.</li>
+              <li>Menor de 18 anos: só com o responsável legal presente.</li>
+            </ul>
+          </details>
+          <label class="consent" id="consentBox"><input type="checkbox" id="fConsent" aria-describedby="eConsent"><span>Li e concordo com o <a href="termo-teleconsulta.html" target="_blank" rel="noopener">termo de consentimento da teleconsulta<span class="sr"> (abre em outra aba)</span></a> e com o uso dos dados de saúde para este atendimento. Os dados informados são verdadeiros. Sei que posso recusar e procurar atendimento presencial.</span></label>
+          <span class="err tl-err-c" id="eConsent"></span>
+          <p class="bk-err" id="formErr" role="alert"></p>
+          <button class="btn btn-coral tl-go" type="submit" id="goBtn"><i class="fa-solid fa-video" aria-hidden="true"></i>Entrar na fila</button>
+        </form>
+      </section>
+    </div>
+
+    <!-- ===================== FILA ===================== -->
+    <div class="tl-view" id="vWait" hidden>
+      <section class="tl-card tl-wait" aria-labelledby="waitTitle">
+        <h2 id="waitTitle" tabindex="-1">Você está na fila</h2>
+        <div class="tl-pos" aria-live="polite"><b id="posNum" aria-hidden="true"></b><p id="posText"></p></div>
+        <p class="tl-docs-now" id="waitDocs"></p>
+        <ul class="tl-steps">
+          <li><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i><span><b>Deixe a tela do celular ligada e esta página aberta.</b> Quando o médico chamar, o vídeo começa aqui. Com a tela apagada, você não ouve o médico chamar.</span></li>
+          <li><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Não feche esta página. Se fechar, abra de novo neste aparelho: você continua na fila.</span></li>
+          <li><i class="fa-solid fa-video" aria-hidden="true"></i><span>Quando o navegador perguntar, permita a câmera e o microfone.</span></li>
+        </ul>
+        <p class="tl-muted" id="waitSince"></p>
+        <div class="tl-row"><button class="btn btn-ghost" type="button" id="leaveBtn"><i class="fa-solid fa-person-walking-arrow-right" aria-hidden="true"></i>Sair da fila</button></div>
+        <div class="tl-confirm" id="leaveConfirm" role="group" aria-labelledby="leaveQ" hidden>
+          <p id="leaveQ">Sair da fila? Você perde o seu lugar.</p>
+          <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="leaveYes">Sim, sair da fila</button><button class="btn btn-ghost btn-sm" type="button" id="leaveNo">Continuar na fila</button></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== PREPARE-SE (início e fila) ===================== -->
+    <section class="tl-card" id="prepCard" aria-labelledby="prepTitle" hidden>
+      <h2 id="prepTitle">Prepare-se</h2>
+      <ul class="tl-prep">
+        <li><i class="fa-solid fa-volume-xmark" aria-hidden="true"></i>Lugar reservado, silencioso e com boa luz. Se puder, use fone de ouvido.</li>
+        <li><i class="fa-solid fa-wifi" aria-hidden="true"></i>Internet estável, de preferência Wi-Fi.</li>
+        <li><i class="fa-solid fa-id-card" aria-hidden="true"></i>Documento com foto, para mostrar na câmera se o médico pedir.</li>
+        <li><i class="fa-solid fa-pills" aria-hidden="true"></i>Remédios em uso (nome e dose) e exames anteriores à mão.</li>
+      </ul>
+      <div class="tl-test">
+        <h3>Teste de câmera e microfone <small>(opcional)</small></h3>
+        <p class="tl-muted">Veja se a sua imagem aparece e se a barra do microfone mexe quando você fala. Nada é gravado nem enviado.</p>
+        <div class="tl-row"><button class="btn btn-ghost" type="button" id="testBtn"><i class="fa-solid fa-camera" aria-hidden="true"></i>Testar câmera e microfone</button><button class="btn btn-ghost" type="button" id="testStop" hidden>Parar o teste</button></div>
+        <div class="tl-testbox" id="testBox" hidden>
+          <video id="testVideo" class="tl-testvideo" playsinline autoplay muted aria-label="Imagem da sua câmera (teste)"></video>
+          <div class="tl-meter" aria-hidden="true"><span id="meterBar"></span></div>
+        </div>
+        <p class="tl-msg" id="testMsg" role="status"></p>
+      </div>
+    </section>
+
+    <!-- ===================== CONSULTA ===================== -->
+    <div class="tl-view" id="vCall" hidden>
+      <section class="tl-card tl-callcard" aria-labelledby="callTitle">
+        <h2 id="callTitle" tabindex="-1">Sua consulta</h2>
+        <div class="tl-doctor" id="callDoctor"></div>
+        <p class="tl-state" id="callState" role="status" aria-live="polite">Preparando o vídeo…</p>
+        <p class="tl-note" id="otherTab" hidden>Esta consulta está aberta em outra aba ou janela deste aparelho. Continue por lá. Se fechou a outra, recarregue esta página.</p>
+        <div class="tl-stage" id="stage">
+          <video id="remoteVideo" class="tl-remote" playsinline autoplay aria-label="Vídeo do médico"></video>
+          <p class="tl-stage-msg" id="stageMsg"><span class="spin" aria-hidden="true"></span><span id="stageText">Aguardando o vídeo do médico…</span></p>
+          <video id="localVideo" class="tl-local" playsinline autoplay muted aria-label="A sua imagem"></video>
+          <button class="btn btn-coral tl-unmute" type="button" id="unmuteBtn" hidden><i class="fa-solid fa-volume-high" aria-hidden="true"></i>Tocar para ouvir o médico</button>
+        </div>
+        <div class="tl-ctrls" id="ctrls" role="group" aria-label="Controles da chamada">
+          <button class="tl-ctrl" type="button" id="micBtn" disabled><i class="fa-solid fa-microphone" aria-hidden="true"></i><span>Desligar microfone</span></button>
+          <button class="tl-ctrl" type="button" id="camBtn" disabled><i class="fa-solid fa-video" aria-hidden="true"></i><span>Desligar câmera</span></button>
+          <button class="tl-ctrl" type="button" id="flipBtn" hidden><i class="fa-solid fa-camera-rotate" aria-hidden="true"></i><span>Trocar câmera</span></button>
+          <button class="tl-ctrl" type="button" id="retryBtn" hidden><i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>Tentar o vídeo de novo</span></button>
+          <button class="tl-ctrl tl-hang" type="button" id="hangBtn"><i class="fa-solid fa-phone-slash" aria-hidden="true"></i><span>Sair do vídeo</span></button>
+        </div>
+        <p class="tl-note" id="mediaNote" role="status" hidden></p>
+        <div class="tl-planb" id="planB" role="alert" hidden>
+          <i class="fa-solid fa-phone-volume" aria-hidden="true"></i>
+          <div>
+            <p><b>O vídeo não conectou.</b> O médico vai ligar para o celular que você informou. Deixe o celular por perto e atenda: a ligação pode vir de um número que você não conhece.</p>
+            <p class="tl-phone" id="phoneNote" role="status" hidden></p>
+            <p>Vocês também podem conversar pelas <a class="link" href="#chatText">mensagens</a> logo abaixo.</p>
+          </div>
+        </div>
+        <div class="tl-left" id="leftBox" hidden>
+          <p>Você saiu do vídeo. A consulta continua aberta até o médico encerrar: ele pode ligar para o seu celular ou escrever nas mensagens.</p>
+          <button class="btn btn-primary" type="button" id="rejoinBtn"><i class="fa-solid fa-video" aria-hidden="true"></i>Voltar ao vídeo</button>
+        </div>
+        <div class="tl-giveup" id="giveUpBox" hidden>
+          <button class="btn btn-ghost btn-sm" type="button" id="giveUpBtn">Desistir da consulta</button>
+          <div class="tl-confirm" id="giveUpConfirm" role="group" aria-labelledby="giveUpQ" hidden>
+            <p id="giveUpQ">Desistir desta consulta? O médico será avisado.</p>
+            <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="giveUpYes">Sim, desistir</button><button class="btn btn-ghost btn-sm" type="button" id="giveUpNo">Continuar</button></div>
+          </div>
+        </div>
+      </section>
+      <section class="tl-card tl-exams" id="callExams" aria-labelledby="callExamsTitle" hidden></section>
+      <section class="tl-card tl-docs" id="callDocs" aria-labelledby="cDocsTitle" hidden></section>
+      <section class="tl-card tl-chat" aria-labelledby="chatTitle">
+        <h2 id="chatTitle">Mensagens</h2>
+        <p class="tl-muted">Para quando o vídeo falhar ou para mandar uma informação por escrito ao médico.</p>
+        <ol class="tl-msgs" id="chatList" role="log" aria-live="polite" aria-label="Mensagens da consulta"></ol>
+        <form class="tl-chatform" id="chatForm" novalidate>
+          <label class="sr" for="chatText">Sua mensagem</label>
+          <textarea id="chatText" rows="2" maxlength="1000" placeholder="Escreva uma mensagem"></textarea>
+          <button class="btn btn-primary" type="submit" id="chatBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar</button>
+        </form>
+        <p class="tl-msg err" id="chatErr" role="alert"></p>
+      </section>
+    </div>
+
+    <!-- ===================== RESUMO ===================== -->
+    <div class="tl-view" id="vEnd" hidden>
+      <section class="tl-card" aria-labelledby="endTitle">
+        <h2 id="endTitle" tabindex="-1">Consulta encerrada</h2>
+        <div class="tl-doctor" id="endDoctor"></div>
+        <p class="tl-when" id="endWhen"></p>
+        <div id="endGuide"></div>
+        <p class="tl-small" id="endUpdated"></p>
+      </section>
+      <section class="tl-card tl-exams" id="endExams" aria-labelledby="endExamsTitle"></section>
+      <section class="tl-card tl-docs" id="endDocs" aria-labelledby="eDocsTitle"></section>
+      <details class="tl-card tl-chatlog" id="endChat" hidden>
+        <summary>Mensagens da consulta (<span id="endChatN">0</span>)</summary>
+        <ol class="tl-msgs" id="endChatList"></ol>
+      </details>
+      <section class="tl-card" aria-labelledby="nextTitle">
+        <h2 id="nextTitle">E agora?</h2>
+        <ul class="tl-next">
+          <li>Se os sintomas piorarem ou aparecer um sinal de alerta, ligue <a class="link" href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro.</li>
+          <li>Precisa de atendimento presencial? <a class="link" href="perto.html">Veja clínicas, hospitais e serviços do SUS perto de você</a>.</li>
+          <li>Para a farmácia, o laboratório ou a empresa, envie o PDF assinado pelo médico (botão “Baixar PDF assinado”), não um print nem uma foto. Quem recebe confere a assinatura em validar.iti.gov.br.</li>
+          <li>Esta página guarda o resumo neste aparelho por até 90 dias: volte aqui para ver os exames e os documentos de novo. Aparelho compartilhado? Depois de baixar os documentos, apague a consulta deste aparelho.</li>
+        </ul>
+        <div class="tl-row"><button class="btn btn-coral" type="button" id="newBtn"><i class="fa-solid fa-plus" aria-hidden="true"></i>Pedir nova teleconsulta</button><button class="btn btn-ghost" type="button" id="backBtn" hidden>Voltar ao início</button><button class="btn btn-ghost" type="button" id="forgetBtn"><i class="fa-solid fa-trash-can" aria-hidden="true"></i>Apagar deste aparelho</button></div>
+        <div class="tl-confirm" id="forgetConfirm" role="group" aria-labelledby="forgetQ" hidden>
+          <p id="forgetQ">Apagar esta consulta deste aparelho? Você não vai conseguir ver de novo, aqui, os exames e as orientações. O registro do médico continua guardado no IMED.</p>
+          <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="forgetYes">Sim, apagar</button><button class="btn btn-ghost btn-sm" type="button" id="forgetNo">Voltar</button></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== CANCELADA / EXPIRADA ===================== -->
+    <div class="tl-view" id="vGone" hidden>
+      <section class="tl-card" aria-labelledby="goneTitle">
+        <h2 id="goneTitle" tabindex="-1"></h2>
+        <p id="goneText"></p>
+        <div class="tl-row"><button class="btn btn-coral" type="button" id="newBtn2"><i class="fa-solid fa-plus" aria-hidden="true"></i>Pedir nova teleconsulta</button><a class="btn btn-ghost" href="perto.html">Atendimento presencial perto de você</a></div>
+      </section>
+    </div>
+
+    <section class="tl-card" id="histCard" aria-labelledby="histTitle" hidden>
+      <h2 id="histTitle">Suas teleconsultas neste aparelho</h2>
+      <p class="tl-muted">Ficam guardadas aqui por até 90 dias. Em aparelho compartilhado, apague depois de ver.</p>
+      <ul class="tl-hist" id="histList"></ul>
+      <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="histClear"><i class="fa-solid fa-trash-can" aria-hidden="true"></i>Apagar todas deste aparelho</button></div>
+      <div class="tl-confirm" id="histClearConfirm" role="group" aria-labelledby="histClearQ" hidden>
+        <p id="histClearQ">Apagar todas as teleconsultas deste aparelho? O registro do médico continua guardado no IMED.</p>
+        <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="histClearYes">Sim, apagar todas</button><button class="btn btn-ghost btn-sm" type="button" id="histClearNo">Voltar</button></div>
+      </div>
+    </section>
+
+    <p class="tl-legal">Médicos com cadastro aprovado pela equipe do IMED. Você pode conferir o CRM na <a class="link" href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do CFM<span class="sr"> (abre em outra aba)</span></a>. Leia o <a class="link" href="termo-teleconsulta.html">termo da teleconsulta</a> e a <a class="link" href="privacidade.html#teleconsulta">política de privacidade</a>.</p>
+  </div>
+</main>
+
+<div class="tl-print" id="printDoc"></div>
+
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="documento.html">Conferir documento</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/visitas.js" defer></script>
+<script src="assets/js/db.js"></script>
+<script type="module" src="assets/js/teleconsulta.js"></script>
+</body>
+</html>

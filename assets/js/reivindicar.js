@@ -184,7 +184,7 @@ async function submitClaim(e) {
   try {
     await auth.insert('establishment_claims', row);
     state.submitted = true;
-    $('#claimDoneBox').innerHTML = `${note(`<b>Pedido enviado.</b> A equipe do IMED confere os dados e responde por e-mail em até 2 dias úteis. Pedido para: ${esc(state.place.name)}. Depois da aprovação, você cuida do cadastro na <a href="painel.html">área da clínica</a>.`, 'ok')}
+    $('#claimDoneBox').innerHTML = `${note(`<b>Pedido enviado.</b> A equipe do IMED confere os dados e responde pelo contato informado. Pedido para: ${esc(state.place.name)}. Depois da aprovação, você cuida do cadastro na <a href="painel.html">área da clínica</a>.`, 'ok')}
       <div class="cl-actions"><a class="btn btn-primary" href="painel.html">Ir para a área da clínica</a></div>
       <p class="cl-help">Cuida de outro local, como um laboratório? Use “Pedir outro estabelecimento” no passo 1.</p>`;
     render();
@@ -200,7 +200,7 @@ async function submitClaim(e) {
       $('#loginEmail')?.focus();
       return;
     }
-    if (code === '23505' || err?.status === 409) m = 'Você já tem um pedido em análise para este estabelecimento. A equipe do IMED responde por e-mail em até 2 dias úteis.';
+    if (code === '23505' || err?.status === 409) m = 'Você já tem um pedido em análise para este estabelecimento. A equipe do IMED confere os dados e responde pelo contato informado.';
     else if (/parceiro/i.test(text)) m = 'Este estabelecimento já é parceiro do IMED. Se você faz parte da equipe, peça acesso a quem cuida do cadastro.';
     else if (err?.status === 401 || code === '42501') m = 'Sua entrada expirou. Saia e entre de novo com o link por e-mail.';
     else m = 'Não foi possível enviar agora. Confira a internet e tente de novo.';

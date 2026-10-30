@@ -396,7 +396,9 @@ export function initHero3D(el, api) {
     const r = new THREE.Mesh(new THREE.RingGeometry(.5, .56, 64), new THREE.MeshBasicMaterial({ color: 0xff8a6e, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     r.rotation.x = -Math.PI / 2; r.position.y = .02; r.userData.phase = i / 2; me.add(r); return r;
   });
-  const meLabel = document.createElement('div'); meLabel.className = 'h3d-me'; meLabel.textContent = 'Você está aqui'; labelsEl.appendChild(meLabel);
+  // Rótulo do ponto de partida: a página diz qual é ("Você está aqui" só com a localização do aparelho).
+  const meText = () => (typeof api.meLabel === 'function' && api.meLabel()) || 'Você está aqui';
+  const meLabel = document.createElement('div'); meLabel.className = 'h3d-me'; meLabel.textContent = meText(); labelsEl.appendChild(meLabel);
 
   // clínicas (recriadas quando a origem muda)
   let clinicObjs = [], origin = api.origin();
@@ -501,7 +503,8 @@ export function initHero3D(el, api) {
       // escondido até aparecer na tela: fora do Tab e dos leitores de tela
       label.tabIndex = -1; label.setAttribute('aria-hidden', 'true');
       // nomes vêm do cadastro oficial: monta o rótulo com textContent, nunca como HTML
-      const lg = document.createElement('span'); lg.className = 'lg'; lg.style.background = c.c; lg.textContent = c.ini;
+      // As iniciais são só desenho (vêm do CSS, ::before): o nome lido pelo leitor de tela é o do local.
+      const lg = document.createElement('span'); lg.className = 'lg'; lg.style.background = c.c; lg.dataset.ini = c.ini; lg.setAttribute('aria-hidden', 'true');
       const tx = document.createElement('span'); tx.className = 'tx';
       const nb = document.createElement('b'); nb.textContent = c.n;
       const sm = document.createElement('small'); sm.textContent = api.meta(c);
@@ -576,7 +579,8 @@ export function initHero3D(el, api) {
   });
 
   // loop
-  let running = true, last = performance.now(), t = reduce ? 10 : 0;
+  // paused: a pessoa apertou "Pausar animação" (WCAG 2.2.2): a cena para de girar e de se mexer sozinha.
+  let running = true, paused = false, last = performance.now(), t = reduce ? 10 : 0;
   const vProj = new THREE.Vector3(), camDir = new THREE.Vector3(), head = new THREE.Vector3();
 
   function tick(now) {
@@ -585,7 +589,7 @@ export function initHero3D(el, api) {
     // Limite de .25 s por quadro: num aparelho lento a cena anda no tempo real (com menos quadros),
     // em vez de virar câmera lenta e demorar para mostrar os pinos e os rótulos.
     const dt = Math.min(.25, (now - last) / 1000); last = now;
-    if (!reduce) t += dt;
+    if (!reduce && !paused) t += dt;
     growUniforms.uTime.value = t;
 
     // câmera: entrada + giro lento + paralaxe
@@ -696,7 +700,8 @@ export function initHero3D(el, api) {
 
   el.classList.add('h3d-ready');
   return {
-    setOrigin() { origin = api.origin(); buildClinics(false); },
+    setPaused(v) { paused = !!v; },
+    setOrigin() { origin = api.origin(); meLabel.textContent = meText(); buildClinics(false); },
     refreshLabels() { clinicObjs.forEach(o => { const s = o.label.querySelector('small'); if (s) s.textContent = api.meta(o.c); o.lw = 0; }); }
   };
 }

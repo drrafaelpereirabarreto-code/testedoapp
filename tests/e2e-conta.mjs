@@ -71,7 +71,9 @@ const ESTAB = Array.from({ length: 130 }, (_, i) => ({
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
 const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
 
-async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'America/Sao_Paulo' } = {}) {
+// cancel: resposta do banco ao cancel_request (função; null = sem internet). account: pedidos da conta.
+// claims: pedidos de cadastro de clínica da conta (função que responde a rota, para simular falha).
+async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'America/Sao_Paulo', cancel = () => 'ok', account = ACCOUNT, claims = null } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId,
@@ -83,7 +85,7 @@ async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'A
       if (list && !sessionStorage.getItem('semeado')) { localStorage.setItem('imed_appts', JSON.stringify(list)); sessionStorage.setItem('semeado', '1'); }
     } catch { /* ignora */ }
   }, seed);
-  const log = { otp: [], status: [], select: [], review: [], city: [], logout: 0 };
+  const log = { otp: [], status: [], select: [], review: [], city: [], logout: 0, cancel: [], cancelAuth: [], claims: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route(`${SUPA}/auth/v1/**`, async (route) => {
@@ -109,8 +111,25 @@ async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'A
     if (route.request().headers().authorization !== 'Bearer tok-ana') return json(route, []);
     // Simula o RLS: sem filtro por user_id, a Ana (membro de clínica) também recebe o pedido de outro paciente.
     const f = new URL(route.request().url()).searchParams.get('user_id');
-    const mine = ACCOUNT.map((r) => ({ ...r, user_id: USER.id }));
+    const mine = account.map((r) => ({ ...r, user_id: USER.id, review_token_hash: 'f'.repeat(64) }));
     return json(route, f === `eq.${USER.id}` ? mine : [OTHER, ...mine]);
+  });
+  await context.route(`${REST}rpc/cancel_request`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return preflight(route);
+    const b = JSON.parse(route.request().postData());
+    log.cancel.push(b);
+    log.cancelAuth.push(route.request().headers().authorization);
+    const reply = cancel(b);
+    return reply === null ? route.abort() : json(route, reply);
+  });
+  await context.route(`${REST}establishment_claims**`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return preflight(route);
+    log.claims.push(route.request().url());
+    if (claims) return claims(route);
+    return json(route, [
+      { id: 'kkkkkkkk-0000-4000-8000-000000000001', user_id: USER.id, created_at: '2026-10-20T12:00:00Z', cnes: '2077485', claimant_name: 'Ana Souza', role: 'gestor', status: 'pending' },
+      { id: 'kkkkkkkk-0000-4000-8000-000000000002', user_id: 'user-outro', created_at: '2026-10-21T12:00:00Z', cnes: '6543210', claimant_name: 'Outra Pessoa', role: 'outro', status: 'pending' },
+    ]);
   });
   await context.route(`${REST}rpc/submit_review`, async (route) => {
     if (route.request().method() === 'OPTIONS') return preflight(route);
@@ -139,8 +158,12 @@ const noOverflow = async (page) => {
   assert.ok(o <= 0, `sem rolagem lateral (${o}px)`);
 };
 const results = [];
+// Tempo máximo de cada cenário (E2E_CENARIO_S segundos, padrão 150): um cenário travado falha com o nome dele,
+// em vez de segurar o arquivo inteiro até o limite do CI.
+const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
+const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
-  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 5).join('\n  ')}`); }
 }
 const login = `${BASE}conta.html#access_token=tok-ana&refresh_token=ref-ana&expires_in=3600&token_type=bearer&type=magiclink`;
@@ -186,25 +209,35 @@ await scenario('sem login: pedidos deste aparelho com situação ao vivo e envio
   await context.close();
 });
 
-await scenario('adicionar à agenda baixa um .ics com data, período, preparo e lembrete', async () => {
-  const { page, errors, context } = await newPage(browser);
+await scenario('adicionar à agenda: só para o que ainda vai acontecer; .ics com data, período, preparo e lembrete', async () => {
+  // Pedido antigo (sem código) para um dia que ainda vai chegar, com "qualquer horário".
+  const QUALQUER = { type: 'pedido', code: 'IMED-55555555', name: 'Laboratório Qualquer Hora', exam: 'lab', items: ['Exames de laboratório'], date: '2026-11-25', period: 'qualquer', status: 'pendente', created: '2026-10-26T12:00:00.000Z' };
+  const { page, errors, context } = await newPage(browser, { seed: [...DEVICE, QUALQUER] });
   await page.goto(`${BASE}conta.html`);
-  await page.waitForSelector(`#pedido-${ID.d1} [data-ics]`);
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`#pedido-${ID.d1} [data-ics]`)]);
-  assert.equal(dl.suggestedFilename(), 'imed-imed-11111111.ics');
-  const ics = await readFile(await dl.path(), 'utf8');
+  await page.waitForSelector(`#pedido-${ID.d2} [data-ics]`);
+  await page.waitForSelector(`#pedido-${ID.d1} .ct-st:has-text("Concluído")`);
+  // Concluídos (d1, d4) e o pedido de uma data que já passou não oferecem lembrete (a mesma regra da página inicial).
+  assert.equal(await page.locator(`#pedido-${ID.d1} [data-ics]`).count(), 0, 'concluído: sem lembrete');
+  assert.equal(await page.locator(`#pedido-${ID.d4} [data-ics]`).count(), 0, 'concluído: sem lembrete');
+  assert.equal(await page.locator('.ct-order', { hasText: 'Clínica Antiga' }).locator('[data-ics]').count(), 0, 'data que já passou: sem lembrete');
+  // Pedido ainda aguardando o local: o lembrete avisa que o horário não está confirmado.
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`#pedido-${ID.d2} [data-ics]`)]);
+  assert.equal(dl.suggestedFilename(), 'imed-imed-22222222.ics');
+  const ics = (await readFile(await dl.path(), 'utf8')).replace(/\r\n /g, '');
   assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
-  assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261112T080000/);
-  assert.match(ics, /DTEND;TZID=America\/Sao_Paulo:20261112T120000/);
-  assert.match(ics, /SUMMARY:Exame: Ressonância — Hospital Santa Exemplo/);
-  assert.match(ics.replace(/\r\n /g, ''), /Preparo: Retire objetos de metal/);
+  assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261120T130000/);
+  assert.match(ics, /DTEND;TZID=America\/Sao_Paulo:20261120T180000/);
+  assert.match(ics, /SUMMARY:Exame: Tomografia — Imagem Paulista \(a confirmar\)\r\n/);
+  assert.match(ics, /STATUS:TENTATIVE/);
+  assert.match(ics, /Preparo: Se o exame usar contraste/);
   assert.match(ics, /TRIGGER:-P1D/);
   assert.match(ics, /END:VCALENDAR\r\n$/);
   // "Qualquer horário" vira evento de dia inteiro.
-  const [dl2] = await Promise.all([page.waitForEvent('download'), page.click(`#pedido-${ID.d4} [data-ics]`)]);
+  const q = page.locator('.ct-order', { hasText: 'Laboratório Qualquer Hora' });
+  const [dl2] = await Promise.all([page.waitForEvent('download'), q.locator('[data-ics]').click()]);
   const ics2 = await readFile(await dl2.path(), 'utf8');
-  assert.match(ics2, /DTSTART;VALUE=DATE:20261105/);
-  assert.match(ics2, /DTEND;VALUE=DATE:20261106/);
+  assert.match(ics2, /DTSTART;VALUE=DATE:20261125/);
+  assert.match(ics2, /DTEND;VALUE=DATE:20261126/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -237,11 +270,12 @@ await scenario('login pelo link (#access_token): pedidos da conta + aparelho, se
   assert.equal(new URL(page.url()).hash, '', 'o token sai do endereço');
   assert.equal(await page.textContent('#meEmail'), 'ana@exemplo.com');
   assert.match(await page.textContent('#flash'), /você entrou/);
-  assert.equal(await page.textContent('#ordersTitle'), 'Meus pedidos');
+  // Os pedidos do aparelho aparecem primeiro; com a máquina lenta, os da conta chegam um pouco depois.
+  await page.waitForFunction(() => document.querySelector('#ordersTitle')?.textContent === 'Meus pedidos');
   assert.equal(log.select.length, 1);
   assert.equal(log.select[0].auth, 'Bearer tok-ana');
   const selUrl = new URL(log.select[0].url);
-  assert.equal(selUrl.searchParams.get('select'), 'id,user_id,created_at,place_name,place_source,place_ref,clinic_id,exam_code,preferred_date,preferred_period,slot_start,status');
+  assert.equal(selUrl.searchParams.get('select'), 'id,user_id,created_at,place_name,place_source,place_ref,place_phone,clinic_id,exam_code,preferred_date,preferred_period,slot_start,status');
   assert.equal(selUrl.searchParams.get('user_id'), `eq.${USER.id}`, 'filtra pela conta');
   assert.equal(selUrl.searchParams.get('order'), 'created_at.desc');
   assert.equal(selUrl.searchParams.get('limit'), '50');
@@ -434,6 +468,147 @@ await scenario('página por tipo, índice das cidades e celular (390 px) sem rol
   await page.waitForSelector('.ct-order');
   await noOverflow(page);
   await shot(page, 'conta-05-celular-logado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('cancelar pedido pelo site: pede confirmação, usa o código do aparelho e mostra "Cancelado"', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}conta.html`);
+  await page.waitForSelector(`#pedido-${ID.d2} .ct-st:has-text("Aguardando contato")`);
+  // só o pedido ainda ativo (aguardando contato) pode ser cancelado; concluídos e sem código, não
+  assert.deepEqual(await page.$$eval('[data-cancel]', (b) => b.map((x) => x.dataset.cancel)), [ID.d2]);
+  await page.click(`[data-cancel="${ID.d2}"]`);
+  assert.match(await page.textContent(`#pedido-${ID.d2} .ct-ask`), /Cancelar pelo IMED é grátis\. A clínica vê o cancelamento no painel dela\./);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.cancelYes), ID.d2, 'foco no "Sim, cancelar"');
+  await shot(page, 'conta-08-cancelar');
+  await page.click(`[data-cancel-no="${ID.d2}"]`);
+  assert.equal(await page.locator('.ct-ask').count(), 0);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.cancel), ID.d2, 'o foco volta para o botão');
+  assert.equal(log.cancel.length, 0, '"Não" não cancela');
+  await page.click(`[data-cancel="${ID.d2}"]`);
+  await page.click(`[data-cancel-yes="${ID.d2}"]`);
+  await page.waitForFunction((id) => document.querySelector(`#pedido-${id} .ct-st`)?.textContent === 'Cancelado', ID.d2);
+  assert.deepEqual(log.cancel, [{ p_id: ID.d2, p_token: TOK.d2 }]);
+  assert.equal(await page.locator(`#pedido-${ID.d2} [data-cancel]`).count(), 0, 'cancelado não oferece cancelar de novo');
+  assert.equal(await page.locator(`#pedido-${ID.d2} [data-ics]`).count(), 0, 'cancelado não oferece lembrete na agenda');
+  // d2 é de uma clínica parceira: ela vê o cancelamento no painel dela.
+  assert.match(await page.textContent('#toast'), /^Pedido cancelado\. A clínica vê o cancelamento no painel dela\.$/);
+  assert.match(await page.textContent(`#pedido-${ID.d2} .ct-note`), /Cancelado por você\. A clínica vê o cancelamento no painel dela\./);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), `pedido-${ID.d2}`);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
+  assert.equal(saved.find((a) => a.id === ID.d2).status, 'cancelado', 'o aparelho guarda a situação nova');
+  assert.equal(saved.find((a) => a.id === ID.d2).token, TOK.d2, 'o código continua no aparelho');
+  assert.deepEqual(errors, []);
+  await context.close();
+  // o banco recusa (horário já passou): fecha a pergunta, explica e confere a situação de novo
+  const past = await newPage(browser, { cancel: () => 'past' });
+  await past.page.goto(`${BASE}conta.html`);
+  await past.page.waitForSelector(`[data-cancel="${ID.d2}"]`);
+  await past.page.click(`[data-cancel="${ID.d2}"]`);
+  await past.page.click(`[data-cancel-yes="${ID.d2}"]`);
+  await past.page.waitForFunction(() => /já passou/.test(document.querySelector('#toast').textContent));
+  await past.page.waitForFunction(() => !document.querySelector('.ct-ask'));
+  await past.page.waitForFunction(() => document.querySelectorAll('.ct-order').length === 4);
+  assert.equal(past.log.status.length, 2, 'busca a situação de novo');
+  assert.deepEqual(past.errors, []);
+  await past.context.close();
+  // sem internet: a pergunta continua aberta para tentar de novo
+  const off = await newPage(browser, { cancel: () => null });
+  await off.page.goto(`${BASE}conta.html`);
+  await off.page.waitForSelector(`[data-cancel="${ID.d2}"]`);
+  await off.page.click(`[data-cancel="${ID.d2}"]`);
+  await off.page.click(`[data-cancel-yes="${ID.d2}"]`);
+  await off.page.waitForFunction(() => document.querySelector('#toast').textContent.length > 0);
+  await off.page.waitForSelector(`[data-cancel-yes="${ID.d2}"]:not([disabled])`);
+  assert.equal(await off.page.evaluate(() => document.activeElement?.dataset.cancelYes), ID.d2);
+  assert.equal(await off.page.locator(`#pedido-${ID.d2} .ct-st`).textContent(), 'Aguardando contato');
+  await off.context.close();
+});
+
+await scenario('com a conta: cancela pedido só da conta (sem código) e "Meus dados" baixa o arquivo sem códigos secretos', async () => {
+  const A4 = { id: '88888888-8888-4888-8888-888888888888', created_at: '2026-10-30T10:00:00Z', place_name: 'Laboratório da Conta', place_source: 'cnes', place_ref: 'cnes:3', place_phone: '(11) 3000-2000', clinic_id: null, exam_code: 'lab', preferred_date: '2026-11-10', preferred_period: 'manha', status: 'pending' };
+  const { page, log, errors, context } = await newPage(browser, { account: [A4, ...ACCOUNT] });
+  await page.goto(login);
+  await page.waitForSelector(`#pedido-${A4.id}`);
+  assert.deepEqual((await page.$$eval('[data-cancel]', (b) => b.map((x) => x.dataset.cancel))).sort(), [A4.id, ID.d2].sort());
+  await page.click(`[data-cancel="${A4.id}"]`);
+  // Local que ainda não é parceiro: só a equipe do IMED vê; a pessoa liga para o local se já tinha combinado.
+  assert.match(await page.textContent(`#pedido-${A4.id} .ct-ask`), /A equipe do IMED vê o cancelamento\. Se o horário já tinha sido combinado com o local, ligue também para ele\./);
+  await page.click(`[data-cancel-yes="${A4.id}"]`);
+  await page.waitForFunction((id) => document.querySelector(`#pedido-${id} .ct-st`)?.textContent === 'Cancelado', A4.id);
+  assert.deepEqual(log.cancel, [{ p_id: A4.id, p_token: null }], 'pedido da conta: o banco confere o dono pelo login');
+  assert.match(await page.textContent('#toast'), /ligue também para ele: \(11\) 3000-2000\./, 'com o telefone do local guardado no pedido');
+  assert.equal(await page.getAttribute(`#pedido-${A4.id} .ct-note a`, 'href'), 'tel:+551130002000');
+  assert.equal(log.cancelAuth[0], 'Bearer tok-ana');
+  // Meus dados: links para corrigir e pedir exclusão
+  assert.equal(await page.getAttribute('#fixData', 'href'), 'contato.html?assunto=correcao');
+  assert.equal(await page.getAttribute('#delData', 'href'), 'contato.html?assunto=exclusao');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#dlData')]);
+  assert.match(download.suggestedFilename(), /^imed-meus-dados-\d{4}-\d{2}-\d{2}\.json$/);
+  const raw = await readFile(await download.path(), 'utf8');
+  const data = JSON.parse(raw);
+  assert.equal(data.servico, 'IMED');
+  assert.deepEqual(data.conta, { email: USER.email, id: USER.id });
+  assert.deepEqual(data.pedidos_da_conta.map((r) => r.id), [A4.id, ...ACCOUNT.map((r) => r.id)]);
+  assert.ok(data.pedidos_da_conta.every((r) => !('review_token_hash' in r)), 'sem o resumo do código');
+  assert.deepEqual(data.pedidos_de_cadastro_de_clinica.map((c) => c.claimant_name), ['Ana Souza'], 'só os pedidos de cadastro da própria conta');
+  assert.equal(data.pedidos_deste_aparelho.length, 4);
+  for (const t of Object.values(TOK)) assert.ok(!raw.includes(t), 'sem o código secreto dos pedidos do aparelho');
+  assert.ok(!raw.includes(OTHER_ID) && !raw.includes('Clínica de Terceiro'), 'sem pedido de outra pessoa');
+  const sel = new URL(log.select.find((x) => /select=\*/.test(x.url)).url);
+  assert.equal(sel.searchParams.get('user_id'), `eq.${USER.id}`);
+  assert.equal(sel.searchParams.get('limit'), '500');
+  assert.equal(new URL(log.claims[0]).searchParams.get('user_id'), `eq.${USER.id}`);
+  assert.match(await page.textContent('#dataMsg'), /Arquivo baixado com os dados da sua conta e deste aparelho/);
+  // "Pedir exclusão" abre o Fale com o IMED com o assunto certo, ligado à conta
+  await page.click('#delData');
+  await page.waitForURL(/contato\.html\?assunto=exclusao$/);
+  await page.waitForSelector('#cConta:not([hidden])');
+  assert.equal(await page.inputValue('#cAssunto'), 'dados_exclusao');
+  assert.equal(await page.inputValue('#cContato'), USER.email);
+  assert.match(await page.textContent('#cConta'), /ana@exemplo\.com/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Meus dados" sem conta e com a conta fora do ar: baixa o que tem e explica', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}conta.html`);
+  await page.waitForSelector('.ct-order');
+  const n = log.select.length;
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#dlData')]);
+  const data = JSON.parse(await readFile(await download.path(), 'utf8'));
+  assert.equal(data.conta, null);
+  assert.deepEqual(data.pedidos_da_conta, []);
+  assert.deepEqual(data.pedidos_deste_aparelho.map((a) => a.code), ['IMED-11111111', 'IMED-22222222', 'IMED-44444444', 'IMED-OLD12345']);
+  assert.ok(data.pedidos_deste_aparelho.every((a) => !('token' in a)));
+  assert.equal(log.select.length, n, 'sem conta, não consulta o banco');
+  assert.match(await page.textContent('#dataMsg'), /Entre na conta para incluir também os pedidos dela/);
+  assert.deepEqual(errors, []);
+  await context.close();
+  const bad = await newPage(browser, { claims: (route) => json(route, { message: 'erro' }, 500) });
+  await bad.page.goto(login);
+  await bad.page.waitForSelector('#signedIn:not([hidden])');
+  await bad.page.waitForSelector('.ct-order');
+  const [d2] = await Promise.all([bad.page.waitForEvent('download'), bad.page.click('#dlData')]);
+  const data2 = JSON.parse(await readFile(await d2.path(), 'utf8'));
+  assert.deepEqual(data2.pedidos_da_conta, []);
+  assert.equal(data2.pedidos_deste_aparelho.length, 4);
+  assert.match(await bad.page.textContent('#dataMsg'), /Os dados da conta não carregaram agora/);
+  assert.deepEqual(bad.errors, []);
+  await bad.context.close();
+});
+
+await scenario('celular (390 px): cancelar e "Meus dados" sem rolagem lateral', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true });
+  await page.goto(`${BASE}conta.html`);
+  await page.waitForSelector(`[data-cancel="${ID.d2}"]`);
+  await page.click(`[data-cancel="${ID.d2}"]`);
+  await noOverflow(page);
+  await page.locator('#dados').scrollIntoViewIfNeeded();
+  await noOverflow(page);
+  await shot(page, 'conta-09-celular-meus-dados');
   assert.deepEqual(errors, []);
   await context.close();
 });

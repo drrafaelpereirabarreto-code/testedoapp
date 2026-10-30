@@ -299,7 +299,9 @@ test('arquivo de agenda (.ics) válido, com fuso, lembrete e escapes', () => {
   assert.ok(lines.includes('UID:abc-123@imed'));
   assert.ok(lines.includes('BEGIN:VALARM') && lines.includes('TRIGGER:-P1D') && lines.includes('END:VALARM'));
   const unfolded = ics.replace(/\r\n /g, '');
-  assert.ok(unfolded.includes('SUMMARY:Exame: Ressonância — Clínica A\\, B\\; C\r\n'), 'vírgula e ponto e vírgula escapados no título');
+  assert.ok(unfolded.includes('SUMMARY:Exame: Ressonância — Clínica A\\, B\\; C (a confirmar)\r\n'), 'vírgula e ponto e vírgula escapados no título; sem confirmação, "(a confirmar)"');
+  assert.ok(lines.includes('STATUS:TENTATIVE'), 'pedido sem confirmação fica como provisório');
+  assert.ok(unfolded.includes('DESCRIPTION:Amanhã: Exame: Ressonância — Clínica A\\, B\\; C (a confirmar)\r\n'), 'o lembrete de um dia antes também avisa');
   assert.ok(unfolded.includes('DESCRIPTION:Linha 1\\nRetire metais\\; leve exames\\, se tiver.\r\n'), 'escapes na descrição');
   assert.doesNotMatch(unfolded, /B; C/);
   assert.doesNotMatch(unfolded, /metais; leve/);
@@ -313,6 +315,34 @@ test('arquivo de agenda (.ics) válido, com fuso, lembrete e escapes', () => {
   assert.ok(!dia.includes('VTIMEZONE'));
   assert.match(dia, /TRIGGER:-P1D/);
   assert.throws(() => G.icsFile({ id: 'x', title: 'T', date: '03/11/2026', period: 'manha' }));
+});
+
+test('.ics: "(a confirmar)" só enquanto o local não confirma', () => {
+  const now = Date.UTC(2026, 9, 30, 12, 0, 0);
+  const sum = (ics) => ics.replace(/\r\n /g, '').split('\r\n').find((l) => l.startsWith('SUMMARY:'));
+  assert.equal(sum(G.icsFile({ id: 'x', title: 'RM · Hospital', date: '2026-11-03', period: 'manha' }, now)), 'SUMMARY:RM · Hospital (a confirmar)');
+  const conf = G.icsFile({ id: 'x', title: 'RM · Hospital', date: '2026-11-03', period: 'manha', confirmed: true }, now);
+  assert.equal(sum(conf), 'SUMMARY:RM · Hospital', 'confirmado pelo local: sem o aviso');
+  assert.match(conf, /STATUS:CONFIRMED/);
+  assert.equal(sum(G.icsFile({ id: 'x', title: 'RM', slot: '2026-11-05T12:30:00Z' }, now)), 'SUMMARY:RM', 'horário marcado já nasce confirmado');
+  assert.equal(G.icsTitle('A (a confirmar)', false), 'A (a confirmar)', 'não repete o aviso');
+  assert.equal(G.icsTitle('A', true), 'A');
+});
+
+test('avisos de confiança do pedido: gratuito, privacidade, emergência e fonte oficial', () => {
+  assert.match(G.TRUST.gratis, /O IMED é gratuito para você/);
+  assert.match(G.TRUST.gratis, /pagamento é feito direto no local/);
+  assert.match(G.TRUST.gratis, /nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp/);
+  assert.match(G.TRUST.privacidade, /só para o IMED e para o local escolhido/);
+  assert.match(G.TRUST.privacidade, /servidor no Brasil/);
+  assert.match(G.TRUST.privacidade, /sem anúncios e sem rastreadores de anúncio/);
+  assert.match(G.TRUST.privacidade, /localização é aproximada e não é gravada/);
+  assert.match(G.TRUST.cnes, /serviço privado, sem vínculo com o governo ou o SUS/);
+  assert.match(G.sosHTML(), /href="tel:192"/);
+  assert.match(G.sosHTML(), /^<p class="sos">/);
+  assert.match(G.sosHTML(G.TRUST.sosPedido), /não é para emergência/);
+  const t = G.trustHTML();
+  assert.ok(t.startsWith('<div class="trust">') && t.includes('class="free"') && t.includes('class="priv"'));
 });
 
 test('horários no fuso de São Paulo: dia, hora, período e agrupamento', () => {
@@ -364,6 +394,9 @@ test('pedido com horário marcado: validação, linha do banco e resumo no apare
   const b = G.localAppt(imed, { exam: 'consulta', date: '2026-11-05', period: 'manha' }, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'tok');
   assert.equal(b.status, 'pendente');
   assert.ok(!('slot' in b));
+  // Telefone do local (o mesmo do pedido): para lembrar a pessoa de avisar o local se cancelar um horário combinado.
+  assert.equal(G.localAppt({ ...imed, phone: '(11) 3141-1000' }, v, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'tok').phone, '(11) 3141-1000');
+  assert.ok(!('phone' in G.localAppt({ ...imed, phone: null }, v, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'tok')), 'sem telefone, sem o campo');
   assert.equal(G.statusLabel('confirmado'), 'Confirmado');
   assert.ok(G.isSlotTaken({ status: 409 }));
   assert.ok(G.isSlotTaken({ status: 400, data: { code: '23P01' } }));

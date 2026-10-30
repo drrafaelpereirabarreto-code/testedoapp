@@ -1,13 +1,13 @@
 /* Páginas por cidade (cidades/**) — leve, mesma identidade visual do IMED. */
 :root{
-  --navy:#05161e; --primary:#0E7C9C; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
-  --coral:#FF6B4A; --coral-s:#FFF0EC; --green:#1E9E5A; --green-s:#E7F6EE;
-  --ink:#0F1F28; --text:#2B3A44; --muted:#5F7480; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
+  --navy:#05161e; --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --coral:#FF6B4A; --coral-d:#BF3B20; --coral-s:#FFF0EC; --green:#137A44; --green-s:#E7F6EE;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
   --sh1:0 1px 2px rgba(15,31,40,.05),0 8px 24px rgba(15,31,40,.06);
   --ease:cubic-bezier(.2,.8,.2,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:80px}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg2);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden;line-height:1.5}
 h1,h2,h3{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacing:-.02em;line-height:1.2}
 button,input{font:inherit;color:inherit}
@@ -16,14 +16,15 @@ a{color:inherit;text-decoration:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:#fff;color:var(--ink);font-weight:700}
 .skip:focus{top:12px}
-:focus-visible{outline:3px solid rgba(46,230,214,.9);outline-offset:2px}
+:focus-visible{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
+.cd-top :focus-visible,.cd-hero :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
 .cd-wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 20px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .2s var(--ease),box-shadow .2s,background .2s;text-align:center}
 .btn:active{transform:scale(.98)}
 .btn:disabled{opacity:.55;cursor:wait}
-.btn-coral{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;box-shadow:0 10px 24px rgba(255,107,74,.3)}
-.btn-primary{background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26)}
+.btn-coral{background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;box-shadow:0 10px 24px rgba(184,58,32,.3)}
+.btn-primary{background:linear-gradient(180deg,#0F7B9A,#0B6F8C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26)}
 .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 .btn-ghost:hover{background:#eaf1f4}
 
@@ -67,8 +68,9 @@ a{color:inherit;text-decoration:none}
 .cd-tab{padding:9px 14px;border-radius:999px;background:#fff;border:1px solid var(--line);font-weight:600;font-size:14px;color:var(--text)}
 .cd-tab span{color:var(--muted);font-weight:500;margin-left:2px}
 .cd-tab[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:#fff}
-.cd-tab[aria-pressed="true"] span{color:rgba(255,255,255,.85)}
+.cd-tab[aria-pressed="true"] span{color:#fff}
 .cd-search{display:flex;align-items:center;gap:10px;padding:0 14px;border-radius:14px;background:#fff;border:1px solid var(--line);max-width:520px}
+.cd-search:focus-within{border-color:var(--primary);outline:3px solid #0B7290;outline-offset:2px}
 .cd-search i{color:var(--primary)}
 .cd-search input{flex:1;min-width:0;border:0;outline:none;background:none;font-size:16px;padding:12px 0;color:var(--ink)}
 .cd-search:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.15)}
@@ -85,7 +87,7 @@ a{color:inherit;text-decoration:none}
 .cd-links{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
 .cd-links a{color:var(--primary);font-weight:700}
 .cd-links a:hover{text-decoration:underline}
-.cd-links .claim{color:var(--coral);}
+.cd-links .claim{color:var(--coral-d);}
 .cd-more-wrap{display:flex;justify-content:center;margin-top:16px}
 .cd-msg{grid-column:1/-1;padding:16px;border-radius:14px;background:#fff;border:1px solid var(--line)}
 .cd-msg.err{background:var(--coral-s);border-color:#ffc9bb}
@@ -115,8 +117,26 @@ a{color:inherit;text-decoration:none}
 .cd-noscript{margin:12px 0;padding:14px;border-radius:14px;background:#fff;border:1px solid var(--line)}
 .cd-noscript a{color:var(--primary);font-weight:700}
 
-.cd-foot{background:var(--navy);color:rgba(255,255,255,.7);font-size:14px;padding:26px 0 120px}
-.cd-foot p+p{margin-top:10px}
-.cd-foot a{color:#fff;text-decoration:underline;text-underline-offset:2px}
+/* fonte dos números, logo acima do rodapé (assets/css/rodape.css) */
+.cd-src{margin-top:40px;padding:18px 0;border-top:1px solid var(--line);background:#fff;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.cd-src a{color:var(--primary-d);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+/* aviso de emergência nas páginas de hospitais */
+.cd-sos{display:flex;gap:10px;align-items:flex-start;margin:14px 0 18px;padding:11px 14px;border-radius:14px;background:rgba(255,107,74,.16);border:1px solid rgba(255,154,128,.4);color:#fff;font-size:14.5px;line-height:1.5;max-width:720px}
+.cd-sos i{color:#FFB199;margin-top:3px}
+.cd-sos a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .link{color:var(--primary);font-weight:700;text-decoration:underline}
 [hidden]{display:none!important}
+
+/* Celular e telas de toque: alvos com pelo menos 44 px (dedo, inclusive de quem tem tremor ou vista cansada). */
+@media (max-width:860px),(pointer:coarse){
+  .btn,.cd-partner,.cd-tab{min-height:44px}
+  .cd-partner{display:inline-flex;align-items:center}
+  .logo{min-height:44px}
+  .cd-crumbs a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+  .cd-nav a{display:inline-flex;align-items:center;min-height:44px}
+  .cd-also a{display:inline-flex;align-items:center;min-height:44px}
+  .cd-links{gap:0 16px}
+  .cd-links a,.cd-item a.tel{display:inline-flex;align-items:center;min-height:44px}
+}
+/* "Reduzir movimento" ligado no aparelho: nada se mexe sozinho (animações e transições param) e a rolagem não desliza. */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important;scroll-behavior:auto!important}}

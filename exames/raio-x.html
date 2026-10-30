@@ -17,55 +17,106 @@
 <link rel="icon" type="image/png" sizes="32x32" href="../assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="../assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="../manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="../assets/vendor/fa/css/all.min.css">
+<link rel="preload" href="../assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style data-fontes="Sora:600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(../assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(../assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(../assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(../assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
+<link rel="stylesheet" href="../assets/vendor/fa/css/icones.min.css">
 <link rel="stylesheet" href="../assets/css/guia.css">
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "O raio-X faz mal?", "acceptedAnswer": {"@type": "Answer", "text": "A dose de radiação de uma radiografia é baixa. Mesmo assim, o exame só deve ser feito com indicação médica, e gestantes precisam avisar a equipe antes."}}, {"@type": "Question", "name": "Quanto tempo demora o resultado?", "acceptedAnswer": {"@type": "Answer", "text": "Depende da clínica: muitas entregam o laudo no mesmo dia ou em até 48 horas."}}, {"@type": "Question", "name": "Precisa de pedido médico?", "acceptedAnswer": {"@type": "Answer", "text": "Sim. O raio-X é feito a partir de um pedido médico."}}]}</script>
 <script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "IMED", "item": "https://drrafaelpereirabarreto-code.github.io/testedoapp/"}, {"@type": "ListItem", "position": 2, "name": "Guias de exames", "item": "https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/"}, {"@type": "ListItem", "position": 3, "name": "Raio-X", "item": "https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/raio-x.html"}]}</script>
+<link rel="stylesheet" href="../assets/css/rodape.css">
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 <header class="g-top"><div class="wrap">
-  <a class="logo" href="../index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+  <a class="logo" href="../index.html"><span class="logo-mk"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a>
   <nav><a href="./">Guias de exames</a><a href="../perto.html">Perto de mim</a><a href="../cidades/">Por cidade</a><a href="../reivindicar.html">Para clínicas</a></nav>
   <a class="btn btn-coral" href="../perto.html?exame=rx">Buscar clínicas</a>
 </div></header>
+<main id="main" tabindex="-1">
 <section class="g-hero">
-  <img src="../assets/img/rx.webp" alt="" style="object-position:50% 50%">
+  <img src="../assets/img/rx.webp" alt="" style="object-position:50% 50%" fetchpriority="high">
+  <span class="g-ill">Imagem ilustrativa</span>
   <div class="wrap">
     <div>
-      <nav class="crumbs" aria-label="Você está em"><a href="../index.html">Início</a><i class="fa-solid fa-chevron-right"></i><a href="./">Guias de exames</a><i class="fa-solid fa-chevron-right"></i><span>Raio-X</span></nav>
+      <nav class="crumbs" aria-label="Você está em"><a href="../index.html">Início</a><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><a href="./">Guias de exames</a><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span>Raio-X</span></nav>
       <h1>Raio-X (radiografia)</h1>
       <p class="lead">O exame de imagem mais rápido e comum: em poucos minutos mostra ossos, pulmões e articulações.</p>
-      <div class="facts"><span><i class="fa-solid fa-clock"></i>5 a 15 minutos</span><span><i class="fa-solid fa-radiation"></i>Dose baixa de radiação</span><span><i class="fa-solid fa-circle-check"></i>Sem preparo na maioria dos casos</span></div>
-      <div class="g-cta"><a class="btn btn-coral" href="../perto.html?exame=rx">Ver clínicas perto de você <i class="fa-solid fa-arrow-right"></i></a><a class="btn btn-glass" href="#preparo">Como se preparar</a></div>
+      <div class="facts"><span><i class="fa-solid fa-clock" aria-hidden="true"></i>5 a 15 minutos</span><span><i class="fa-solid fa-radiation" aria-hidden="true"></i>Dose baixa de radiação</span><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Sem preparo na maioria dos casos</span></div>
+      <div class="g-cta"><a class="btn btn-coral" href="../perto.html?exame=rx">Ver clínicas perto de você <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="#preparo">Como se preparar</a></div>
     </div>
-    <img class="g-ico" src="../assets/img/ico-rx.webp" alt="">
+    <img class="g-ico" src="../assets/img/ico-rx.webp" alt="" width="300" height="300">
   </div>
 </section>
-<main class="wrap g-main">
+<div class="wrap g-main">
   <article class="g-art">
-    <section><h2><span class="n"><i class="fa-solid fa-stethoscope"></i></span>Para que serve</h2>
-      <ul class="uses"><li><i class="fa-solid fa-circle-check"></i><span>Investigar fraturas, luxações e desgaste em ossos e articulações.</span></li><li><i class="fa-solid fa-circle-check"></i><span>Avaliar pulmões e coração (raio-X de tórax) em casos de tosse, falta de ar ou pneumonia.</span></li><li><i class="fa-solid fa-circle-check"></i><span>Examinar coluna, seios da face e abdome.</span></li><li><i class="fa-solid fa-circle-check"></i><span>Acompanhar a consolidação de uma fratura.</span></li></ul></section>
-    <section><h2><span class="n"><i class="fa-solid fa-person-walking-arrow-right"></i></span>Como é feito</h2>
+    <section><h2><span class="n"><i class="fa-solid fa-stethoscope" aria-hidden="true"></i></span>Para que serve</h2>
+      <ul class="uses"><li><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Investigar fraturas, luxações e desgaste em ossos e articulações.</span></li><li><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Avaliar pulmões e coração (raio-X de tórax) em casos de tosse, falta de ar ou pneumonia.</span></li><li><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Examinar coluna, seios da face e abdome.</span></li><li><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Acompanhar a consolidação de uma fratura.</span></li></ul></section>
+    <section><h2><span class="n"><i class="fa-solid fa-person-walking-arrow-right" aria-hidden="true"></i></span>Como é feito</h2>
       <ol class="steps"><li>Você troca de roupa, se necessário, e tira objetos de metal da região do exame.</li><li>O técnico posiciona você em pé, sentado ou deitado, junto ao detector.</li><li>No momento da imagem, você fica parado e às vezes prende a respiração por alguns segundos.</li><li>Cada imagem leva frações de segundo e o exame não dói.</li></ol></section>
-    <section id="preparo"><h2><span class="n"><i class="fa-solid fa-list-check"></i></span>Como se preparar</h2>
-      <ul class="prep"><li><i class="fa-solid fa-check"></i><span>Na maioria dos casos não há preparo.</span></li><li><i class="fa-solid fa-check"></i><span>Retire brincos, colares, piercings, sutiã com aro e outros objetos de metal da área.</span></li><li><i class="fa-solid fa-check"></i><span>Avise se estiver grávida ou se houver chance de gravidez.</span></li><li><i class="fa-solid fa-check"></i><span>Leve o pedido médico e exames anteriores, se tiver.</span></li></ul>
-      <div class="warn"><i class="fa-solid fa-triangle-exclamation"></i><span>Gestantes só devem fazer raio-X com indicação médica e proteção adequada. Avise sempre a equipe.</span></div></section>
-    <section><h2><span class="n"><i class="fa-solid fa-circle-question"></i></span>Perguntas frequentes</h2>
+    <section id="preparo"><h2><span class="n"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span>Como se preparar</h2>
+      <ul class="prep"><li><i class="fa-solid fa-check" aria-hidden="true"></i><span>Na maioria dos casos não há preparo.</span></li><li><i class="fa-solid fa-check" aria-hidden="true"></i><span>Retire brincos, colares, piercings, sutiã com aro e outros objetos de metal da área.</span></li><li><i class="fa-solid fa-check" aria-hidden="true"></i><span>Avise se estiver grávida ou se houver chance de gravidez.</span></li><li><i class="fa-solid fa-check" aria-hidden="true"></i><span>Leve o pedido médico e exames anteriores, se tiver.</span></li></ul>
+      <div class="warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Gestantes só devem fazer raio-X com indicação médica e proteção adequada. Avise sempre a equipe.</span></div></section>
+    <section><h2><span class="n"><i class="fa-solid fa-circle-question" aria-hidden="true"></i></span>Perguntas frequentes</h2>
       <details><summary>O raio-X faz mal?</summary><p>A dose de radiação de uma radiografia é baixa. Mesmo assim, o exame só deve ser feito com indicação médica, e gestantes precisam avisar a equipe antes.</p></details><details><summary>Quanto tempo demora o resultado?</summary><p>Depende da clínica: muitas entregam o laudo no mesmo dia ou em até 48 horas.</p></details><details><summary>Precisa de pedido médico?</summary><p>Sim. O raio-X é feito a partir de um pedido médico.</p></details></section>
-    <p class="disc"><i class="fa-solid fa-circle-info"></i> Conteúdo educativo e geral. O preparo pode mudar conforme a clínica, o aparelho e o seu caso: siga sempre a orientação do seu médico e da clínica onde fará o exame.</p>
+    <p class="disc"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Conteúdo educativo e geral. O preparo pode mudar conforme a clínica, o aparelho e o seu caso: siga sempre a orientação do seu médico e da clínica onde fará o exame.</p>
   </article>
   <aside class="g-side">
-    <div class="card where-card"><h3>Onde fazer</h3><p>Veja no mapa clínicas, laboratórios e hospitais reais, com endereço e telefone do cadastro oficial (CNES), e peça seu agendamento pelo IMED.</p><a class="btn" href="../perto.html?exame=rx">Ver clínicas que fazem raio-X perto de você <i class="fa-solid fa-arrow-right"></i></a><a class="btn btn-line" href="../cidades/">Ver por cidade</a></div>
-    <div class="card"><h3>Outros exames</h3><div class="others"><a href="ultrassom.html"><img src="../assets/img/ico-usg.webp" alt="" loading="lazy">Ultrassom</a><a href="tomografia.html"><img src="../assets/img/ico-tc.webp" alt="" loading="lazy">Tomografia</a><a href="ressonancia-magnetica.html"><img src="../assets/img/ico-rm.webp" alt="" loading="lazy">Ressonância</a><a href="mamografia.html"><img src="../assets/img/ico-mamo.webp" alt="" loading="lazy">Mamografia</a><a href="densitometria-ossea.html"><img src="../assets/img/ico-dens.webp" alt="" loading="lazy">Densitometria</a><a href="eletrocardiograma.html"><img src="../assets/img/ico-ecg.webp" alt="" loading="lazy">Eletro</a><a href="ecocardiograma.html"><img src="../assets/img/ico-eco.webp" alt="" loading="lazy">Ecocardiograma</a></div></div>
+    <div class="card where-card"><h3>Onde fazer</h3><p>Veja no mapa clínicas, laboratórios e hospitais reais, com endereço e telefone do cadastro oficial (CNES), e peça seu agendamento pelo IMED.</p><a class="btn" href="../perto.html?exame=rx">Ver lugares perto de você <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-line" href="../cidades/">Ver por cidade</a></div>
+    <div class="card"><h3>Outros exames</h3><div class="others"><a href="ultrassom.html"><img src="../assets/img/ico-usg.webp" srcset="../assets/img/ico-usg-96.webp 96w, ../assets/img/ico-usg.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Ultrassom</a><a href="tomografia.html"><img src="../assets/img/ico-tc.webp" srcset="../assets/img/ico-tc-96.webp 96w, ../assets/img/ico-tc.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Tomografia</a><a href="ressonancia-magnetica.html"><img src="../assets/img/ico-rm.webp" srcset="../assets/img/ico-rm-96.webp 96w, ../assets/img/ico-rm.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Ressonância</a><a href="mamografia.html"><img src="../assets/img/ico-mamo.webp" srcset="../assets/img/ico-mamo-96.webp 96w, ../assets/img/ico-mamo.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Mamografia</a><a href="densitometria-ossea.html"><img src="../assets/img/ico-dens.webp" srcset="../assets/img/ico-dens-96.webp 96w, ../assets/img/ico-dens.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Densitometria</a><a href="eletrocardiograma.html"><img src="../assets/img/ico-ecg.webp" srcset="../assets/img/ico-ecg-96.webp 96w, ../assets/img/ico-ecg.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Eletro</a><a href="ecocardiograma.html"><img src="../assets/img/ico-eco.webp" srcset="../assets/img/ico-eco-96.webp 96w, ../assets/img/ico-eco.webp 300w" sizes="48px" width="48" height="48" alt="" loading="lazy">Ecocardiograma</a></div></div>
   </aside>
+</div>
 </main>
-<footer><div class="wrap">
-  <a class="logo" href="../index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva · <a href="../privacidade.html">Privacidade</a></span>
-</div></footer>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="../" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="../perto.html">Perto de mim</a></li>
+          <li><a href="../cidades/">Clínicas por cidade</a></li>
+          <li><a href="../exames/">Guias de exames</a></li>
+          <li><a href="../teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="../#agenda">Meus pedidos</a></li>
+          <li><a href="../conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="../sobre.html">Quem somos</a></li>
+          <li><a href="../como-funciona.html">Como funciona</a></li>
+          <li><a href="../documento.html">Conferir documento</a></li>
+          <li><a href="../termos.html">Termos de uso</a></li>
+          <li><a href="../privacidade.html">Privacidade</a></li>
+          <li><a href="../acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="../contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="../parceiros.html">Para clínicas</a></li>
+          <li><a href="../reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="../painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
 <script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('../sw.js',{scope:'../',updateViaCache:'none'}).catch(()=>{}));</script>
+<script src="../assets/js/config.js" defer></script>
+<script src="../assets/js/visitas.js" defer></script>
 </body>
 </html>

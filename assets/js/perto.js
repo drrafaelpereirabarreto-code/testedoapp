@@ -18,6 +18,9 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const params = new URLSearchParams(location.search);
+// Rolagem suave só para quem não pediu "reduzir movimento" no aparelho.
+const SMOOTH = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
 const desktop = matchMedia('(min-width: 900px)');
 const kmLabel = (m) => `${m / 1000} km`;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -180,6 +183,7 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
   if (ctrl.signal.aborted || seq !== S.seq) return;
   const r = fnRes.status === 'fulfilled' ? fnRes.value : null;
   const widePartners = wide && wideRes.status === 'fulfilled' && Array.isArray(wideRes.value) ? wideRes.value : null;
+  let rawRows = []; // linhas do cadastro oficial como vieram (com cidade e UF), para o contador de visitas
   if (r) {
     S.fnDown = false;
     S.provider = r.provider;
@@ -188,6 +192,7 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
     // Acima de 20 km sem a resposta do banco: ficam só os parceiros de até 20 km, e a pessoa é avisada.
     if (wide && !widePartners) S.imedState = 'error';
     const rows = Array.isArray(r.cnes) ? r.cnes : [];
+    rawRows = rows;
     S.base = rows.map((row) => G.normalizeCnes(row, origin));
     S.baseServed = rows.length;
     S.baseRadius = Number(r.radius_m) > 0 ? Number(r.radius_m) : Math.min(radius, FN_MAX_RADIUS);
@@ -209,6 +214,7 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
     S.imed = imedRes.status === 'fulfilled' ? imedRes.value.map((row) => G.normalizeImedRow(row, origin)) : [];
     S.imedState = imedRes.status === 'fulfilled' ? 'ok' : 'error';
     const rows = cnesRes.status === 'fulfilled' && Array.isArray(cnesRes.value) ? cnesRes.value : [];
+    rawRows = rows;
     S.base = rows.map((row) => G.normalizeCnes(row, origin));
     S.baseServed = rows.length;
     S.baseRadius = radius;
@@ -225,6 +231,7 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
   if (S.pendingOpen) includePending(origin);
   render(!refresh || !userMoved);
   syncArea(); // pontos da área inteira no mapa e, com filtro de tipo, exame ou SUS, a lista vinda do banco
+  trackSearch(rawRows);
   loadRatings(seq);
   loadSchedules(seq);
   if (S.pendingOpen && !refresh) openPending();
@@ -478,7 +485,7 @@ async function showMore() {
   const fresh = renderMore();
   // Quem usa teclado ou leitor de tela continua do primeiro local novo (ou no botão, se nenhum novo
   // passou nos filtros do navegador, como especialidade).
-  const first = fresh[0] ? $(`#list .pc[data-id="${CSS.escape(fresh[0])}"]`) : null;
+  const first = fresh[0] ? $(`#list .pc[data-id="${CSS.escape(fresh[0])}"] .pc-open`) : null;
   const more = $('#list .pt-pager [data-act="more"]');
   if (first) {
     first.focus({ preventScroll: true });
@@ -717,7 +724,7 @@ async function onSearchSubmit(e) {
     const o = { lat: G.roundCoord(g.lat), lng: G.roundCoord(g.lng) };
     if (g.precision === 'cidade' || g.precision === 'estado') setQMsg(`Mostrando a partir do centro de ${g.label}. Para resultados mais perto de você, use o CEP ou o endereço.`, false, true);
     runSearch(o, g.label, 'busca', g.precision);
-    if (!desktop.matches) $('#count').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!desktop.matches) $('#count').scrollIntoView({ behavior: SMOOTH, block: 'start' });
   } catch (err) {
     if (err.name === 'AbortError') return;
     if (err.code === 'not_found') setQMsg('Não encontramos esse endereço. Confira o CEP ou tente com cidade e bairro.', true);
@@ -806,7 +813,7 @@ function moveMap(fn) {
 
 function pinIcon(p) {
   const cls = `mk k-${p.kind}${p.source === 'imed' ? ' mk-imed' : ''}${p.id === S.selected ? ' on' : ''}`;
-  return L.divIcon({ className: 'mk-wrap', iconSize: [32, 42], iconAnchor: [16, 41], html: `<span class="${cls}">${PIN}<i class="fa-solid ${G.KINDS[p.kind].icon}"></i></span>` });
+  return L.divIcon({ className: 'mk-wrap', iconSize: [32, 42], iconAnchor: [16, 41], html: `<span class="${cls}">${PIN}<i class="fa-solid ${G.KINDS[p.kind].icon}" aria-hidden="true"></i></span>` });
 }
 
 function drawMarkers(list) {
@@ -1085,16 +1092,23 @@ function cardLabel(p) {
   }
   return `${parts.join(', ')}. Ver detalhes`;
 }
+// Resumo do cartão para o leitor de tela, sem o nome (o nome é o próprio botão): vira a descrição do botão.
+const cardSummary = (p) => cardLabel(p).slice(p.name.length + 2);
+const cardDomId = (p) => `pcd-${String(p.id).replace(/[^a-z0-9]/gi, '-')}`;
 
 function cardHTML(p) {
   const k = G.KINDS[p.kind];
   const svc = p.services.slice(0, 4).map((c) => `<span class="svc">${esc(G.EXAMS[c]?.n ?? c)}</span>`).join('')
     + (p.services.length > 4 ? `<span class="svc more">+${p.services.length - 4}</span>` : '');
-  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(cardLabel(p))}">
+  // O cartão inteiro abre a ficha com o mouse (clique em #list); pelo teclado e leitor de tela, é o botão do
+  // título (um botão de verdade, sem links dentro dele). Telefone e WhatsApp continuam links separados.
+  const did = cardDomId(p);
+  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}">
     <span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span>
     <div class="pc-main">
       <div class="pc-badges">${badgesHTML(p)}</div>
-      <h3>${esc(p.name)}</h3>
+      <h3><button class="pc-open" type="button" data-id="${esc(p.id)}" aria-describedby="${did}">${esc(p.name)}</button></h3>
+      <span id="${did}" hidden>${esc(cardSummary(p))}</span>
       <p class="pc-addr">${esc(p.address || 'Endereço não informado no mapa')}</p>
       ${svc ? `<div class="pc-svc">${svc}</div>` : ''}
       <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${distanceText(p)}</span><span>${k.n}</span>${ratingHTML(p)}${priceHTML(p)}${p.source === 'cnes' && p.hours ? `<span>${esc(p.hours[0])}</span>` : ''}</div>
@@ -1255,6 +1269,15 @@ function renderFilters(all) {
   }
   $('#fImed').setAttribute('aria-pressed', String(S.f.onlyImed));
   $('#fSus').setAttribute('aria-pressed', String(S.f.sus));
+  // Sem parceiro na área, "Parceiros verificados" sempre daria vazio; sem preço informado por algum parceiro,
+  // o filtro de preço e "Menor preço" também. Ficam escondidos (como Convênio e Melhor avaliados), a não ser
+  // que estejam em uso: assim dá para desligar.
+  const partner = all.some((p) => p.source === 'imed');
+  const priced = all.some((p) => p.source === 'imed' && G.minPrice(p) != null);
+  $('#fImed').classList.toggle('hide', !partner && !S.f.onlyImed);
+  $('#fPriceWrap').classList.toggle('hide', !priced && !S.f.price);
+  const byPrice = $('#fSort option[value="price"]');
+  byPrice.hidden = byPrice.disabled = !priced && S.f.sort !== 'price';
   // Convênios: só os informados pelos parceiros encontrados.
   const ins = G.insuranceOptions(all);
   if (S.f.insurance && !ins.includes(S.f.insurance)) ins.unshift(S.f.insurance);
@@ -1278,12 +1301,16 @@ function setHTML(el, html) {
 
 // Troca o conteúdo da lista sem tirar o lugar de quem usa teclado: o foco volta para o mesmo cartão ou
 // botão (ou para a própria lista, se ele não existir mais).
-function setListHTML(list, html) {
+// keepSame: não redesenha se a lista já mostra exatamente isso. A explicação inicial já vem pronta no
+// perto.html (aparece na primeira pintura); redesenhar a mesma coisa só atrasaria a medida de velocidade.
+const sameHTML = (el, html) => { const t = document.createElement('template'); t.innerHTML = html; return t.innerHTML === el.innerHTML; };
+function setListHTML(list, html, keepSame = false) {
+  if (keepSame && sameHTML(list, html)) return;
   const a = document.activeElement;
   let sel = null;
   if (a && a !== list && list.contains(a)) {
     const card = a.closest('.pc[data-id]');
-    sel = card ? `.pc[data-id="${CSS.escape(card.dataset.id)}"]` : a.dataset.act ? `[data-act="${CSS.escape(a.dataset.act)}"]` : '';
+    sel = card ? `.pc[data-id="${CSS.escape(card.dataset.id)}"] .pc-open` : a.dataset.act ? `[data-act="${CSS.escape(a.dataset.act)}"]` : '';
   }
   list.innerHTML = html;
   if (sel !== null) ((sel && $(sel, list)) || list).focus({ preventScroll: true });
@@ -1301,7 +1328,7 @@ function render(fit = false) {
   let shown = [];
   let total = null;
 
-  if (S.phase === 'intro') setListHTML(list, introHTML());
+  if (S.phase === 'intro') setListHTML(list, introHTML(), true);
   else if (S.phase === 'locating') {
     setListHTML(list, stateHTML('fa-location-crosshairs', 'Aguardando sua permissão…',
       'Se o navegador perguntar, toque em <b>Permitir</b>. A localização é usada só para esta busca.',
@@ -1337,6 +1364,7 @@ function render(fit = false) {
   listView = { shown, total };
   setHTML($('#count'), countHTML(shown, total));
   $('#legend').hidden = !(results && (all.length || S.pts.rows.length) && !allFailed());
+  $('#legDemo').hidden = !S.demo; // "Clínica fictícia" só no modo de teste (?demo=1)
   setHTML($('#priceBand'), priceBandHTML(all));
   drawMap(shown);
   if (fit) fitMap();
@@ -1366,7 +1394,7 @@ function closeSheet() {
   document.body.style.overflow = document.body.classList.contains('show-map') ? 'hidden' : '';
   // Se a lista foi refeita enquanto o painel estava aberto, o foco volta para o mesmo cartão.
   const back = lastFocus?.isConnected ? lastFocus
-    : lastFocus?.dataset?.id ? $(`#list .pc[data-id="${CSS.escape(lastFocus.dataset.id)}"]`) : null;
+    : lastFocus?.dataset?.id ? $(`#list .pc[data-id="${CSS.escape(lastFocus.dataset.id)}"] .pc-open`) : null;
   back?.focus?.({ preventScroll: true });
 }
 
@@ -1430,7 +1458,7 @@ async function loadReviews(p) {
       const who = String(v.author_name ?? '').trim().split(/\s+/)[0];
       return `<li><div class="rv-top"><span class="rv-stars" role="img" aria-label="Nota ${n} de 5">${STARS(n)}</span><span class="rv-who">${esc(who || 'Paciente')}${when ? ` · ${esc(when)}` : ''}</span></div>${v.comment ? `<p>${esc(v.comment)}</p>` : ''}</li>`;
     }).join('')}</ul>
-    <p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED.</p>`;
+    <p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED e tiveram o atendimento concluído. <a class="link" href="como-funciona.html#avaliacoes">Como funcionam</a></p>`;
   el.hidden = false;
 }
 
@@ -1476,7 +1504,7 @@ function openDetails(id) {
       ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios, sem preço e sem horário. Serve para testar o fluxo de ponta a ponta.</p>'
       : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado do IMED: preços, exames e agenda são informados e confirmados pela própria clínica.</p>')
     : p.source === 'cnes'
-      ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele.</p>`
+      ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele. ${G.TRUST.cnes}</p>`
       : `<p class="note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Dados do ${p.source === 'osm' ? 'OpenStreetMap, mantidos por voluntários' : 'Google Maps'}. Este estabelecimento ainda não é parceiro do IMED: confirme preços e horários diretamente com ele.</p>`;
 
   openSheet(head(esc(p.name)) + `<div class="sh-body">
@@ -1494,6 +1522,7 @@ function openDetails(id) {
     <div class="dt-sec"><h4><i class="fa-solid fa-address-book" aria-hidden="true"></i>Contato</h4>${contactHTML(p)}</div>
     <div class="dt-sec" id="dtReviews" data-id="${esc(p.id)}" hidden></div>
     ${note}${claim}
+    ${G.sosHTML()}
   </div>${cta || waBtn ? `<div class="sh-foot">${cta}${waBtn}</div>` : ''}`);
   loadReviews(p);
 }
@@ -1527,6 +1556,7 @@ function openBooking(id) {
   openSheet(head(imed ? 'Solicitar agendamento' : 'Pedir ao IMED para agendar') + `<form class="sh-body" id="bookForm" novalidate>
     <div class="bk-place"><span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span><div style="min-width:0"><b>${esc(p.name)}</b><small>${esc(p.address || k.n)}</small></div></div>
     <p class="src" style="margin-top:10px">${how}</p>
+    ${G.sosHTML(G.TRUST.sosPedido)}
     <div class="fld" data-f="exam"><label for="bkExam">Exame ou atendimento</label>
       <select id="bkExam" name="exame" required><option value="">Escolha</option>${examOpts}</select><span class="err" id="e-exam"></span></div>
     <div class="fld" data-f="date"><label for="bkDate">Data que prefere <small class="h">(até ${G.BOOKING_DAYS} dias)</small></label>
@@ -1534,7 +1564,8 @@ function openBooking(id) {
     <fieldset class="fld" data-f="period"><legend>Período</legend>
       <div class="seg">${Object.entries(G.PERIODS).map(([v, l]) => `<label><input type="radio" name="periodo" value="${v}"${v === 'qualquer' ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
       <span class="err" id="e-period"></span></fieldset>
-    <div class="fld" data-f="name"><label for="bkName">Nome completo</label>
+    ${G.forWhomHTML()}
+    <div class="fld" data-f="name"><label for="bkName">Seu nome completo</label>
       <input id="bkName" name="nome" autocomplete="name" maxlength="120" required><span class="err" id="e-name"></span></div>
     <div class="row2">
       <div class="fld" data-f="phone"><label for="bkPhone">Celular com DDD</label>
@@ -1549,6 +1580,8 @@ function openBooking(id) {
     <span class="err" id="e-consent" style="display:block;color:var(--coral-d);font-size:13px;font-weight:600;margin-top:6px"></span>
     <p class="bk-err" id="bkErr" role="alert"></p>
     ${p.is_demo ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração: o pedido fica registrado só como teste.</p>' : ''}
+    ${imed ? '' : G.susHTML()}
+    ${G.trustHTML()}
     <div class="sh-foot" style="margin:18px -20px -24px"><button class="btn btn-coral" type="submit" id="bkBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar pedido</button>
       <p class="src" style="text-align:center;margin:0">O horário só fica garantido depois da confirmação.</p></div>
   </form>`);
@@ -1566,21 +1599,34 @@ function openBooking(id) {
   };
   form.addEventListener('input', clearError);
   form.addEventListener('change', clearError);
+  // "O exame é para": campos de outra pessoa e, para menor de 18 anos, a autorização do responsável.
+  form.addEventListener('change', (e) => {
+    if (e.target.name !== 'para' && e.target.name !== 'menor') return;
+    G.forWhomToggle(form);
+    if (e.target.name === 'para' && e.target.value === 'outra') $('#bkOtherName', form)?.focus();
+  });
   form.addEventListener('submit', (e) => submitBooking(e, p));
 }
 
 function showErrors(form, errs) {
-  for (const f of ['exam', 'date', 'period', 'name', 'phone', 'email', 'notes', 'consent']) {
+  for (const f of ['exam', 'date', 'period', 'otherName', 'relationship', 'guardian', 'otherConsent', 'name', 'phone', 'email', 'notes', 'consent']) {
     const box = $(`[data-f="${f}"]`, form);
     box?.classList.toggle('bad', !!errs[f]);
     const msg = $(`#e-${f}`, form);
     if (msg) msg.textContent = errs[f] ?? '';
+    // Leitor de tela: o campo diz que está com erro e lê a mensagem junto (aria-describedby).
+    for (const el of box ? box.querySelectorAll('input:not([type=hidden]),select,textarea') : []) {
+      if (errs[f]) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+      const ids = new Set((el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+      if (msg?.id) ids.add(msg.id);
+      if (ids.size) el.setAttribute('aria-describedby', [...ids].join(' '));
+    }
   }
   const first = Object.keys(errs)[0];
   if (first) {
     const box = $(`[data-f="${first}"]`, form);
     $('input,select,textarea', box)?.focus();
-    box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box?.scrollIntoView({ block: 'center', behavior: SMOOTH });
   }
 }
 
@@ -1591,6 +1637,7 @@ async function submitBooking(e, p) {
   const v = {
     exam: fd.get('exame') || '', date: fd.get('data') || '', period: fd.get('periodo') || '', name: fd.get('nome') || '',
     phone: fd.get('celular') || '', email: fd.get('email') || '', notes: fd.get('obs') || '', consent: fd.get('consent') === 'on',
+    ...G.forWhomValues(fd),
   };
   const errs = G.validateBooking(v);
   showErrors(form, errs);
@@ -1666,7 +1713,7 @@ function bookingDone(p, v, id, logged) {
   openSheet(head('Pedido enviado') + `<div class="sh-body ok">
     <div class="ic"><i class="fa-solid fa-check" aria-hidden="true"></i></div>
     <h3>Recebemos seu pedido!</h3>
-    <p><b>${esc(p.name)}</b><br>${esc(examLabel(v.exam))} · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}</p>
+    <p><b>${esc(p.name)}</b><br>${esc(examLabel(v.exam))} · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}${v.forOther ? `<br>Para ${esc(String(v.otherName).trim().replace(/\s+/g, ' '))} (${esc(v.relationship)})` : ''}</p>
     <span class="code">${G.protocolFromId(id)}</span>
     <ol>
       <li>${imed ? 'A clínica recebe o pedido pelo IMED.' : 'A equipe do IMED fala com o estabelecimento.'}</li>
@@ -1674,6 +1721,7 @@ function bookingDone(p, v, id, logged) {
       <li>No dia, leve documento com foto e o pedido médico.</li>
     </ol>
     <p class="note" style="text-align:left"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>O horário só fica garantido depois da confirmação.${p.is_demo ? ' Clínica de demonstração: pedido registrado só como teste.' : ''}</p>
+    <div class="trust">${G.gratisHTML()}</div>
     <div class="ok-acts">
       <button class="btn btn-primary" type="button" data-ics><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>
       ${guide ? `<a class="btn btn-ghost" href="exames/${guide}.html#preparo"><i class="fa-solid fa-book-medical" aria-hidden="true"></i>Como se preparar</a>` : ''}
@@ -1718,10 +1766,6 @@ function bind() {
     if (card) openDetails(card.dataset.id);
   });
   $('#banners').addEventListener('click', (e) => { const act = e.target.closest('[data-act]'); if (act) onAction(act); });
-  $('#list').addEventListener('keydown', (e) => {
-    const card = e.target.closest?.('.pc[data-id]');
-    if (card && e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDetails(card.dataset.id); }
-  });
   $('#list').addEventListener('mouseover', (e) => setHot(e.target.closest('.pc[data-id]')?.dataset.id ?? null));
   $('#list').addEventListener('mouseleave', () => setHot(null));
 
@@ -1737,7 +1781,12 @@ function bind() {
     if (!ov.classList.contains('open')) return;
     if (e.key === 'Escape') return closeSheet();
     if (e.key === 'Tab') {
-      const f = $$('a[href],button:not([disabled]),input:not([type=hidden]):not(.hp),select,textarea', $('#sheet')).filter((x) => x.offsetParent !== null);
+      // O que recebe o Tab na janela: de um grupo de opções (rádio), só a marcada ou a primeira.
+      const all = $$('a[href],button:not([disabled]),input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]', $('#sheet'))
+        .filter((x) => x.tabIndex >= 0 && x.offsetParent !== null);
+      const f = all.filter((x) => x.type !== 'radio' || !x.name || x === (all.filter((y) => y.type === 'radio' && y.name === x.name).find((y) => y.checked) ?? all.find((y) => y.type === 'radio' && y.name === x.name)));
+      // Foco fora da janela (por exemplo, depois de um clique no fundo): o Tab volta para dentro dela.
+      if (!$('#sheet').contains(document.activeElement)) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0])?.focus(); return; }
       if (!f.length) return;
       const first = f[0], last = f[f.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -1755,15 +1804,26 @@ function changeFilters(fn, fit = false) {
   fn();
   render(fit);
   if (S.phase !== 'results') return;
-  if (areaKey() !== before) scheduleArea();
+  if (areaKey() !== before) { scheduleArea(); trackSearch(); }
   else if (partners && !G.onlyPartnerFilter(S.f) && S.areaAsked !== areaKey()) syncArea();
+}
+
+// Contador de visitas próprio (assets/js/visitas.js): conta o exame, o tipo de local e a cidade da busca, cada um
+// separado e sem nada da pessoa (nem a posição). Cada um conta uma vez por página aberta.
+function trackSearch(rows = []) {
+  const track = window.IMED_TRACK;
+  if (typeof track !== 'function' || S.phase !== 'results') return;
+  if (S.f.exam) track('busca_exame', S.f.exam);
+  if (S.f.kind) track('busca_tipo', S.f.kind);
+  const city = G.searchCity(S.coverage, rows);
+  if (city) track('busca_cidade', city);
 }
 const clearFilters = () => changeFilters(() => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; });
 
 function onAction(el) {
   const a = el.dataset.act;
   if (a === 'locate') locate();
-  else if (a === 'type') { $('#q').focus(); $('#q').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+  else if (a === 'type') { $('#q').focus(); $('#q').scrollIntoView({ behavior: SMOOTH, block: 'center' }); }
   else if (a === 'retry') retrySearch();
   else if (a === 'retry-places') retryPlaces();
   else if (a === 'more') showMore();
