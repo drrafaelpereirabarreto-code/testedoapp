@@ -10,7 +10,7 @@ const BACK_KEY = 'imed_conta_voltar';
 // Funções da busca (geo-core.js). Se alguma não existir (versão antiga), usa a versão mínima daqui.
 let G = {};
 try { G = await import('./geo-core.js'); } catch { G = {}; }
-const STATUS_PT = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído' };
+const STATUS_PT = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', confirmado: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído' };
 const F = {
   EXAMS: { rx: { n: 'Raio-X' }, usg: { n: 'Ultrassom' }, tc: { n: 'Tomografia' }, rm: { n: 'Ressonância' }, mamo: { n: 'Mamografia' }, dens: { n: 'Densitometria' }, ecg: { n: 'Eletrocardiograma' }, eco: { n: 'Ecocardiograma' }, lab: { n: 'Exames de laboratório' } },
   PERIODS: { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite', qualquer: 'Qualquer horário' },
@@ -40,6 +40,15 @@ const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? ''));
 const examName = (code) => g('EXAMS')[code]?.n ?? (code === 'consulta' ? 'Consulta' : code === 'outro' ? 'Outro atendimento' : null);
 const periodName = (p) => g('PERIODS')[p] ?? null;
+// Horário marcado (reserva com agenda), sempre no fuso de São Paulo.
+const SP_SLOT = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function slotLong(iso) {
+  const d = new Date(iso ?? '');
+  if (!iso || Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(SP_SLOT.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.weekday}, ${p.day} de ${p.month} de ${p.year} às ${p.hour === '24' ? '00' : p.hour}:${p.minute}`;
+}
+const slotFuture = (iso) => { const t = new Date(iso ?? '').getTime(); return Number.isFinite(t) && t > Date.now(); };
 function dateLong(iso) {
   if (!isDate(iso)) return null;
   const [y, m, d] = iso.split('-').map(Number);
@@ -89,7 +98,7 @@ async function loadOrders() {
   // é membro (e todos, para admin), que não podem aparecer aqui como se fossem dela.
   const uid = A.user()?.id;
   if (state.logged && uid) {
-    jobs.push(A.select(`appointment_requests?select=id,user_id,created_at,place_name,place_source,place_ref,clinic_id,exam_code,preferred_date,preferred_period,status&user_id=eq.${encodeURIComponent(uid)}&order=created_at.desc&limit=50`)
+    jobs.push(A.select(`appointment_requests?select=id,user_id,created_at,place_name,place_source,place_ref,clinic_id,exam_code,preferred_date,preferred_period,slot_start,status&user_id=eq.${encodeURIComponent(uid)}&order=created_at.desc&limit=50`)
       .then((rows) => { account = Array.isArray(rows) ? rows.filter((r) => r.user_id === uid) : []; })
       .catch((err) => { state.accountError = true; if (err.status === 401) state.expired = true; }));
   }
@@ -102,6 +111,7 @@ async function loadOrders() {
     const o = {
       id: isUuid(a.id) ? a.id : null, token: a.token || '', code: a.code || (isUuid(a.id) ? g('protocolFromId')(a.id) : null),
       place: a.name, exam: a.exam || null, items: Array.isArray(a.items) ? a.items : [], date: a.date, period: a.period,
+      slot: a.slot || null, deviceStatus: a.status || null,
       created: a.created || null, status: l ? l.status : null, reviewed: l ? !!l.reviewed : null,
       fromDevice: true, hasToken: !!(isUuid(a.id) && a.token), fromAccount: false,
     };
@@ -114,11 +124,12 @@ async function loadOrders() {
       o.fromAccount = true;
       o.status = r.status || o.status;
       o.exam = o.exam || r.exam_code;
+      o.slot = o.slot || r.slot_start || null;
       continue;
     }
     const n = {
       id: r.id, token: '', code: g('protocolFromId')(r.id), place: r.place_name, exam: r.exam_code, items: [],
-      date: r.preferred_date, period: r.preferred_period, created: r.created_at, status: r.status, reviewed: null,
+      date: r.preferred_date, period: r.preferred_period, slot: r.slot_start || null, created: r.created_at, status: r.status, reviewed: null,
       fromDevice: false, hasToken: false, fromAccount: true,
     };
     out.push(n);
@@ -130,6 +141,8 @@ async function loadOrders() {
 
 function statusHtml(o) {
   if (o.status) return `<span class="ct-st st-${esc(o.status)}">${esc(g('statusLabel')(o.status) || o.status)}</span>`;
+  // Reserva com horário: o banco já gravou como confirmada. Sem a situação ao vivo, mostra o que o aparelho guardou.
+  if (o.slot && o.deviceStatus === 'confirmado') return '<span class="ct-st st-confirmed">Confirmado</span>';
   if (o.hasToken && state.liveError) return '<span class="ct-st st-unknown">Situação indisponível agora</span>';
   if (!o.id || !o.hasToken) return '<span class="ct-st st-unknown">Situação: confirme com o local</span>';
   return '<span class="ct-st st-unknown">Situação indisponível</span>';
@@ -139,10 +152,12 @@ const canReview = (o) => o.id && o.status === 'completed' && o.reviewed !== true
 
 function orderHtml(o, i) {
   const exam = examName(o.exam) || o.items.filter(Boolean).join(', ') || null;
-  const when = dateLong(o.date);
-  const per = periodName(o.period);
+  const slot = slotLong(o.slot);
+  const when = slot ? null : dateLong(o.date);
+  const per = slot ? null : periodName(o.period);
   const rows = [
     exam ? `<div><dt>Exame</dt><dd>${esc(exam)}</dd></div>` : '',
+    slot ? `<div><dt>Horário marcado</dt><dd>${esc(slot)}</dd></div>` : '',
     when ? `<div><dt>Data preferida</dt><dd>${esc(when)}</dd></div>` : '',
     per ? `<div><dt>Período</dt><dd>${esc(per)}</dd></div>` : '',
     o.code ? `<div><dt>Protocolo</dt><dd class="ct-code">${esc(o.code)}</dd></div>` : '',
@@ -157,7 +172,7 @@ function orderHtml(o, i) {
     <dl class="ct-dl">${rows}</dl>
     <p class="ct-where">${where}</p>
     <div class="ct-actions">
-      ${isDate(o.date) ? `<button type="button" class="btn btn-ghost btn-sm" data-ics="${i}"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : ''}
+      ${(o.slot ? slotFuture(o.slot) && o.status !== 'cancelled' : isDate(o.date)) ? `<button type="button" class="btn btn-ghost btn-sm" data-ics="${i}"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : ''}
       ${canReview(o) ? `<button type="button" class="btn btn-coral btn-sm" data-review="${rid}" aria-expanded="false" aria-controls="rv-${rid}"><i class="fa-solid fa-star" aria-hidden="true"></i>Avaliar</button>` : ''}
       ${o.id && o.reviewed === true ? '<span class="ct-done"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Você já avaliou</span>' : ''}
     </div>
@@ -209,12 +224,12 @@ function downloadIcs(o) {
   const description = [
     `Pedido ${o.code || ''} · ${o.place}`,
     prep ? `Preparo: ${prep}` : '',
-    'O horário só fica garantido depois da confirmação do local.',
+    o.slot ? 'Horário confirmado. Chegue com 15 minutos de antecedência.' : 'O horário só fica garantido depois da confirmação do local.',
     guide ? `Guia do exame: ${SITE}exames/${guide}.html#preparo` : '',
     o.id ? `Acompanhe: ${SITE}conta.html#pedido-${o.id}` : `IMED: ${SITE}`,
   ].filter(Boolean).join('\n');
   let ics;
-  try { ics = g('icsFile')({ id: o.id || o.code, title, date: o.date, period: o.period, description, url: o.id ? `${SITE}conta.html#pedido-${o.id}` : SITE }); }
+  try { ics = g('icsFile')({ id: o.id || o.code, title, date: o.date, period: o.period, slot: o.slot || null, description, url: o.id ? `${SITE}conta.html#pedido-${o.id}` : SITE }); }
   catch { toast('Não foi possível criar o lembrete deste pedido.'); return; }
   const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
   const a = document.createElement('a');

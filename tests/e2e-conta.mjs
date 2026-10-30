@@ -70,10 +70,10 @@ const ESTAB = Array.from({ length: 130 }, (_, i) => ({
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
 const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' } });
 
-async function newPage(browser, { mobile = false, seed = DEVICE } = {}) {
+async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'America/Sao_Paulo' } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 860 },
-    deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
+    deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId,
     serviceWorkers: 'block', acceptDownloads: true,
   });
   await context.addInitScript((list) => {
@@ -208,6 +208,26 @@ await scenario('adicionar à agenda baixa um .ics com data, período, preparo e 
   await context.close();
 });
 
+await scenario('reserva com horário: mostra o horário marcado em São Paulo, "Confirmado" e .ics com a hora exata', async () => {
+  const SLOT_ID = '88888888-8888-4888-8888-888888888888';
+  const seed = [{ type: 'pedido', code: 'IMED-88888888', id: SLOT_ID, token: 'd'.repeat(64), place_key: 'imed:x', name: 'Imagem Paulista', exam: 'rm', items: ['Ressonância'], date: '2026-11-05', period: 'manha', slot: '2026-11-05T12:30:00.000Z', status: 'confirmado', created: '2026-10-30T10:00:00Z' }];
+  // Aparelho no fuso de Tóquio: o horário mostrado precisa continuar sendo o de São Paulo (09:30).
+  const { page, errors, context } = await newPage(browser, { seed, timezoneId: 'Asia/Tokyo' });
+  await page.goto(`${BASE}conta.html`);
+  await page.waitForSelector(`#pedido-${SLOT_ID}`);
+  const card = await page.textContent(`#pedido-${SLOT_ID}`);
+  assert.match(card, /Horário marcado/);
+  assert.match(card, /5 de novembro de 2026 às 09:30/);
+  assert.match(card, /Confirmado/, 'sem a situação ao vivo, mostra o que o aparelho guardou');
+  assert.ok(!/Data preferida|Período/.test(card), 'com horário marcado não mostra data preferida nem período');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`#pedido-${SLOT_ID} [data-ics]`)]);
+  const ics = (await readFile(await dl.path(), 'utf8')).replace(/\r\n /g, '');
+  assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261105T093000/);
+  assert.match(ics, /Horário confirmado\. Chegue com 15 minutos de antecedência\./);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('login pelo link (#access_token): pedidos da conta + aparelho, sem duplicar, e sair', async () => {
   const { page, log, errors, context } = await newPage(browser);
   await page.goto(login);
@@ -220,7 +240,7 @@ await scenario('login pelo link (#access_token): pedidos da conta + aparelho, se
   assert.equal(log.select.length, 1);
   assert.equal(log.select[0].auth, 'Bearer tok-ana');
   const selUrl = new URL(log.select[0].url);
-  assert.equal(selUrl.searchParams.get('select'), 'id,user_id,created_at,place_name,place_source,place_ref,clinic_id,exam_code,preferred_date,preferred_period,status');
+  assert.equal(selUrl.searchParams.get('select'), 'id,user_id,created_at,place_name,place_source,place_ref,clinic_id,exam_code,preferred_date,preferred_period,slot_start,status');
   assert.equal(selUrl.searchParams.get('user_id'), `eq.${USER.id}`, 'filtra pela conta');
   assert.equal(selUrl.searchParams.get('order'), 'created_at.desc');
   assert.equal(selUrl.searchParams.get('limit'), '50');
