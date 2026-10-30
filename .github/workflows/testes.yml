@@ -142,13 +142,16 @@ jobs:
               falharam+=("$nome")
               echo "::error title=Teste falhou::$nome: $resultado"
               # Os cenários que falharam aparecem também no topo da página da execução, cada um com até
-              # 6 linhas do erro logo abaixo (a mensagem e onde aconteceu): dá para ver a causa sem abrir o registro.
+              # 14 linhas do erro logo abaixo (a mensagem, a diferença entre o esperado e o que veio, e onde
+              # aconteceu): dá para ver a causa sem abrir o registro. Linhas em branco no meio do erro são puladas
+              # (a diferença do assert vem depois de uma); o aviso termina no próximo cenário ("ok - ...") ou no total.
               # "%0A" é a quebra de linha dentro do aviso; "%" vira "%25" para não ser lido como código.
               awk '
                 function limpa(s) { gsub(/\r/, "", s); gsub(/%/, "%25", s); return s }
                 /^[[:space:]]*(FALHOU|✖)/ && !/failing tests:/ { if (m != "") print m; m = limpa($0); n = 0; next }
-                /^(ok|not ok) / { if (m != "") print m; m = ""; next }
-                m != "" && n < 6 && NF { m = m "%0A" limpa($0); n++; next }
+                /^(ok|not ok) |^[0-9]+\/[0-9]+ / { if (m != "") print m; m = ""; next }
+                m != "" && !NF { next }
+                m != "" && n < 14 { m = m "%0A" limpa($0); n++; next }
                 m != "" { print m; m = "" }
                 END { if (m != "") print m }
               ' "$saida" | awk '!visto[$0]++' | head -n 10 | while IFS= read -r linha; do
