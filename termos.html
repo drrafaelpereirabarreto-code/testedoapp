@@ -6,6 +6,17 @@
 <title>Termos de uso | IMED</title>
 <meta name="description" content="Regras de uso do IMED para pacientes e clínicas: busca, pedidos de agendamento, avaliações e responsabilidades.">
 <meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/termos.html">
+<meta property="og:title" content="Termos de uso | IMED">
+<meta property="og:description" content="Regras de uso do IMED para pacientes e clínicas: busca, pedidos de agendamento, avaliações e responsabilidades.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="IMED">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/termos.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,46 +25,34 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
 <link rel="stylesheet" href="assets/css/guia.css">
-<style>
-.pv{max-width:820px;margin:0 auto;padding:48px 20px 72px}
-.pv h1{font-size:clamp(32px,4vw,46px);letter-spacing:-.035em}
-.pv .upd{color:var(--muted);margin-top:8px}
-.pv .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0 8px}
-.pv .sum div{padding:16px;border-radius:18px;background:var(--bg2);line-height:1.5;font-size:14.5px}
-.pv .sum i{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);margin-bottom:10px}
-.pv h2{font-size:22px;margin:34px 0 12px;letter-spacing:-.02em}
-.pv p,.pv li{line-height:1.7;font-size:16px}
-.pv ul{padding-left:22px;display:grid;gap:8px;margin-top:8px}
-.pv table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14.5px}
-.pv th,.pv td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line);line-height:1.5}
-.pv th{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
-.pv a{color:var(--primary);font-weight:600}
-@media (max-width:640px){.pv .sum{grid-template-columns:1fr}.pv table,.pv thead,.pv tbody,.pv tr,.pv th,.pv td{display:block}.pv thead{display:none}.pv td{border:0;padding:4px 0}.pv tr{padding:12px 0;border-bottom:1px solid var(--line)}}
-</style>
+<link rel="stylesheet" href="assets/css/texto.css">
+<link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 <header class="g-top"><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <nav><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="reivindicar.html">Para clínicas</a></nav>
-  <a class="btn btn-coral" href="index.html">Voltar ao site</a>
+  <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+  <nav aria-label="Seções"><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="parceiros.html">Para clínicas</a></nav>
+  <a class="btn btn-coral" href="./">Voltar ao site</a>
 </div></header>
 
-<main class="pv">
+<main class="pv" id="main" tabindex="-1">
   <h1>Termos de uso</h1>
   <p class="upd">Última atualização: 30 de outubro de 2026</p>
 
   <div class="sum">
-    <div><i class="fa-solid fa-magnifying-glass-location"></i>O IMED mostra estabelecimentos de saúde e encaminha pedidos de agendamento. O atendimento é feito pelas clínicas.</div>
-    <div><i class="fa-solid fa-calendar-check"></i>Um pedido só vale como agendamento quando aparece como <b>Confirmado</b>.</div>
-    <div><i class="fa-solid fa-truck-medical"></i>Em emergência, ligue <b>192</b> (SAMU). O IMED não é serviço de urgência.</div>
+    <div><i class="fa-solid fa-magnifying-glass-location" aria-hidden="true"></i>O IMED mostra estabelecimentos de saúde e encaminha pedidos de agendamento. O atendimento é feito pelas clínicas.</div>
+    <div><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Um pedido só vale como agendamento quando aparece como <b>Confirmado</b>. Cancelar pelo IMED é grátis.</div>
+    <div><i class="fa-solid fa-truck-medical" aria-hidden="true"></i>Em emergência, ligue <b><a href="tel:192">192</a></b> (SAMU). O IMED não é serviço de urgência.</div>
   </div>
 
   <h2>1. O que é o IMED</h2>
-  <p>O IMED é uma plataforma on-line que ajuda pacientes a encontrar clínicas, laboratórios, centros de diagnóstico e hospitais e a pedir agendamentos. O IMED não presta serviços médicos, não faz diagnósticos e não substitui a avaliação de um profissional de saúde. O responsável técnico médico é o Dr. Rafael Pereira Barreto Silva, CRM-SP 266930.</p>
+  <p>O IMED é uma plataforma on-line que ajuda pacientes a encontrar clínicas, laboratórios, centros de diagnóstico e hospitais e a pedir agendamentos. O IMED não presta serviços médicos, não faz diagnósticos e não substitui a avaliação de um profissional de saúde. O médico responsável pelo IMED é o Dr. Rafael Pereira Barreto Silva, CRM-SP 266930. O IMED é um serviço privado, sem vínculo com o governo ou o SUS, e é gratuito para o paciente. A <a href="teleconsulta.html">teleconsulta</a> tem regras próprias, no <a href="termo-teleconsulta.html">termo da teleconsulta</a>.</p>
 
   <h2>2. Informações mostradas</h2>
   <ul>
     <li>Os dados de estabelecimentos marcados como <b>Cadastro oficial</b> vêm do CNES, do Ministério da Saúde, e podem estar desatualizados. Confirme com o local antes de ir.</li>
+    <li>A lista de resultados é ordenada por distância. Ninguém paga para aparecer primeiro. Veja <a href="como-funciona.html">Como funciona</a>.</li>
     <li>Preços, convênios, exames e horários de <b>Parceiros verificados</b> são informados pelas próprias clínicas, que respondem por eles.</li>
     <li>Turno de atendimento do CNES não é horário exato. Distâncias são aproximadas.</li>
   </ul>
@@ -62,40 +61,94 @@
   <ul>
     <li>Ao pedir um agendamento, você autoriza o IMED a enviar seus dados de contato e o exame desejado ao local escolhido, só para combinar o atendimento.</li>
     <li>Em clínicas parceiras com agenda on-line, o horário escolhido é reservado e o pedido aparece como <b>Confirmado</b>. Nos demais casos, a clínica ou a equipe do IMED entra em contato para combinar, e o pedido só vale depois de confirmado.</li>
-    <li>Se não puder ir, avise o local ou cancele pelo contato que recebeu. Faltas sem aviso prejudicam outros pacientes.</li>
-    <li>Pagamento, preparo e regras de atendimento seguem as condições do local.</li>
+    <li>Se não puder ir, cancele o pedido (veja a seção 4). Faltas sem aviso prejudicam outros pacientes.</li>
+    <li>Pagamento, preparo e regras de atendimento seguem as condições do local. O pagamento, quando houver, é feito direto no local: o IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp.</li>
   </ul>
 
-  <h2>4. Conta e avaliações</h2>
+  <h2 id="cancelamento">4. Cancelamento e remarcação</h2>
+  <ul>
+    <li><b>Cancelar pelo IMED é grátis.</b> A cobrança por falta, quando houver, segue as regras de cada clínica.</li>
+    <li>Você cancela pelo próprio site, em <a href="./#agenda">Meus pedidos</a> (no aparelho em que fez o pedido) ou em <a href="conta.html">Minha conta</a> (pedidos feitos com a conta aberta), enquanto o pedido estiver aguardando contato, em contato ou confirmado e o horário marcado ainda não tiver passado.</li>
+    <li>Ao cancelar um horário marcado na agenda de uma clínica parceira, ele volta a ficar livre para outras pessoas. A clínica, ou a equipe do IMED nos locais que ainda não são parceiros, vê o cancelamento no painel.</li>
+    <li>Para remarcar, cancele e faça um novo pedido, ou combine direto com o local.</li>
+    <li>Se não conseguir cancelar pelo site, escreva pelo <a href="contato.html?assunto=cancelamento">Fale com o IMED</a>, com o protocolo do pedido.</li>
+  </ul>
+
+  <h2>5. Conta e avaliações</h2>
   <ul>
     <li>A conta é pessoal. Mantenha o acesso ao seu e-mail seguro.</li>
     <li>Avaliações devem ser verdadeiras e sobre o atendimento recebido. Não são aceitos ofensas, dados pessoais de terceiros, propaganda ou conteúdo falso. O IMED pode ocultar avaliações que não cumpram essas regras.</li>
   </ul>
 
-  <h2>5. Clínicas</h2>
+  <h2>6. Clínicas</h2>
   <ul>
-    <li>Quem pede para assumir o cadastro de um estabelecimento declara ser responsável por ele. O IMED confere os dados antes de liberar a área da clínica e pode recusar ou cancelar o acesso.</li>
+    <li>Quem pede para assumir o cadastro de um estabelecimento declara ser responsável por ele. Antes de liberar a área da clínica, a equipe do IMED confere se o CNES e o CNPJ estão ativos, liga para o telefone oficial do CNES para confirmar quem pediu e confere se o médico responsável pelo local tem CRM ativo. O IMED pode recusar ou cancelar o acesso.</li>
     <li>A clínica é responsável por manter corretos os preços, horários, convênios e exames que informa, por responder aos pedidos e pelo atendimento prestado.</li>
     <li>Os dados dos pacientes recebidos pelo IMED só podem ser usados para o atendimento do pedido, conforme a Lei Geral de Proteção de Dados (LGPD).</li>
   </ul>
 
-  <h2>6. Uso adequado</h2>
+  <h2>7. Uso adequado</h2>
   <p>Não é permitido usar o IMED para enviar pedidos falsos, copiar os dados em massa por meios automáticos, tentar acessar áreas restritas ou atrapalhar o funcionamento do site.</p>
 
-  <h2>7. Privacidade</h2>
+  <h2>8. Privacidade</h2>
   <p>O tratamento de dados pessoais segue a <a href="privacidade.html">política de privacidade</a>.</p>
 
-  <h2>8. Mudanças</h2>
+  <h2>9. Mudanças</h2>
   <p>Estes termos podem mudar. A versão nova será publicada nesta página com a data de atualização.</p>
 
-  <h2>9. Contato</h2>
-  <p><a href="mailto:contato@imed.com.br">contato@imed.com.br</a> · <a href="sobre.html">Quem somos</a></p>
+  <h2>10. Contato</h2>
+  <p>Pelo <a href="contato.html">Fale com o IMED</a>. Veja também <a href="sobre.html">Quem somos</a>.</p>
 </main>
 
-<footer><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span>
-</div></footer>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
 <script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));</script>
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/visitas.js" defer></script>
 </body>
 </html>

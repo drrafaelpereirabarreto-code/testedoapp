@@ -257,6 +257,37 @@ await scenario('localização permitida: parceiros IMED do banco + mapa, sem gua
   await context.close();
 });
 
+await scenario('confiança: emergência no topo, "Meus pedidos" no menu, legenda dos selos e rodapé na coluna da lista', async () => {
+  for (const mobile of [false, true]) {
+    const { page, errors, context } = await newPage(browser, { mobile });
+    await page.goto(`${BASE}perto.html`);
+    assert.match(await page.textContent('.pt-hero .pt-sos'), /Emergência\? Ligue 192 \(SAMU\)/);
+    assert.equal(await page.getAttribute('.pt-hero .pt-sos a', 'href'), 'tel:192');
+    assert.equal(await page.locator('.pt-nav a[href="./#agenda"]').textContent(), 'Meus pedidos');
+    assert.ok(!/Agendados/.test(await page.evaluate(() => document.body.innerText)));
+    const legend = await page.evaluate(() => document.querySelector('#legend').textContent);
+    assert.match(legend, /sem vínculo com o governo ou o SUS/);
+    assert.match(legend, /ninguém paga para aparecer primeiro/);
+    assert.match(legend, /O selo não avalia a qualidade do atendimento/);
+    assert.equal(await page.locator('#legend a[href="como-funciona.html"]').count(), 1);
+    assert.equal(await page.locator('.pt-side > footer.rodape').count(), 1, 'rodapé no fim da coluna da lista');
+    assert.match(await page.textContent('footer.rodape'), /Médico responsável: Dr\. Rafael Pereira Barreto Silva — CRM-SP 266930/);
+    await page.locator('footer.rodape').scrollIntoViewIfNeeded();
+    assert.ok(await page.locator('footer.rodape .rd-base').isVisible());
+    if (mobile) {
+      const o = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(o <= 0, `sem rolagem lateral (${o}px)`);
+      // O botão "Ver mapa" (fixo embaixo) não cobre o fim do rodapé.
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      const [base, toggle] = await Promise.all([page.locator('.rd-base p').last().boundingBox(), page.locator('#viewToggle').boundingBox()]);
+      assert.ok(!toggle || base.y + base.height <= toggle.y, '"© 2026 IMED" acima do botão "Ver mapa"');
+    }
+    await shot(page, `00-confianca-${mobile ? 'celular' : 'desktop'}`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
 await scenario('filtros de exame, tipo, especialidade, distância e preço', async () => {
   const { page, log, context } = await newPage(browser);
   await page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
@@ -275,10 +306,9 @@ await scenario('filtros de exame, tipo, especialidade, distância e preço', asy
   await page.click('#fImed');
   assert.deepEqual((await names()).sort(), ['DiagnoCenter Paulista', 'Ecocor Cardiologia']);
   await page.click('#fImed');
-  await page.selectOption('#fPrice', 'ate100');
-  await page.waitForSelector('.st h2');
-  assert.match(await page.textContent('.st'), /Nada com esses filtros.*Nenhum valor é estimado/s);
-  await page.click('[data-act="clear"]');
+  // Nenhuma clínica de demonstração informa preço: sem filtro de preço e sem "Menor preço" (sempre dariam vazio).
+  assert.ok(await page.locator('#fPriceWrap').isHidden(), 'sem preço informado, o filtro de preço não aparece');
+  assert.equal(await page.$eval('#fSort option[value="price"]', (o) => o.hidden && o.disabled), true, 'nem a ordem "Menor preço"');
   await page.selectOption('#fDist', '1000');
   assert.ok((await names()).length < 5, 'raio menor filtra sem nova busca');
   const before = log.fn.length;
@@ -298,9 +328,15 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   assert.match(sheet, /Preço sob consulta/);
   assert.match(sheet, /Horário não informado/);
   assert.match(sheet, /Clínica de demonstração/);
+  assert.equal(await page.getAttribute('#sheet .sos a', 'href'), 'tel:192', 'ficha com o aviso de emergência');
   await shot(page, '02-detalhes');
   await page.click('[data-book]');
   await page.waitForSelector('#bookForm');
+  // Formulário: emergência no começo; gratuito (contra golpes) e privacidade perto de "Enviar pedido".
+  assert.match(await page.textContent('#bookForm .sos'), /O pedido não é para emergência\. Emergência\? Ligue 192 \(SAMU\)/);
+  assert.match(await page.textContent('#bookForm .trust .free'), /O IMED é gratuito para você\. Se houver cobrança pelo exame, o pagamento é feito direto no local\. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp\./);
+  assert.match(await page.textContent('#bookForm .trust .priv'), /Seus dados vão só para o IMED e para o local escolhido · ficam em servidor no Brasil · sem anúncios e sem rastreadores de anúncio · sua localização é aproximada e não é gravada\./);
+  assert.ok(await page.evaluate(() => document.querySelector('#bookForm .trust').nextElementSibling.contains(document.querySelector('#bkBtn'))), 'faixa logo antes do botão de enviar');
   await page.click('#bkBtn');
   assert.ok(await page.locator('[data-f="exam"].bad').count(), 'exige o exame');
   assert.ok(await page.locator('[data-f="consent"].bad').count(), 'exige o consentimento');
@@ -316,6 +352,7 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   await shot(page, '03-formulario');
   await page.click('#bkBtn');
   await page.waitForSelector('.ok h3');
+  assert.match(await page.textContent('.ok .trust .free'), /O IMED é gratuito para você.*nunca pede Pix/s, 'pedido enviado: aviso contra o golpe do falso agendamento');
   assert.equal(log.insert.length, 1);
   const row = log.insert[0].body;
   assert.equal(row.clinic_id, IMED_ROWS[0].id);
@@ -325,6 +362,7 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   assert.equal(row.patient_phone, '11987654321');
   assert.equal(row.consent, true);
   assert.ok(!('status' in row) && !('lat' in row) && !('lng' in row), 'sem status e sem localização do paciente');
+  assert.ok(!('for_other' in row) && !('other_name' in row) && !('guardian_consent' in row), 'exame para a própria pessoa: sem os campos de outra pessoa');
   assert.match(log.insert[0].headers.prefer, /return=minimal/);
   assert.match(await page.textContent('.ok .code'), /^IMED-[0-9A-F]{8}$/);
   assert.match(row.review_token_hash, /^[0-9a-f]{64}$/, 'manda só o resumo (SHA-256) do código do pedido');
@@ -353,9 +391,50 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   const unfolded = ics.replace(/\r\n /g, '');
   assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.trimEnd().endsWith('END:VCALENDAR'));
   assert.match(unfolded, new RegExp(`DTSTART;TZID=America/Sao_Paulo:${date.replace(/-/g, '')}T080000`));
-  assert.match(unfolded, /SUMMARY:Exame: Ressonância — DiagnoCenter Paulista/);
+  assert.match(unfolded, /SUMMARY:Exame: Ressonância — DiagnoCenter Paulista \(a confirmar\)\r\n/, 'pedido sem confirmação: "(a confirmar)" no lembrete');
+  assert.match(unfolded, /STATUS:TENTATIVE/);
   assert.match(unfolded, /DESCRIPTION:.*Retire objetos de metal.*Confirme o horário com o IMED.*exames\/ressonancia-magnetica\.html#preparo/);
   assert.match(unfolded, /BEGIN:VALARM\r\n.*TRIGGER:-P1D/s);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pedido para outra pessoa pela busca: nome, parentesco e, para menor de 18 anos, a autorização do responsável', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await page.click('.pc.imed >> nth=0');
+  await page.waitForSelector('.sh-ov.open');
+  await page.click('[data-book]');
+  await page.waitForSelector('#bookForm');
+  assert.equal(await page.isChecked('input[name="para"][value="mim"]'), true, 'começa em "Mim"');
+  assert.ok(await page.locator('#bkOtherName').isHidden());
+  await fillBooking(page);
+  await page.click('label:has(> input[name="para"][value="outra"])');
+  assert.ok(await page.locator('#bkOtherName').isVisible());
+  assert.ok(await page.locator('[data-guardian]').isHidden(), 'autorização só para menor');
+  await page.click('#bkBtn');
+  assert.ok(await page.locator('[data-f="otherName"].bad').count(), 'exige o nome de quem faz o exame');
+  assert.ok(await page.locator('[data-f="relationship"].bad').count(), 'exige o parentesco');
+  assert.equal(log.insert.length, 0);
+  await page.fill('#bkOtherName', '  Pedro   Teste ');
+  await page.selectOption('#bkRel', 'Filho ou filha');
+  await page.click('label:has(> input[name="menor"])');
+  assert.ok(await page.locator('[data-guardian]').isVisible());
+  await page.click('#bkBtn');
+  assert.match(await page.textContent('#e-guardian'), /responsável/);
+  assert.equal(log.insert.length, 0, 'menor sem autorização do responsável não envia');
+  await page.click('label:has(> input[name="responsavel"])');
+  await shot(page, '41-pedido-outra-pessoa');
+  await page.click('#bkBtn');
+  await page.waitForSelector('.ok h3');
+  const row = log.insert[0].body;
+  assert.equal(row.patient_name, 'Ana Teste', 'quem pede continua sendo o contato');
+  assert.equal(row.for_other, true);
+  assert.equal(row.other_name, 'Pedro Teste');
+  assert.equal(row.relationship, 'Filho ou filha');
+  assert.equal(row.other_minor, true);
+  assert.equal(row.guardian_consent, true);
+  assert.match(await page.textContent('.ok'), /Para Pedro Teste \(Filho ou filha\)/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -575,6 +654,7 @@ await scenario('clínicas reais do CNES: sem OpenStreetMap, selo oficial, ficha 
   assert.match(sheet, /CNES/);
   assert.equal(await page.getAttribute('#sheet a[href*="cnes.datasus.gov.br"]', 'href'), 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
   assert.ok(!/R\$/.test(sheet), 'sem preço inventado');
+  assert.match(sheet, /O IMED é um serviço privado, sem vínculo com o governo ou o SUS/, 'fonte oficial sem parecer coisa do governo');
   await shot(page, '15-cnes-detalhes');
   await page.click('[data-book]');
   await page.selectOption('#bkExam', 'rm');
@@ -627,8 +707,8 @@ await scenario('selos: parceiro verificado, cadastro oficial, demonstração e l
   assert.ok(!(await page.isVisible('#legend ul')), 'legenda fechada por padrão');
   await page.click('#legend summary');
   const legend = await page.textContent('#legend');
-  assert.match(legend, /Parceiro verificado.*confirmados pela própria clínica/s);
-  assert.match(legend, /Cadastro oficial.*Ministério da Saúde/s);
+  assert.match(legend, /Parceiro verificado.*conferiu que quem cuida da página responde pelo local.*informados pela própria clínica.*não avalia a qualidade do atendimento/s);
+  assert.match(legend, /Cadastro oficial.*Ministério da Saúde.*sem vínculo com o governo ou o SUS/s);
   await shot(page, '16-selos-legenda');
   await page.click('#fImed');
   assert.deepEqual((await names(page)).sort(), ['Clínica Jardins Verificada', 'Imagem Paulista Verificada']);
@@ -705,7 +785,58 @@ await scenario('faixa de preço do exame só com preços informados', async () =
   assert.match((await page.textContent('#priceBand')).replace(/\s+/g, ' '), /Tomografia perto de você: R\$ 300 em 1 clínica que informou o preço/);
   await page.selectOption('#fExam', 'ecg');
   assert.match(await page.textContent('#priceBand'), /Nenhuma clínica informou o preço de Eletrocardiograma por aqui ainda\. Os valores aparecem quando as clínicas parceiras informam\./);
+  // Faixa de preço sem ninguém: explica que nenhum valor é estimado.
+  await page.selectOption('#fExam', '');
+  assert.ok(await page.locator('#fPriceWrap').isVisible(), 'com parceiro que informou preço, o filtro aparece');
+  await page.selectOption('#fPrice', 'ate100');
+  await page.waitForSelector('.st h2');
+  assert.match(await page.textContent('.st'), /Nada com esses filtros.*Nenhum valor é estimado/s);
+  await page.click('[data-act="clear"]');
+  await ready(page);
   await context.close();
+});
+
+await scenario('sem parceiro na área: sem "Parceiros verificados", filtro de preço e "Menor preço"; "Clínica fictícia" só no modo de teste', async () => {
+  const cnesOnly = (r, b) => (b.action === 'search'
+    ? json(r, { ok: true, provider: 'osm', radius_m: b.radius_m, warnings: [], imed: [], cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } })
+    : defaultFn(r, b));
+  const { page, errors, context } = await newPage(browser, { fn: cnesOnly, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  assert.deepEqual(await names(page), ['Hospital Santa Exemplo', 'Laboratório Análise Paulista']);
+  assert.ok(await page.locator('#fImed').isHidden(), 'sem parceiro, "Parceiros verificados" sempre daria vazio');
+  assert.ok(await page.locator('#fPriceWrap').isHidden(), 'sem parceiro, sem filtro de preço');
+  assert.equal(await page.$eval('#fSort option[value="price"]', (o) => o.hidden && o.disabled), true, 'sem "Menor preço"');
+  assert.match(await page.textContent('#list'), /Ainda não há clínicas parceiras do IMED nesta região/);
+  await page.click('#legend summary');
+  assert.ok(await page.locator('#legend ul').isVisible());
+  assert.ok(await page.locator('#legDemo').isHidden(), '"Clínica fictícia" fora do modo de teste não aparece');
+  assert.doesNotMatch(await page.locator('#legend').innerText(), /fictícia/);
+  await shot(page, '40-sem-parceiro');
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Com parceiros que informaram preço: tudo aparece; legenda sem a clínica fictícia.
+  const full = await newPage(browser, { fn: fullFn });
+  await full.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(full.page);
+  assert.ok(await full.page.locator('#fImed').isVisible());
+  assert.ok(await full.page.locator('#fPriceWrap').isVisible());
+  assert.equal(await full.page.$eval('#fSort option[value="price"]', (o) => o.hidden || o.disabled), false);
+  await full.page.click('#legend summary');
+  assert.ok(await full.page.locator('#legDemo').isHidden());
+  assert.deepEqual(full.errors, []);
+  await full.context.close();
+  // Modo de teste (?demo=1): a legenda explica a clínica fictícia; demonstração não tem preço.
+  const demo = await newPage(browser);
+  await demo.page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await ready(demo.page);
+  await demo.page.click('#legend summary');
+  assert.ok(await demo.page.locator('#legDemo').isVisible());
+  assert.match(await demo.page.textContent('#legDemo'), /Clínica fictícia do modo de teste/);
+  assert.ok(await demo.page.locator('#fImed').isVisible());
+  assert.ok(await demo.page.locator('#fPriceWrap').isHidden());
+  assert.deepEqual(demo.errors, []);
+  await demo.context.close();
 });
 
 await scenario('notas e avaliações vindas do banco, sem quebrar a busca quando falham', async () => {

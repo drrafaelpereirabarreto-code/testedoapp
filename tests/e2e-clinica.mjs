@@ -38,7 +38,7 @@ const USER_ID = 'uuuuuuuu-0000-4000-8000-000000000001';
 const C1 = 'cccccccc-0000-4000-8000-000000000001';
 const SP = 3550308;
 const ESTABLISHMENTS = [
-  { cnes: '2077485', name: 'Hospital Santa Exemplo', kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César', cep: '01409001', city_ibge: SP },
+  { cnes: '2077485', name: 'Hospital Santa Exemplo', kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César', cep: '01409001', city_ibge: SP, phone: '(11) 3141-1000' },
   { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city_ibge: SP },
   { cnes: '1112223', name: 'Clínica Santa <b>Luz</b>', kind: 'clinica', address_line: 'Rua Augusta, 10', neighborhood: 'Consolação', cep: null, city_ibge: SP },
 ];
@@ -99,6 +99,7 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
   const db = {
     admin: false, members: [], clinics: [], exams: [], requests: [], claims: [], claimInsert: null, failUpdate: false,
     schedules: [], blocks: [], slots: [], scheduleResult: 'ok', blockResult: 'ok', removeResult: null,
+    claimChecks: [], checksResult: null, approveError: null, messages: [], msgResult: null, reports: [], repResult: null, failTrustCols: false,
     ...clone({ ...dbOpts, claimInsert: undefined }), claimInsert: dbOpts.claimInsert ?? null,
   };
   const log = [];
@@ -140,7 +141,33 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
       case 'clinic_members': return json(route, db.members);
       case 'clinics': return json(route, applyFilters(db.clinics, q));
       case 'clinic_exams': return json(route, applyFilters(db.exams, q));
-      case 'appointment_requests': return json(route, applyFilters(db.requests, q));
+      case 'appointment_requests':
+        // Banco sem a migração de confiança: a coluna nova não existe (42703).
+        if (db.failTrustCols && /for_other/.test(q.get('select') || '')) return json(route, { code: '42703', message: 'column appointment_requests.for_other does not exist' }, 400);
+        return json(route, applyFilters(db.requests, q));
+      case 'claim_checks': return json(route, applyFilters(db.claimChecks, q));
+      case 'rpc/save_claim_checks': {
+        if (db.checksResult) return json(route, db.checksResult);
+        db.claimChecks = db.claimChecks.filter((x) => x.claim_id !== body.p_claim);
+        db.claimChecks.push({ claim_id: body.p_claim, cnes_active: false, cnpj_active: false, phone_confirmed: false, crm_active: false, note: null, ...body.p_checks, checked_at: new Date().toISOString(), checked_by: USER_ID });
+        return json(route, 'ok');
+      }
+      case 'contact_messages': return json(route, applyFilters(db.messages, q));
+      case 'rpc/set_contact_status': {
+        if (db.msgResult) return json(route, db.msgResult);
+        const m = db.messages.find((x) => x.id === body.p_id);
+        if (!m) return json(route, 'not_found');
+        m.status = body.p_status; m.answered_at = body.p_status === 'answered' ? new Date().toISOString() : null;
+        return json(route, 'ok');
+      }
+      case 'place_reports': return json(route, applyFilters(db.reports, q));
+      case 'rpc/set_place_report_status': {
+        if (db.repResult) return json(route, db.repResult);
+        const r = db.reports.find((x) => x.id === body.p_id);
+        if (!r) return json(route, 'not_found');
+        r.status = body.p_status; r.resolved_at = body.p_status === 'resolved' ? new Date().toISOString() : null;
+        return json(route, 'ok');
+      }
       case 'establishment_claims':
         if (req.method() === 'POST') {
           if (db.claimInsert) return json(route, db.claimInsert.body, db.claimInsert.status);
@@ -173,6 +200,11 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
         return json(route, 'ok');
       }
       case 'rpc/approve_claim': {
+        if (db.approveError) return json(route, db.approveError.body, db.approveError.status);
+        const ck = db.claimChecks.find((x) => x.claim_id === body.p_claim);
+        if (!ck || !ck.cnes_active || !ck.cnpj_active || !ck.phone_confirmed || !ck.crm_active) {
+          return json(route, { code: '22023', message: 'Antes de aprovar, faça a conferência: CNES ativo, CNPJ ativo, ligação para o telefone oficial do CNES e CRM ativo do médico responsável pelo local.' }, 400);
+        }
         const c = db.claims.find((x) => x.id === body.p_claim);
         c.status = 'approved'; c.decided_at = new Date().toISOString();
         return json(route, C1);
@@ -434,7 +466,7 @@ await scenario('painel com clínica: pedidos, situação, dados e exames com pre
   assert.equal(cl.query.get('id'), `in.(${C1})`);
   const rq = calls(log, '/appointment_requests')[0];
   assert.equal(rq.query.get('clinic_id'), `eq.${C1}`);
-  assert.equal(rq.query.get('select'), 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status,slot_start');
+  assert.equal(rq.query.get('select'), 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status,slot_start,for_other,other_name,relationship,other_minor,guardian_consent,cancelled_at,cancelled_by');
   assert.equal(rq.query.get('order'), 'created_at.desc');
   assert.equal(rq.query.get('limit'), '100');
   assert.equal(await page.locator('.rq').count(), 2);
@@ -576,7 +608,7 @@ await scenario('equipe do IMED: aprova e recusa pedidos de cadastro e cuida dos 
   const { page, log, errors, context, db } = await newPage(browser, { logged: true, email: 'equipe@imed.com.br', db: { admin: true, claims: CLAIMS, requests: [...REQUESTS, ...IMED_REQUESTS] } });
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('#cl-kkkkkkkk-0000-4000-8000-000000000001');
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos de cadastro|Pedidos ao IMED');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos de cadastro|Pedidos ao IMED|Mensagens|Avisos de erro');
   assert.equal(await page.textContent('#clinicTitle'), 'Equipe do IMED');
   const pend = calls(log, '/establishment_claims').find((e) => e.query.get('status') === 'eq.pending');
   assert.equal(pend.query.get('select'), '*');
@@ -598,10 +630,31 @@ await scenario('equipe do IMED: aprova e recusa pedidos de cadastro e cuida dos 
   assert.match(await c1.textContent(), /529\.982\.247-25/);
   assert.match(await page.textContent('#panel'), /Velho Pedido/);
   assert.match(await page.textContent('#panel'), /Motivo: Sem vínculo/);
+  // conferência obrigatória antes de aprovar: CNES, CNPJ, ligação para o telefone do CNES e CRM
+  const ck = calls(log, '/claim_checks')[0];
+  assert.equal(ck.query.get('claim_id'), `in.(${CLAIMS[0].id},${CLAIMS[1].id})`, 'busca a conferência só dos pedidos em análise');
+  const ap1 = c1.locator('[data-approve]');
+  assert.equal(await ap1.isDisabled(), true, 'sem conferência, "Aprovar" fica travado');
+  assert.match(await page.textContent('#cka-kkkkkkkk-0000-4000-8000-000000000001'), /marque as quatro conferências/);
+  assert.equal(await page.getAttribute('#cl-kkkkkkkk-0000-4000-8000-000000000001 [data-approve]', 'aria-describedby'), 'cka-kkkkkkkk-0000-4000-8000-000000000001');
+  assert.match(await c1.locator('fieldset.ck').textContent(), /Conferência ainda não salva/);
+  assert.equal(await c1.locator('fieldset.ck a[href="tel:+551131411000"]').textContent(), '(11) 3141-1000', 'telefone oficial do CNES para ligar');
+  assert.equal(await c1.locator('fieldset.ck a[href^="https://portal.cfm.org.br"]').count(), 1, 'link para conferir o CRM no CFM');
+  assert.equal(await c1.locator('fieldset.ck a[href*="receita.fazenda.gov.br"]').count(), 1, 'link para conferir o CNPJ');
+  assert.match(await c2.locator('fieldset.ck').textContent(), /não informado no CNES/, 'sem telefone no CNES, avisa');
+  for (const k of ['cnes_active', 'cnpj_active', 'phone_confirmed']) await c1.locator(`[data-ck="${k}"]`).check();
+  assert.equal(await ap1.isDisabled(), true, 'três de quatro: ainda travado');
+  await c1.locator('[data-ck="crm_active"]').check();
+  assert.equal(await ap1.isDisabled(), false);
+  assert.match(await page.textContent('#cka-kkkkkkkk-0000-4000-8000-000000000001'), /Conferência completa/);
+  await page.fill('#ckn-kkkkkkkk-0000-4000-8000-000000000001', 'CRM 123456-SP conferido; Carlos atendeu no telefone do CNES');
   await shot(page, '09-painel-admin-cadastros');
-  await c1.locator('[data-approve]').click();
+  await ap1.click();
   await page.waitForFunction(() => !document.querySelector('#panel .cl-state') && !document.querySelector('#cl-kkkkkkkk-0000-4000-8000-000000000001'));
   assert.deepEqual(calls(log, '/rpc/approve_claim')[0].body, { p_claim: CLAIMS[0].id });
+  const sv = calls(log, '/rpc/save_claim_checks');
+  assert.deepEqual(sv[0].body, { p_claim: CLAIMS[0].id, p_checks: { cnes_active: true, cnpj_active: true, phone_confirmed: true, crm_active: true, note: 'CRM 123456-SP conferido; Carlos atendeu no telefone do CNES' } });
+  assert.ok(log.indexOf(sv[0]) < log.indexOf(calls(log, '/rpc/approve_claim')[0]), 'grava a conferência (com a data) antes de aprovar');
   await c2.locator('[data-reject]').click();
   assert.equal(await c2.locator('[data-reject]').getAttribute('aria-expanded'), 'true');
   await page.fill('#note-kkkkkkkk-0000-4000-8000-000000000002', 'Documento não confere com o CNES');
@@ -633,6 +686,206 @@ await scenario('equipe do IMED: aprova e recusa pedidos de cadastro e cuida dos 
   assert.equal(await page.locator('#rq-rrrrrrrr-0000-4000-8000-000000000011 a[href^="tel:"]').first().getAttribute('href'), 'tel:+551131411000');
   assert.equal(await page.locator('#rq-rrrrrrrr-0000-4000-8000-000000000012 a[href^="tel:"]').first().getAttribute('href'), 'tel:08001234567');
   assert.equal(await page.locator('#rq-rrrrrrrr-0000-4000-8000-000000000011 a[href^="tel:"]').nth(1).getAttribute('href'), 'tel:+5521998887777', 'telefone do paciente');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('equipe do IMED: conferência salva antes, banco recusa sem conferência e pedido já decidido', async () => {
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, email: 'equipe@imed.com.br', db: {
+    admin: true, claims: CLAIMS,
+    // o pedido da Paula já tem a conferência completa salva (29/10 às 11:30 em São Paulo)
+    claimChecks: [{ claim_id: CLAIMS[1].id, cnes_active: true, cnpj_active: true, phone_confirmed: true, crm_active: true, note: 'Gestora <b>confirmada</b>', checked_at: '2026-10-29T14:30:00Z', checked_by: USER_ID }],
+  } });
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('#cl-kkkkkkkk-0000-4000-8000-000000000002 fieldset.ck');
+  const c1 = page.locator('#cl-kkkkkkkk-0000-4000-8000-000000000001');
+  const c2 = page.locator('#cl-kkkkkkkk-0000-4000-8000-000000000002');
+  // conferência já salva: caixas marcadas, data e "Aprovar" liberado
+  assert.equal(await c2.locator('[data-approve]').isDisabled(), false);
+  assert.match(await c2.locator('fieldset.ck').textContent(), /Conferência salva em 29\/10\/2026.*11:30/);
+  assert.equal(await page.inputValue('#ckn-kkkkkkkk-0000-4000-8000-000000000002'), 'Gestora <b>confirmada</b>', 'observação escapada');
+  for (const k of ['cnes_active', 'cnpj_active', 'phone_confirmed', 'crm_active']) assert.equal(await c2.locator(`[data-ck="${k}"]`).isChecked(), true, k);
+  // desmarcar uma trava o "Aprovar" de novo
+  await c2.locator('[data-ck="crm_active"]').uncheck();
+  assert.equal(await c2.locator('[data-approve]').isDisabled(), true);
+  await c2.locator('[data-ck="crm_active"]').check();
+  // salvar só a conferência (sem aprovar)
+  await c1.locator('[data-ck="cnes_active"]').check();
+  await c1.locator('[data-save-checks]').click();
+  await page.waitForFunction(() => /Conferência salva\./.test(document.querySelector('[data-msg="kkkkkkkk-0000-4000-8000-000000000001"]')?.textContent));
+  assert.deepEqual(calls(log, '/rpc/save_claim_checks')[0].body, { p_claim: CLAIMS[0].id, p_checks: { cnes_active: true, cnpj_active: false, phone_confirmed: false, crm_active: false } });
+  assert.match(await c1.locator('fieldset.ck').textContent(), /Conferência salva em \d{2}\/\d{2}\/\d{4}/);
+  assert.equal(calls(log, '/rpc/approve_claim').length, 0, 'salvar a conferência não aprova');
+  assert.equal(await c1.locator('[data-approve]').isDisabled(), true);
+  // o banco recusa a aprovação (ex.: conferência apagada em outra aba): mostra o motivo e libera os botões
+  db.approveError = { status: 400, body: { code: '22023', message: 'Antes de aprovar, faça a conferência: CNES ativo, CNPJ ativo, ligação para o telefone oficial do CNES e CRM ativo do médico responsável pelo local.' } };
+  await c2.locator('[data-approve]').click();
+  await page.waitForFunction(() => /Antes de aprovar, faça a conferência/.test(document.querySelector('[data-msg="kkkkkkkk-0000-4000-8000-000000000002"]')?.textContent));
+  assert.equal(await c2.locator('[data-approve]').isDisabled(), false, 'conferência completa na tela: pode tentar de novo');
+  assert.equal(await c2.locator('[data-reject]').isDisabled(), false);
+  // pedido decidido por outra pessoa enquanto a página estava aberta
+  db.approveError = null;
+  db.checksResult = 'already_decided';
+  await c2.locator('[data-approve]').click();
+  await page.waitForFunction(() => /já foi decidido/.test(document.querySelector('[data-msg="kkkkkkkk-0000-4000-8000-000000000002"]')?.textContent));
+  assert.equal(calls(log, '/rpc/approve_claim').length, 1, 'sem conferência gravada, não chama a aprovação');
+  // aprovação certa
+  db.checksResult = null;
+  await c2.locator('[data-approve]').click();
+  await page.waitForFunction(() => !document.querySelector('#cl-kkkkkkkk-0000-4000-8000-000000000002'));
+  assert.deepEqual(calls(log, '/rpc/approve_claim').at(-1).body, { p_claim: CLAIMS[1].id });
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+const MESSAGES = [
+  { id: 'mmmmmmmm-0000-4000-8000-000000000001', protocol: 'IMED-20261030-AB2C', created_at: '2026-10-30T13:00:00Z', subject: 'dados_exclusao', name: 'Maria <b>Souza</b>', reply_email: 'maria@exemplo.com', reply_phone: null, message: 'Quero apagar meus dados <img src=x onerror="window.__xss=1">', request_code: null, user_id: USER_ID, account_email: 'maria@exemplo.com', status: 'open', answered_at: null },
+  { id: 'mmmmmmmm-0000-4000-8000-000000000002', protocol: 'IMED-20261029-ZZ34', created_at: '2026-10-29T18:00:00Z', subject: 'cancelamento', name: 'João Lima', reply_email: null, reply_phone: '11987654321', message: 'Quero cancelar o exame de amanhã.', request_code: 'IMED-ABC123', user_id: null, account_email: null, status: 'open', answered_at: null },
+  { id: 'mmmmmmmm-0000-4000-8000-000000000003', protocol: 'IMED-20261028-QQ77', created_at: '2026-10-28T15:00:00Z', subject: 'duvida', name: 'Ana Prado', reply_email: 'ana@exemplo.com', reply_phone: null, message: 'Como funciona o selo?', request_code: null, user_id: null, account_email: null, status: 'answered', answered_at: '2026-10-28T19:00:00Z' },
+];
+
+await scenario('equipe do IMED: Mensagens do Fale com o IMED (LGPD em destaque, responder e marcar como respondida)', async () => {
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, email: 'equipe@imed.com.br', db: { admin: true, claims: [], messages: MESSAGES } });
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('#tab-mensagens');
+  await page.click('#tab-mensagens');
+  await page.waitForSelector('#msg-mmmmmmmm-0000-4000-8000-000000000001');
+  const q1 = calls(log, '/contact_messages')[0];
+  assert.equal(q1.query.get('select'), '*');
+  assert.equal(q1.query.get('status'), 'eq.open', 'começa pelas em aberto');
+  assert.equal(q1.query.get('order'), 'created_at.desc');
+  assert.equal(q1.query.get('limit'), '200');
+  assert.equal(await page.locator('#panel .rq').count(), 2);
+  const m1 = page.locator('#msg-mmmmmmmm-0000-4000-8000-000000000001');
+  assert.equal(await m1.locator('h3').textContent(), 'Quero apagar meus dados', 'assunto do pedido de exclusão');
+  assert.match(await m1.textContent(), /Protocolo IMED-20261030-AB2C/);
+  assert.match(await m1.textContent(), /Pedido sobre dados pessoais \(LGPD\)/);
+  assert.match(await m1.textContent(), /Maria <b>Souza<\/b>/);
+  assert.match(await m1.textContent(), /Quero apagar meus dados <img src=x/);
+  assert.equal(await page.evaluate(() => window.__xss), undefined, 'HTML escapado');
+  assert.match(await m1.textContent(), /estava logado ao enviar/);
+  assert.equal(await m1.locator('a[href^="mailto:"]').getAttribute('href'), `mailto:maria@exemplo.com?subject=${encodeURIComponent('IMED · protocolo IMED-20261030-AB2C')}`);
+  const m2 = page.locator('#msg-mmmmmmmm-0000-4000-8000-000000000002');
+  assert.equal(await m2.locator('a[href^="tel:"]').getAttribute('href'), 'tel:+5511987654321');
+  assert.equal(await m2.locator('a[href^="https://wa.me"]').getAttribute('href'), 'https://wa.me/5511987654321');
+  assert.match(await m2.textContent(), /Protocolo do pedido\s*IMED-ABC123/);
+  assert.doesNotMatch(await m2.textContent(), /LGPD/);
+  await shot(page, '15-painel-admin-mensagens');
+  // marcar como respondida: sai da lista "Em aberto"
+  await m1.locator('[data-msg-status="answered"]').click();
+  await page.waitForFunction(() => !document.querySelector('#msg-mmmmmmmm-0000-4000-8000-000000000001') && document.querySelector('#msg-mmmmmmmm-0000-4000-8000-000000000002'));
+  assert.deepEqual(calls(log, '/rpc/set_contact_status')[0].body, { p_id: MESSAGES[0].id, p_status: 'answered' });
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'flt-msg', 'foco no filtro depois de atualizar a lista');
+  // todas: a respondida aparece com a data e pode voltar para em aberto
+  await page.selectOption('#flt-msg', '');
+  await page.waitForFunction(() => document.querySelectorAll('#panel .rq').length === 3);
+  assert.equal(calls(log, '/contact_messages').at(-1).query.get('status'), null, '"Todas" não filtra a situação');
+  const m3 = page.locator('#msg-mmmmmmmm-0000-4000-8000-000000000003');
+  assert.match(await m3.textContent(), /Respondida/);
+  assert.match(await m3.textContent(), /Respondida em\s*28\/10\/2026/);
+  await m3.locator('[data-msg-status="open"]').click();
+  await page.waitForFunction(() => /Em aberto/.test(document.querySelector('#msg-mmmmmmmm-0000-4000-8000-000000000003 .rq-st')?.textContent));
+  assert.deepEqual(calls(log, '/rpc/set_contact_status')[1].body, { p_id: MESSAGES[2].id, p_status: 'open' });
+  // recusa do banco: mensagem clara e botão de novo disponível
+  db.msgResult = 'forbidden';
+  await page.locator('#msg-mmmmmmmm-0000-4000-8000-000000000002 [data-msg-status]').click();
+  await page.waitForFunction(() => /Só a equipe do IMED cuida das mensagens/.test(document.querySelector('#msgMsg')?.textContent));
+  assert.equal(await page.locator('#msg-mmmmmmmm-0000-4000-8000-000000000002 [data-msg-status]').isDisabled(), false);
+  // vazia
+  db.messages = [];
+  await page.selectOption('#flt-msg', 'open');
+  await page.waitForFunction(() => /Nenhuma mensagem em aberto/.test(document.querySelector('#panel').textContent));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+const REPORTS = [
+  { id: 'pppppppp-0000-4000-8000-000000000001', created_at: '2026-10-30T12:00:00Z', cnes: '2077485', clinic_id: null, kind: 'telefone', note: 'Ninguém atende <b>nunca</b>', user_id: null, status: 'open', resolved_at: null,
+    establishments: { name: 'Hospital Santa Exemplo', address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César', phone: '(11) 3141-1000', municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 } }, clinics: null },
+  { id: 'pppppppp-0000-4000-8000-000000000002', created_at: '2026-10-30T11:00:00Z', cnes: null, clinic_id: C1, kind: 'exame', note: null, user_id: null, status: 'open', resolved_at: null,
+    establishments: null, clinics: { name: 'Imagem Paulista', city: 'São Paulo', state: 'SP', cnes: '7654321' } },
+  { id: 'pppppppp-0000-4000-8000-000000000003', created_at: '2026-10-20T11:00:00Z', cnes: '6543210', clinic_id: null, kind: 'fechado', note: null, user_id: null, status: 'resolved', resolved_at: '2026-10-21T13:00:00Z',
+    establishments: { name: 'Laboratório Análise Paulista', address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', phone: null, municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 } }, clinics: null },
+];
+
+await scenario('equipe do IMED: Avisos de erro dos locais (cadastro oficial e parceiro), resolver e reabrir', async () => {
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, email: 'equipe@imed.com.br', db: { admin: true, claims: [], reports: REPORTS } });
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('#tab-avisos');
+  await page.focus('#tab-mensagens');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.getAttribute('#tab-avisos', 'aria-selected'), 'true', 'abas pelo teclado');
+  await page.waitForSelector('#rep-pppppppp-0000-4000-8000-000000000001');
+  const q1 = calls(log, '/place_reports')[0];
+  assert.match(q1.query.get('select'), /^\*,establishments\(name,address_line,neighborhood,phone,municipalities\(name,uf,cnes_code\)\),clinics\(name,city,state,cnes\)$/);
+  assert.equal(q1.query.get('status'), 'eq.open');
+  assert.equal(await page.locator('#panel .rq').count(), 2);
+  const r1 = page.locator('#rep-pppppppp-0000-4000-8000-000000000001');
+  assert.equal(await r1.locator('h3').textContent(), 'O telefone está errado ou não atende');
+  assert.match(await r1.textContent(), /Hospital Santa Exemplo/);
+  assert.match(await r1.textContent(), /Cadastro oficial \(CNES 2077485\)/);
+  assert.match(await r1.textContent(), /Telefone no CNES\s*\(11\) 3141-1000/);
+  assert.match(await r1.textContent(), /Ninguém atende <b>nunca<\/b>/);
+  assert.equal(await r1.locator('a[href="local.html?cnes=2077485"]').count(), 1);
+  assert.equal(await r1.locator('a:has-text("Ficha no CNES")').getAttribute('href'), 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
+  const r2 = page.locator('#rep-pppppppp-0000-4000-8000-000000000002');
+  assert.equal(await r2.locator('h3').textContent(), 'Não faz o exame indicado');
+  assert.match(await r2.textContent(), /Parceiro do IMED \(a clínica corrige pela área dela\)/);
+  assert.equal(await r2.locator(`a[href="local.html?id=${C1}"]`).count(), 1);
+  assert.match(await page.textContent('#panel'), /a correção é feita pelo próprio estabelecimento no CNES/);
+  await shot(page, '16-painel-admin-avisos');
+  await r1.locator('[data-rep-status="resolved"]').click();
+  await page.waitForFunction(() => !document.querySelector('#rep-pppppppp-0000-4000-8000-000000000001'));
+  assert.deepEqual(calls(log, '/rpc/set_place_report_status')[0].body, { p_id: REPORTS[0].id, p_status: 'resolved' });
+  await page.selectOption('#flt-rep', 'resolved');
+  await page.waitForFunction(() => document.querySelectorAll('#panel .rq').length === 2);
+  assert.equal(calls(log, '/place_reports').at(-1).query.get('status'), 'eq.resolved');
+  const r3 = page.locator('#rep-pppppppp-0000-4000-8000-000000000003');
+  assert.match(await r3.textContent(), /Resolvido em\s*21\/10\/2026/);
+  assert.doesNotMatch(await r3.textContent(), /Telefone no CNES/, 'sem telefone no CNES, não mostra a linha');
+  await r3.locator('[data-rep-status="open"]').click();
+  await page.waitForFunction(() => !document.querySelector('#rep-pppppppp-0000-4000-8000-000000000003'));
+  assert.deepEqual(calls(log, '/rpc/set_place_report_status')[1].body, { p_id: REPORTS[2].id, p_status: 'open' });
+  db.repResult = 'not_found';
+  await page.locator('#rep-pppppppp-0000-4000-8000-000000000001 [data-rep-status]').click();
+  await page.waitForFunction(() => /Este aviso não existe mais/.test(document.querySelector('#repMsg')?.textContent));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pedidos: exame para outra pessoa (menor, com autorização) e cancelado pelo paciente; banco ainda sem as colunas novas', async () => {
+  const reqs = [
+    { ...REQUESTS[0], for_other: true, other_name: 'Pedro <i>Souza</i>', relationship: 'Filho ou filha', other_minor: true, guardian_consent: true, cancelled_at: null, cancelled_by: null },
+    { ...REQUESTS[1], status: 'cancelled', for_other: false, other_name: null, relationship: null, other_minor: false, guardian_consent: false, cancelled_at: '2026-10-29T20:15:00Z', cancelled_by: 'patient' },
+  ];
+  let { page, log, errors, context } = await newPage(browser, { logged: true, db: { members: [{ clinic_id: C1, role: 'owner' }], clinics: [CLINIC], requests: reqs } });
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('.rq');
+  const a = page.locator(`#rq-${REQUESTS[0].id}`);
+  assert.equal(await a.locator('h3').textContent(), 'Ressonância · Pedro <i>Souza</i>', 'o cartão leva o nome de quem vai fazer o exame');
+  const dl = await a.locator('dl').evaluate((d) => Object.fromEntries([...d.querySelectorAll('dt')].map((t) => [t.textContent, t.nextElementSibling.textContent])));
+  assert.match(dl['O exame é para'], /^Pedro <i>Souza<\/i> \(Filho ou filha\)/);
+  assert.match(dl['O exame é para'], /Menor de 18 anos · autorização do responsável legal registrada no pedido/);
+  assert.equal(dl['Quem pediu'], 'Maria Souza');
+  assert.equal(dl.Paciente, undefined);
+  const b = page.locator(`#rq-${REQUESTS[1].id}`);
+  const dl2 = await b.locator('dl').evaluate((d) => Object.fromEntries([...d.querySelectorAll('dt')].map((t) => [t.textContent, t.nextElementSibling.textContent])));
+  assert.equal(dl2.Paciente, 'João Lima');
+  assert.match(dl2.Cancelado, /^pelo paciente, no site em 29\/10\/2026.*17:15/);
+  assert.equal(await b.locator('.rq-st').textContent(), 'Cancelado');
+  await shot(page, '17-painel-pedido-outra-pessoa');
+  assert.deepEqual(errors, []);
+  await context.close();
+  // banco sem a migração de confiança (42703): busca de novo sem as colunas novas e a lista aparece
+  ({ page, log, errors, context } = await newPage(browser, { logged: true, db: { members: [{ clinic_id: C1, role: 'owner' }], clinics: [CLINIC], requests: [...REQUESTS], failTrustCols: true } }));
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('.rq');
+  const rq = calls(log, '/appointment_requests');
+  assert.equal(rq.length, 2);
+  assert.match(rq[0].query.get('select'), /for_other/);
+  assert.equal(rq[1].query.get('select'), 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status,slot_start');
+  assert.equal(await page.locator('.rq').count(), 2);
+  assert.doesNotMatch(await page.textContent('#panel'), /O exame é para|Quem pediu/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -987,7 +1240,7 @@ await scenario('pedidos com horário marcado: destaque, ordem pela data e filtro
   const { page, log, errors, context } = await newPage(browser, { logged: true, now: NOW, db: { members: [{ clinic_id: C1, role: 'owner' }], clinics: [CLINIC], requests: rows } });
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
-  assert.match(calls(log, '/appointment_requests')[0].query.get('select'), /,slot_start$/);
+  assert.match(calls(log, '/appointment_requests')[0].query.get('select'), /,slot_start,for_other,other_name,relationship,other_minor,guardian_consent,cancelled_at,cancelled_by$/);
   const names = () => page.$$eval('.rq h3', (h) => h.map((x) => x.textContent.split(' · ')[1]));
   assert.deepEqual(await names(), ['Paciente Hoje', 'Paciente Cancelou', 'Paciente Semana', 'Paciente Longe', 'Paciente Passado']);
   const hoje = page.locator('#rq-rrrrrrrr-0000-4000-8000-000000000304');
@@ -1008,7 +1261,7 @@ await scenario('pedidos com horário marcado: destaque, ordem pela data e filtro
   assert.deepEqual(qh.getAll('preferred_date'), ['eq.2026-10-30']);
   assert.equal(qh.get('clinic_id'), `eq.${C1}`);
   assert.equal(qh.get('limit'), '200');
-  assert.match(qh.get('select'), /,slot_start$/);
+  assert.match(qh.get('select'), /,slot_start,for_other,other_name,relationship,other_minor,guardian_consent,cancelled_at,cancelled_by$/);
   assert.deepEqual(await names(), ['Paciente Hoje']);
   assert.equal(await page.evaluate(() => document.activeElement.id), 'flt-when');
   await pickWhen(page, 'semana');
@@ -1181,7 +1434,7 @@ await scenario('equipe do IMED sem vínculo abre a agenda de qualquer clínica',
   }) });
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('#cl-kkkkkkkk-0000-4000-8000-000000000001');
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos de cadastro|Pedidos ao IMED');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos de cadastro|Pedidos ao IMED|Mensagens|Avisos de erro');
   assert.equal(await page.textContent('#clinicTitle'), 'Equipe do IMED');
   const all = calls(log, '/clinics').find((e) => !e.query.get('id'));
   assert.equal(all.query.get('limit'), '500');
@@ -1192,7 +1445,7 @@ await scenario('equipe do IMED sem vínculo abre a agenda de qualquer clínica',
   await page.waitForSelector('.rq');
   assert.equal(await page.textContent('#clinicTitle'), 'Imagem Paulista');
   assert.match(await page.textContent('#app'), /Você está vendo esta clínica como equipe do IMED/);
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Pedidos de cadastro|Pedidos ao IMED');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Pedidos de cadastro|Pedidos ao IMED|Mensagens|Avisos de erro');
   await page.click('#tab-agenda');
   await page.waitForSelector('#agWeek');
   assert.equal(calls(log, '/clinic_schedules')[0].query.get('clinic_id'), `eq.${C1}`);
@@ -1230,10 +1483,10 @@ await scenario('celular (390px): reivindicar e painel sem rolagem lateral', asyn
   } }));
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
-  assert.equal(await page.locator('[role=tab]').count(), 6);
+  assert.equal(await page.locator('[role=tab]').count(), 8);
   await noOverflow(page);
   await shot(page, '13-celular-painel-pedidos');
-  for (const t of ['agenda', 'dados', 'exames', 'cadastros', 'concierge']) {
+  for (const t of ['agenda', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos']) {
     await page.click(`#tab-${t}`);
     await page.waitForFunction(() => !document.querySelector('#panel .cl-state'));
     await noOverflow(page);

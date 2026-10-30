@@ -1,7 +1,7 @@
 {
   "name": "IMED — Exames perto de você",
   "short_name": "IMED",
-  "description": "Encontre clínicas de imagem perto de você, compare preço, nota e horário, e agende. Teleconsulta no mesmo app.",
+  "description": "Encontre clínicas, laboratórios e hospitais reais perto de você, com dados do cadastro oficial (CNES), e peça seu agendamento pelo IMED.",
   "lang": "pt-BR",
   "id": "./",
   "start_url": "./?origem=app",
@@ -36,7 +36,7 @@
   ],
   "shortcuts": [
     {
-      "name": "Clínicas perto de mim",
+      "name": "Perto de mim",
       "url": "./perto.html?usar=localizacao",
       "icons": [
         {
@@ -46,18 +46,8 @@
       ]
     },
     {
-      "name": "Buscar exames",
-      "url": "./#lojas",
-      "icons": [
-        {
-          "src": "assets/icons/icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    },
-    {
       "name": "Teleconsulta",
-      "url": "./#tele",
+      "url": "./teleconsulta.html",
       "icons": [
         {
           "src": "assets/icons/icon-192.png",
@@ -66,8 +56,18 @@
       ]
     },
     {
-      "name": "Meus agendamentos",
+      "name": "Meus pedidos",
       "url": "./#agenda",
+      "icons": [
+        {
+          "src": "assets/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Clínicas por cidade",
+      "url": "./cidades/",
       "icons": [
         {
           "src": "assets/icons/icon-192.png",
