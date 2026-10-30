@@ -69,7 +69,7 @@ const CLINICS = {
     neighborhood: 'Bela Vista', city: 'São Paulo', state: 'SP', cep: '01310-200', location: { type: 'Point', coordinates: [-46.6565, -23.5625] },
     phone: '(11) 3222-1000', whatsapp: '5511988887777', email: 'contato@imagempaulista.com.br', website: 'https://imagempaulista.com.br',
     specialties: ['Radiologia'], opening_hours: { seg: '07:00–19:00', sab: '08:00–12:00' }, accepts_online_booking: true, status: 'published', is_demo: false,
-    insurances: ['Bradesco Saúde', 'SulAmérica'], cnes: '7654321',
+    insurances: ['Bradesco Saúde', 'SulAmérica'], cnes: '7654321', verified_at: '2026-10-01T02:30:00+00:00',
     clinic_exams: [{ exam_code: 'tc', price_cents: 30000, price_updated_at: '2026-10-01T10:00:00Z' }, { exam_code: 'rm', price_cents: 45000, price_updated_at: '2026-10-01T01:30:00+00:00' }, { exam_code: 'rx', price_cents: null, price_updated_at: null }],
   },
   [NOSCHED_ID]: {
@@ -98,7 +98,8 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: CORS });
 const preflight = (route) => route.request().method() === 'OPTIONS' && (route.fulfill({ status: 204, headers: CORS }), true);
 
-async function newPage(browser, { mobile = false, tz = 'America/Sao_Paulo', est, clinics, insert, slots, initScript } = {}) {
+// report: resposta de report_place_issue (padrão 'ok').
+async function newPage(browser, { mobile = false, tz = 'America/Sao_Paulo', est, clinics, insert, slots, initScript, report } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz, serviceWorkers: 'block', acceptDownloads: true,
@@ -138,6 +139,7 @@ async function newPage(browser, { mobile = false, tz = 'America/Sao_Paulo', est,
       if (slots) return slots(route, body, log);
       return json(route, (SLOTS[body.p_exam] ?? []).map((s) => ({ slot_start: s })));
     }
+    if (fn === 'report_place_issue') return report ? report(route, body) : json(route, 'ok');
     return json(route, []);
   });
   await context.route(`${REST}appointment_requests`, async (route) => {
@@ -188,7 +190,8 @@ await scenario('ficha do CNES: dados reais, SUS, turno com ressalva, mapa, avali
   assert.match(await page.textContent('#exames'), /Ressonância.*Tomografia/s);
   assert.ok(!/R\$/.test(await page.textContent('#exames')), 'sem preço para quem não é parceiro');
   assert.match(await page.textContent('#especialidades'), /Cardiologia.*Ortopedia/s);
-  // mapa com o ponto
+  // mapa com o ponto: o Leaflet só é baixado quando o mapa chega perto da tela (rola até ele)
+  await page.locator('#lcMap').scrollIntoViewIfNeeded();
   await page.waitForSelector('#lcMap .leaflet-marker-icon');
   assert.equal(await page.locator('#lcMap .leaflet-marker-icon').count(), 1);
   // avaliações: HTML escapado
@@ -208,6 +211,14 @@ await scenario('ficha do CNES: dados reais, SUS, turno com ressalva, mapa, avali
   assert.equal(await page.getAttribute('a:has-text("Assuma o cadastro")', 'href'), 'reivindicar.html?cnes=2077485');
   assert.match(await page.textContent('a:has-text("Assuma o cadastro")'), /É o responsável\? Assuma o cadastro/);
   assert.match(await page.textContent('.lc-rest .note'), /CNES.*atualizados em 15\/09\/2026/s);
+  // Confiança: emergência na ficha; fonte oficial sem parecer coisa do governo; quem corrige o cadastro oficial.
+  assert.match(await page.textContent('.lc-head .sos'), /Emergência\? Ligue 192 \(SAMU\)/);
+  assert.equal(await page.getAttribute('.lc-head .sos a', 'href'), 'tel:192');
+  assert.match(await page.textContent('.lc-rest .note'), /O IMED é um serviço privado, sem vínculo com o governo ou o SUS\. A correção do cadastro oficial é feita pelo próprio estabelecimento, no CNES\./);
+  assert.equal(await page.locator('#avaliacoes a[href="como-funciona.html#avaliacoes"]').count(), 1, 'regras das avaliações');
+  assert.equal(await page.locator('footer.rodape').count(), 1, 'rodapé do IMED');
+  assert.match(await page.textContent('footer.rodape'), /Médico responsável: Dr\. Rafael Pereira Barreto Silva — CRM-SP 266930/);
+  assert.equal(await page.locator('.pt-nav a[href="./#agenda"]').textContent(), 'Meus pedidos');
   // SEO
   assert.equal(await page.title(), 'Hospital Santa Exemplo em São Paulo - SP | IMED');
   assert.match(await page.getAttribute('meta[name="description"]', 'content'), /^Hospital em São Paulo - SP\..*Atende SUS\.$/);
@@ -273,6 +284,11 @@ await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async ()
   await page.waitForSelector('#agendar [data-act="pedido"]');
   assert.match(await page.textContent('#agendar'), /ainda não é parceiro do IMED/);
   await page.click('#agendar [data-act="pedido"]');
+  // Formulário: emergência no começo; gratuito (contra golpes) e privacidade perto de "Enviar pedido".
+  assert.match(await page.textContent('#bookForm .sos'), /O pedido não é para emergência/);
+  assert.match(await page.textContent('#bookForm .trust .free'), /O IMED é gratuito para você\..*o pagamento é feito direto no local\. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp\./s);
+  assert.match(await page.textContent('#bookForm .trust .priv'), /só para o IMED e para o local escolhido · ficam em servidor no Brasil · sem anúncios e sem rastreadores de anúncio · sua localização é aproximada e não é gravada/);
+  assert.ok(await page.evaluate(() => document.querySelector('#bookForm .trust').nextElementSibling.contains(document.querySelector('#bkBtn'))), 'faixa logo antes do botão');
   await page.click('#bkBtn');
   assert.ok(await page.locator('[data-f="exam"].bad').count(), 'exige o exame');
   assert.ok(await page.locator('[data-f="consent"].bad').count(), 'exige o consentimento');
@@ -284,6 +300,7 @@ await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async ()
   await page.click('#bkBtn');
   await page.waitForSelector('.lc-ok');
   assert.match(await page.textContent('.lc-ok'), /Recebemos seu pedido!.*IMED-/s);
+  assert.match(await page.textContent('.lc-ok .trust .free'), /O IMED é gratuito para você.*nunca pede Pix/s, 'pedido enviado: aviso contra o golpe do falso agendamento');
   const row = log.insert[0].body;
   assert.equal(row.clinic_id, null);
   assert.equal(row.place_source, 'cnes');
@@ -298,6 +315,49 @@ await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async ()
   assert.ok(!('slot' in appts[0]));
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+await scenario('contador de visitas (?visitas=teste): o pedido conta só o exame; pedido que falhou ou de robô não conta', async () => {
+  let fail = true;
+  const insert = (r) => (fail ? r.fulfill({ status: 500, body: '{}', headers: CORS }) : r.fulfill({ status: 201, body: '', headers: CORS }));
+  const { page, log, errors, context } = await newPage(browser, { insert });
+  const tracks = () => log.rpc.filter((x) => x.fn === 'track').map((x) => x.body);
+  const wait = async (n) => { for (let i = 0; i < 160 && tracks().length < n; i += 1) await page.waitForTimeout(50); assert.ok(tracks().length >= n, `esperava ${n} envios, chegaram ${tracks().length}`); };
+  await page.goto(`${BASE}local.html?cnes=2077485&visitas=teste`);
+  await wait(1);
+  assert.deepEqual(tracks(), [{ p_path: '/local.html' }], 'a visita: só o caminho, sem o código do local');
+  await page.click('#agendar [data-act="pedido"]');
+  await page.selectOption('#bkExam', 'rm');
+  await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
+  await page.check('input[name="periodo"][value="tarde"]', { force: true });
+  await fillPerson(page);
+  await page.click('#bkBtn');
+  await page.waitForSelector('#bkErr.show');
+  await page.waitForTimeout(300);
+  assert.equal(tracks().length, 1, 'pedido que não foi gravado não conta');
+  fail = false;
+  await page.click('#bkBtn');
+  await page.waitForSelector('.lc-ok');
+  await wait(2);
+  assert.deepEqual(tracks()[1], { p_path: '/local.html', p_event: 'pedido_enviado', p_detail: 'rm' });
+  assert.ok(!/Ana|98765|2077485/.test(JSON.stringify(tracks())), 'nada da pessoa nem do local');
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Robô que preenche o campo escondido: a página finge que enviou, mas nada é gravado nem contado.
+  const bot = await newPage(browser);
+  await bot.page.goto(`${BASE}local.html?cnes=2077485&visitas=teste`);
+  await bot.page.click('#agendar [data-act="pedido"]');
+  await bot.page.selectOption('#bkExam', 'rm');
+  await bot.page.fill('#bkDate', await bot.page.$eval('#bkDate', (el) => el.min));
+  await bot.page.check('input[name="periodo"][value="tarde"]', { force: true });
+  await fillPerson(bot.page);
+  await bot.page.$eval('#bookForm input[name="website"]', (el) => { el.value = 'http://spam.example'; });
+  await bot.page.click('#bkBtn');
+  await bot.page.waitForSelector('.lc-ok');
+  await bot.page.waitForTimeout(800);
+  assert.equal(bot.log.insert.length, 0);
+  assert.deepEqual(bot.log.rpc.filter((x) => x.fn === 'track').map((x) => x.body.p_event ?? 'visita'), ['visita']);
+  await bot.context.close();
 });
 
 await scenario('parceiro com agenda: preços, horários em São Paulo e agendamento confirmado', async () => {
@@ -465,11 +525,147 @@ await scenario('não encontrado e erro com "Tentar de novo"', async () => {
   await er.context.close();
 });
 
+await scenario('confiança: código CNES ao lado de "Ver no CNES" e "Algo errado aqui?" gravado no banco', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('#lcName');
+  const note = await page.textContent('.lc-rest .note');
+  assert.match(note, /Código CNES 2077485\s*Ver no CNES/, 'código de 7 dígitos ao lado do link');
+  assert.equal(await page.getAttribute('.lc-rest .note a:has-text("Ver no CNES")', 'href'), 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
+  // "Algo errado aqui?": explica quem corrige o cadastro oficial e não pede nome nem contato.
+  const card = page.locator('#avisar');
+  assert.match(await card.textContent(), /Algo errado aqui\? Avise o IMED/);
+  assert.match(await card.textContent(), /correção oficial do cadastro \(CNES\) é feita pelo próprio estabelecimento/);
+  assert.ok(await page.locator('#rpForm').isHidden(), 'formulário fechado até tocar no botão');
+  await page.click('[data-act="report"]');
+  assert.equal(await page.getAttribute('[data-act="report"]', 'aria-expanded'), 'true');
+  assert.deepEqual(await page.$$eval('#rpForm input[name="tipo"]', (els) => els.map((e) => e.value)), ['telefone', 'fechado', 'endereco', 'exame', 'outro']);
+  assert.equal(await page.locator('#rpForm input[type="email"], #rpForm input[type="tel"], #rpForm input[autocomplete="name"]').count(), 0, 'sem dados pessoais');
+  await page.click('#rpBtn');
+  assert.match(await page.textContent('#e-kind'), /Escolha o que está errado/);
+  assert.equal(log.rpc.filter((c) => c.fn === 'report_place_issue').length, 0);
+  await page.check('#rpForm input[value="telefone"]');
+  await page.fill('#rpNote', '  O número   não atende <b>nunca</b> ');
+  await page.click('#rpBtn');
+  await page.waitForSelector('#rpOk:not([hidden])');
+  assert.match(await page.textContent('#rpOk'), /Obrigado! A equipe do IMED vai conferir\./);
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'rpOk', 'foco no agradecimento');
+  assert.ok(await page.locator('#rpForm').isHidden());
+  assert.equal(await page.locator('[data-act="report"]').count(), 0);
+  const calls = log.rpc.filter((c) => c.fn === 'report_place_issue');
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body, { p_cnes: '2077485', p_clinic: null, p_kind: 'telefone', p_note: 'O número não atende <b>nunca</b>' });
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Limite do banco: agradece do mesmo jeito; falha de rede: mostra o erro e deixa tentar de novo.
+  let reply = 'error';
+  const b = await newPage(browser, { report: (r) => (reply === 'error' ? r.abort() : json(r, reply)) });
+  await b.page.goto(`${BASE}local.html?id=${PARTNER_ID}`);
+  await b.page.waitForSelector('#lcName');
+  assert.match(await b.page.textContent('#avisar'), /informados pela própria clínica/);
+  await b.page.click('[data-act="report"]');
+  await b.page.check('#rpForm input[value="exame"]');
+  await b.page.click('#rpBtn');
+  await b.page.waitForSelector('#rpErr.show');
+  assert.match(await b.page.textContent('#rpErr'), /Não foi possível enviar agora/);
+  assert.match(await b.page.textContent('#rpBtn'), /Tentar de novo/);
+  reply = 'limite';
+  await b.page.click('#rpBtn');
+  await b.page.waitForSelector('#rpOk:not([hidden])');
+  assert.match(await b.page.textContent('#rpOk'), /Já recebemos muitos avisos sobre este local hoje/);
+  assert.deepEqual(b.log.rpc.filter((c) => c.fn === 'report_place_issue').at(-1).body, { p_cnes: null, p_clinic: PARTNER_ID, p_kind: 'exame', p_note: null });
+  assert.deepEqual(b.errors, []);
+  await b.context.close();
+});
+
+await scenario('parceiro: "Verificado pelo IMED em dd/mm/aaaa" (data real da conferência) e link para o que conferimos', async () => {
+  const { page, errors, context } = await newPage(browser, { tz: 'Asia/Tokyo' });
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}`);
+  await page.waitForSelector('#lcName');
+  assert.match(await page.textContent('.lc-head .lc-verified'), /Verificado pelo IMED em 30\/09\/2026 · o que conferimos/);
+  assert.equal(await page.getAttribute('.lc-head .lc-verified a', 'href'), 'como-funciona.html#selo');
+  assert.match(await page.textContent('.lc-rest .note'), /Parceiro verificado do IMED.*Código CNES 7654321/s);
+  assert.equal(await page.getAttribute('.lc-rest .note a', 'href'), 'como-funciona.html#selo');
+  // Parceiro sem data de conferência: nenhuma data aparece (nada inventado).
+  await page.goto(`${BASE}local.html?id=${NOSCHED_ID}`);
+  await page.waitForSelector('#lcName');
+  assert.equal(await page.locator('.lc-verified').count(), 0);
+  assert.ok(!/Código CNES/.test(await page.textContent('.lc-rest .note')), 'sem CNES, sem código');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pedido para outra pessoa: nome, parentesco e, para menor de 18 anos, a autorização do responsável', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('#agendar [data-act="pedido"]');
+  await page.click('#agendar [data-act="pedido"]');
+  assert.ok(await page.isChecked('input[name="para"][value="mim"]'), '"Mim" vem marcado');
+  assert.ok(await page.locator('[data-other]').isHidden(), 'campos de outra pessoa escondidos');
+  assert.equal(await page.textContent('label[for="bkName"]'), 'Seu nome completo');
+  await page.selectOption('#bkExam', 'rx');
+  await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
+  await fillPerson(page);
+  await page.click('label:has(> input[name="para"][value="outra"])');
+  assert.ok(await page.locator('[data-other]').isVisible());
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'bkOtherName', 'foco no nome de quem vai fazer o exame');
+  assert.ok(await page.locator('[data-guardian]').isHidden(), 'autorização só para menor');
+  await page.click('#bkBtn');
+  assert.match(await page.textContent('#e-otherName'), /nome de quem vai fazer o exame/);
+  assert.match(await page.textContent('#e-relationship'), /parentesco/);
+  assert.equal(log.insert.length, 0);
+  await page.fill('#bkOtherName', '  Pedro   Teste ');
+  await page.selectOption('#bkRel', 'Filho ou filha');
+  await page.check('input[name="menor"]');
+  assert.ok(await page.locator('[data-guardian]').isVisible(), 'menor de 18: aparece a autorização do responsável');
+  assert.match(await page.textContent('[data-guardian]'), /Sou o pai, a mãe ou o responsável legal.*LGPD, art\. 14/s);
+  await page.click('#bkBtn');
+  assert.match(await page.textContent('#e-guardian'), /Para menor de 18 anos, marque a autorização/);
+  assert.ok(await page.locator('[data-f="guardian"].bad').count(), 'caixa marcada em vermelho');
+  assert.equal(log.insert.length, 0, 'sem a autorização, nada é enviado');
+  await page.check('input[name="responsavel"]');
+  await page.click('#bkBtn');
+  await page.waitForSelector('.lc-ok');
+  assert.match(await page.textContent('.lc-ok'), /Para Pedro Teste \(Filho ou filha\)/);
+  const row = log.insert[0].body;
+  assert.equal(row.patient_name, 'Ana Teste', 'quem pede continua sendo o contato');
+  assert.equal(row.for_other, true);
+  assert.equal(row.other_name, 'Pedro Teste');
+  assert.equal(row.relationship, 'Filho ou filha');
+  assert.equal(row.other_minor, true);
+  assert.equal(row.guardian_consent, true);
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Pedido para si: nenhuma coluna nova vai para o banco (funciona mesmo antes da migração).
+  const me = await newPage(browser);
+  await me.page.goto(`${BASE}local.html?cnes=2077485`);
+  await me.page.click('#agendar [data-act="pedido"]');
+  await me.page.selectOption('#bkExam', 'rx');
+  await me.page.fill('#bkDate', await me.page.$eval('#bkDate', (el) => el.min));
+  await fillPerson(me.page);
+  await me.page.click('label:has(> input[name="para"][value="outra"])');
+  await me.page.fill('#bkOtherName', 'Alguém');
+  await me.page.click('label:has(> input[name="para"][value="mim"])');
+  assert.ok(await me.page.locator('[data-other]').isHidden());
+  await me.page.click('#bkBtn');
+  await me.page.waitForSelector('.lc-ok');
+  const r2 = me.log.insert[0].body;
+  for (const k of ['for_other', 'other_name', 'relationship', 'other_minor', 'guardian_consent']) assert.ok(!(k in r2), `sem ${k}`);
+  assert.deepEqual(me.errors, []);
+  await me.context.close();
+});
+
 await scenario('celular (390px): ficha e agenda sem rolagem lateral', async () => {
   const { page, errors, context } = await newPage(browser, { mobile: true });
   await page.goto(`${BASE}local.html?cnes=2077485`);
   await page.waitForSelector('#avaliacoes:not([hidden]) li');
   assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  await page.click('[data-act="report"]');
+  assert.ok(await overflow(page) <= 0, `"Algo errado aqui?" aberto sem rolagem lateral (${await overflow(page)}px)`);
+  await page.click('#agendar [data-act="pedido"]');
+  await page.click('label:has(> input[name="para"][value="outra"])');
+  await page.check('input[name="menor"]');
+  assert.ok(await overflow(page) <= 0, `pedido para outra pessoa sem rolagem lateral (${await overflow(page)}px)`);
   await shot(page, 'l05-celular-cnes');
   await page.goto(`${BASE}local.html?id=${PARTNER_ID}`);
   await page.waitForSelector('.sl-t');

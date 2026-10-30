@@ -4,56 +4,55 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Quem somos | IMED</title>
-<meta name="description" content="Quem é o IMED, o responsável técnico médico, de onde vêm os dados e como falar com a gente.">
+<meta name="description" content="Quem é o IMED, quem é o médico responsável, de onde vêm os dados e como falar com a gente.">
 <meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/sobre.html">
+<meta property="og:title" content="Quem somos | IMED">
+<meta property="og:description" content="Quem é o IMED, quem é o médico responsável, de onde vêm os dados e como falar com a gente.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="IMED">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/sobre.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style data-fontes="Sora:600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
+<link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
 <link rel="stylesheet" href="assets/css/guia.css">
-<style>
-.pv{max-width:820px;margin:0 auto;padding:48px 20px 72px}
-.pv h1{font-size:clamp(32px,4vw,46px);letter-spacing:-.035em}
-.pv .upd{color:var(--muted);margin-top:8px}
-.pv .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0 8px}
-.pv .sum div{padding:16px;border-radius:18px;background:var(--bg2);line-height:1.5;font-size:14.5px}
-.pv .sum i{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);margin-bottom:10px}
-.pv h2{font-size:22px;margin:34px 0 12px;letter-spacing:-.02em}
-.pv p,.pv li{line-height:1.7;font-size:16px}
-.pv ul{padding-left:22px;display:grid;gap:8px;margin-top:8px}
-.pv table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14.5px}
-.pv th,.pv td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line);line-height:1.5}
-.pv th{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
-.pv a{color:var(--primary);font-weight:600}
-@media (max-width:640px){.pv .sum{grid-template-columns:1fr}.pv table,.pv thead,.pv tbody,.pv tr,.pv th,.pv td{display:block}.pv thead{display:none}.pv td{border:0;padding:4px 0}.pv tr{padding:12px 0;border-bottom:1px solid var(--line)}}
-</style>
+<link rel="stylesheet" href="assets/css/texto.css">
+<link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 <header class="g-top"><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <nav><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="reivindicar.html">Para clínicas</a></nav>
-  <a class="btn btn-coral" href="index.html">Voltar ao site</a>
+  <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk" aria-hidden="true"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a>
+  <nav aria-label="Seções"><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="parceiros.html">Para clínicas</a></nav>
+  <a class="btn btn-coral" href="./">Voltar ao site</a>
 </div></header>
 
-<main class="pv">
+<main class="pv" id="main" tabindex="-1">
   <h1>Quem somos</h1>
   <p class="upd">Última atualização: 30 de outubro de 2026</p>
 
   <div class="sum">
-    <div><i class="fa-solid fa-map-location-dot"></i>O IMED ajuda você a achar clínicas, laboratórios, centros de diagnóstico e hospitais reais perto de você e a pedir um agendamento.</div>
-    <div><i class="fa-solid fa-user-doctor"></i>Responsável técnico médico: <b>Dr. Rafael Pereira Barreto Silva</b>, CRM-SP 266930.</div>
-    <div><i class="fa-solid fa-truck-medical"></i>Em emergência, não use o site: ligue <b>192</b> (SAMU) ou vá ao pronto-socorro mais próximo.</div>
+    <div><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>O IMED ajuda você a achar clínicas, laboratórios, centros de diagnóstico e hospitais reais perto de você e a pedir um agendamento.</div>
+    <div><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — CRM-SP 266930.</div>
+    <div><i class="fa-solid fa-truck-medical" aria-hidden="true"></i>Em emergência, não use o site: ligue <b><a href="tel:192">192</a></b> (SAMU) ou vá ao pronto-socorro mais próximo.</div>
   </div>
 
   <h2>O que o IMED faz</h2>
-  <p>O IMED é uma plataforma de busca e de agendamento. Mostramos no mapa os estabelecimentos de saúde do cadastro oficial do Ministério da Saúde (CNES) e as clínicas parceiras, com endereço, contato e, quando a clínica informa, exames, preços, convênios e horários. Você pode pedir um agendamento e, nas clínicas parceiras com agenda, escolher o horário.</p>
-  <p>O IMED <b>não presta atendimento médico</b> e não substitui a consulta com um profissional de saúde. Os exames e consultas são feitos pelas clínicas, que respondem pelo atendimento.</p>
+  <p>O IMED é uma plataforma de busca, de agendamento e de teleconsulta. Mostramos no mapa os estabelecimentos de saúde do cadastro oficial do Ministério da Saúde (CNES) e as clínicas parceiras, com endereço, contato e, quando a clínica informa, exames, preços, convênios e horários. Você pode pedir um agendamento e, nas clínicas parceiras com agenda, escolher o horário.</p>
+  <p>Os exames e consultas presenciais são feitos pelas clínicas, que respondem pelo atendimento. Na <a href="teleconsulta.html">teleconsulta</a>, quem atende é um médico com cadastro aprovado pela equipe do IMED. O IMED não substitui a avaliação de um profissional de saúde e não é serviço de urgência.</p>
+  <p>O IMED é um serviço privado, sem vínculo com o governo ou o SUS. Para você, o IMED é gratuito: se houver cobrança pelo exame ou pela consulta no local, o pagamento é feito direto lá. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp.</p>
 
-  <h2>Responsável técnico médico</h2>
-  <p><b>Dr. Rafael Pereira Barreto Silva</b> — médico, CRM-SP 266930. O registro pode ser conferido na <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do Conselho Federal de Medicina</a>.</p>
+  <h2>Médico responsável</h2>
+  <p><b>Dr. Rafael Pereira Barreto Silva</b> — médico, CRM-SP 266930. O registro pode ser conferido na <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do Conselho Federal de Medicina<span class="sr"> (abre em outra aba)</span></a>.</p>
 
   <h2>De onde vêm as informações</h2>
   <ul>
@@ -61,20 +60,65 @@
     <li><b>Clínicas parceiras:</b> preços, convênios, horários e exames são informados pela própria clínica, que é responsável por mantê-los corretos.</li>
     <li><b>Avaliações:</b> só quem teve o atendimento concluído por um pedido feito no IMED pode avaliar, uma vez por pedido.</li>
   </ul>
-  <p>O IMED nunca inventa preço, nota, horário ou depoimento. Quando uma informação não existe, ela não aparece ou aparece como “sob consulta”.</p>
+  <p>O IMED nunca inventa preço, nota, horário ou depoimento. Quando uma informação não existe, ela não aparece ou aparece como “sob consulta”. Veja em <a href="como-funciona.html">Como funciona</a> como ordenamos os resultados, o que significa o selo “Parceiro verificado” e como funcionam as avaliações.</p>
 
   <h2>Empresa</h2>
   <p>Razão social e CNPJ: em atualização.</p>
 
   <h2>Fale com a gente</h2>
-  <p>E-mail: <a href="mailto:contato@imed.com.br">contato@imed.com.br</a>. Clínicas podem <a href="reivindicar.html">assumir o próprio cadastro</a> ou entrar na <a href="painel.html">área da clínica</a>.</p>
-  <p>Veja também a <a href="privacidade.html">política de privacidade</a> e os <a href="termos.html">termos de uso</a>.</p>
+  <p>Escreva pelo <a href="contato.html">Fale com o IMED</a>. Clínicas podem <a href="reivindicar.html">assumir o próprio cadastro</a> ou entrar na <a href="painel.html">área da clínica</a>.</p>
+  <p>Veja também a <a href="privacidade.html">política de privacidade</a>, os <a href="termos.html">termos de uso</a> e a página de <a href="acessibilidade.html">acessibilidade</a>.</p>
 </main>
 
-<footer><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span>
-</div></footer>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
 <script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));</script>
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/visitas.js" defer></script>
 </body>
 </html>
