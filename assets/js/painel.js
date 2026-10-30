@@ -144,6 +144,10 @@ function clinicNotes(c) {
       ${c.status === 'published' && !c.accepts_online_booking ? note('Pedidos pelo site estão desligados. Ligue em “Dados da clínica” para receber pedidos.', 'warn') : ''}`;
 }
 
+// Só a equipe do IMED vê o atalho para o painel de gestão (gestao.html). A página de gestão confere de novo e os
+// números só saem das funções do banco que exigem a conta da equipe.
+const GESTAO_LINK = '<div class="cl-actions"><a class="btn btn-ghost btn-sm" href="gestao.html" id="goGestao"><i class="fa-solid fa-list-check" aria-hidden="true"></i> Painel de gestão</a></div>';
+
 function renderShell() {
   const c = clinic();
   const list = tabs();
@@ -170,6 +174,7 @@ function renderShell() {
       </div>
       ${asAdmin ? note('Você está vendo esta clínica como equipe do IMED. As mudanças valem para a clínica.', 'info') : ''}
       <div id="clinicNotes">${clinicNotes(c)}</div>
+      ${state.admin ? GESTAO_LINK : ''}
     </section>
     <div class="cl-tabs" role="tablist" aria-label="Seções da área da clínica">
       ${list.map(([id, label]) => `<button class="cl-tab" role="tab" type="button" id="tab-${id}" aria-controls="panel" aria-selected="${id === state.tab}" tabindex="${id === state.tab ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}
