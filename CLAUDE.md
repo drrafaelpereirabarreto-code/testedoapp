@@ -35,11 +35,13 @@ Dr. Rafael Pereira Barreto, médico, dono do IMED. Fala português do Brasil, n�
 | **wip/melhorias** | Branch com cópia de segurança de trabalho ainda não publicado |
 
 ## Estado atual (atualize ao terminar cada etapa)
-- No ar: busca "perto de mim" com CNES, cidade 3D realista, fila de importação (143 cidades), banco do marketplace.
-- **Em andamento:** as 14 melhorias (página inicial só com dados reais, selos, SUS/convênio, comparador de preço,
-  avaliações, reivindicar cadastro, painel da clínica, conta do paciente, páginas por cidade, teleconsulta "em breve").
-  Plano: `memory/projects/imed-melhorias.md`.
-- **Depois:** vídeo de divulgação (gravar tela do site → AI Producer by OpusClip).
+- No ar (30/10/2026): as 14 melhorias — página inicial só com dados reais, selos, filtros SUS/convênio, faixa de preço,
+  avaliações, "Adicionar à agenda", conta do paciente (`conta.html`), reivindicar cadastro (`reivindicar.html`),
+  área da clínica/admin (`painel.html`), páginas por cidade (`cidades/`, gerar com `scripts/gerar-cidades.mjs`),
+  teleconsulta "em breve". Fila de importação (143 cidades) rodando sozinha.
+- Testes: `node --test tests/*.test.mjs` e `node tests/e2e-{perto,inicio,clinica,conta}.mjs` (todos passando).
+- **Próximo:** vídeo de divulgação (gravar a tela do site → AI Producer by OpusClip); quando a fila terminar,
+  exportar `imported_cities()` para `scripts/cidades.json` e rodar o gerador de novo.
 
 ## Pendências que dependem do Dr. Rafael
 - Comprar domínio (ex.: imed.com.br; dá para ver na Hostinger) → trocar `siteUrl` em `assets/js/config.js`.
