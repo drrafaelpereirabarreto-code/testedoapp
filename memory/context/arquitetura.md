@@ -15,6 +15,8 @@
 | `medico.html` + `assets/js/medico.js` | Médico: cadastro, fila, atendimento, documentos (PDF com `assets/vendor/pdf-lib`, QR) e admin (aprovar médicos) |
 | `assets/js/tele-core.js`, `assets/js/tele-docs.js` | Regras puras da teleconsulta e dos documentos (testadas em `tests/tele-*.test.mjs`) |
 | `documento.html` | Conferência pública de documento pelo código (só tipo, data, médico, iniciais, situação) |
+| `gestao.html` + `assets/js/gestao.js`, `gestao-core.js` | Painel de gestão só do admin (`noindex`, fora da navegação, sem contador): pacientes atendidos, funil do paciente, entrada de médicos (fluxograma com números) e clínicas, resultados, faturamento e cobrança (registro manual, CSV). Gráficos SVG feitos à mão, com tabela em "Ver em tabela" |
+| `para-medicos.html` | Página pública "Atenda pelo IMED": requisitos, situação do IMED, fluxograma da inscrição até o atendimento, perguntas |
 | `contato.html`, `como-funciona.html`, `acessibilidade.html` | Fale com o IMED (protocolo), regras do site, acessibilidade |
 | `scripts/rodape.mjs`, `aplicar-rodape.mjs`, `aplicar-visitas.mjs`, `fontes.mjs` | Rodapé único, contador de visitas em todas as páginas, letras e ícones do próprio site (rode depois de criar página) |
 
@@ -33,6 +35,10 @@
   `tele_messages`, `tele_record_*`, `tele_access_log`, `tele_documents`, `tele_document_files`; tudo por funções `tele_*`
   (paciente com id + token; médico aprovado; admin). Quem lê prontuário: `tele_record_readers`. Job `imed-teleconsulta-expira`.
   Receita só simples (antibiótico/controlados bloqueados: SNCR da Anvisa). Versão do termo em `tele-core.js` (TCLE_VERSION) e no SQL.
+- Gestão (`20261030163758_gestao`): `admin_gestao(p_days)` (todos os números do painel, contrato no comentário da
+  migração), `admin_cobranca_listar/salvar/status` e as tabelas `private.billing_charges` e `private.billing_charge_log`
+  (histórico só de situação, valor, vencimento e pagamento). Tudo confere `is_imed_admin`. O site não recebe pagamento:
+  a equipe registra as cobranças feitas por fora.
 - Confiança/visitas (`..._confianca`, `..._visitas`): `cancel_request`, `send_contact`, avisos de erro de locais,
   conferência de clínica, `cnes_last_update(p_city)`, `track` (contador agregado em `private.*_daily`), `admin_stats`.
 - pg_cron: `imed-fila-importacao` (a cada minuto, 2 cidades) e `imed-atualizacao-mensal`. A fila tem 316 cidades
@@ -49,6 +55,20 @@
 - No modo automático, envio forçado (`push -f`) é bloqueado: a cópia de segurança em `wip/melhorias` é um commit com
   dois pais (HEAD e a ponta antiga da wip), enviado sem forçar. Commits de trabalho de agentes: testar e
   commitar a partir de uma `git worktree` limpa e depois `git reset <commit>` (sem --hard) na pasta principal.
+- O registro das execuções do GitHub (logs e artifacts) fica num armazenamento bloqueado daqui. Para ver por que um
+  teste falhou: `gh api repos/<repo>/check-runs/<job>/annotations` — o testes.yml põe em cada aviso até 14 linhas do erro.
+  Cada envio para a main cancela a execução de testes anterior que ainda estiver rodando (concurrency).
+- Os mapas (OpenStreetMap) também ficam bloqueados daqui: o vídeo de divulgação é gravado no GitHub.
+
+## Vídeo de divulgação
+- `scripts/gravar-video.mjs` (Playwright + ffmpeg) grava o site no ar com dados reais: início, mapa com locais reais,
+  busca de ressonância, resultados, página do local, médico responsável e cartão final. Não envia pedido e não conta
+  visita. A teleconsulta fica de fora até a inscrição no CREMESP.
+- Rodar: Actions → "Vídeo de divulgação" → Run workflow (`gh workflow run video.yml -f formatos=vertical,horizontal`).
+  O resultado vai para o ramo `video/execucao-N` (baixar com `git fetch --depth 1 origin refs/heads/video/execucao-N`).
+- Escala de verdade no Chromium (`--force-device-scale-factor`, sem viewport emulado): com a escala só emulada os
+  quadros saem pequenos. No computador grava com "movimento reduzido": a cidade 3D sem placa de vídeo deixa a página
+  quase parada (no celular ela é menor e gira normalmente).
 
 ## Testes
 ```bash
@@ -57,4 +77,6 @@ node --experimental-strip-types --test supabase/functions/*/lib.test.ts
 node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
 ```
 - `E2E_PORT=<porta>` roda um e2e em outra porta (para rodar em paralelo); `ONLY="trecho"` no e2e-perto roda só alguns cenários.
+- Celular: no modo celular do Playwright, quando algo passa da tela o navegador afasta o zoom e o `innerWidth` cresce
+  junto; para conferir rolagem lateral, medir contra a largura configurada (ex.: 360), não contra `innerWidth`.
 - GitHub Actions (`.github/workflows/testes.yml`) roda tudo a cada envio para a main; veja com `gh run list`.

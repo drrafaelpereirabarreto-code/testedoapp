@@ -73,6 +73,8 @@
       <tr><td data-l="Situação"><b>Avaliação de um atendimento</b></td><td data-l="Dados">Nota de 1 a 5, comentário (opcional) e o seu primeiro nome</td><td data-l="Para quê">Mostrar a outros pacientes a nota do local. Aparecem só a nota, o comentário, o primeiro nome e o mês e o ano da avaliação. Não escreva dados de saúde no comentário.</td><td data-l="Base legal">Seu consentimento, ao enviar a avaliação (art. 7º, I).</td></tr>
       <tr><td data-l="Situação"><b>Lista de espera da teleconsulta</b></td><td data-l="Dados">E-mail, cidade (opcional) e o assunto que você escolheu (teleconsulta, novidades de exames ou os dois)</td><td data-l="Para quê">Mandar avisos sobre a teleconsulta e, se você escolheu, novidades de exames. Sem propaganda de terceiros.</td><td data-l="Base legal">Seu consentimento (art. 7º, I).</td></tr>
       <tr><td data-l="Situação"><b>Teleconsulta</b></td><td data-l="Dados">Veja a seção <a href="#teleconsulta">Teleconsulta</a></td><td data-l="Para quê">Fazer a consulta por vídeo e registrar o atendimento.</td><td data-l="Base legal">Tutela da saúde, em atendimento feito por médico (art. 11, II, f), e o seu consentimento no termo da teleconsulta.</td></tr>
+      <tr><td data-l="Situação"><b>Cadastro de médico</b> (área do médico)</td><td data-l="Dados">E-mail da conta, nome completo, número e estado do CRM, RQE e especialidade (opcionais), celular, o endereço profissional e o contato que saem nos documentos médicos, e a data em que a equipe do IMED conferiu o CRM</td><td data-l="Para quê">Conferir o registro no Conselho Federal de Medicina antes de liberar os atendimentos, mostrar ao paciente o nome e o CRM de quem atende e identificar o médico nos documentos. O celular e o e-mail só a equipe do IMED vê.</td><td data-l="Base legal">Procedimentos para a parceria, a pedido do médico (art. 7º, V), e cumprimento das regras da telemedicina, que exigem a identificação do médico (art. 7º, II; Resolução CFM nº 2.314/2022).</td></tr>
+      <tr><td data-l="Situação"><b>Cobranças</b> (registradas pela equipe do IMED)</td><td data-l="Dados">Tipo e descrição da cobrança, valor, vencimento, situação, forma e data do pagamento, o nome de quem paga (paciente, clínica ou médico) e, se for o caso, a teleconsulta ou a clínica a que ela se refere</td><td data-l="Para quê">Controlar o que foi cobrado e o que foi recebido. Só a equipe do IMED vê, no painel de gestão. Hoje o site não recebe pagamentos: a equipe registra as cobranças feitas por fora (Pix, cartão ou boleto).</td><td data-l="Base legal">Cumprir o contrato com quem paga (art. 7º, V) e as obrigações fiscais e contábeis (art. 7º, II).</td></tr>
       <tr><td data-l="Situação"><b>Clínica que assume o próprio cadastro</b></td><td data-l="Dados">Nome, cargo, CPF ou CNPJ, registro no conselho da profissão (opcional), celular, e-mail e mensagem</td><td data-l="Para quê">Conferir se a pessoa responde pelo estabelecimento antes de liberar a área da clínica. Só a equipe do IMED vê esses dados.</td><td data-l="Base legal">Procedimentos para a parceria, a pedido da clínica (art. 7º, V), e prevenção de fraude (legítimo interesse, art. 7º, IX).</td></tr>
       <tr><td data-l="Situação"><b>Contato de clínicas</b> (página Para clínicas)</td><td data-l="Dados">Nome do estabelecimento, CNPJ, celular, e-mail, cidade e tipo de estabelecimento</td><td data-l="Para quê">Falar com a clínica sobre a entrada no IMED.</td><td data-l="Base legal">Seu consentimento, ao enviar o formulário (art. 7º, I).</td></tr>
       <tr><td data-l="Situação"><b>Fale com o IMED</b></td><td data-l="Dados">Assunto, nome, e-mail ou celular para a resposta, a mensagem e, se você informar, o protocolo do pedido. Com a conta aberta, a mensagem fica ligada à conta e ao e-mail dela</td><td data-l="Para quê">Responder à sua mensagem, inclusive pedidos sobre seus dados, e confirmar que quem pede é o dono dos dados. Cada mensagem recebe um número de protocolo. Não escreva dados de saúde na mensagem.</td><td data-l="Base legal">Atender ao seu pedido (art. 7º, V) e cumprir a LGPD (art. 7º, II).</td></tr>
@@ -126,6 +128,8 @@
     <li><b>Mensagens do Fale com o IMED:</b> pelo tempo necessário para responder e para comprovar o atendimento do pedido, inclusive os pedidos sobre seus dados.</li>
     <li><b>Avisos “Algo errado aqui?”:</b> até a conferência terminar e, depois, pelo tempo necessário para registrar a correção.</li>
     <li><b>Cadastro de clínicas e contatos de clínicas:</b> enquanto a análise ou a parceria estiverem ativas e, depois, pelo tempo necessário para comprovar a conferência feita.</li>
+    <li><b>Cadastro de médico:</b> enquanto o médico atender pelo IMED e, depois, pelo tempo necessário para identificar quem assinou os atendimentos e os documentos já feitos (eles seguem o prazo do prontuário).</li>
+    <li><b>Cobranças:</b> pelo prazo exigido pela legislação fiscal e contábil (em geral, 5 anos).</li>
     <li><b>Teleconsulta:</b> o prontuário, os documentos médicos e os dados da consulta, por pelo menos 20 anos a partir do último registro, como manda a lei (veja <a href="#teleconsulta">Teleconsulta</a>). Pedido de teleconsulta que nenhum médico atendeu: nome, data de nascimento, celular, motivo e o nome de quem pediu são apagados 30 dias depois.</li>
     <li><b>Localização e texto da busca:</b> não são guardados.</li>
     <li><b>Contador de visitas:</b> só números somados por dia, sem dado pessoal. Ficam guardados para comparar o uso do site ao longo do tempo.</li>
@@ -191,11 +195,12 @@
         </ul>
       </div>
       <div class="rd-col">
-        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <p class="rd-h" id="rd-g2">Clínicas e médicos</p>
         <ul aria-labelledby="rd-g2">
           <li><a href="parceiros.html">Para clínicas</a></li>
           <li><a href="reivindicar.html">Assumir o cadastro</a></li>
           <li><a href="painel.html">Área da clínica</a></li>
+          <li><a href="para-medicos.html">Para médicos</a></li>
         </ul>
       </div>
     </nav>

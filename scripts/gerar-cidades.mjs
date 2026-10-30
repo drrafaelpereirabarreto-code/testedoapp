@@ -335,7 +335,7 @@ export function listExamPages(root = ROOT) {
 }
 
 export function sitemapPaths(cities, examPages = []) {
-  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'sobre.html', 'como-funciona.html', 'termos.html', 'privacidade.html', 'acessibilidade.html', 'contato.html', 'exames/', ...examPages, 'cidades/'];
+  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'sobre.html', 'como-funciona.html', 'termos.html', 'privacidade.html', 'acessibilidade.html', 'contato.html', 'para-medicos.html', 'exames/', ...examPages, 'cidades/'];
   for (const c of cities) {
     paths.push(cityDir(c));
     for (const t of TYPES) if (Number(c[t.kind]) > 0) paths.push(typePath(c, t));

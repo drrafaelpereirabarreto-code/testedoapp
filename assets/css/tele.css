@@ -227,6 +227,46 @@ fieldset.fld.bad .tl-none{box-shadow:0 0 0 2px rgba(232,81,47,.5)}
 .md-me small{color:var(--muted)}
 .md-me+p{margin-top:10px}
 .md-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--gold-s);color:#5c3d00;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+
+/* link "Como funciona para o médico" no topo escuro */
+.md .tl-hero .md-howto{margin-top:4px}
+.md .tl-hero .md-howto a{display:inline-flex;align-items:center;gap:8px;min-height:44px;color:var(--aqua2);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.md .tl-hero :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
+
+/* etapas do cadastro: Conta criada → Envio do cadastro → Conferência do CRM → Aprovado → Disponível.
+   Celular: lista em pé (sem rolagem lateral em 390 px); tela larga: em linha. As linhas entre as bolinhas são só
+   desenho: a ordem está na lista e a etapa atual no aria-current="step". */
+.md-steps{margin-top:12px;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:#fff}
+.md-stepper{list-style:none;display:grid;grid-template-columns:minmax(0,1fr)}
+.md-stepper li{position:relative;display:flex;gap:12px;align-items:flex-start;padding:0 0 14px;min-width:0}
+.md-stepper li:last-child{padding-bottom:0}
+.md-stepper li:not(:last-child)::before{content:"";position:absolute;left:13px;top:30px;bottom:2px;width:2px;background:#cfdde4}
+.md-stepper li.done:not(:last-child)::before{background:var(--green)}
+.md-sn{position:relative;z-index:1;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;flex-shrink:0;background:#E6EDF1;color:var(--muted);font:700 13px/1 'Inter',system-ui,-apple-system,sans-serif}
+.md-stepper .done .md-sn{background:var(--green);color:#fff;font-size:12px}
+.md-stepper .now .md-sn{background:var(--primary);color:#fff;box-shadow:0 0 0 4px rgba(11,114,144,.18)}
+.md-stepper .now.on .md-sn{background:var(--green);box-shadow:0 0 0 4px rgba(19,122,68,.2)}
+.md-stepper .bad .md-sn{background:var(--coral-d);color:#fff;font-size:12px;box-shadow:0 0 0 4px rgba(191,59,32,.16)}
+.md-sl{display:grid;gap:1px;min-width:0;padding-top:4px;font-size:14.5px;font-weight:600;line-height:1.35;color:var(--muted);overflow-wrap:anywhere}
+.md-stepper .done .md-sl{color:var(--text)}
+.md-stepper .now .md-sl,.md-stepper .bad .md-sl{color:var(--ink);font-weight:700}
+.md-sl small{font-size:12.5px;font-weight:700;color:var(--primary-d)}
+.md-stepper .now.on small{color:#146b3d}
+.md-stepper .bad small{color:#a33a1f}
+.md-stepmsg{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--primary-s);color:var(--primary-d);font-size:14px;font-weight:600;line-height:1.5}
+.md-stepmsg.on{background:var(--green-s);color:#145c37}
+.md-stepmsg.bad{background:var(--coral-s);color:#8a2a14}
+.md-stepmsg a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.md-stephelp{margin-top:4px}
+.md-steps+p{margin-top:12px}
+.md-stephelp a{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:14.5px}
+@media (min-width:700px){
+  .md-stepper{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .md-stepper li{flex-direction:column;align-items:center;gap:6px;padding:0 4px;text-align:center}
+  .md-stepper li:last-child{padding:0 4px}
+  .md-stepper li:not(:last-child)::before{left:calc(50% + 18px);right:calc(-50% + 18px);top:13px;bottom:auto;width:auto;height:2px}
+  .md-sl{padding-top:0;justify-items:center}
+}
 .md-notice ul{display:grid;gap:6px;padding-left:20px;font-size:14.5px}
 .md-notice p{font-size:14.5px}
 .md-notice .consent{margin-top:18px}

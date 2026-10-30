@@ -1077,6 +1077,28 @@ await scenario('service worker ligado: com economia de dados ou 2G, não instala
   await context.close();
 });
 
+// A lista leve do computador (aparelho fraco ou movimento reduzido) tem largura fixa: um nome comprido do CNES
+// ganha reticências e não passa da borda do cartão (no vídeo de 30/10, "Osteon Clínica de Ortopedia..." passava).
+await scenario('computador em modo leve: nome comprido na lista do topo não passa do cartão', async () => {
+  const LONGO = { ...CNES_ROWS[0], cnes: '7300002', name: 'Osteon Clínica de Ortopedia e Traumatologia Sociedade Simples Nome Bem Comprido Teste', distance_m: 90 };
+  const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 1, cores: 8 }, cnes: (r) => json(r, [LONGO, ...CNES_ROWS.slice(1)]) });
+  await page.goto(BASE);
+  await page.waitForSelector('#heroLite li a');
+  assert.equal(await page.evaluate(() => document.body.dataset.hero), 'leve', 'modo leve');
+  const m = await page.evaluate(() => {
+    const card = document.querySelector('#heroLite').getBoundingClientRect();
+    const items = [...document.querySelectorAll('#heroLite li a')].map((a) => Math.round(a.getBoundingClientRect().right - card.right));
+    const b = [...document.querySelectorAll('#heroLite li b')].find((x) => /Nome Bem Comprido/.test(x.textContent));
+    return { items, achou: !!b, cortado: !!b && b.scrollWidth > b.clientWidth };
+  });
+  await shot(page, 'inicio-leve-nome-comprido');
+  assert.ok(m.achou, 'o local de nome comprido aparece na lista leve');
+  assert.ok(m.items.every((d) => d <= 0), `nenhuma linha passa da borda do cartão (${m.items.join(', ')} px)`);
+  assert.ok(m.cortado, 'o nome comprido ganha reticências');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('lista leve não fica em "Carregando…" quando o banco falha antes de o 3D falhar', async () => {
   // Aparelho normal: pede os locais e começa a baixar o 3D. O banco responde erro na hora; o three.js falha depois.
   const { page, errors, context } = await newPage(browser, {
