@@ -40,6 +40,7 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
   área da clínica/admin (`painel.html`), páginas por cidade (`cidades/`, gerar com `scripts/gerar-cidades.mjs`),
   teleconsulta "em breve". Fila de importação (143 cidades) rodando sozinha.
 - Testes: `node --test tests/*.test.mjs` e `node tests/e2e-{perto,inicio,clinica,conta}.mjs` (todos passando).
+- Também no ar: página de cada local (`local.html`), agenda com horário (aba Agenda no painel; reserva já confirmada), "Quem somos" e "Termos", 143 cidades. O Dr. Rafael é admin (`admin_emails`) e aprova cadastros no `painel.html`.
 - **Próximo:** vídeo de divulgação (gravar a tela do site → AI Producer by OpusClip); quando a fila terminar,
   exportar `imported_cities()` para `scripts/cidades.json` e rodar o gerador de novo.
 
