@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
-<title>Área do médico | IMED</title>
-<meta name="description" content="Área do médico da teleconsulta do IMED: cadastro com identidade e CRM conferidos pela equipe do IMED, fila de pacientes, vídeo, pedido de exames, documentos para assinar com certificado ICP-Brasil e registro da consulta.">
+<title>Área do médico: plataforma de atendimento | IMED</title>
+<meta name="description" content="Plataforma de atendimento do IMED (área do médico da teleconsulta): cadastro com identidade e CRM conferidos pela equipe do IMED, painel com os números da fila, vídeo, pedido de exames, documentos para assinar com certificado ICP-Brasil e registro da consulta.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#05161e">
 <link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/medico.html">
@@ -27,23 +27,32 @@
 <body class="tl-page md-page">
 <a class="skip" href="#main">Pular para o conteúdo</a>
 
-<header class="pt-top">
-  <div class="pt-top-in">
-    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-    <nav class="pt-nav" aria-label="Seções">
-      <a href="./">Início</a>
-      <a href="teleconsulta.html">Teleconsulta</a>
-      <a href="medico.html" aria-current="page">Área do médico</a>
+<!-- Topo da Plataforma de atendimento: logo do IMED + nome da plataforma + menu (âncoras para as partes desta página;
+     medico.js mostra só os itens cuja parte está na tela e, abaixo de 1040 px, abre o menu pelo botão) + "Site do IMED".
+     Sem item no menu (antes de entrar), o topo mostra só "Site do IMED" (classe "solo"). -->
+<header class="pt-top md-top solo" id="mdTop">
+  <div class="pt-top-in md-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a>
+    <span class="md-brand">Plataforma de atendimento</span>
+    <button class="md-menubtn" type="button" id="menuBtn" aria-expanded="false" aria-controls="mdMenu">Menu<i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+    <nav class="md-nav" id="mdMenu" aria-label="Plataforma de atendimento">
+      <ul class="md-navlist" role="list" hidden>
+        <li hidden><a href="#painel" data-go="painel">Painel</a></li>
+        <li hidden><a href="#dutyCard" data-go="fila">Fila</a></li>
+        <li hidden><a href="#histCard" data-go="consultas">Consultas</a></li>
+        <li hidden><a href="#signCard" data-go="documentos">Documentos</a></li>
+        <li hidden><a href="#meCard" data-go="cadastro">Meu cadastro</a></li>
+      </ul>
+      <a class="md-site" href="./"><i class="fa-solid fa-house" aria-hidden="true"></i><span class="md-site-t">Site do IMED</span></a>
     </nav>
-    <a class="pt-partner" href="termo-teleconsulta.html">Termo da teleconsulta</a>
   </div>
 </header>
 
 <main id="main" class="tl md" tabindex="-1">
   <section class="tl-hero" aria-labelledby="mdTitle">
     <div class="tl-wrap">
-      <span class="tl-kicker"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Teleconsulta do IMED</span>
-      <h1 id="mdTitle">Área do médico</h1>
+      <span class="tl-kicker"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Área do médico · Teleconsulta</span>
+      <h1 id="mdTitle">Plataforma de atendimento do IMED</h1>
       <p>Atenda pacientes por vídeo, peça exames, emita documentos para assinar com o seu certificado ICP-Brasil e registre a consulta. Só atende médico com cadastro aprovado pela equipe do IMED, que confere o CRM e o RQE na busca do Conselho Federal de Medicina e a identidade do médico.</p>
       <p class="md-howto"><a href="para-medicos.html"><i class="fa-solid fa-circle-question" aria-hidden="true"></i>Como funciona para o médico</a></p>
     </div>
@@ -51,6 +60,26 @@
 
   <div class="tl-wrap md-wrap">
     <p class="tl-flash" id="flash" role="status" aria-live="polite" hidden></p>
+
+    <!-- Painel "Agora na plataforma" (só para médico aprovado, fora da consulta): só contagens que vêm do banco
+         (tele_painel_medico), sem nenhum dado de paciente. medico.js atualiza a cada 20 s com a aba à vista. Os números
+         não são "ao vivo" para o leitor de tela: só a mudança de quem espera é avisada, em #nowLive. -->
+    <section class="tl-card md-now" id="painel" aria-labelledby="nowTitle" hidden>
+      <div class="md-now-h">
+        <h2 id="nowTitle" tabindex="-1">Agora na plataforma</h2>
+        <p class="md-now-at" id="nowAt"></p>
+      </div>
+      <ul class="md-nums" role="list">
+        <li class="md-num md-num-main" data-num="aguardando"><i class="fa-solid fa-user-clock" aria-hidden="true"></i><p class="md-nt"><b class="md-nv">—</b> <span class="md-nl">pacientes aguardando atendimento</span></p><p class="md-nx" id="nowWait"></p></li>
+        <li class="md-num" data-num="em_atendimento"><i class="fa-solid fa-video" aria-hidden="true"></i><p class="md-nt"><b class="md-nv">—</b> <span class="md-nl">pacientes em atendimento com você</span></p></li>
+        <li class="md-num" data-num="atendidos_hoje"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><p class="md-nt"><b class="md-nv">—</b> <span class="md-nl">pacientes atendidos hoje por você</span></p></li>
+        <li class="md-num" data-num="documentos_para_assinar"><i class="fa-solid fa-file-signature" aria-hidden="true"></i><p class="md-nt"><b class="md-nv">—</b> <span class="md-nl">documentos para assinar</span></p><p class="md-nx" hidden><a class="link" href="#signCard" id="nowSign">Ver e assinar</a></p></li>
+        <li class="md-num" data-num="medicos_disponiveis"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><p class="md-nt"><b class="md-nv">—</b> <span class="md-nl">médicos disponíveis agora</span></p><p class="md-nx" id="nowMe"></p></li>
+      </ul>
+      <p class="tl-small md-now-note">Só números: este painel não mostra dados de pacientes.</p>
+      <div class="tl-row md-now-acts"><button class="btn btn-coral" type="button" id="nowBtn" data-act="on">Ficar disponível</button></div>
+      <p class="sr" id="nowLive" role="status"></p>
+    </section>
 
     <section class="tl-card" id="authCard" aria-labelledby="authTitle">
       <h2 id="authTitle">Sua conta</h2>
@@ -230,7 +259,7 @@
           </div>
 
           <div class="tl-card md-docs" id="cDocs" aria-labelledby="cDocsTitle">
-            <h3 id="cDocsTitle">Documentos</h3>
+            <h3 id="cDocsTitle" tabindex="-1">Documentos</h3>
             <p class="tl-small">O IMED monta o documento com os dados obrigatórios e um código de conferência. Você gera o PDF, assina com o seu certificado ICP-Brasil, fora do IMED, e envia o PDF assinado. O paciente vê o rascunho na hora e baixa o PDF assinado quando você enviar.</p>
             <details class="md-help">
               <summary>Como assinar o PDF</summary>
@@ -287,7 +316,7 @@
     </section>
 
     <section class="tl-card" id="histCard" aria-labelledby="histTitle" hidden>
-      <h2 id="histTitle">Suas consultas anteriores</h2>
+      <h2 id="histTitle" tabindex="-1">Suas consultas anteriores</h2>
       <p class="tl-muted">Dados de pacientes: use só para o atendimento. Até 24 horas depois de encerrar, você pode complementar o registro, as orientações e os exames.</p>
       <p class="md-note" id="histNote" hidden>O seu cadastro não está aprovado agora: aqui aparecem só as consultas das últimas 24 horas, para terminar o registro, e sem o celular dos pacientes.</p>
       <ul class="md-hist" id="hist"></ul>

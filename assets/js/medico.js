@@ -1,4 +1,6 @@
-// Área do médico (teleconsulta): entrar pelo link do e-mail, cadastro (identidade e CRM conferidos pela equipe do
+// Área do médico (Plataforma de atendimento do IMED): topo com menu (Painel, Fila, Consultas, Documentos, Meu
+// cadastro e "Site do IMED"), painel "Agora na plataforma" (contagens do banco, sem dado de paciente, para o médico
+// aprovado), entrar pelo link do e-mail, cadastro (identidade e CRM conferidos pela equipe do
 // IMED), aviso regulatório, "Disponível para atender" (renovado a cada minuto), fila, vídeo (o médico faz a oferta),
 // plano B (telefone e mensagens), pedido de exames, orientações, prontuário, histórico e, para a equipe do IMED,
 // a conferência e a aprovação dos médicos. Documentos (receita simples, atestado, pedido de exames e outros): o IMED
@@ -15,8 +17,10 @@ const ICE = T.iceServersFrom(C);
 const PLAN_B_MS = Number(TELE.planBMs) > 0 ? Number(TELE.planBMs) : 25000;
 const GATHER_MS = Number(TELE.gatherMs) > 0 ? Number(TELE.gatherMs) : 4000;
 const HEARTBEAT_MS = 60000; // tele_set_available vale 90 s
+const PANEL_MS = Number(TELE.painelMs) > 0 ? Number(TELE.painelMs) : 20000; // painel "Agora na plataforma"
 const SITE = C.siteUrl || new URL('./', location.href).href; // endereço do QR dos documentos
 const NOTICE_KEY = 'imed_medico_aviso';
+const PAGE_TITLE = document.title; // a fila põe "(N) " na frente quando há paciente esperando
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = T.esc;
@@ -35,6 +39,10 @@ const S = {
   // identidade), aba atual, itens da receita, listas por consulta e a consulta de cada lista (para o PDF), lista "Falta
   // assinar", envio de PDF em andamento e o arquivo esperando confirmação (aviso de assinatura sem ICP-Brasil).
   d: { profile: null, patient: null, patAt: 0, kind: 'exames', rx: [{}], lists: {}, ctx: {}, upFor: null, prevTimer: 0, unsigned: null, uploading: null, confirm: null },
+  // painel "Agora na plataforma": últimos números do banco; missing = o banco ainda não tem a função (ou não deixa
+  // usar): o painel some sem erro até recarregar a página; blocked = o banco disse "não aprovado" (espera o cadastro
+  // mudar, sem pedir de novo em seguida); err = a última atualização falhou (mostra os números de antes).
+  panel: { data: null, missing: false, blocked: false, err: false },
 };
 
 /* ======================= avisos ======================= */
@@ -142,6 +150,10 @@ function resetAll() {
   for (const id of ['#meCard', '#regCard', '#noticeCard', '#dutyCard', '#signCard', '#consult', '#histCard', '#adminCard']) $(id).hidden = true;
   $('#admin').innerHTML = ''; $('#hist').innerHTML = ''; $('#queue').innerHTML = '';
   clearSteps($('#meSteps')); clearSteps($('#regSteps'));
+  // Painel: some e esquece os números (outra conta pode entrar nesta página); "missing" fica (o banco é o mesmo).
+  Object.assign(S.panel, { data: null, blocked: false, err: false });
+  $('#nowLive').textContent = '';
+  syncPanel();
 }
 
 /* ======================= cadastro ======================= */
@@ -161,6 +173,8 @@ async function loadMe() {
   S.meErr = false;
   S.admin = !!me?.is_admin;
   S.me = me && me.id ? me : null;
+  // O banco recusou o painel ("não aprovado"), e o cadastro mudou mesmo: o painel volta quando for aprovado de novo.
+  if (S.me?.status !== 'approved') S.panel.blocked = false;
   renderMe();
   if (S.admin) loadAdmin();
   else $('#adminCard').hidden = true;
@@ -171,6 +185,7 @@ async function loadMe() {
     stopDuty();
     $('#noticeCard').hidden = true;
   }
+  syncPanel();
 }
 const STATUS_TEXT = {
   pending: ['tl-chip warn', 'Em análise', 'A equipe do IMED vai conferir o seu CRM no CFM e a sua identidade: por chamada de vídeo (documento com foto e carteira do CRM) ou por um documento assinado com o seu certificado ICP-Brasil. A fila de pacientes aparece aqui quando o cadastro for aprovado.'],
@@ -328,6 +343,208 @@ function setupNotice() {
   });
 }
 
+/* ======================= ir para uma parte da página ======================= */
+// Menu do topo e botões do painel: rola até a parte e põe o foco no título dela (quem usa teclado ou leitor de tela
+// continua dali). Parte escondida (não está na tela agora): não faz nada e devolve false.
+function goTo(sel) {
+  const box = $(sel);
+  if (!box || box.closest('[hidden]')) return false;
+  const h = box.querySelector('h2, h3');
+  box.scrollIntoView({ block: 'start' });
+  if (h) {
+    if (!h.hasAttribute('tabindex')) h.setAttribute('tabindex', '-1');
+    h.focus({ preventScroll: true });
+  }
+  return true;
+}
+
+/* ======================= menu do topo (Plataforma de atendimento) ======================= */
+// Painel, Fila, Consultas, Documentos e Meu cadastro: âncoras para as partes desta página. Cada item aparece só quando
+// a parte dele está na tela, para nenhum levar a lugar nenhum: a fila e o painel só para o médico aprovado; na
+// consulta, "Consultas" leva à consulta aberta e "Documentos" aos documentos dela; "Fila" leva ao aviso enquanto ele
+// não foi lido. Abaixo de 1040 px o menu abre pelo botão "Menu" (caixa embaixo do topo); sem nenhum item (antes de
+// entrar), o topo mostra só "Site do IMED".
+const MENU = {
+  painel: ['#painel'],
+  fila: ['#dutyCard', '#noticeCard'],
+  consultas: ['#consult', '#histCard'],
+  documentos: ['#signCard', '#cDocs'],
+  cadastro: ['#meCard', '#regCard'],
+};
+const onScreen = (el) => !!el && !el.closest('[hidden]');
+function syncMenu() {
+  let any = false;
+  for (const a of $$('#mdMenu [data-go]')) {
+    const to = MENU[a.dataset.go].find((s) => onScreen($(s)));
+    if (a.parentElement.hidden !== !to) a.parentElement.hidden = !to;
+    if (to) { any = true; if (a.getAttribute('href') !== to) a.setAttribute('href', to); }
+  }
+  $('#mdMenu .md-navlist').hidden = !any;
+  $('#mdTop').classList.toggle('solo', !any);
+  if (!any && menuOpen()) setMenu(false);
+}
+const menuOpen = () => $('#menuBtn').getAttribute('aria-expanded') === 'true';
+function setMenu(open) {
+  $('#mdTop').classList.toggle('open', open);
+  $('#menuBtn').setAttribute('aria-expanded', String(open));
+}
+function setupMenu() {
+  $('#menuBtn').addEventListener('click', () => setMenu(!menuOpen()));
+  $('#mdMenu').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-go]');
+    if (!a) return;
+    e.preventDefault();
+    setMenu(false);
+    goTo(a.getAttribute('href'));
+  });
+  // Fecha com Esc (o foco volta ao botão), com um toque fora do topo e quando o foco sai do topo (a caixa aberta não
+  // cobre o que recebeu o foco). Passou para a tela larga (menu na linha do topo): fecha também.
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen()) { setMenu(false); $('#menuBtn').focus(); } });
+  document.addEventListener('click', (e) => { if (menuOpen() && !e.target.closest('#mdTop')) setMenu(false); });
+  $('#mdTop').addEventListener('focusout', (e) => { if (menuOpen() && e.relatedTarget && !$('#mdTop').contains(e.relatedTarget)) setMenu(false); });
+  window.matchMedia?.('(min-width: 1040px)').addEventListener?.('change', () => setMenu(false));
+  // Os quadros aparecem e somem (atributo hidden) por todo o código: o menu acompanha sozinho.
+  new MutationObserver(syncMenu).observe($('#main'), { subtree: true, attributes: true, attributeFilter: ['hidden'] });
+  syncMenu();
+}
+
+/* ======================= painel "Agora na plataforma" ======================= */
+// Números de agora, direto do banco (tele_painel_medico): só contagens, nenhum dado de paciente (nem nome, nem idade,
+// nem motivo). Só para o médico aprovado e fora da consulta; o médico em análise, recusado ou suspenso continua vendo
+// só as etapas do cadastro (o banco também recusa). Atualiza a cada 20 s com a aba à vista e para quando a aba some
+// (volta na hora quando a aba aparece). Banco ainda sem a função (404/PGRST202) ou sem permissão: o painel some, sem
+// erro. Número que não veio do banco aparece como "—" (nunca um número inventado).
+const panelPoll = T.createPoller({ run: loadPanel, interval: PANEL_MS, hiddenInterval: null });
+const NUM_KEYS = ['aguardando', 'em_atendimento', 'atendidos_hoje', 'documentos_para_assinar', 'medicos_disponiveis'];
+const NUM_LABEL = {
+  aguardando: ['paciente aguardando atendimento', 'pacientes aguardando atendimento'],
+  em_atendimento: ['paciente em atendimento com você', 'pacientes em atendimento com você'],
+  atendidos_hoje: ['paciente atendido hoje por você', 'pacientes atendidos hoje por você'],
+  documentos_para_assinar: ['documento para assinar', 'documentos para assinar'],
+  medicos_disponiveis: ['médico disponível agora', 'médicos disponíveis agora'],
+};
+// Contagem como o banco mandou: inteiro de 0 para cima (número ou texto só com dígitos); o resto vira null.
+function countOf(v) {
+  if (typeof v === 'string' && /^\d{1,9}$/.test(v.trim())) return Number(v);
+  return Number.isSafeInteger(v) && v >= 0 ? v : null;
+}
+function normPanel(raw) {
+  const r = Array.isArray(raw) ? raw[0] : raw;
+  if (!r || typeof r !== 'object') return null;
+  const out = Object.fromEntries(NUM_KEYS.map((k) => [k, countOf(r[k])]));
+  out.espera = out.aguardando > 0 ? countOf(r.espera_mais_longa_min) : null;
+  // Hora dos números: a do banco; se não vier, a hora em que a resposta chegou.
+  const at = new Date(r.atualizado_em ?? '');
+  out.at = Number.isNaN(at.getTime()) ? new Date().toISOString() : at.toISOString();
+  return out;
+}
+// "12 min", "1 h 5 min"; menos de um minuto: "menos de 1 min".
+function minutesText(m) {
+  if (m < 1) return 'menos de 1 min';
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const r = m % 60;
+  return `${h} h${r ? ` ${r} min` : ''}`;
+}
+const panelWanted = () => !!A.user() && S.me?.status === 'approved' && !S.c && !S.panel.missing && !S.panel.blocked;
+// Liga ou desliga o painel conforme a situação (chamado quando o cadastro, a consulta ou a entrada mudam).
+function syncPanel() {
+  if (!panelWanted()) {
+    panelPoll.stop();
+    $('#painel').hidden = true;
+    return;
+  }
+  // Voltando da consulta: os números de antes aparecem na hora e os de agora chegam em seguida (start pede já).
+  $('#painel').hidden = !S.panel.data;
+  if (!panelPoll.active) panelPoll.start();
+}
+// Pede os números de novo agora (depois de ficar disponível, tirar da fila, enviar ou cancelar documento).
+function panelSoon() { if (panelWanted() && panelPoll.active) panelPoll.now(); }
+async function loadPanel() {
+  if (!panelWanted()) return;
+  let raw;
+  try { raw = await A.rpc('tele_painel_medico'); } catch (err) {
+    // Saiu da conta, abriu uma consulta ou mudou de cadastro enquanto esperava: nada a fazer.
+    if (S.me?.status !== 'approved' || S.c) return;
+    if (lostSession(err)) return;
+    const { code } = T.errorInfo(err);
+    if (err?.status === 404 || err?.data?.code === 'PGRST202' || code === 'sem_permissao') { S.panel.missing = true; syncPanel(); return; }
+    if (code === 'nao_aprovado' || code === 'sem_cadastro') { S.panel.blocked = true; syncPanel(); loadMe(); return; }
+    S.panel.err = true;
+    renderPanelAt();
+    return;
+  }
+  if (!panelWanted()) return;
+  const d = normPanel(raw);
+  if (!d) { S.panel.err = true; renderPanelAt(); return; }
+  S.panel.err = false;
+  renderPanel(d);
+}
+const setText = (el, t) => { if (el.textContent !== t) el.textContent = t; };
+function renderPanel(d) {
+  const prev = S.panel.data;
+  S.panel.data = d;
+  for (const k of NUM_KEYS) {
+    const li = $(`[data-num="${k}"]`);
+    const n = d[k];
+    const v = li.querySelector('.md-nv');
+    // Sem número do banco: um traço na tela e "sem dado" para o leitor de tela.
+    const html = n == null ? '<span aria-hidden="true">—</span><span class="sr">sem dado:</span>' : esc(n.toLocaleString('pt-BR'));
+    if (v.innerHTML !== html) v.innerHTML = html;
+    setText(li.querySelector('.md-nl'), NUM_LABEL[k][n === 1 ? 0 : 1]);
+  }
+  setText($('#nowWait'), d.aguardando > 0 && d.espera != null ? `O primeiro da fila espera há ${minutesText(d.espera)}.` : '');
+  $('#nowSign').parentElement.hidden = !(d.documentos_para_assinar > 0);
+  renderNowMe();
+  renderPanelAt();
+  renderNowBtn();
+  $('#painel').hidden = !panelWanted();
+  // Leitor de tela (educado): avisa só quando muda o número de pacientes esperando; nada a cada atualização.
+  if (prev && d.aguardando != null && prev.aguardando !== d.aguardando) {
+    $('#nowLive').textContent = d.aguardando === 0 ? 'Agora ninguém está aguardando atendimento.'
+      : `Agora ${d.aguardando === 1 ? 'há 1 paciente aguardando' : `há ${d.aguardando.toLocaleString('pt-BR')} pacientes aguardando`} atendimento.`;
+  }
+}
+function renderPanelAt() {
+  const at = S.panel.data ? T.fmtTime(S.panel.data.at) : '';
+  const el = $('#nowAt');
+  setText(el, S.panel.err
+    ? (at ? `Atualizado às ${at}. Sem resposta do servidor agora: tentando de novo…` : 'Sem resposta do servidor. Tentando de novo…')
+    : (at ? `Atualizado às ${at}` : ''));
+  el.classList.toggle('warn', S.panel.err);
+}
+// "Contando você": o médico disponível entra na conta dos médicos disponíveis.
+function renderNowMe() {
+  const n = S.panel.data?.medicos_disponiveis;
+  setText($('#nowMe'), S.available && n > 0 ? 'Contando você.' : '');
+}
+// Um botão só (o foco não se perde quando muda): "Ficar disponível" leva ao aviso (se ainda não foi lido) ou liga o
+// "Disponível para atender"; disponível, vira "Ver a fila".
+function renderNowBtn() {
+  const b = $('#nowBtn');
+  const act = S.available ? 'fila' : 'on';
+  if (b.dataset.act === act) return;
+  b.dataset.act = act;
+  b.textContent = S.available ? 'Ver a fila' : 'Ficar disponível';
+  b.className = `btn ${S.available ? 'btn-primary' : 'btn-coral'}`;
+}
+function setupPanel() {
+  $('#nowBtn').addEventListener('click', async (e) => {
+    const b = e.currentTarget;
+    if (b.dataset.act === 'fila') { goTo('#dutyCard'); return; }
+    if (!S.duty) { showNotice(); goTo('#noticeCard'); return; }
+    b.disabled = true;
+    try { await setAvailable(true, true); } finally { b.disabled = false; }
+    if (S.available) toast('Pronto: você está disponível. Os pacientes veem o seu nome e CRM.');
+  });
+  // "Ver e assinar": leva ao quadro "Falta assinar" (lê a lista de novo se ele ainda não está na tela).
+  $('#nowSign').addEventListener('click', async (e) => {
+    e.preventDefault();
+    if ($('#signCard').hidden) await loadUnsigned();
+    if (!goTo('#signCard')) { toast('Nenhum documento esperando a sua assinatura agora.'); panelSoon(); }
+  });
+}
+
 /* ======================= disponível + fila ======================= */
 const queuePoll = T.createPoller({ run: loadQueue, interval: 5000, hiddenInterval: 30000 });
 const AVAIL_KEY = 'imed_medico_disponivel';
@@ -399,6 +616,10 @@ function renderAvail() {
   S.queueSig = '';
   renderQueue();
   renderSteps();
+  // Painel: o botão muda ("Ficar disponível" ou "Ver a fila") e os "médicos disponíveis" vêm de novo do banco.
+  renderNowBtn();
+  renderNowMe();
+  panelSoon();
 }
 // Ao fechar a página: desliga o "disponível" (se não der, vence sozinho em 90 s).
 function offOnLeave() {
@@ -429,7 +650,7 @@ async function loadQueue() {
   renderQueue();
   $('#queueAt').textContent = `Atualizada às ${T.fmtTime(new Date().toISOString())}.`;
   const waiting = S.queue.filter((q) => q.status === 'waiting').length;
-  document.title = `${waiting ? `(${waiting}) ` : ''}Área do médico | IMED`;
+  document.title = `${waiting ? `(${waiting}) ` : ''}${PAGE_TITLE}`;
   // Consulta própria em andamento (por exemplo, depois de recarregar a página): volta para ela.
   const mine = S.queue.find((q) => q.status === 'accepted' || q.status === 'in_call');
   if (mine && !S.c) resumeConsult(mine.id);
@@ -508,6 +729,7 @@ async function dismiss(id, btn) {
     await A.rpc('tele_dismiss', { p_id: id });
     toast('Pedido retirado da fila.');
     $('#queueLive').textContent = 'Pedido retirado da fila.';
+    panelSoon();
   } catch (err) {
     if (lostSession(err)) return;
     const { code } = T.errorInfo(err);
@@ -539,6 +761,7 @@ async function openConsult(row, mode) {
   S.exams = []; S.sent = '[]'; S.sentInd = '';
   $('#dutyCard').hidden = true; $('#histCard').hidden = true; $('#adminCard').hidden = true; $('#signCard').hidden = true;
   $('#meCard').hidden = true; $('#regCard').hidden = true;
+  syncPanel(); // na consulta, o painel some e para de atualizar (o vídeo fica no alto)
   $('#cRecord').hidden = false; $('#cExams').hidden = false;
   $('#consult').hidden = false;
   document.body.dataset.view = 'consult';
@@ -703,6 +926,7 @@ function onClosedRemotely(st) {
 function backToQueue() {
   $('#consult').hidden = true;
   $('#cRecord').hidden = false; $('#cExams').hidden = false;
+  syncPanel(); // o painel volta com os números de antes e pede os de agora na hora
   $('#meCard').hidden = !S.me;
   if (S.me?.status === 'approved' && S.duty) { $('#dutyCard').hidden = false; S.queueSig = ''; loadQueue(); }
   if (S.me) { $('#histCard').hidden = false; loadHistory(); loadUnsigned(); }
@@ -2281,6 +2505,7 @@ async function sendPdf(d, cid, bytes, from = 'c') {
 async function refreshAfter(cid) {
   const jobs = [loadUnsigned()];
   if (S.d.lists[cid] !== undefined || S.c?.id === cid) jobs.push(loadDocs(cid));
+  panelSoon(); // "documentos para assinar" no painel
   await Promise.all(jobs);
 }
 async function getSigned(d, btn) {
@@ -2461,6 +2686,8 @@ function setupDocs() {
 
 /* ======================= início ======================= */
 function setup() {
+  setupMenu();
+  setupPanel();
   setupReg();
   setupNotice();
   setupExams();

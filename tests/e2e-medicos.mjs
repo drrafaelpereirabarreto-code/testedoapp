@@ -87,18 +87,38 @@ const USERS = {
 };
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const DOCTOR_FNS = new Set(['tele_doctor_me', 'tele_doctor_register', 'tele_set_available', 'tele_queue', 'tele_history', 'tele_doctor_profile', 'tele_doc_pending',
-  'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor']);
+  'tele_painel_medico', 'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor']);
 const DAY = 86400e3;
 const iso = (t = Date.now()) => new Date(t).toISOString();
 const digits = (v) => String(v ?? '').replace(/\D/g, '');
 class PgErr extends Error { constructor(message, details = null) { super(message); this.details = details; } }
+// Dia de hoje em São Paulo (sem horário de verão desde 2019: UTC-3) e o começo dele.
+const todaySP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const startOfTodaySP = () => Date.parse(`${todaySP()}T00:00:00-03:00`);
+// "HH:MM" no horário de Brasília (como a página mostra "Atualizado às HH:MM").
+const hhmmSP = (t) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
 
 function makeDb() {
-  const db = { doctors: new Map(), admins: new Set(['u-admin']), checks: [], calls: [], otp: [], failMe: false }; // failMe: tele_doctor_me falha
+  // failMe: tele_doctor_me falha. consults/docs: só o mínimo da fila e dos documentos para os números do painel.
+  // painelErr: resposta de erro de tele_painel_medico ({ status, body }, ou função que devolve isso); painelAt: hora fixa
+  // dos números (atualizado_em).
+  const db = { doctors: new Map(), admins: new Set(['u-admin']), checks: [], calls: [], otp: [], failMe: false, consults: [], docs: [], painelErr: null, painelAt: null };
   db.addDoctor = (d) => {
     const row = { id: randomUUID(), rqe: null, specialty: null, phone: null, status: 'approved', review_note: null, reviewed_at: null, reviewed_by: null,
       checked_at: iso(Date.now() - DAY), available_until: null, created_at: iso(Date.now() - DAY), updated_at: iso(), ...d };
     db.doctors.set(row.id, row);
+    return row;
+  };
+  db.addConsult = (c) => {
+    const row = { id: randomUUID(), status: 'waiting', patient_name: 'Paciente', patient_birthdate: '1980-01-01', reason: 'Teste', for_other: false, relationship: null,
+      doctor_id: null, accepted_at: null, started_at: null, ended_at: null, created_at: iso(), ...c };
+    db.consults.push(row);
+    return row;
+  };
+  db.addDoc = (d) => {
+    const row = { id: randomUUID(), consultation_id: randomUUID(), kind: 'atestado', payload: {}, code: 'ABCD2345', status: 'emitido', signed_at: null, created_at: iso(),
+      doctor_snapshot: {}, patient_snapshot: { name: 'Paciente' }, ...d };
+    db.docs.push(row);
     return row;
   };
   db.called = (fn) => db.calls.filter((c) => c.fn === fn);
@@ -132,6 +152,36 @@ function checkMissing(c, d) {
 }
 const lastCheck = (db, d) => [...db.checks].reverse().find((c) => c.doctor_id === d.id) || null;
 const emailOf = (uid) => Object.values(USERS).find((u) => u.id === uid)?.email || null;
+// Situação de fato (private.tele_effective_status): esperando há mais de 2 h ou aceita sem começar há mais de 30 min =
+// expirada; em andamento há mais de 3 h = encerrada.
+function effective(c, now = Date.now()) {
+  if (c.status === 'waiting' && Date.parse(c.created_at) < now - 2 * 3600e3) return 'expired';
+  if (c.status === 'accepted' && !c.started_at && Date.parse(c.accepted_at) < now - 30 * 60e3) return 'expired';
+  if (['accepted', 'in_call'].includes(c.status) && c.started_at && Date.parse(c.started_at) < now - 3 * 3600e3) return 'ended';
+  return c.status;
+}
+// Números do painel do médico com as regras de supabase/migrations/20261030190000_painel_medico.sql (tele_painel_medico):
+// só contagens e minutos, nenhum dado de paciente.
+function painel(db, d) {
+  const now = Date.now();
+  const waiting = db.consults.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3);
+  const oldest = waiting.length ? Math.min(...waiting.map((c) => Date.parse(c.created_at))) : null;
+  const ini = startOfTodaySP();
+  const done = db.consults.filter((c) => {
+    if (c.doctor_id !== d.id || !c.started_at || effective(c, now) !== 'ended') return false;
+    const end = c.ended_at ? Date.parse(c.ended_at) : Date.parse(c.started_at) + 3 * 3600e3;
+    return end >= ini && end < ini + DAY;
+  });
+  return {
+    aguardando: waiting.length,
+    espera_mais_longa_min: oldest == null ? null : Math.max(0, Math.floor((now - oldest) / 60000)),
+    em_atendimento: db.consults.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status) && ['accepted', 'in_call'].includes(effective(c, now))).length,
+    atendidos_hoje: done.length,
+    documentos_para_assinar: db.docs.filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.parse(x.created_at) >= now - 7 * DAY).length,
+    medicos_disponiveis: [...db.doctors.values()].filter((o) => o.status === 'approved' && o.available_until && Date.parse(o.available_until) > now).length,
+    atualizado_em: db.painelAt || iso(now).replace(/\.\d{3}Z$/, 'Z'),
+  };
+}
 
 const RPC = {
   tele_doctor_me(db, a, uid) {
@@ -166,10 +216,28 @@ const RPC = {
     const d = docOf(db, uid); if (d) d.available_until = null;
     return null;
   },
-  tele_queue(db, a, uid) { me(db, uid, true); return []; },
+  // Fila (como tele_queue): primeiro as consultas dele em andamento, depois quem espera (há até 2 h), por ordem de chegada.
+  tele_queue(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    const own = db.consults.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status) && ['accepted', 'in_call'].includes(effective(c, now)));
+    const wait = db.consults.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3).sort((x, y) => x.created_at.localeCompare(y.created_at));
+    return [...own, ...wait].map((c) => ({ id: c.id, status: c.status, patient_name: c.patient_name, age_years: 46, reason: c.reason, for_other: c.for_other,
+      relationship: c.relationship, wait_minutes: Math.floor((now - Date.parse(c.created_at)) / 60000), created_at: c.created_at, accepted_at: c.accepted_at, seen_seconds: 5 }));
+  },
   tele_history() { return []; }, // sem consultas anteriores (não é o assunto deste teste)
   tele_doctor_profile(db, a, uid) { me(db, uid, false); return [{ prof_address: null, prof_contact: null }]; },
-  tele_doc_pending(db, a, uid) { me(db, uid, true); return []; },
+  // "Falta assinar" (como tele_doc_pending): emitidos sem PDF assinado dos últimos 30 dias; expired = passou dos 7 dias.
+  tele_doc_pending(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    return db.docs.filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.parse(x.created_at) > now - 30 * DAY)
+      .sort((x, y) => x.created_at.localeCompare(y.created_at))
+      .map((x) => ({ id: x.id, consultation_id: x.consultation_id, patient_name: x.patient_snapshot.name, kind: x.kind, payload: x.payload, code: x.code, status: x.status,
+        created_at: x.created_at, signed: false, doctor_snapshot: x.doctor_snapshot, patient_snapshot: x.patient_snapshot, expired: Date.parse(x.created_at) < now - 7 * DAY }));
+  },
+  // Painel "Agora na plataforma" (contrato novo): só para médico aprovado (o mesmo erro da fila), sem dado de paciente.
+  tele_painel_medico(db, a, uid) { return painel(db, me(db, uid, true)); },
   tele_admin_doctors(db, a, uid) {
     if (!db.admins.has(uid)) throw new PgErr('so_admin');
     const list = [...db.doctors.values()];
@@ -216,14 +284,26 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 
 /* ======================= páginas ======================= */
 // csp: false liga o bypassCSP (só para injetar o axe-core; nos outros cenários a CSP da página vale).
-async function newPage(browser, db, { mobile = false, csp = true } = {}) {
+// width: largura do celular (padrão 390); painelMs: intervalo do painel "Agora na plataforma" (padrão do site: 20 s);
+// notice: o aviso "Antes de ficar disponível" já lido neste navegador (para quem já atende).
+async function newPage(browser, db, { mobile = false, csp = true, width = 390, painelMs = 0, notice = false } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    viewport: mobile ? { width, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block', reducedMotion: 'reduce', bypassCSP: !csp,
   });
   // Aviso de privacidade já aceito (não cobre a página nas capturas).
   await context.addInitScript(() => { try { localStorage.setItem('imed_lgpd', '1'); } catch { /* ignora */ } });
+  if (notice) {
+    const version = read('assets/js/tele-core.js').match(/NOTICE_VERSION = '([^']+)'/)[1];
+    await context.addInitScript(([v, ids]) => { try { for (const id of ids) localStorage.setItem(`imed_medico_aviso:${id}`, v); } catch { /* ignora */ } }, [version, Object.values(USERS).map((u) => u.id)]);
+  }
+  if (painelMs) {
+    await context.route(`${BASE}assets/js/config.js`, async (route) => {
+      const src = await readFile(join(ROOT, 'assets/js/config.js'), 'utf8');
+      return route.fulfill({ status: 200, contentType: 'text/javascript', body: `${src}\nwindow.IMED_CONFIG.tele = { ...(window.IMED_CONFIG.tele || {}), painelMs: ${Number(painelMs)} };\n` });
+    });
+  }
   await context.route('https://tile.openstreetmap.org/**', (r) => r.abort());
   await context.route(`${SUPA}/**`, async (route) => {
     const req = route.request();
@@ -241,6 +321,9 @@ async function newPage(browser, db, { mobile = false, csp = true } = {}) {
     db.calls.push({ fn, args, uid, at: Date.now() });
     if (fn === 'tele_doctor_me' && db.failMe) return json(route, { message: 'falha simulada' }, 503); // leitura do cadastro falhando
     if (DOCTOR_FNS.has(fn) && !uid) return json(route, { code: '42501', message: `permission denied for function ${fn}` }, 401);
+    // Painel com erro simulado (banco sem a função nova, sem permissão ou fora do ar).
+    const pe = fn === 'tele_painel_medico' && (typeof db.painelErr === 'function' ? db.painelErr() : db.painelErr);
+    if (pe) return json(route, pe.body, pe.status);
     try {
       const out = RPC[fn](db, args, uid);
       return out === null ? route.fulfill({ status: 204, body: '', headers: cors }) : json(route, out);
@@ -361,6 +444,55 @@ async function runAxe(page, include = null) {
     const r = await axe.run(inc ? { include: inc } : document, { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'] });
     return r.violations.filter((v) => ['serious', 'critical'].includes(v.impact)).map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
   }, [AXE_TAGS, include]);
+}
+
+/* ---------- painel "Agora na plataforma" e topo da plataforma (medico.html) ---------- */
+const NUMS = ['aguardando', 'em_atendimento', 'atendidos_hoje', 'documentos_para_assinar', 'medicos_disponiveis'];
+// O painel como a pessoa vê: número e rótulo de cada quadro, "o primeiro espera há", a hora, o botão e o aviso ao leitor.
+const panelView = (page) => page.evaluate((keys) => {
+  const t = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+  const p = document.querySelector('#painel');
+  return {
+    shown: !p.closest('[hidden]') && p.getBoundingClientRect().height > 0,
+    nums: Object.fromEntries(keys.map((k) => { const li = p.querySelector(`[data-num="${k}"]`); return [k, `${t(li.querySelector('.md-nv'))} ${t(li.querySelector('.md-nl'))}`]; })),
+    wait: t(p.querySelector('#nowWait')), at: t(p.querySelector('#nowAt')), btn: t(p.querySelector('#nowBtn')),
+    sign: !p.querySelector('#nowSign').closest('[hidden]'), me: t(p.querySelector('#nowMe')), live: t(p.querySelector('#nowLive')),
+  };
+}, NUMS);
+// Espera o painel à vista com o número `n` em `key` (o resto é conferido depois, com a mensagem do que ficou diferente).
+const waitNum = (page, key, n, timeout = 15000) => page.waitForFunction(([k, v]) => {
+  const p = document.querySelector('#painel');
+  return !p.closest('[hidden]') && p.querySelector(`[data-num="${k}"] .md-nv`).textContent.trim() === v;
+}, [key, String(n)], { timeout });
+// Itens do menu do topo à vista: [texto, destino].
+const menuItems = (page) => page.$$eval('#mdMenu [data-go]', (as) => as.filter((a) => !a.closest('[hidden]')).map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+const focusedId = (page) => page.evaluate(() => document.activeElement?.id || '');
+const painelCalls = (db, uid) => db.called('tele_painel_medico').filter((c) => c.uid === uid).length;
+// Esconde ou mostra a aba (tela apagada ou outra aba à frente): a página vê document.hidden.
+const setTabHidden = (page, hidden) => page.evaluate((h) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, hidden);
+// Fila, atendidos e documentos de exemplo para a Carla (u-ok): 3 esperando (o primeiro há 12 min e meio), 4 atendidos
+// hoje, 2 documentos no prazo para assinar e mais 1 vencido (fica em "Falta assinar", fora do número), 1 médico atendendo.
+function seedPanel(db) {
+  const carla = docOf(db, 'u-ok');
+  const now = Date.now();
+  db.addDoctor({ user_id: 'u-davi', full_name: 'Davi Rocha', crm: '776655', crm_uf: 'MG', available_until: iso(now + 80e3) }); // atendendo agora
+  db.addDoctor({ user_id: 'u-old', full_name: 'Teo Antigo', crm: '776600', crm_uf: 'MG', available_until: iso(now - 60e3) }); // saiu: não conta
+  for (const [name, reason, min] of [['Maria Souza', 'Tosse e febre há 3 dias', 12.5], ['João Lima', 'Dor de garganta', 6], ['Ana Prado', 'Renovar receita', 1]]) {
+    db.addConsult({ patient_name: name, reason, created_at: iso(now - min * 60e3) });
+  }
+  db.addConsult({ patient_name: 'Pedido Velho', created_at: iso(now - 3 * 3600e3) }); // mais de 2 h: expirado, não conta
+  for (let i = 0; i < 4; i++) db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: `Atendido ${i}`, created_at: iso(now - 50 * 60e3), accepted_at: iso(now - 40 * 60e3), started_at: iso(now - 30 * 60e3), ended_at: iso(now - 1000) });
+  db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: 'Sem atendimento', created_at: iso(now - 50 * 60e3), accepted_at: iso(now - 40 * 60e3), ended_at: iso(now - 1000) }); // não começou
+  db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: 'De ontem', created_at: iso(now - 26 * 3600e3), accepted_at: iso(now - 26 * 3600e3), started_at: iso(now - 26 * 3600e3), ended_at: iso(now - 25 * 3600e3) });
+  db.addDoc({ doctor_id: carla.id, kind: 'atestado', code: 'ATST2345', created_at: iso(now - 3600e3), patient_snapshot: { name: 'Atendido 0' } });
+  db.addDoc({ doctor_id: carla.id, kind: 'exames', code: 'EXAM2345', created_at: iso(now - 2 * DAY), patient_snapshot: { name: 'Atendido 1' } });
+  db.addDoc({ doctor_id: carla.id, kind: 'receita', code: 'RECE2345', created_at: iso(now - 8 * DAY), patient_snapshot: { name: 'Atendido 2' } }); // vencido
+  db.addDoc({ doctor_id: carla.id, kind: 'relatorio', code: 'RELA2345', created_at: iso(now - 3600e3), signed_at: iso(now - 600e3), patient_snapshot: { name: 'Atendido 3' } }); // já assinado
+  return carla;
 }
 
 const browser = await chromium.launch();
