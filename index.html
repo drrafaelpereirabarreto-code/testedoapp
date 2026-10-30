@@ -1576,7 +1576,12 @@ document.addEventListener('click',e=>{
     <p class="note">O app abre em tela cheia, como os da loja, e as telas que você já visitou funcionam mesmo sem internet.</p>
   </div>`,'sm');
 });
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){
+  // Quando sai uma versão nova do site, recarrega uma vez sozinho para mostrá-la.
+  const hadSW=!!navigator.serviceWorker.controller;let reloaded=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadSW&&!reloaded){reloaded=true;location.reload()}});
+  addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{}));
+}
 
 /* ======================= MAPA 3D ======================= */
 window.HERO=null;

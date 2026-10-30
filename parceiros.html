@@ -545,7 +545,7 @@ function calc(){
 $('#rPac').oninput=calc;$('#rTk').oninput=calc;
 document.querySelectorAll('#calcPlan button').forEach(b=>b.onclick=()=>{cp=b.dataset.p;document.querySelectorAll('#calcPlan button').forEach(x=>x.classList.toggle('on',x===b));calc()});
 calc();
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));
 </script>
 </body>
 </html>

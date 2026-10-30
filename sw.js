@@ -1,6 +1,6 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-const VERSION = 'imed-v5';
+const VERSION = 'imed-v6';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './manifest.webmanifest',
@@ -15,7 +15,8 @@ const CORE = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
+  // cache: 'reload' ignora o cache do navegador, para não guardar uma cópia antiga.
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -39,14 +40,22 @@ self.addEventListener('fetch', e => {
 
   // Páginas: tenta a internet primeiro para mostrar a versão mais nova.
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then(res => {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
       const copy = res.clone();
       caches.open(VERSION).then(c => c.put(req, copy));
       return res;
     }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html'))));
     return;
   }
-  // Arquivos (imagens, scripts): responde do cache e atualiza em segundo plano.
+  // Scripts, estilos e dados: internet primeiro, para nunca rodar código antigo; sem internet, o cache.
+  if (/\.(js|css|json|webmanifest)$/.test(url.pathname)) {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
+      if (res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req)));
+    return;
+  }
+  // Imagens e fontes: responde do cache e atualiza em segundo plano.
   e.respondWith(caches.open(VERSION).then(c => c.match(req).then(hit => {
     const net = fetch(req).then(res => { if (res.ok) c.put(req, res.clone()); return res; }).catch(() => hit);
     return hit || net;

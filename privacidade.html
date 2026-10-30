@@ -102,6 +102,6 @@
   <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
   <span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span>
 </div></footer>
-<script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+<script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));</script>
 </body>
 </html>
