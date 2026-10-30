@@ -39,11 +39,12 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
   avaliações, "Adicionar à agenda", conta do paciente (`conta.html`), reivindicar cadastro (`reivindicar.html`),
   área da clínica/admin (`painel.html`), páginas por cidade (`cidades/`, gerar com `scripts/gerar-cidades.mjs`),
   teleconsulta "em breve". Fila de importação (143 cidades) rodando sozinha.
-- Testes: `node --test tests/*.test.mjs` e `node tests/e2e-{perto,inicio,clinica,conta}.mjs` (todos passando).
+- Testes: `node --test tests/*.test.mjs` e todos os `tests/e2e-*.mjs` (o GitHub roda tudo a cada envio; `E2E_PORT` muda a porta; o e2e-a11y precisa do axe-core via `AXE_PATH`).
 - Também no ar: página de cada local (`local.html`), agenda com horário (aba Agenda no painel; reserva já confirmada), "Quem somos" e "Termos". O Dr. Rafael é admin (`admin_emails`) e aprova cadastros no `painel.html`.
-- Noite de 30/10 (no ar): busca na área inteira (mapa no raio todo, pontos de todos os locais, contagem real, Ver mais, até 50 km); mapa da página inicial com todos os locais em 2 km; segurança do banco (migração `20261030074604_seguranca`); testes automáticos no GitHub (`.github/workflows/testes.yml`); fila com 316 cidades importadas (`scripts/cidades.json` com 318).
-- **Em andamento (agentes):** teleconsulta por vídeo (`teleconsulta.html`, `medico.html`); depois os documentos médicos (receita, atestado, encaminhamento…); confiança (rodapé com médico responsável, faxina do inventado, páginas de regras), contador de visitas, acessibilidade e velocidade. Gerar de novo as páginas das cidades junto com o rodapé novo.
-- **Próximo:** vídeo de divulgação (gravar a tela → AI Producer by OpusClip); nova análise dos concorrentes.
+- Noite de 30/10 (no ar): busca na área inteira (até 50 km); mapa da página inicial com todos os locais em 2 km; segurança do banco; testes automáticos no GitHub; 318 cidades (`scripts/cidades.json`, páginas geradas).
+- 30/10 de manhã (no ar): **teleconsulta** por vídeo (`teleconsulta.html` paciente, `medico.html` médico/admin, `termo-teleconsulta.html`), com **documentos médicos** (pedido de exames, receita simples, atestado, comparecimento, encaminhamento, relatório, orientações; PDF com QR → `documento.html`; o médico assina com ICP-Brasil e envia o PDF); **confiança** (rodapé único com médico responsável em todas as páginas — `scripts/rodape.mjs` + `aplicar-rodape.mjs`; faxina do inventado; `como-funciona.html`, `acessibilidade.html`, `contato.html` "Fale com o IMED"; cancelar pedido; "Algo errado? Avise"; conferência de clínica no painel); **contador de visitas** próprio sem cookies (`assets/js/visitas.js`, aba Visitas no painel); acessibilidade (axe) e velocidade (fontes e ícones do próprio site — `scripts/fontes.mjs`).
+- Migrações aplicadas: `..._seguranca`, `..._teleconsulta`, `..._tele_documentos`, `..._confianca`, `..._visitas` (nomes iguais às versões do banco).
+- **Próximo:** vídeo de divulgação; nova análise dos concorrentes; Turnstile (anti-robô) e TURN para o vídeo; domínio próprio antes do 1º documento real.
 
 ## Pendências que dependem do Dr. Rafael
 - Razão social e CNPJ do IMED → `sobre.html` (hoje "em atualização"). Termos de uso: pedir revisão de um advogado.
@@ -52,6 +53,6 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
 - Conectar **Resend** (e-mail) → SMTP no Supabase Auth; e Auth → URL Configuration com o endereço do site.
 - Aprovar quando o Supabase pedir confirmação de SQL (o tempo esgota se ninguém responde).
 - Segurança: manter "Confirm email" ligado; entrar no `painel.html` pelo link do e-mail (cria a conta de admin) e depois rodar `select * from private.vincular_admin();`; 2FA no Supabase e no GitHub; backup (plano Pro, custo).
-- Teleconsulta: inscrição da empresa no CRM antes de atender; certificado digital ICP-Brasil para assinar documentos.
+- Teleconsulta: inscrição da empresa no CRM (CREMESP) com diretor técnico antes de atender; certificado digital ICP-Brasil para assinar documentos; advogado revisar termo e textos; aprovar médicos em `medico.html` só depois de conferir identidade e CRM.
 
 → Detalhes técnicos: `memory/context/arquitetura.md` · Histórico: `memory/projects/`

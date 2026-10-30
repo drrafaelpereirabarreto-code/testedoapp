@@ -3,6 +3,7 @@
 // o agendamento já sai confirmado; os demais recebem pedido de agendamento (a clínica ou o IMED liga).
 // Nada é inventado: sem preço, nota ou horário informado, a informação não aparece.
 import * as G from './geo-core.js';
+import * as T from './confianca.js';
 
 const CFG = window.IMED_CONFIG;
 const $ = (s, el = document) => el.querySelector(s);
@@ -12,6 +13,9 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const params = new URLSearchParams(location.search);
 const SITE = CFG.siteUrl || new URL('./', location.href).href;
 const DAYS = 14;
+// Rolagem suave só para quem não pediu "reduzir movimento" no aparelho.
+const SMOOTH = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
 
 const S = {
   ref: null,
@@ -27,6 +31,7 @@ const S = {
   notice: '', // aviso na área de agendamento (ex.: horário ocupado)
   done: null,
   seq: 0,
+  report: null, // aviso "Algo errado aqui?": null | 'sending' | 'sent'
 };
 
 /* ======================= banco ======================= */
@@ -244,7 +249,7 @@ function mapHTML(p) {
   if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
     return `<p>${esc(fullAddress(p) || 'Endereço não informado.')}</p><p class="src">O mapa não aparece porque o cadastro não tem a localização exata.</p>`;
   }
-  return `<div class="lc-map" id="lcMap" role="img" aria-label="Mapa com a localização de ${esc(p.name)}"></div>
+  return `<div class="lc-map" id="lcMap" role="region" aria-label="Mapa com a localização de ${esc(p.name)}"></div>
     <p class="lc-addr">${esc(fullAddress(p))}</p>
     ${p.approx ? '<p class="src">Localização aproximada, encontrada pelo endereço.</p>' : ''}`;
 }
@@ -252,16 +257,84 @@ function mapHTML(p) {
 const section = (id, icon, title, body, extra = '') => `<section class="lc-card dt-sec" id="${id}" aria-labelledby="h-${id}"${extra}>
   <h2 id="h-${id}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${title}</h2>${body}</section>`;
 
+// Código CNES (7 dígitos) do local: o do cadastro oficial ou o do parceiro que assumiu o cadastro.
+const cnesCode = (p) => (p.source === 'cnes' ? p.id.slice(5) : p.cnes);
+
 function noteHTML(p) {
   if (p.source === 'imed') {
-    return p.is_demo
-      ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios. Serve para testar o site.</p>'
-      : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado do IMED: preços, exames e agenda são informados e confirmados pela própria clínica.</p>';
+    if (p.is_demo) return '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios. Serve para testar o site.</p>';
+    const code = G.isCnesCode(cnesCode(p)) ? ` <span class="lc-code">Código CNES ${esc(cnesCode(p))}</span>` : '';
+    return `<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado do IMED: preços, exames e agenda são informados pela própria clínica, que responde por eles. <a class="link" href="como-funciona.html#selo">O que o IMED confere</a>${code}</p>`;
   }
   const when = p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : '';
+  const code = G.isCnesCode(cnesCode(p)) ? ` <span class="lc-code">Código CNES ${esc(cnesCode(p))}</span>` : '';
   const cnesLink = p.maps_url ? ` <a class="link" href="${esc(p.maps_url)}" target="_blank" rel="noopener">Ver no CNES</a>` : '';
-  return `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${when}. Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele.${cnesLink}</p>
+  return `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${when}. Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele. ${G.TRUST.cnes} A correção do cadastro oficial é feita pelo próprio estabelecimento, no CNES.${code}${cnesLink}</p>
     <p class="dt-claim"><a class="link" href="reivindicar.html?cnes=${encodeURIComponent(p.id.slice(5))}">É o responsável? Assuma o cadastro</a></p>`;
+}
+
+// "Verificado pelo IMED em dd/mm/aaaa": data real da conferência da equipe (clinics.verified_at). Sem data, nada.
+function verifiedHTML(p) {
+  if (p.source !== 'imed' || p.is_demo) return '';
+  const d = T.dateBR(p.verified_at);
+  if (!d) return '';
+  return `<p class="lc-verified"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i><span>Verificado pelo IMED em ${esc(d)} · <a class="link" href="como-funciona.html#selo">o que conferimos</a></span></p>`;
+}
+
+/* ======================= "Algo errado aqui? Avise o IMED" ======================= */
+function reportHTML(p) {
+  const who = p.source === 'imed'
+    ? 'Os dados desta página são informados pela própria clínica. A equipe do IMED confere o seu aviso com ela.'
+    : 'A equipe do IMED confere o seu aviso. A correção oficial do cadastro (CNES) é feita pelo próprio estabelecimento, com a secretaria de saúde.';
+  const kinds = T.REPORT_KINDS.map(([v, l]) => `<label class="rp-k"><input type="radio" name="tipo" value="${v}"><span>${esc(l)}</span></label>`).join('');
+  return section('avisar', 'fa-flag', 'Algo errado aqui? Avise o IMED', `<p>Telefone errado, local fechado, endereço novo ou exame que não é feito? ${who}</p>
+    <button class="btn btn-ghost btn-sm lc-rp-open" type="button" data-act="report" aria-expanded="false" aria-controls="rpForm"><i class="fa-solid fa-flag" aria-hidden="true"></i>Avisar o IMED</button>
+    <form id="rpForm" class="lc-rp" novalidate hidden>
+      <fieldset class="fld" data-f="kind"><legend>O que está errado?</legend><div class="rp-kinds">${kinds}</div><span class="err" id="e-kind"></span></fieldset>
+      <div class="fld" data-f="note"><label for="rpNote">Quer explicar? <small class="h">(opcional, até ${T.REPORT_NOTE_MAX} caracteres)</small></label>
+        <textarea id="rpNote" name="nota" maxlength="${T.REPORT_NOTE_MAX}" placeholder="Ex.: o número certo é (11) 3333-4444. Não escreva dados de saúde."></textarea><span class="err" id="e-note"></span></div>
+      <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="bk-err" id="rpErr" role="alert"></p>
+      <div class="lc-book-acts"><button class="btn btn-primary" type="submit" id="rpBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar aviso</button></div>
+    </form>
+    <p class="rp-ok" id="rpOk" role="status" tabindex="-1" hidden></p>`);
+}
+
+async function sendReport(form) {
+  const fd = new FormData(form);
+  const v = { kind: String(fd.get('tipo') ?? ''), note: String(fd.get('nota') ?? '') };
+  const errs = T.validateReport(v);
+  for (const f of ['kind', 'note']) {
+    $(`[data-f="${f}"]`, form)?.classList.toggle('bad', !!errs[f]);
+    $(`#e-${f}`, form).textContent = errs[f] ?? '';
+  }
+  const err = $('#rpErr', form);
+  err.classList.remove('show');
+  if (Object.keys(errs).length) { $(errs.kind ? 'input[name="tipo"]' : '#rpNote', form)?.focus(); return; }
+  const finish = (text) => {
+    S.report = 'sent';
+    form.hidden = true;
+    $('[data-act="report"]')?.remove();
+    const ok = $('#rpOk');
+    ok.innerHTML = `<i class="fa-solid fa-circle-check" aria-hidden="true"></i>${esc(text)}`;
+    ok.hidden = false;
+    ok.focus();
+  };
+  if (fd.get('website')) return finish(T.REPORT_MSG.ok);
+  const btn = $('#rpBtn', form);
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" aria-hidden="true"></span>Enviando…';
+  S.report = 'sending';
+  let res;
+  try { res = await rpc('report_place_issue', T.reportArgs(S.place, v)); } catch { res = 'error'; }
+  // 'limite' (muitos avisos novos de todo mundo ao mesmo tempo): o aviso NÃO foi gravado, então não agradece como se
+  // tivesse sido; mostra o motivo e deixa tentar de novo.
+  if (res === 'ok') return finish(T.REPORT_MSG.ok);
+  S.report = null;
+  err.textContent = T.REPORT_MSG[res] ?? T.REPORT_MSG.error;
+  err.classList.add('show');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>Tentar de novo';
 }
 
 function render() {
@@ -280,8 +353,10 @@ function render() {
           <p>${esc(k.n)}${where ? ` · ${esc(where)}` : ''}<span id="lcRate">${S.rating ? ` · ${ratingHTML()}` : ''}</span></p>
           <p>${esc(fullAddress(p) || 'Endereço não informado')}</p>
           ${p.legal_name && p.legal_name !== p.name ? `<p class="src">Razão social: ${esc(p.legal_name)}</p>` : ''}
+          ${verifiedHTML(p)}
         </div></div>
       ${actionsHTML(p)}
+      ${G.sosHTML()}
     </section>
     <aside class="lc-card lc-book" id="agendar" aria-labelledby="h-agendar" tabindex="-1"></aside>
     <div class="lc-rest">
@@ -294,23 +369,46 @@ function render() {
       ${section('contato', 'fa-address-book', 'Contato', contactHTML(p))}
       ${section('avaliacoes', 'fa-star', 'Avaliações', '', ' hidden')}
       ${noteHTML(p)}
+      ${p.is_demo ? '' : reportHTML(p)}
     </div>
   </div>`;
   renderBooking();
   drawMap();
 }
 
+// O mapa fica no fim do cartão: o Leaflet (com o CSS dele) e as imagens do mapa só são baixados quando ele
+// chega perto da tela. Assim o nome e os dados do local aparecem antes, sem esperar ~45 KB de mapa.
+let leafletP = null;
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  leafletP ??= Promise.all([['link', 'assets/vendor/leaflet/leaflet.css'], ['script', 'assets/vendor/leaflet/leaflet.js']].map(([tag, url]) => new Promise((ok, fail) => {
+    const el = document.createElement(tag);
+    if (tag === 'link') { el.rel = 'stylesheet'; el.href = url; } else el.src = url;
+    el.onload = ok; el.onerror = fail;
+    document.head.append(el);
+  }))).catch((e) => { leafletP = null; throw e; });
+  return leafletP;
+}
+
 function drawMap() {
-  const p = S.place;
   const el = $('#lcMap');
-  if (!el || !window.L) return;
+  if (!el) return;
+  const start = () => loadLeaflet().then(() => paintMap(el)).catch(() => { /* sem mapa: o endereço continua no cartão */ });
+  if (!('IntersectionObserver' in window)) return start();
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); start(); } }, { rootMargin: '200px 0px' });
+  io.observe(el);
+}
+
+function paintMap(el) {
+  const p = S.place;
+  if (!el.isConnected || el._leaflet_id || !window.L) return;
   const mobile = matchMedia('(max-width: 899px)').matches;
   const map = L.map(el, { scrollWheelZoom: false, dragging: !mobile, tap: false, zoomControl: true, attributionControl: true }).setView([p.lat, p.lng], 16);
   map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
   L.tileLayer(CFG.map.tiles, { maxZoom: CFG.map.maxZoom, attribution: CFG.map.attribution }).addTo(map);
   const pin = '<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 40.5s12.5-13.6 12.5-23.6C28.5 9.6 22.9 4 16 4S3.5 9.6 3.5 16.9c0 10 12.5 23.6 12.5 23.6z"/></svg>';
   L.marker([p.lat, p.lng], {
-    icon: L.divIcon({ className: 'mk-wrap', iconSize: [32, 42], iconAnchor: [16, 41], html: `<span class="mk on k-${p.kind}${p.source === 'imed' ? ' mk-imed' : ''}">${pin}<i class="fa-solid ${G.KINDS[p.kind].icon}"></i></span>` }),
+    icon: L.divIcon({ className: 'mk-wrap', iconSize: [32, 42], iconAnchor: [16, 41], html: `<span class="mk on k-${p.kind}${p.source === 'imed' ? ' mk-imed' : ''}">${pin}<i class="fa-solid ${G.KINDS[p.kind].icon}" aria-hidden="true"></i></span>` }),
     title: p.name, alt: p.name, keyboard: false,
   }).addTo(map);
 }
@@ -342,7 +440,7 @@ async function loadReviews() {
     const when = v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric', timeZone: 'America/Sao_Paulo' }) : '';
     const who = String(v.author_name ?? '').trim().split(/\s+/)[0];
     return `<li><div class="rv-top"><span class="rv-stars" role="img" aria-label="Nota ${n} de 5">${STARS(n)}</span><span class="rv-who">${esc(who || 'Paciente')}${when ? ` · ${esc(when)}` : ''}</span></div>${v.comment ? `<p>${esc(v.comment)}</p>` : ''}</li>`;
-  }).join('')}</ul><p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED.</p>`);
+  }).join('')}</ul><p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED e tiveram o atendimento concluído. <a class="link" href="como-funciona.html#avaliacoes">Como funcionam</a></p>`);
   el.hidden = false;
 }
 
@@ -415,7 +513,8 @@ function slotsHTML() {
       const t = G.dayTab(d);
       const n = S.slots.get(d)?.length ?? 0;
       const on = d === S.day;
-      return `<button class="sl-day${on ? ' on' : ''}" type="button" role="tab" id="tab-${d}" aria-selected="${on}" aria-controls="slTimes" data-day="${d}"${n ? '' : ' disabled'} tabindex="${on ? 0 : -1}" aria-label="${esc(G.formatDateLong(d))}${n ? `, ${plural(n, 'horário livre', 'horários livres')}` : ', sem horário livre'}"><span>${esc(t.wd)}</span><b>${t.day}</b></button>`;
+      // O nome lido pelo leitor de tela começa pelo texto visível ("sex 30/10"), como pede a WCAG (rótulo no nome).
+      return `<button class="sl-day${on ? ' on' : ''}" type="button" role="tab" id="tab-${d}" aria-selected="${on}" aria-controls="slTimes" data-day="${d}"${n ? '' : ' disabled'} tabindex="${on ? 0 : -1}"><span>${esc(t.wd)}</span><b>${t.day}</b><span class="sr">, ${n ? plural(n, 'horário livre', 'horários livres') : 'sem horário livre'}</span></button>`;
     }).join('');
     const times = (S.slots.get(S.day) ?? []).map((s) => `<button class="sl-t${s.iso === S.chosen ? ' on' : ''}" type="button" data-slot="${esc(s.iso)}" aria-pressed="${s.iso === S.chosen}">${s.time}</button>`).join('');
     body = `<div class="sl-days" role="tablist" aria-label="Dias">${tabs}</div>
@@ -447,7 +546,7 @@ function renderBooking() {
     const how = p.source === 'imed'
       ? 'A clínica recebe seu pedido pelo IMED e liga para combinar o horário.'
       : 'Este local ainda não é parceiro do IMED. Nossa equipe fala com ele e confirma o horário com você.';
-    html = `<h2 id="h-agendar"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Agendar</h2><p>${how}</p>
+    html = `<h2 id="h-agendar"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Agendar</h2><p>${how}</p>${p.source === 'imed' ? '' : G.susHTML()}
       <div class="lc-book-acts"><button class="btn btn-coral" type="button" data-act="pedido"><i class="fa-solid ${p.source === 'imed' ? 'fa-calendar-check' : 'fa-headset'}" aria-hidden="true"></i>Pedir agendamento</button>${waBtn}</div>`;
   } else {
     html = `<h2 id="h-agendar"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Agendar</h2><p>Esta clínica ainda não recebe pedidos pelo site.</p>
@@ -478,8 +577,10 @@ function formHTML(mode) {
         <span class="err" id="e-period"></span></fieldset>`;
   }
   return `<form id="bookForm" novalidate data-mode="${mode}">
+    ${G.sosHTML(G.TRUST.sosPedido)}
     ${top}
-    <div class="fld" data-f="name"><label for="bkName">Nome completo</label>
+    ${G.forWhomHTML()}
+    <div class="fld" data-f="name"><label for="bkName">Seu nome completo</label>
       <input id="bkName" name="nome" autocomplete="name" maxlength="120" required><span class="err" id="e-name"></span></div>
     <div class="fld" data-f="phone"><label for="bkPhone">Celular com DDD</label>
       <input id="bkPhone" name="celular" type="tel" inputmode="tel" autocomplete="tel-national" placeholder="(11) 98765-4321" maxlength="16" required><span class="err" id="e-phone"></span></div>
@@ -492,6 +593,8 @@ function formHTML(mode) {
     <span class="err lc-cerr" id="e-consent"></span>
     <p class="bk-err" id="bkErr" role="alert"></p>
     ${p.is_demo ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração: fica registrado só como teste.</p>' : ''}
+    ${imed ? '' : G.susHTML()}
+    ${G.trustHTML()}
     <div class="lc-book-acts">
       <button class="btn btn-coral" type="submit" id="bkBtn"><i class="fa-solid ${slot ? 'fa-check' : 'fa-paper-plane'}" aria-hidden="true"></i>${slot ? 'Confirmar agendamento' : 'Enviar pedido'}</button>
       ${slot ? '' : `<button class="btn btn-ghost" type="button" data-act="cancel-pedido">Voltar</button>`}
@@ -501,18 +604,23 @@ function formHTML(mode) {
 }
 
 // Dados já digitados pelo paciente: guardados ao trocar de horário para não precisar digitar de novo.
-const DRAFT_FIELDS = ['nome', 'celular', 'email', 'obs'];
+const DRAFT_FIELDS = ['nome', 'celular', 'email', 'obs', 'outro_nome', 'parentesco'];
+const DRAFT_CHECKS = ['consent', 'menor', 'responsavel'];
 function draftOf(form) {
   const fd = new FormData(form);
   const d = Object.fromEntries(DRAFT_FIELDS.map((k) => [k, String(fd.get(k) ?? '')]));
-  d.consent = fd.get('consent') === 'on';
+  for (const k of DRAFT_CHECKS) d[k] = fd.get(k) === 'on';
+  d.para = String(fd.get('para') ?? 'mim');
   return d;
 }
 function fillDraft(form) {
   const d = S.draft;
   if (!d) return;
   for (const k of DRAFT_FIELDS) if (d[k] && form.elements[k]) form.elements[k].value = d[k];
-  if (form.elements.consent) form.elements.consent.checked = !!d.consent;
+  for (const k of DRAFT_CHECKS) if (form.elements[k]) form.elements[k].checked = !!d[k];
+  const radio = form.querySelector(`input[name="para"][value="${d.para === 'outra' ? 'outra' : 'mim'}"]`);
+  if (radio) radio.checked = true;
+  G.forWhomToggle(form);
 }
 
 function bindForm() {
@@ -529,21 +637,34 @@ function bindForm() {
   };
   form.addEventListener('input', clearError);
   form.addEventListener('change', clearError);
+  // "O exame é para": mostra os campos de outra pessoa e, para menor de 18 anos, a autorização do responsável.
+  form.addEventListener('change', (e) => {
+    if (e.target.name !== 'para' && e.target.name !== 'menor') return;
+    G.forWhomToggle(form);
+    if (e.target.name === 'para' && e.target.value === 'outra') $('#bkOtherName', form)?.focus();
+  });
   form.addEventListener('submit', submit);
 }
 
 function showErrors(form, errs) {
-  for (const f of ['exam', 'date', 'period', 'name', 'phone', 'email', 'notes', 'consent']) {
+  for (const f of ['exam', 'date', 'period', 'otherName', 'relationship', 'guardian', 'otherConsent', 'name', 'phone', 'email', 'notes', 'consent']) {
     const box = $(`[data-f="${f}"]`, form);
     box?.classList.toggle('bad', !!errs[f]);
     const msg = $(`#e-${f}`, form);
     if (msg) msg.textContent = errs[f] ?? '';
+    // Leitor de tela: o campo diz que está com erro e lê a mensagem junto (aria-describedby).
+    for (const el of box ? box.querySelectorAll('input:not([type=hidden]),select,textarea') : []) {
+      if (errs[f]) el.setAttribute('aria-invalid', 'true'); else el.removeAttribute('aria-invalid');
+      const ids = new Set((el.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+      if (msg?.id) ids.add(msg.id);
+      if (ids.size) el.setAttribute('aria-describedby', [...ids].join(' '));
+    }
   }
   const first = Object.keys(errs).find((f) => $(`[data-f="${f}"]`, form));
   if (first) {
     const box = $(`[data-f="${first}"]`, form);
     $('input,select,textarea', box)?.focus();
-    box?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    box?.scrollIntoView({ block: 'center', behavior: SMOOTH });
   }
 }
 
@@ -562,6 +683,7 @@ async function submit(e) {
     exam: slot ? S.exam : fd.get('exame') || '',
     ...(slot ? { slot: S.chosen } : { date: fd.get('data') || '', period: fd.get('periodo') || '' }),
     name: fd.get('nome') || '', phone: fd.get('celular') || '', email: fd.get('email') || '', notes: fd.get('obs') || '', consent: fd.get('consent') === 'on',
+    ...G.forWhomValues(fd),
   };
   const errs = G.validateBooking(v);
   if (errs.slot) { S.notice = 'Este horário não está mais disponível. Escolha outro.'; S.draft = draftOf(form); S.chosen = ''; renderBooking(); return; }
@@ -590,7 +712,7 @@ async function submit(e) {
       S.draft = draftOf(form);
       await loadSlots();
       $('#slNotice')?.focus?.();
-      $('#agendar')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      $('#agendar')?.scrollIntoView({ block: 'start', behavior: SMOOTH });
       return;
     }
     const tel = S.place.phone && G.telHref(S.place.phone);
@@ -635,12 +757,13 @@ function done(v, id, logged) {
   box.innerHTML = `<div class="ok lc-ok">
     <div class="ic"><i class="fa-solid fa-check" aria-hidden="true"></i></div>
     <h2 id="h-agendar" tabindex="-1">${slot ? `Agendamento confirmado para ${esc(G.formatSlot(v.slot))}` : 'Recebemos seu pedido!'}</h2>
-    <p><b>${esc(p.name)}</b><br>${esc(G.examLabel(v.exam))}${slot ? '' : ` · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}`}</p>
+    <p><b>${esc(p.name)}</b><br>${esc(G.examLabel(v.exam))}${slot ? '' : ` · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}`}${v.forOther ? `<br>Para ${esc(String(v.otherName).trim().replace(/\s+/g, ' '))} (${esc(v.relationship)})` : ''}</p>
     <span class="code">${G.protocolFromId(id)}</span>
     <ol>${slot
       ? `<li>Seu horário está reservado na clínica.</li><li>Chegue com 15 minutos de antecedência, com documento com foto e o pedido médico.</li><li>Se não puder ir, avise a clínica${p.phone ? ` pelo telefone ${esc(p.phone)}` : ''}.</li>`
       : `<li>${p.source === 'imed' ? 'A clínica recebe o pedido pelo IMED.' : 'A equipe do IMED fala com o estabelecimento.'}</li><li>Você recebe a confirmação do horário no celular terminado em ${esc(d.slice(-4))}.</li><li>No dia, leve documento com foto e o pedido médico.</li>`}</ol>
     ${slot ? '' : '<p class="note" style="text-align:left"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>O horário só fica garantido depois da confirmação.</p>'}
+    <div class="trust">${G.gratisHTML()}</div>
     <div class="ok-acts">
       <button class="btn btn-primary" type="button" data-act="ics"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>
       ${guide ? `<a class="btn btn-ghost" href="exames/${guide}.html#preparo"><i class="fa-solid fa-book-medical" aria-hidden="true"></i>Como se preparar</a>` : ''}
@@ -648,7 +771,7 @@ function done(v, id, logged) {
       ${logged ? '' : '<a class="btn btn-ghost" href="conta.html"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Criar conta para acompanhar</a>'}
     </div>
   </div>`;
-  box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  box.scrollIntoView({ block: 'start', behavior: SMOOTH });
   $('#h-agendar', box).focus({ preventScroll: true });
 }
 
@@ -696,8 +819,22 @@ document.addEventListener('click', (e) => {
   else if (act === 'reload-slots') loadSlots();
   else if (act === 'change-slot') { const f = $('#bookForm'); if (f) S.draft = draftOf(f); S.chosen = ''; renderBooking(); $('.sl-t, .sl-day.on')?.focus(); }
   else if (act === 'pedido') { S.mode = 'pedido'; S.notice = ''; renderBooking(); $('#bkExam')?.focus(); }
-  else if (act === 'cancel-pedido') { S.mode = S.scheduled ? 'slot' : ''; renderBooking(); }
+  else if (act === 'cancel-pedido') { S.mode = S.scheduled ? 'slot' : ''; renderBooking(); $('#agendar [data-act="pedido"], .sl-t, .sl-day.on')?.focus(); }
   else if (act === 'ics' && S.done) downloadIcs(S.done.v, S.done.id);
+  else if (act === 'report') {
+    const form = $('#rpForm');
+    const btn = e.target.closest('[data-act="report"]');
+    if (!form || !btn) return;
+    form.hidden = !form.hidden;
+    btn.setAttribute('aria-expanded', String(!form.hidden));
+    if (!form.hidden) $('input[name="tipo"]', form)?.focus();
+  }
+});
+
+document.addEventListener('submit', (e) => {
+  if (e.target.id !== 'rpForm') return;
+  e.preventDefault();
+  if (S.report !== 'sending') sendReport(e.target);
 });
 
 document.addEventListener('change', (e) => {

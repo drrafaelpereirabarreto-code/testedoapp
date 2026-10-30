@@ -1,6 +1,8 @@
 /* Página de cada local (local.html). Usa as cores e componentes de perto.css e acrescenta o layout da ficha. */
 body.lc-page{background:var(--bg2)}
 .lc{max-width:1120px;margin:0 auto;padding:16px 20px 48px;outline:none;min-height:calc(100dvh - var(--top) - 80px)}
+/* Enquanto carrega, o espaço do cartão fica guardado: o rodapé não sobe e depois desce (sem "pulo" na tela). */
+#app[aria-busy="true"]{min-height:100vh;min-height:100dvh}
 .lc-load{display:flex;align-items:center;justify-content:center;gap:10px;padding:48px 16px;color:var(--muted);font-weight:600}
 .lc-load.sm{justify-content:flex-start;padding:14px 0}
 .lc-st{max-width:560px;margin:40px auto}
@@ -57,11 +59,11 @@ body.lc-page{background:var(--bg2)}
 .lc-cerr{display:block;color:var(--coral-d);font-size:13px;font-weight:600;margin-top:6px}
 .lc-cerr:empty{display:none}
 .sl-days{display:flex;gap:8px;overflow-x:auto;margin:16px -4px 0;padding:4px 4px 8px;scrollbar-width:thin;overscroll-behavior-x:contain}
-.sl-day{flex:0 0 auto;display:grid;justify-items:center;gap:2px;min-width:58px;padding:9px 6px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--ink)}
+.sl-day{position:relative;flex:0 0 auto;display:grid;justify-items:center;gap:2px;min-width:58px;padding:9px 6px;border-radius:14px;border:1px solid var(--line);background:#fff;color:var(--ink)}
 .sl-day span{font-size:12px;font-weight:600;color:var(--muted);text-transform:capitalize}
 .sl-day b{font-size:14.5px}
 .sl-day.on{background:var(--primary);border-color:var(--primary);color:#fff}
-.sl-day.on span{color:rgba(255,255,255,.85)}
+.sl-day.on span{color:#fff}
 .sl-day:disabled{opacity:.42;cursor:not-allowed;background:var(--bg2)}
 .sl-when{font-weight:700;color:var(--ink);font-size:14px;margin:12px 0 10px}
 .sl-when::first-letter{text-transform:uppercase}
@@ -78,8 +80,9 @@ body.lc-page{background:var(--bg2)}
 .lc-ok h2{display:block;font-size:20px;line-height:1.3;margin:0}
 .lc-ok h2:focus{outline:none}
 
-.lc-foot{max-width:1120px;margin:0 auto;padding:18px 20px 32px;font-size:13px;color:var(--muted);text-align:center}
-@media (max-width:899px){body:has(.lgpd) .lc-foot{padding-bottom:200px}}
+.lc-head .sos{margin-top:16px}
+.lc-book .sos{margin:0 0 4px}
+.lc-book .trust{margin-top:14px}
 @media (max-width:420px){
   .lc{padding:12px 12px 40px}
   .lc-card{padding:16px;border-radius:18px}
@@ -87,4 +90,32 @@ body.lc-page{background:var(--bg2)}
   .lc-head .dt-top .pc-ic{width:48px;height:48px;font-size:19px;border-radius:15px}
   .lc-acts{grid-template-columns:repeat(3,minmax(0,1fr))}
   .lc-acts a,.lc-acts button{padding:10px 4px;font-size:12px}
+}
+
+/* confiança: verificado pelo IMED, código CNES e "Algo errado aqui?" */
+.lc-verified{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:13.5px;line-height:1.45;color:#145F3A}
+.lc-verified>i{color:var(--green);margin-top:2px}
+.lc-verified .link{font-weight:600}
+.lc-code{display:inline-block;margin-left:2px;padding:1px 8px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+#avisar>p{font-size:14px;line-height:1.55;color:var(--text)}
+.lc-rp-open{margin-top:12px}
+.lc-rp{margin-top:4px}
+.rp-kinds{display:grid;gap:8px}
+.rp-k{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:14px;line-height:1.4;cursor:pointer}
+.rp-k input{width:18px;height:18px;margin-top:1px;flex-shrink:0;accent-color:var(--primary)}
+.rp-k:has(input:checked){border-color:var(--primary);background:var(--primary-s)}
+.rp-k:has(input:focus-visible){outline:3px solid #0B7290;outline-offset:2px}
+.fld.bad .rp-k{border-color:var(--coral-d)}
+.lc-rp .bk-err{margin:12px 0 0}
+.rp-ok{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding:11px 14px;border-radius:14px;background:var(--green-s);color:#145F3A;font-size:14px;font-weight:600;outline:none}
+.rp-ok>i{color:var(--green);margin-top:2px}
+.rp-ok[hidden]{display:none}
+
+/* Celular e telas de toque: alvos com pelo menos 44 px. */
+@media (max-width:860px),(pointer:coarse){
+  .lc-crumbs a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+  .dt-claim .link{display:inline-flex;align-items:center;min-height:44px}
+  a.lc-rate{min-height:44px}
+  .rp-k{min-height:44px;align-items:center}
+  .rp-k input{margin-top:0}
 }

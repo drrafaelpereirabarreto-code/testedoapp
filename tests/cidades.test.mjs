@@ -10,6 +10,7 @@ import {
   slugify, ufName, UF_NAMES, TYPES, cityDir, typePath, cityTitle, typeTitle, fmt, generate, groupByState,
   sitemapPaths, siteUrlFromConfig, listExamPages, normBase, dateLong,
 } from '../scripts/gerar-cidades.mjs';
+import { rodapeHtml } from '../scripts/rodape.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const CITIES = JSON.parse(readFileSync(join(ROOT, 'scripts/cidades.json'), 'utf8'));
@@ -100,6 +101,8 @@ test('gera páginas, sitemap e robots com conteúdo real', (t) => {
     assert.ok(html.includes('href="../../../perto.html"'));
     assert.ok(html.includes('"@type":"BreadcrumbList"'));
     assert.ok(html.includes('<noscript>'));
+    assert.ok(html.includes(rodapeHtml('../../../')), `${c.name}: rodapé do IMED`);
+    assert.ok(html.includes('sem vínculo com o governo ou o SUS'), `${c.name}: IMED não é do governo`);
     for (const tp of TYPES) {
       const n = c[tp.kind];
       if (n > 0) {
@@ -131,7 +134,7 @@ test('gera páginas, sitemap e robots com conteúdo real', (t) => {
   const locs = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
   const expected = sitemapPaths(cities, examPages).map((p) => BASE + p);
   assert.deepEqual(locs, expected);
-  for (const must of ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'exames/', 'exames/raio-x.html', 'cidades/', 'cidades/sp/sao-paulo/', 'cidades/sp/sao-paulo/hospitais.html']) {
+  for (const must of ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'como-funciona.html', 'acessibilidade.html', 'exames/', 'exames/raio-x.html', 'cidades/', 'cidades/sp/sao-paulo/', 'cidades/sp/sao-paulo/hospitais.html']) {
     assert.ok(locs.includes(BASE + must), must);
   }
   const htmlPages = written.filter((f) => f.startsWith('cidades/'));
@@ -152,6 +155,8 @@ test('arquivos gerados no repositório estão em dia com o JSON', () => {
     assert.ok(sm.includes(`<loc>${base}${cityDir(c)}</loc>`), c.name);
     const html = readFileSync(join(ROOT, cityDir(c), 'index.html'), 'utf8');
     assert.ok(html.includes(cityTitle(c)));
+    assert.ok(html.includes(rodapeHtml('../../../')), `${c.name}: rodapé atual (rode node scripts/gerar-cidades.mjs)`);
   }
+  assert.ok(readFileSync(join(ROOT, 'cidades/index.html'), 'utf8').includes(rodapeHtml('../')));
   assert.ok(readFileSync(join(ROOT, 'robots.txt'), 'utf8').includes(`Sitemap: ${base}sitemap.xml`));
 });

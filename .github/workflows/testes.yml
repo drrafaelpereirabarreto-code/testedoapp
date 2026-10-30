@@ -55,7 +55,7 @@ jobs:
       # Sem package.json no repositório: o Playwright vai só para ./node_modules desta máquina temporária.
       # --prefix . garante a pasta do repositório (sem ele, o npm procuraria um package.json nas pastas de cima).
       - name: Instalar o Playwright
-        run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+        run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}" "axe-core@4.14.0"
 
       # Cache do navegador, pela versão do Playwright. Recuperar e guardar ficam separados para guardar
       # logo depois de instalar, mesmo que algum teste falhe depois.

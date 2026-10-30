@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
 <title>IMED — Clínicas, laboratórios e hospitais reais perto de você</title>
 <meta name="description" content="Veja no mapa clínicas, laboratórios e hospitais reais perto de você, com endereço e telefone do cadastro oficial (CNES), e peça seu agendamento pelo IMED.">
 <meta name="theme-color" content="#05161e">
@@ -11,7 +11,7 @@
 <meta property="og:description" content="Clínicas, laboratórios e hospitais reais no mapa, com dados oficiais. Peça seu agendamento pelo IMED.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/">
@@ -24,17 +24,17 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="IMED">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://pyoqiecupxhdzigjudyd.supabase.co" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style data-fontes="Sora:500;600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:500 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:500 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
+<link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
 <style>
 :root{
   --navy:#05161e; --navy2:#082431; --navy3:#0c3343;
-  --primary:#0E7C9C; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
-  --coral:#FF6B4A; --coral-d:#E8512F; --coral-s:#FFF0EC; --gold:#F5A524; --green:#1E9E5A; --green-s:#E7F6EE;
-  --ink:#0F1F28; --text:#2B3A44; --muted:#667A86; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
+  --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --coral:#FF6B4A; --coral-d:#BF3B20; --coral-s:#FFF0EC; --gold:#F5A524; --green:#137A44; --green-s:#E7F6EE;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
   --sh1:0 1px 2px rgba(15,31,40,.05),0 8px 24px rgba(15,31,40,.06);
   --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
   --sh3:0 40px 100px rgba(5,22,30,.35);
@@ -61,9 +61,9 @@ img{display:block;max-width:100%}
 .grad{background:linear-gradient(92deg,#7FF0E4 0%,#2EE6D6 38%,#FFB199 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:14px 22px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .25s var(--ease),box-shadow .25s,background .2s;white-space:nowrap}
 .btn:active{transform:scale(.98)}
-.btn-coral{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;box-shadow:0 10px 24px rgba(255,107,74,.32),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-coral{background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;box-shadow:0 10px 24px rgba(184,58,32,.32),inset 0 1px 0 rgba(255,255,255,.25)}
 .btn-coral:hover{box-shadow:0 14px 34px rgba(255,107,74,.42);transform:translateY(-1px)}
-.btn-primary{background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.28),inset 0 1px 0 rgba(255,255,255,.2)}
+.btn-primary{background:linear-gradient(180deg,#0F7B9A,#0B6F8C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.28),inset 0 1px 0 rgba(255,255,255,.2)}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 14px 34px rgba(14,124,156,.36)}
 .btn-ghost{background:var(--bg2);color:var(--ink)}
 .btn-glass{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);backdrop-filter:blur(10px)}
@@ -113,14 +113,15 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .hero h1{color:#fff;font-size:clamp(38px,5.4vw,70px);line-height:1.02;letter-spacing:-.04em;font-weight:800;margin:22px 0 18px}
 .hero .lead{font-size:clamp(16px,1.4vw,18.5px);line-height:1.6;color:rgba(255,255,255,.76);max-width:540px}
 .hsearch{position:relative;margin-top:30px;display:flex;align-items:center;gap:6px;background:#fff;border-radius:20px;padding:8px;box-shadow:0 30px 80px rgba(0,0,0,.35),0 0 0 6px rgba(255,255,255,.06);max-width:600px}
-.hs-field{flex:1;display:flex;align-items:center;gap:12px;padding:0 12px;min-width:0}
+.hs-field{flex:1;display:flex;align-items:center;gap:12px;padding:0 12px;min-width:0;border-radius:12px}
+.hs-field:focus-within{outline:3px solid #0B7290;outline-offset:2px}
 .hs-field i{color:var(--primary);font-size:17px}
 .hs-field input{border:0;outline:none;background:none;font-size:16.5px;color:var(--ink);width:100%;padding:12px 0}
 .hs-loc{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;color:var(--text);font-size:14px;font-weight:600;border-left:1px solid var(--line);white-space:nowrap;max-width:190px}
 .hs-loc span{overflow:hidden;text-overflow:ellipsis}
 .hs-loc i{color:var(--coral)}
 .hs-loc:hover{background:var(--bg2)}
-.hs-go{padding:14px 22px;border-radius:14px;background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;font-weight:700;box-shadow:0 8px 20px rgba(255,107,74,.35)}
+.hs-go{padding:14px 22px;border-radius:14px;background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;font-weight:700;box-shadow:0 8px 20px rgba(184,58,32,.35)}
 .hs-sug{position:absolute;left:0;right:0;top:calc(100% + 10px);background:#fff;border-radius:18px;box-shadow:var(--sh3);padding:8px;color:var(--ink);z-index:5;max-height:360px;overflow:auto}
 .hs-sug h6{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:8px 10px 4px}
 .sug{display:flex;align-items:center;gap:12px;width:100%;padding:8px 10px;border-radius:12px;text-align:left}
@@ -141,12 +142,18 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .h3d-label::after{content:"";position:absolute;left:calc(50% + var(--ax,0px));bottom:-6px;width:11px;height:11px;transform:translateX(-50%) rotate(45deg);background:rgba(7,32,43,.66);border-right:1px solid rgba(127,240,228,.24);border-bottom:1px solid rgba(127,240,228,.24)}
 .h3d-label.hot::after,.h3d-label:hover::after{background:rgba(14,124,156,.9)}
 .h3d-label .lg{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:800 12px var(--fh);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.h3d-label .lg::before{content:attr(data-ini)}
 .h3d-label b{display:block;font-weight:700;font-size:13px}
 .h3d-label small{color:rgba(255,255,255,.75);font-size:11.5px}
-.h3d-me{position:absolute;left:0;top:0;padding:5px 11px;border-radius:999px;background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;font-size:11.5px;font-weight:700;white-space:nowrap;box-shadow:0 8px 22px rgba(255,107,74,.5);opacity:0;transition:opacity .5s;pointer-events:none;will-change:transform}
+.h3d-me{position:absolute;left:0;top:0;padding:5px 11px;border-radius:999px;background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;font-size:11.5px;font-weight:700;white-space:nowrap;box-shadow:0 8px 22px rgba(184,58,32,.5);opacity:0;transition:opacity .5s;pointer-events:none;will-change:transform}
 .h3d-me.on{opacity:1}
-.hero-hint{position:absolute;right:28px;bottom:84px;z-index:3;display:flex;align-items:center;gap:10px;font-size:12.5px;color:rgba(255,255,255,.6);pointer-events:none}
+.hero-hint{position:absolute;right:28px;bottom:110px;z-index:3;display:flex;align-items:center;gap:10px;font-size:12.5px;color:rgba(255,255,255,.6);pointer-events:none}
 .hero-hint i{font-size:16px;color:var(--aqua2)}
+/* Pausar a cidade em 3D (ela gira sozinha): botão sempre à mão, no canto de baixo do mapa, acima da parte branca
+   da página, que sobe 42 px por cima do 3D (.sheet-top): nada dele fica coberto. */
+.h3d-pause{position:absolute;right:28px;bottom:54px;z-index:4;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:10px 16px;border-radius:999px;background:rgba(5,22,30,.78);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:14px;font-weight:700}
+.h3d-pause:hover{background:rgba(5,22,30,.92)}
+body.lite .h3d-pause{display:none}
 .scroll-cue{position:absolute;left:50%;bottom:58px;z-index:3;transform:translateX(-50%);width:26px;height:42px;border-radius:14px;border:2px solid rgba(255,255,255,.35)}
 .scroll-cue::after{content:"";position:absolute;left:50%;top:8px;width:4px;height:8px;border-radius:2px;background:#fff;transform:translateX(-50%);animation:cue 1.8s infinite}
 @keyframes cue{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,14px)}}
@@ -168,6 +175,10 @@ body.lite .hero-hint{display:none}
 .h3d-lite small{display:block;color:rgba(255,255,255,.72);font-size:12px}
 .h3d-lite .more{display:inline-flex;gap:6px;align-items:center;margin-top:10px;color:var(--aqua2);font-weight:600;font-size:14px}
 .h3d-lite p{color:rgba(255,255,255,.78);font-size:14px;line-height:1.5}
+.h3d-lite li.ph>span{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.06)}
+.h3d-lite li.ph .dot{background:rgba(255,255,255,.25);box-shadow:none}
+.h3d-lite li.ph b,.h3d-lite li.ph small{width:min(220px,70%);color:transparent;background:linear-gradient(rgba(255,255,255,.1),rgba(255,255,255,.1)) no-repeat 0 50%/100% 70%;border-radius:6px}
+.h3d-lite li.ph small{width:min(140px,45%)}
 @media (max-width:979px){
   .hero{min-height:auto}
   .hero::after{background:linear-gradient(180deg,rgba(5,22,30,.15) 0%,rgba(5,22,30,0) 40%,rgba(5,22,30,.75) 100%)}
@@ -179,6 +190,7 @@ body.lite .hero-hint{display:none}
   body.lite .hero-3d{height:auto;min-height:430px;padding:18px 20px 60px;display:flex;flex-direction:column;justify-content:center}
   .h3d-lite{position:relative;right:auto;top:auto;transform:none;width:100%;max-width:560px;margin:0 auto}
   .hero-hint{display:none}
+  .h3d-pause{right:16px;bottom:54px}
   .scroll-cue{display:none}
   .hs-loc{display:none}
 }
@@ -198,7 +210,7 @@ body.lite .hero-hint{display:none}
 .sheet-top{position:relative;z-index:4;background:#fff;border-radius:36px 36px 0 0;margin-top:-42px;padding-top:12px}
 .sec{margin:64px 0}
 .sec-h{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:22px}
-.sec-h h2{font-size:clamp(24px,2.6vw,34px);margin-top:8px;letter-spacing:-.03em}
+.sec-h h2,.sec-h h1{font-size:clamp(24px,2.6vw,34px);margin-top:8px;letter-spacing:-.03em}
 .sec-h p{color:var(--muted);margin-top:6px;max-width:520px}
 .hscroll{display:flex;gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 10px;scrollbar-width:none}
 .hscroll::-webkit-scrollbar{display:none}
@@ -222,6 +234,22 @@ body.lite .hero-hint{display:none}
 .rm-wait{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:10px;color:var(--muted);font-size:14px;text-align:center;padding:20px}
 .rm-side{display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:26px;background:linear-gradient(180deg,#F7FBFC,#fff);border:1px solid var(--line)}
 .rm-where{font-size:14px;color:var(--muted)}
+.rm-ex{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:var(--gold-s,#FFF6E3);color:#6B4300;font-size:13.5px;line-height:1.5}
+.rm-ex>i{color:#B7791F;margin-top:3px}
+.rm-ex b{color:#5A3900}
+.rm-ex .link{font-size:13.5px;text-decoration:underline}
+.rm-ex[hidden]{display:none}
+.hero-src{margin-top:8px;font-size:12.5px;color:rgba(255,255,255,.72)}
+.hero-src[hidden]{display:none}
+/* Enquanto a contagem e a data chegam do banco, o lugar da linha fica guardado (2 linhas no celular). */
+.hero-src.wait[hidden]{display:block;visibility:hidden;min-height:1.2em}
+@media (max-width:600px){.hero-src.wait[hidden]{min-height:2.4em}}
+.pl-city{margin:14px 0 4px}
+.pl-city select{width:100%;margin-top:6px;padding:12px 14px;border:1px solid #d5e1e7;border-radius:12px;font-size:16px;background:#fff;color:var(--ink)}
+.pl-city select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.15)}
+.pl-msg{font-size:13px;color:var(--muted);margin-top:6px}
+.pl-msg:empty{display:none}
+.pl-ex{margin:0 0 12px}
 .rm-where b{color:var(--ink)}
 .rm-where i{color:var(--coral);margin-right:4px}
 .rm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
@@ -267,13 +295,13 @@ body.lite .hero-hint{display:none}
 .near-cta>i{margin-left:8px;color:var(--aqua2)}
 @media (max-width:520px){.near-cta{align-self:stretch;padding-right:16px}.near-cta b{font-size:16px}}
 /* lista de espera */
-.wl{position:relative;overflow:hidden;border-radius:40px;padding:60px 56px;color:#fff;display:grid;grid-template-columns:1.25fr .75fr;gap:30px;align-items:center;background:radial-gradient(600px 400px at 85% 20%,rgba(46,230,214,.35),transparent 60%),radial-gradient(500px 400px at 100% 100%,rgba(255,107,74,.28),transparent 60%),linear-gradient(135deg,#0E7C9C 0%,#0A5C76 52%,#082a37 100%)}
+.wl{position:relative;overflow:hidden;border-radius:40px;padding:60px 56px;color:#fff;display:grid;grid-template-columns:1.25fr .75fr;gap:30px;align-items:center;background:radial-gradient(600px 400px at 85% 20%,rgba(46,230,214,.2),transparent 60%),radial-gradient(500px 400px at 100% 100%,rgba(255,107,74,.2),transparent 60%),linear-gradient(135deg,#0A5C76 0%,#08475C 52%,#082a37 100%)}
 .wl h2{color:#fff;font-size:clamp(28px,3.2vw,44px);letter-spacing:-.035em;margin:12px 0 12px}
-.wl p{color:rgba(255,255,255,.82);font-size:17px;line-height:1.6;max-width:560px}
+.wl p{color:rgba(255,255,255,.94);font-size:17px;line-height:1.6;max-width:560px}
 .wl-form{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px;max-width:640px}
 .wl-form select{flex-basis:230px!important}
 .wl-form input,.wl-form select{flex:1 1 180px;min-width:0;height:52px;border:1px solid rgba(255,255,255,.25);border-radius:14px;padding:0 16px;background:rgba(255,255,255,.96);color:var(--ink);font-size:15px;outline:none}
-.wl-form input:focus,.wl-form select:focus{box-shadow:0 0 0 3px rgba(127,240,228,.6)}
+.wl-form input:focus,.wl-form select:focus{box-shadow:0 0 0 3px #7FF0E4}
 .wl-form input.bad{box-shadow:0 0 0 3px rgba(255,107,74,.75)}
 .wl-form .btn{flex:1 1 100%;height:54px}
 .wl-msg{display:none;margin-top:14px;font-weight:600}
@@ -311,16 +339,8 @@ summary::after{content:"+";flex-shrink:0;width:28px;height:28px;border-radius:50
 details[open] summary::after{transform:rotate(45deg)}
 details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;max-width:760px}
 .faq-all{display:flex;align-items:center;gap:8px;margin:18px auto 0;padding:12px 18px;border-radius:12px;background:var(--bg2);color:var(--primary-d);font-weight:700;font-size:15px}
-/* footer */
-footer{background:var(--navy);color:rgba(255,255,255,.65);padding:56px 0 30px;margin-top:80px;font-size:14px}
-.f-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:32px}
-.f-grid h5{color:#fff;font-size:14px;margin-bottom:12px;font-family:var(--fh)}
-.f-grid a,.f-grid button{display:block;padding:4px 0;color:rgba(255,255,255,.65);text-align:left}
-.f-grid a:hover,.f-grid button:hover{color:#fff}
-footer .logo{--hc:#fff;margin-bottom:12px}
-.f-grid a.logo{display:flex}
-.f-bottom{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;border-top:1px solid rgba(255,255,255,.1);margin-top:36px;padding-top:20px;font-size:12.5px}
-@media (max-width:760px){.f-grid{grid-template-columns:1fr 1fr}.f-grid>div:first-child{grid-column:1/-1}}
+/* rodapé: assets/css/rodape.css (o mesmo em todas as páginas) */
+.rodape{margin-top:80px}
 /* ================= OUTRAS TELAS ================= */
 .view-pad{padding-top:104px}
 @media (max-width:860px){.view-pad{padding-top:130px}}
@@ -338,7 +358,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .bnav button.on{color:var(--primary)}
 .bnav a.near{color:var(--primary-d)}
 .bnav a.near i{color:var(--coral)}
-@media (max-width:860px){.bnav{display:grid}}
+@media (max-width:860px){.bnav{display:grid}html{scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom))}}
 .ov{position:fixed;inset:0;z-index:60;background:rgba(5,22,30,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
 .ov.open{opacity:1;pointer-events:auto}
 .sheet{background:#fff;width:100%;max-width:760px;max-height:92vh;border-radius:28px 28px 0 0;overflow:auto;transform:translateY(40px);transition:transform .35s var(--ease);position:relative;overscroll-behavior:contain}
@@ -356,7 +376,10 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .ok h3{font-size:22px}
 .ok p{color:var(--muted);margin-top:8px;line-height:1.55}
 .ok .code{display:inline-block;margin-top:14px;font-family:var(--fh);font-weight:700;letter-spacing:.06em;background:var(--bg2);padding:8px 14px;border-radius:10px;color:var(--ink)}
-.opt{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:15px}
+.opt{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:13px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:15px;text-align:left;color:var(--ink)}
+.opt>i{color:var(--coral-d);width:18px;text-align:center}
+.opt[aria-pressed="true"]{font-weight:700;color:var(--primary-d)}
+.opt[aria-pressed="true"]>i{color:var(--primary)}
 .opt input{accent-color:var(--primary);width:19px;height:19px}
 .opt img{width:34px;height:34px;object-fit:contain}
 .opt small{margin-left:auto;color:var(--muted)}
@@ -368,8 +391,11 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 /* ================= ACESSIBILIDADE ================= */
 .skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:#fff;color:var(--ink);font-weight:700;box-shadow:var(--sh2)}
 .skip:focus{top:12px}
-:focus-visible{outline:3px solid rgba(46,230,214,.9);outline-offset:2px}
+:focus-visible{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
 .top .addr:focus-visible,.top .tab:focus-visible{outline-color:var(--primary)}
+/* nas partes escuras, o contorno do foco fica claro (e a borda de dentro, escura) */
+.hero :focus-visible,body.at-hero .top :focus-visible,.how :focus-visible,.wl :focus-visible,.partner :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
+.bnav :focus-visible{outline-color:#0B7290;box-shadow:0 0 0 2px #fff;outline-offset:-3px}
 
 /* categorias: links para a busca */
 .cat .ic-lab{width:96px;height:96px;display:grid;place-items:center;font-size:40px;color:#6C4BD8;filter:drop-shadow(0 12px 14px rgba(15,31,40,.10))}
@@ -393,6 +419,8 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .how-steps b{display:block;font:700 18px var(--fh);color:#fff;letter-spacing:-.015em}
 .how-steps p{color:rgba(255,255,255,.7);font-size:14.5px;line-height:1.6;margin-top:8px}
 .how-cta{display:flex;gap:12px;flex-wrap:wrap}
+.how-more{margin-top:18px;font-size:14.5px}
+.how-more a{color:var(--aqua2);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 @media (max-width:900px){.how{padding:44px 22px;border-radius:30px}.how-steps{grid-template-columns:1fr}}
 
 /* cidades */
@@ -405,8 +433,23 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .city .uf{margin-left:auto;font:700 12px var(--fb);color:var(--primary-d);background:var(--primary-s);padding:3px 8px;border-radius:8px}
 .cities-empty{color:var(--muted);font-size:15px}
 
-/* teleconsulta em breve + lista de espera */
-.soon{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.16);color:#fff}
+/* aviso de emergência (fixo e discreto) */
+.sos{display:flex;align-items:flex-start;gap:8px;margin-top:18px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.8)}
+.sos i{color:#FF9A80;margin-top:2px}
+.sos a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+/* foto feita por IA: o aviso fica junto da foto */
+.ill{position:absolute;right:16px;top:16px;z-index:1;padding:5px 10px;border-radius:9px;background:rgba(5,22,30,.72);color:rgba(255,255,255,.92);font-size:12px;font-weight:600;pointer-events:none}
+/* teleconsulta: médicos atendendo agora (tele_doctors_online) e lista de espera */
+.wl .tele-now{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;margin-top:18px;padding:10px 16px;border-radius:14px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);font-weight:700;font-size:16px;color:#fff}
+.tele-now i{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.55);flex-shrink:0}
+.tele-now.on i{background:#7DF5B4;box-shadow:0 0 0 0 rgba(125,245,180,.6);animation:ping 1.8s infinite}
+.tele-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+.tele-warn{display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:14px!important;color:rgba(255,255,255,.94)!important}
+.tele-warn i{color:#FFB199;margin-top:3px}
+.tele-warn a{color:#fff;font-weight:700;text-decoration:underline}
+#teleWait>p:first-child{margin-top:20px;font-size:15.5px}
+/* teleconsulta: selo e lista de espera */
+.soon{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.35);color:#fff}
 .wl-points{list-style:none;display:grid;gap:8px;margin-top:18px;color:rgba(255,255,255,.85);font-size:15px}
 .wl-points i{color:var(--aqua2);margin-right:8px;width:16px;text-align:center}
 .wl-ic{display:grid;place-items:center;height:100%;min-height:220px}
@@ -429,6 +472,14 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .appt-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .appt-act .btn{padding:9px 14px;font-size:13.5px;border-radius:12px}
 .appt .rmv{color:var(--coral-d);font-size:13px;font-weight:600;padding:9px 6px}
+.appt-cancel{color:var(--coral-d)}
+.appt-ask{margin-top:10px;padding:12px 14px;border-radius:14px;background:var(--coral-s);color:#7a2a17;font-size:14px;line-height:1.5}
+.appt-ask p{color:#7a2a17;margin:0;font-size:14px}
+.appt-ask .appt-act{margin-top:10px}
+.appt-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--bg2);color:var(--ink);font-size:13.5px;line-height:1.5}
+.appt-note a{font-weight:700;text-decoration:underline;color:inherit}
+.appt .spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;margin-right:6px;vertical-align:-2px;animation:rmspin .8s linear infinite}
+@media (prefers-reduced-motion:reduce){.appt .spin{animation:none}}
 .appt .side{display:grid;gap:8px;justify-items:end}
 @media (max-width:520px){.appt .side{flex-basis:100%;justify-items:start;padding-left:70px}}
 
@@ -476,14 +527,24 @@ footer .logo{--hc:#fff;margin-bottom:12px}
   .p-cta{margin-top:20px}
   details{padding:16px 0}
   summary{font-size:16px}
-  footer{margin-top:48px;padding-top:40px}
+  .rodape{margin-top:48px}
 }
 
-/* rodapé */
-.f-grid a,.f-grid button{font-size:14px}
 .bnav a{color:var(--muted)}
 .bnav a.on,.bnav button.on{color:var(--primary)}
+/* "Reduzir movimento" ligado no aparelho: nada se mexe sozinho (animações e transições param) e a rolagem não desliza. */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important;scroll-behavior:auto!important}}
+/* Celular e telas de toque: alvos com pelo menos 44 px (dedo, inclusive de quem tem tremor ou vista cansada). */
+@media (max-width:860px),(pointer:coarse){
+  .btn,.btn-sm,.hchip,.faq-all,.appt .rmv{min-height:44px}
+  .logo,.addr{min-height:44px}
+  .h3d-lite .more,.sec-h .link{min-height:44px}
+  summary{min-height:44px;align-items:center}
+  #realMap .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:20px}
+  .sh-head .x{width:44px;height:44px}
+}
 </style>
+<link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body class="at-hero">
 <a class="skip" href="#conteudo">Pular para o conteúdo</a>
@@ -494,12 +555,12 @@ footer .logo{--hc:#fff;margin-bottom:12px}
     <nav class="tabs" aria-label="Seções">
       <a class="tab on" href="./" data-go="inicio">Início</a>
       <a class="tab" href="perto.html">Perto de mim</a>
-      <a class="tab" href="#agenda" data-go="agenda">Agendados</a>
+      <a class="tab" href="#agenda" data-go="agenda">Meus pedidos</a>
       <a class="tab" href="conta.html">Conta</a>
     </nav>
-    <button class="addr" id="addrBtn" type="button" aria-label="Trocar o ponto de partida do mapa">
+    <button class="addr" id="addrBtn" type="button">
       <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
-      <span style="min-width:0"><small>Perto de</small><b id="addrTxt">Av. Paulista, Bela Vista</b></span>
+      <span style="min-width:0"><small id="addrSmall">Exemplo</small><b id="addrTxt">Av. Paulista (São Paulo)</b><span class="sr">: trocar o ponto de partida do mapa</span></span>
       <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
     </button>
     <a class="partner-link" href="reivindicar.html">Para clínicas</a>
@@ -512,25 +573,28 @@ footer .logo{--hc:#fff;margin-bottom:12px}
     <div class="wrap">
       <div class="hero-in">
         <span class="live-pill"><i aria-hidden="true"></i><span id="livePill">Cadastro oficial de estabelecimentos de saúde</span></span>
+        <p class="hero-src wait" id="heroSrc" hidden></p>
         <h1 id="heroTitle">Seu exame perto de você, <span class="grad">com dados oficiais.</span></h1>
         <p class="lead">Veja no mapa clínicas, laboratórios e hospitais reais perto de você e peça seu agendamento. O IMED confirma com a clínica e avisa você.</p>
         <form class="hsearch" id="heroForm" autocomplete="off" role="search" action="perto.html">
           <div class="hs-field"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="heroQ" placeholder="Qual exame você precisa?" aria-label="Qual exame você precisa?" aria-autocomplete="list" aria-controls="heroSug" aria-expanded="false" role="combobox"></div>
-          <button type="button" class="hs-loc" id="heroLoc"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span id="heroAddr">Av. Paulista</span></button>
+          <button type="button" class="hs-loc" id="heroLoc"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span id="heroAddr">Exemplo: Av. Paulista</span><span class="sr">: trocar o ponto de partida do mapa</span></button>
           <button class="hs-go" type="submit">Buscar</button>
-          <div class="hs-sug" id="heroSug" role="listbox" aria-label="Exames" hidden></div>
+          <div class="hs-sug" id="heroSug" role="listbox" aria-label="Exames" tabindex="-1" hidden></div>
         </form>
         <a class="near-cta" href="perto.html?usar=localizacao" id="nearCta">
-          <span class="ic" aria-hidden="true"><i class="fa-solid fa-location-crosshairs"></i></span>
+          <span class="ic" aria-hidden="true"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i></span>
           <span><b>Encontrar clínicas perto de mim</b><small>Clínicas, laboratórios e hospitais reais, no mapa</small></span>
           <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
         </a>
-        <div class="hchips" id="hchips"></div>
+        <div class="hchips" id="hchips"><a class="hchip" href="perto.html?exame=rm"><img src="assets/img/ico-rm-96.webp" alt="" width="24" height="24">Ressonância</a><a class="hchip" href="perto.html?exame=usg"><img src="assets/img/ico-usg-96.webp" alt="" width="24" height="24">Ultrassom</a><a class="hchip" href="perto.html?exame=rx"><img src="assets/img/ico-rx-96.webp" alt="" width="24" height="24">Raio-X</a><a class="hchip" href="perto.html?exame=mamo"><img src="assets/img/ico-mamo-96.webp" alt="" width="24" height="24">Mamografia</a><a class="hchip" href="perto.html?exame=lab"><i class="fa-solid fa-flask" aria-hidden="true"></i>Laboratório</a><a class="hchip" href="teleconsulta.html"><i class="fa-solid fa-video" aria-hidden="true"></i>Teleconsulta</a></div>
+        <p class="sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span>Emergência? Ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro mais próximo.</span></p>
         <button class="install-hero install-auto hide" type="button" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt="" width="40" height="40" loading="lazy"></span><span><b>Instale o app IMED</b><small>Abre em tela cheia, como um aplicativo</small></span><i class="fa-solid fa-download" aria-hidden="true"></i></button>
       </div>
     </div>
     <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite"></div><p class="sr" role="status" id="heroLiteStatus"></p></div>
     <div class="hero-hint"><i class="fa-solid fa-computer-mouse" aria-hidden="true"></i> Arraste para girar · clique num local</div>
+    <button class="h3d-pause" id="heroPause" type="button" hidden><i class="fa-solid fa-pause" aria-hidden="true"></i><span>Pausar animação</span></button>
     <span class="scroll-cue" aria-hidden="true"></span>
   </section>
 
@@ -546,11 +610,12 @@ footer .logo{--hc:#fff;margin-bottom:12px}
         <div class="rm">
           <div class="rm-map" id="realMap" role="region" aria-label="Mapa com clínicas reais"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span>Carregando o mapa…</div></div>
           <div class="rm-side">
-            <p class="rm-where"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Em até 2 km de <b id="realWhere">Av. Paulista, Bela Vista</b> · <button class="link" id="realPlace" type="button">trocar</button></p>
+            <p class="rm-ex" id="realExample"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span><b>Exemplo: Av. Paulista (São Paulo).</b> <button class="link" id="realChoose" type="button">Escolha sua cidade</button> ou use sua localização para ver os locais perto de você.</span></p>
+            <p class="rm-where"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Em até 2 km <b id="realWhere">da Av. Paulista</b> · <button class="link" id="realPlace" type="button">trocar</button></p>
             <div class="rm-stats" id="realStats"></div>
             <ol class="rm-list" id="realList"></ol>
             <div class="rm-more"><a class="btn btn-coral" href="perto.html?usar=localizacao"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>Ver todas perto de mim</a><a class="btn btn-ghost" href="cidades/">Por cidade</a></div>
-            <p class="rm-src">Fonte: CNES/DataSUS. Endereço e telefone vêm do cadastro oficial. Valores e horários são confirmados com o local.</p>
+            <p class="rm-src">Endereços do CNES, base pública do Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS. Valores e horários são confirmados com o local.</p>
           </div>
         </div>
       </section>
@@ -563,9 +628,10 @@ footer .logo{--hc:#fff;margin-bottom:12px}
           <ol class="how-steps">
             <li><span class="n">1</span><b>Busque no mapa</b><p>Use sua localização, um CEP ou uma cidade e escolha o exame. Aparecem clínicas, laboratórios e hospitais perto de você.</p></li>
             <li><span class="n">2</span><b>Veja os dados oficiais</b><p>Endereço, telefone e serviços vêm do CNES, do Ministério da Saúde. Preço só aparece quando a própria clínica informou.</p></li>
-            <li><span class="n">3</span><b>Agende</b><p>Escolha um horário livre quando a clínica parceira tem agenda no IMED. Nos outros locais, diga o dia e o período: o IMED fala com o local e confirma com você. Acompanhe em Agendados.</p></li>
+            <li><span class="n">3</span><b>Agende</b><p>Escolha um horário livre quando a clínica parceira tem agenda no IMED. Nos outros locais, diga o dia e o período: o IMED fala com o local e confirma com você. Acompanhe em Meus pedidos.</p></li>
           </ol>
           <div class="how-cta"><a class="btn btn-coral" href="perto.html?usar=localizacao">Começar pela minha localização <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="cidades/">Escolher uma cidade</a></div>
+          <p class="how-more"><a href="como-funciona.html">Como ordenamos os resultados, o que o selo garante e como funcionam as avaliações <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></p>
         </div>
       </section>
 
@@ -577,36 +643,39 @@ footer .logo{--hc:#fff;margin-bottom:12px}
       <section class="sec rv" id="lista" aria-labelledby="teleTitle">
         <div class="wl">
           <div class="wl-txt">
-            <span class="soon"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Em breve</span>
-            <h2 id="teleTitle">Teleconsulta no IMED</h2>
-            <p>Estamos preparando consultas por vídeo com médicos de verdade. Ainda não há atendimento nem médicos disponíveis pelo IMED. Deixe seu e-mail e avisamos quando abrir.</p>
-            <ul class="wl-points">
-              <li><i class="fa-solid fa-bell" aria-hidden="true"></i>Um aviso quando a teleconsulta começar. Sem spam.</li>
-              <li><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>Seu e-mail fica só com o IMED.</li>
-            </ul>
-            <form class="wl-form" id="wlForm" novalidate>
-              <input type="email" name="email" placeholder="Seu e-mail" required autocomplete="email" maxlength="254" aria-label="Seu e-mail">
-              <input name="city" placeholder="Sua cidade" maxlength="80" autocomplete="address-level2" aria-label="Sua cidade (opcional)">
-              <select name="interest" aria-label="Quero receber aviso sobre"><option value="teleconsulta">Teleconsulta</option><option value="ambos">Teleconsulta e novidades de exames</option><option value="exames">Só novidades de exames</option></select>
-              <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
-              <button class="btn btn-coral" type="submit" id="wlBtn">Quero ser avisado <i class="fa-solid fa-bell" aria-hidden="true"></i></button>
-            </form>
-            <p class="wl-msg" id="wlMsg" role="status"></p>
-            <p class="wl-legal">Ao enviar, você concorda com a <a href="privacidade.html">política de privacidade</a>.</p>
+            <span class="soon"><i class="fa-solid fa-video" aria-hidden="true"></i> Teleconsulta</span>
+            <h2 id="teleTitle">Consulta por vídeo com médico</h2>
+            <p>Fale com um médico pelo celular ou pelo computador, sem sair de casa. Na teleconsulta do IMED atendem só médicos com cadastro aprovado pela nossa equipe, que confere o nome e o CRM no Conselho Federal de Medicina.</p>
+            <p class="tele-now" id="teleNow"><i aria-hidden="true"></i><span>Verificando os médicos atendendo agora…</span></p>
+            <div class="tele-cta"><a class="btn btn-coral" href="teleconsulta.html" id="teleGo">Entrar na teleconsulta <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
+            <p class="tele-warn"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span>Teleconsulta não é para emergência. Em emergência, ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro.</span></p>
+            <div id="teleWait" hidden>
+              <p>Quer receber avisos da teleconsulta, como os horários de atendimento? Deixe seu e-mail.</p>
+              <form class="wl-form" id="wlForm" novalidate>
+                <input type="email" name="email" placeholder="Seu e-mail" required autocomplete="email" maxlength="254" aria-label="Seu e-mail">
+                <input name="city" placeholder="Sua cidade" maxlength="80" autocomplete="address-level2" aria-label="Sua cidade (opcional)">
+                <select name="interest" aria-label="Quero receber aviso sobre"><option value="teleconsulta">Teleconsulta</option><option value="ambos">Teleconsulta e novidades de exames</option><option value="exames">Só novidades de exames</option></select>
+                <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+                <button class="btn btn-coral" type="submit" id="wlBtn">Quero receber avisos <i class="fa-solid fa-bell" aria-hidden="true"></i></button>
+              </form>
+              <p class="wl-msg" id="wlMsg" role="status"></p>
+              <p class="wl-legal">Seu e-mail fica só com o IMED, sem spam. Ao enviar, você concorda com a <a href="privacidade.html">política de privacidade</a>.</p>
+            </div>
           </div>
-          <div class="wl-ic" aria-hidden="true"><span><i class="fa-solid fa-video"></i></span></div>
+          <div class="wl-ic" aria-hidden="true"><span><i class="fa-solid fa-video" aria-hidden="true"></i></span></div>
         </div>
       </section>
 
       <section class="sec rv" id="clinicas" aria-labelledby="partnerTitle">
         <div class="partner">
           <picture><source media="(max-width:760px)" srcset="assets/img/fachada-sm.webp" width="640" height="429"><img src="assets/img/fachada.webp" alt="" width="1264" height="848" loading="lazy" decoding="async"></picture>
+          <span class="ill">Imagem ilustrativa</span>
           <div class="p-in">
             <span class="kicker light">Para clínicas</span>
             <h2 id="partnerTitle">Sua clínica já está no IMED? Assuma o cadastro</h2>
             <p>Sua clínica provavelmente já aparece no mapa com os dados do CNES. Peça o cadastro para informar exames e preços, corrigir dados e receber os pedidos de agendamento.</p>
-            <div class="p-perks"><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Pedido grátis</span><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>O IMED confere quem é responsável</span><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Você decide o que mostrar</span></div>
-            <div class="p-cta"><a class="btn btn-coral" href="reivindicar.html">Assumir o cadastro da minha clínica <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="painel.html">Área da clínica</a></div>
+            <div class="p-perks"><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Cadastro sem custo</span><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>O IMED confere quem é responsável</span><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Você decide o que mostrar</span></div>
+            <div class="p-cta"><a class="btn btn-coral" href="reivindicar.html">Assumir o cadastro da minha clínica <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="parceiros.html">Como funciona para clínicas</a></div>
           </div>
         </div>
       </section>
@@ -614,14 +683,16 @@ footer .logo{--hc:#fff;margin-bottom:12px}
       <section class="sec rv" aria-labelledby="faqTitle">
         <div class="sec-h" style="justify-content:center;text-align:center"><div><span class="kicker">Dúvidas</span><h2 id="faqTitle">Perguntas frequentes</h2></div></div>
         <div class="faq">
-          <details><summary>De onde vêm as clínicas que aparecem no IMED?</summary><p>Do CNES, o Cadastro Nacional de Estabelecimentos de Saúde do Ministério da Saúde (DataSUS). Dele vêm o nome, o tipo, o endereço, o telefone e os serviços. O cadastro pode estar desatualizado: na dúvida, confirme por telefone antes de ir.</p></details>
+          <details><summary>De onde vêm as clínicas que aparecem no IMED?</summary><p>Do CNES, o Cadastro Nacional de Estabelecimentos de Saúde, base pública do Ministério da Saúde. Dele vêm o nome, o tipo, o endereço, o telefone e os serviços. O cadastro pode estar desatualizado: na dúvida, confirme por telefone antes de ir. O IMED é um serviço privado, sem vínculo com o governo ou o SUS. Veja <a class="link" href="como-funciona.html#dados">de onde vêm os dados</a>.</p></details>
+          <details><summary>O IMED cobra alguma coisa?</summary><p>Não. O IMED é gratuito para você. Se houver cobrança pelo exame ou pela consulta, o pagamento é feito direto no local. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp: se alguém pedir em nome do IMED, não pague e avise pelo <a class="link" href="contato.html">Fale com o IMED</a>.</p></details>
+          <details><summary>Como funciona o pedido de agendamento?</summary><p>Na página do local, você escolhe o exame. Se a clínica parceira tem agenda no IMED, você escolhe um horário livre e ele já fica confirmado. Nos outros locais, você diz o dia e o período que prefere: o IMED fala com o local e entra em contato com você para confirmar. Você acompanha a situação em <a class="link" href="#agenda" data-go="agenda">Meus pedidos</a>.</p></details>
           <details><summary>O IMED mostra preços?</summary><p>Só das clínicas parceiras que informaram o preço no painel do IMED. Quando não há preço informado, mostramos “sob consulta”: o valor é confirmado com a clínica. O IMED não estima nem inventa preços.</p></details>
-          <details><summary>Como funciona o pedido de agendamento?</summary><p>Na página do local, você escolhe o exame. Se a clínica parceira tem agenda no IMED, você escolhe um horário livre e ele já fica confirmado. Nos outros locais, você diz o dia e o período que prefere: o IMED fala com o local e entra em contato com você para confirmar. Você acompanha a situação em <a class="link" href="#agenda" data-go="agenda">Agendados</a>.</p></details>
-          <details><summary>As avaliações são de verdade?</summary><p>Sim. Só pode avaliar quem fez um pedido pelo IMED e teve o atendimento concluído, uma vez por pedido. Sem avaliações, não mostramos nota.</p></details>
-          <details><summary>O que o IMED faz com a minha localização e os meus dados?</summary><p>A localização só é usada com sua permissão, para buscar lugares perto de você. Ela sai do aparelho de forma aproximada, sem o ponto exato onde você está, e não guardamos sua posição. Isso não diminui a busca: você vê os locais da região inteira e escolhe a distância. Os dados do pedido servem só para o agendamento, seguindo a LGPD. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p></details>
+          <details><summary>O que o IMED faz com a minha localização e os meus dados?</summary><p>A localização só é usada com sua permissão, para buscar lugares perto de você. Ela sai do aparelho de forma aproximada, sem o ponto exato onde você está, e não guardamos sua posição. Isso não diminui a busca: você vê os locais da região inteira e escolhe a distância. Os dados do pedido vão só para o IMED e para o local escolhido e ficam em servidor no Brasil. O IMED não tem anúncios nem rastreadores de anúncio. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p></details>
           <div id="faqMore" hidden>
-          <details><summary>Tenho uma clínica. Como mudo os dados ou recebo pedidos?</summary><p>Peça o cadastro em <a class="link" href="reivindicar.html">Sua clínica no IMED</a>. Depois que o IMED conferir que você é responsável pela clínica, você entra na <a class="link" href="painel.html">Área da clínica</a> para informar exames e preços e responder aos pedidos.</p></details>
-          <details><summary>Já existe teleconsulta?</summary><p>Ainda não. A teleconsulta está em preparação. <a class="link" href="#lista">Entre na lista de espera</a> para receber um aviso quando começar.</p></details>
+          <details><summary>Em que ordem aparecem os resultados?</summary><p>Do mais perto para o mais longe. Ninguém paga para aparecer primeiro, e selo não se vende. Veja <a class="link" href="como-funciona.html#ordem">Como funciona</a>.</p></details>
+          <details><summary>As avaliações são de verdade?</summary><p>Sim. Só pode avaliar quem fez um pedido pelo IMED e teve o atendimento concluído, uma vez por pedido. Sem avaliações, não mostramos nota. Veja <a class="link" href="como-funciona.html#avaliacoes">como funcionam as avaliações</a>.</p></details>
+          <details><summary>Tenho uma clínica. Como mudo os dados ou recebo pedidos?</summary><p>Peça o cadastro em <a class="link" href="reivindicar.html">Sua clínica no IMED</a>, sem custo. Depois que o IMED conferir que você é responsável pela clínica, você entra na <a class="link" href="painel.html">Área da clínica</a> para informar exames e preços e responder aos pedidos. Veja <a class="link" href="parceiros.html">Para clínicas</a>.</p></details>
+          <details><summary>Já existe teleconsulta?</summary><p>Sim. A <a class="link" href="teleconsulta.html">teleconsulta do IMED</a> atende por vídeo, com médicos de cadastro aprovado pela equipe do IMED, que confere o nome e o CRM no Conselho Federal de Medicina. Quando não há médico atendendo, a página da teleconsulta avisa. Teleconsulta não é para emergência: nesse caso, ligue 192 (SAMU).</p></details>
           </div>
           <button class="faq-all" id="faqAll" type="button" aria-expanded="false" aria-controls="faqMore">Ver todas as perguntas <i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
         </div>
@@ -632,27 +703,64 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
 <!-- ======================= AGENDADOS ======================= -->
 <main class="wrap view-pad hide" id="agendaMain" tabindex="-1" data-view="agenda" style="min-height:60vh" aria-labelledby="agTitle" hidden>
-  <div class="sec-h"><div><span class="kicker">Seus pedidos</span><h2 id="agTitle">Agendados</h2><p>Pedidos de agendamento feitos neste aparelho. A situação é atualizada pelo IMED.</p></div></div>
+  <div class="sec-h"><div><span class="kicker">Pedidos de agendamento</span><h1 id="agTitle">Meus pedidos</h1><p>Pedidos de agendamento feitos neste aparelho. Um pedido só vale como agendamento quando aparece como Confirmado.</p></div></div>
   <p class="ag-note"><i class="fa-solid fa-user" aria-hidden="true"></i><span>Para ver seus pedidos em qualquer aparelho, <a href="conta.html">entre na sua conta</a>.</span></p>
   <div id="appts" aria-live="polite"></div>
 </main>
 
-<footer>
-  <div class="wrap">
-    <div class="f-grid">
-      <div><a class="logo" href="./" data-go="inicio"><span class="logo-mk"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a><p style="max-width:340px;line-height:1.6">Clínicas, laboratórios e hospitais reais perto de você, com dados do cadastro oficial (CNES), e pedido de agendamento pelo IMED.</p></div>
-      <div><h5>Pacientes</h5><a href="perto.html">Clínicas perto de mim</a><a href="cidades/">Clínicas por cidade</a><a href="exames/">Guias de exames</a><a href="#agenda" data-go="agenda">Agendados</a><a href="conta.html">Minha conta</a><a href="#lista">Teleconsulta (em breve)</a><button type="button" data-install>Instalar o app</button></div>
-      <div><h5>Clínicas</h5><a href="reivindicar.html">Sua clínica no IMED</a><a href="painel.html">Área da clínica</a></div>
-      <div><h5>IMED</h5><a href="sobre.html">Quem somos</a><a href="termos.html">Termos de uso</a><a href="privacidade.html">Privacidade</a><a href="mailto:contato@imed.com.br">contato@imed.com.br</a></div>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
     </div>
-    <div class="f-bottom"><span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span><span><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Dados dos estabelecimentos: CNES/DataSUS. Fotos ilustrativas geradas por IA.</span></div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="documento.html">Conferir documento</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
   </div>
 </footer>
+<!-- /rodape -->
 
 <nav class="bnav" aria-label="Navegação">
   <a class="on" href="./" data-go="inicio"><i class="fa-solid fa-house" aria-hidden="true"></i>Início</a>
   <a class="near" href="perto.html?usar=localizacao"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>Perto de mim</a>
-  <a href="#agenda" data-go="agenda"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Agendados</a>
+  <a href="#agenda" data-go="agenda"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Meus pedidos</a>
   <a href="conta.html"><i class="fa-solid fa-user" aria-hidden="true"></i>Conta</a>
 </nav>
 
@@ -662,9 +770,10 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/js/aviso.js" defer></script>
-<script src="assets/js/config.js"></script>
-<script src="assets/js/db.js"></script>
-<script src="assets/js/data.js"></script>
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/visitas.js" defer></script>
+<script src="assets/js/db.js" defer></script>
+<script src="assets/js/data.js" defer></script>
 <script type="module" src="assets/js/inicio.js"></script>
 </body>
 </html>
