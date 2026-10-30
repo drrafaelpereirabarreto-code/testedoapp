@@ -135,12 +135,26 @@ async function rolar(page, { ate, dy, ms = 1800, folga = 70 }) {
   }, { ate, dy, ms, folga }).catch((e) => log('  (não rolou:', e.message.split('\n')[0], ')'));
 }
 
+// Círculo onde o dedo tocaria, sem rolar a tela nem clicar (some sozinho).
+async function marcarToque(page, alvo) {
+  const loc = typeof alvo === 'string' ? page.locator(alvo).first() : alvo;
+  const b = await loc.boundingBox({ timeout: 2000 }).catch(() => null);
+  if (b) await circulo(page, b);
+  await pausa(280);
+}
+
 // Toque visível: um círculo aparece onde o dedo tocaria, depois clica.
 async function tocar(page, alvo) {
   const loc = typeof alvo === 'string' ? page.locator(alvo).first() : alvo;
   await loc.scrollIntoViewIfNeeded({ timeout: 5000 }).catch(() => {});
   const b = await loc.boundingBox({ timeout: 5000 });
   if (!b) throw new Error('sem posição na tela');
+  await circulo(page, b);
+  await pausa(280);
+  await loc.click({ timeout: 5000 });
+}
+
+async function circulo(page, b) {
   await page.evaluate(({ x, y }) => {
     const d = document.createElement('div');
     d.setAttribute('aria-hidden', 'true');
@@ -150,8 +164,6 @@ async function tocar(page, alvo) {
     d.style.transform = 'scale(1.25)'; d.style.opacity = '0';
     setTimeout(() => d.remove(), 900);
   }, { x: b.x + b.width / 2, y: b.y + b.height / 2 }).catch(() => {});
-  await pausa(280);
-  await loc.click({ timeout: 5000 });
 }
 
 async function cartaoFinal(page, { movel }) {
@@ -203,7 +215,11 @@ async function roteiro(page, tela, cena) {
     await page.locator('#heroQ').pressSequentially('ressonância', { delay: 115 });
     await page.locator('#heroSug .sug').first().waitFor({ timeout: 5000 });
     await pausa(1300);
-    await tocar(page, '#heroSug .sug');
+    // Escolhe a primeira sugestão pelo teclado (seta para baixo e Enter), mostrando o toque onde ela está:
+    // no computador, rolar a tela até a sugestão pode fechar a lista (a gravação de 30/10 falhou assim).
+    await marcarToque(page, '#heroSug .sug');
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
     await page.waitForURL(/perto\.html/, { timeout: 15000 });
   }, async () => {
     await ir(page, 'perto.html?exame=rm');
