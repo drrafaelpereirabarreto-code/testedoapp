@@ -80,7 +80,8 @@ async function legenda(page, texto, { movel }) {
       el.setAttribute('aria-hidden', 'true');
       el.style.cssText = [
         'position:fixed', 'left:50%', `bottom:${movel ? 92 : 44}px`, 'z-index:2147483645', 'pointer-events:none',
-        `max-width:${movel ? '90vw' : '62vw'}`, 'box-sizing:border-box', `padding:${movel ? '12px 16px' : '14px 24px'}`,
+        // Largura do próprio texto (até 90% da tela): com left 50% e largura automática, a caixa ficaria com só metade da tela.
+        'width:max-content', `max-width:${movel ? '90vw' : '62vw'}`, 'box-sizing:border-box', `padding:${movel ? '12px 16px' : '14px 24px'}`,
         'border-radius:16px', 'background:rgba(5,22,30,.9)', 'color:#fff', 'text-align:center',
         `font:700 ${movel ? 19 : 26}px/1.3 Inter, system-ui, sans-serif`, 'letter-spacing:-.01em',
         'box-shadow:0 8px 30px rgba(0,0,0,.28)', 'border-bottom:4px solid #2EE6D6',
@@ -306,19 +307,31 @@ async function gravar(formato) {
   mkdirSync(pasta, { recursive: true });
   mkdirSync(join(SAIDA, 'capturas'), { recursive: true });
   const quadros = [];
-  const cdp = await context.newCDPSession(page);
-  cdp.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
-    const arq = join(pasta, `${String(quadros.length).padStart(6, '0')}.jpg`);
-    writeFileSync(arq, Buffer.from(data, 'base64'));
-    quadros.push({ arq, t: metadata.timestamp });
-    cdp.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
-  });
-
   await page.goto(URL_BASE + 'index.html', { waitUntil: 'commit', timeout: 45000 });
-  await cdp.send('Page.startScreencast', {
-    format: 'jpeg', quality: 90, everyNthFrame: 1,
-    maxWidth: Math.round(tela.viewport.width * tela.dsf), maxHeight: Math.round(tela.viewport.height * tela.dsf),
-  });
+  // A sessão de gravação é aberta depois que a página começou a carregar (antes, a troca de processo do
+  // about:blank para o site pode derrubar a sessão: "Not attached to an active page"). Tenta de novo se cair.
+  let cdp;
+  for (let tentativa = 1; ; tentativa += 1) {
+    try {
+      cdp = await context.newCDPSession(page);
+      const sessao = cdp;
+      sessao.on('Page.screencastFrame', ({ data, metadata, sessionId }) => {
+        const arq = join(pasta, `${String(quadros.length).padStart(6, '0')}.jpg`);
+        writeFileSync(arq, Buffer.from(data, 'base64'));
+        quadros.push({ arq, t: metadata.timestamp });
+        sessao.send('Page.screencastFrameAck', { sessionId }).catch(() => {});
+      });
+      await sessao.send('Page.startScreencast', {
+        format: 'jpeg', quality: 90, everyNthFrame: 1,
+        maxWidth: Math.round(tela.viewport.width * tela.dsf), maxHeight: Math.round(tela.viewport.height * tela.dsf),
+      });
+      break;
+    } catch (e) {
+      if (tentativa >= 5) throw e;
+      log(`  (gravação ainda não começou: ${e.message.split('\n')[0]}; tentando de novo)`);
+      await pausa(500);
+    }
+  }
   await page.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
 
   const falhas = [];

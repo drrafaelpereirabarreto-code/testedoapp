@@ -3,7 +3,7 @@
 // A cidade 3D (hero3d.js e three.module.min.js) fica fora do CORE: aparelhos fracos não a baixam;
 // nos demais ela entra no cache no primeiro uso. O mesmo vale para o pdf-lib e o gerador de QR (só o médico usa)
 // e para o Font Awesome completo (só baixa se faltar algum ícone no recorte icones.min.css).
-const VERSION = 'imed-v13';
+const VERSION = 'imed-v14';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html',

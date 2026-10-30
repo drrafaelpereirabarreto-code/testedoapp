@@ -229,7 +229,8 @@ body.lite .hero-hint{display:none}
 .cat.on::after{content:"\f00c";font:900 11px "Font Awesome 6 Free";position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--primary);color:#fff}
 @media (max-width:1100px){.cats{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:4px 2px 12px;margin:0 -20px;padding-left:20px;padding-right:20px}.cats::-webkit-scrollbar{display:none}.cat{flex:0 0 128px;scroll-snap-align:start}}
 /* clínicas reais no mapa (cadastro oficial CNES) */
-.rm{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;align-items:stretch}
+/* minmax(0, …): um nome comprido (sem quebra, com reticências) não alarga a coluna além da tela. */
+.rm{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:stretch}
 .rm-map{position:relative;min-height:440px;border-radius:26px;overflow:hidden;background:#dde8ec;border:1px solid var(--line);isolation:isolate}
 .rm-wait{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:10px;color:var(--muted);font-size:14px;text-align:center;padding:20px}
 .rm-side{display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:26px;background:linear-gradient(180deg,#F7FBFC,#fff);border:1px solid var(--line)}
@@ -257,7 +258,7 @@ body.lite .hero-hint{display:none}
 .rm-stat b{display:block;font:800 20px var(--fh);color:var(--ink)}
 .rm-stat span{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--muted)}
 .rm-stat i{width:8px;height:8px;border-radius:50%}
-.rm-list{list-style:none;display:grid;gap:8px}
+.rm-list{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
 .rm-list li{padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:14px;color:var(--muted)}
 .rm-list li:has(>a){padding:0}
 .rm-list li>a{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;transition:background .2s}
@@ -272,7 +273,7 @@ body.lite .hero-hint{display:none}
 @keyframes rmspin{to{transform:rotate(360deg)}}
 .rm-pop b{display:block;color:var(--ink);font-size:13.5px;margin-bottom:2px}
 .rm-pop div{color:var(--muted);font-size:12.5px;line-height:1.45}
-@media (max-width:900px){.rm{grid-template-columns:1fr}.rm-map{min-height:340px}}
+@media (max-width:900px){.rm{grid-template-columns:minmax(0,1fr)}.rm-map{min-height:340px}}
 @media (max-width:520px){.rm-stats{grid-template-columns:repeat(2,1fr)}.rm-side{padding:16px}}
 .install-hero{align-self:flex-start;display:flex;align-items:center;gap:12px;margin-top:16px;padding:8px 16px 8px 8px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;text-align:left;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .install-hero .ic img{width:40px;height:40px;border-radius:11px}

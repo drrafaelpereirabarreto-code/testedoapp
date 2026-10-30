@@ -729,6 +729,35 @@ await scenario('WhatsApp: escondido com a configuração vazia e visível quando
   await context.close();
 });
 
+// Nomes reais do CNES podem ser bem compridos ("Osteon Clínica de Ortopedia e Traumatologia..."): em tela de 360 px
+// (muitos Android) a lista dos locais reais não pode empurrar o quadro para fora da tela; o nome ganha reticências.
+await scenario('celular 360px: nome comprido na lista de locais reais não passa da tela', async () => {
+  const LONGO = { ...CNES_ROWS[0], cnes: '7300001', name: 'Clínica de Ortopedia, Traumatologia e Medicina Esportiva com Nome Bem Comprido Teste' };
+  const { page, errors, context } = await newPage(browser, { mobile: true, viewport: { width: 360, height: 740 }, cnes: (r) => json(r, [LONGO, ...CNES_ROWS.slice(1)]) });
+  await page.goto(BASE);
+  await scrollAll(page);
+  await page.waitForSelector('#realList li b');
+  // Mede contra a largura da tela (360), não contra innerWidth: no modo celular, quando algo passa da tela,
+  // o navegador afasta o zoom e o innerWidth cresce junto (por isso a conta "scrollWidth - innerWidth" dá zero).
+  const m = await page.evaluate((W) => {
+    const b = [...document.querySelectorAll('#realList li b')].find((x) => /Nome Bem Comprido/.test(x.textContent));
+    const right = (el) => Math.round(el.getBoundingClientRect().right) - W;
+    return {
+      side: right(document.querySelector('.rm-side')), map: right(document.querySelector('#realMap')),
+      list: right(document.querySelector('#realList')), item: b ? right(b.closest('li')) : null, cut: !!b && b.scrollWidth > b.clientWidth,
+    };
+  }, 360);
+  await page.evaluate(() => document.querySelector('#realList').scrollIntoView({ block: 'center' }));
+  await shot(page, 'inicio-celular-360');
+  assert.ok(m.item !== null, 'o local de nome comprido aparece na lista');
+  for (const [k, what] of [['side', 'o quadro dos locais'], ['map', 'o mapa'], ['list', 'a lista'], ['item', 'o local de nome comprido']]) {
+    assert.ok(m[k] <= 0, `${what} cabe na tela de 360 px (passa ${m[k]} px)`);
+  }
+  assert.ok(m.cut, 'o nome comprido é cortado com reticências');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', async () => {
   const { page, errors, context } = await newPage(browser, { mobile: true, appts: APPTS.slice(0, 2) });
   await page.goto(BASE);

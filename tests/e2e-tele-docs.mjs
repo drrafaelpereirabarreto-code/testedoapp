@@ -1173,6 +1173,10 @@ await scenario('dados do paciente: o que ele salva aparece para o médico sem re
   await doc.page.check('#dNoCpf');
   await doc.page.click('#dPatSave');
   await waitFor(() => c.patient_no_cpf === true && c.patient_cpf === null, 10000, 'não possui CPF gravado');
+  // Espera a tela receber a resposta: o CPF mudou, a conferência anterior cai e a caixa desmarca. Sem isto, numa
+  // máquina mais lenta (o GitHub) a caixa ainda está marcada da conferência anterior, o "check" não faz nada
+  // e a conferência nova nunca é registrada.
+  await doc.page.waitForFunction(() => !document.querySelector('#dPatSave').disabled && !document.querySelector('#dIdOk').checked, null, { timeout: 10000 });
   await doc.page.check('#dIdOk');
   await waitFor(() => !!c.identity_checked_at, 10000, 'conferência');
   await doc.page.click('#dTab-atestado');
