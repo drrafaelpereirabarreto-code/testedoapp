@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import * as G from '../assets/js/geo-core.js';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -18,8 +19,11 @@ const REST = 'https://pyoqiecupxhdzigjudyd.supabase.co/rest/v1/';
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 const TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/+F9PQAJYwN6V0E0WwAAAABJRU5ErkJggg==', 'base64');
 
+// Tudo o que o servidor entregou (também o que o service worker pede, que o Playwright não mostra na página).
+const served = [];
 const server = http.createServer(async (req, res) => {
   const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  served.push(path);
   let file = normalize(join(ROOT, path));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
   if (path.endsWith('/')) file = join(file, 'index.html');
@@ -57,17 +61,43 @@ const APPTS = [
   { code: 'IMED-ABCDE', type: 'exame', clinic: 'dcp', name: 'DiagnoCenter Paulista', items: ['Ressonância'], date: 'amanhã', time: '14:30', total: 405, pay: 'pix' },
   { code: 'TELE-XYZ', type: 'tele', name: 'Dra. Camila Ruiz', items: ['Teleconsulta'], date: 'Hoje', time: 'agora', total: 120 },
 ];
+// Relógio fixo dos cenários de Agendados (as datas acima e abaixo ficam sempre no futuro).
+const NOW = '2026-10-30T12:00:00Z';
+// Pedidos com horário marcado, gravados como a página do local grava (geo-core.localAppt).
+const SLOT_PLACE = { id: `imed:${PARTNER_ID}`, name: 'Clínica Parceira Paulista' };
+const SID1 = '55555555-5555-4555-8555-555555555555';
+const SID2 = '66666666-6666-4666-8666-666666666666';
+const SLOT_APPTS = [
+  // 12:30 UTC = 09:30 em São Paulo
+  G.localAppt(SLOT_PLACE, { exam: 'rm', slot: '2026-11-05T12:30:00.000Z' }, SID1, 'd'.repeat(64), Date.parse(NOW)),
+  // 02:30 UTC do dia 7 = 23:30 do dia 6 em São Paulo
+  G.localAppt(SLOT_PLACE, { exam: 'usg', slot: '2026-11-07T02:30:00.000Z' }, SID2, 'e'.repeat(64), Date.parse(NOW)),
+];
+// Oito locais em volta do ponto (de 250 m a ~1,4 km), para os rótulos do 3D disputarem espaço no celular.
+const AROUND = [
+  ['Clínica Bela Vista Teste', 'clinica'], ['Laboratório Paulista Teste', 'laboratorio'], ['Centro de Diagnóstico Augusta', 'imagem'],
+  ['Hospital Consolação Teste', 'hospital'], ['Clínica Jardins Teste', 'clinica'], ['Laboratório Santos Teste', 'laboratorio'],
+  ['Imagem Liberdade Teste', 'imagem'], ['Hospital Paraíso Teste', 'hospital'],
+].map(([name, kind], i) => {
+  const ang = i * Math.PI / 4 + 0.3, dist = 250 + i * 160;
+  const lat = -23.565 + (Math.sin(ang) * dist) / 110570, lng = -46.652 + (Math.cos(ang) * dist) / (111320 * Math.cos((-23.565 * Math.PI) / 180));
+  return { cnes: String(7100001 + i), name, kind, address_line: `Rua Teste, ${100 + i}`, neighborhood: 'Bela Vista', cep: '01310000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat, lng, distance_m: dist, location_source: 'cnes', phone: null, shift: null, open_24h: false, sus: false, services: [], specialties: [], cnes_updated_at: '2026-09-01' };
+});
 
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
 const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS' } });
 
-// device: { memory, cores, saveData } simula o aparelho (navigator.deviceMemory, hardwareConcurrency, connection.saveData).
-async function newPage(browser, { mobile = false, cities, cnes, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null } = {}) {
+// device: { memory, cores, saveData, effectiveType } simula o aparelho (navigator.deviceMemory, hardwareConcurrency,
+// connection.saveData e connection.effectiveType). dpr: densidade da tela. sw: liga o service worker.
+// tz: fuso do aparelho. ua: navegador (por exemplo, o do iPhone). now: relógio fixo. three: rota para o three.js.
+async function newPage(browser, { mobile = false, cities, cnes, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
-    deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
-    serviceWorkers: 'block', reducedMotion: motion, acceptDownloads: true,
+    viewport: viewport || (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
+    deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz,
+    serviceWorkers: sw ? 'allow' : 'block', reducedMotion: motion, acceptDownloads: true, ...(ua ? { userAgent: ua } : {}),
   });
+  if (now) await context.clock.setFixedTime(new Date(now));
+  if (three) await context.route(`${BASE}assets/vendor/three.module.min.js`, three);
   const log = { cities: 0, cnes: [], partners: [], status: [], waitlist: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
@@ -112,7 +142,7 @@ async function newPage(browser, { mobile = false, cities, cnes, partners, status
     await context.addInitScript((d) => {
       if (d.memory != null) Object.defineProperty(navigator, 'deviceMemory', { get: () => d.memory, configurable: true });
       if (d.cores != null) Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => d.cores, configurable: true });
-      if (d.saveData) Object.defineProperty(navigator, 'connection', { get: () => ({ saveData: true, effectiveType: '4g' }), configurable: true });
+      if (d.saveData || d.effectiveType) Object.defineProperty(navigator, 'connection', { get: () => ({ saveData: !!d.saveData, effectiveType: d.effectiveType || '4g' }), configurable: true });
     }, device);
   }
   const page = await context.newPage();
@@ -137,6 +167,26 @@ async function scrollAll(page) {
     window.scrollTo(0, 0);
   });
 }
+// Contraste (fórmula da WCAG) de texto claro sobre fundo escuro, medido nos pixels de uma captura do
+// elemento: o pixel mais claro (o texto) contra a mediana (o fundo, que ocupa a maior parte da caixa).
+async function lightTextContrast(page, locator) {
+  // No meio da tela, longe da barra de navegação fixa de baixo, que cobriria o elemento na captura.
+  await locator.evaluate((e) => e.scrollIntoView({ block: 'center' }));
+  const png = await locator.screenshot({ animations: 'disabled' });
+  return page.evaluate(async (b64) => {
+    const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight;
+    const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data;
+    const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+    const L = [];
+    for (let i = 0; i < d.length; i += 4) L.push(0.2126 * lin(d[i]) + 0.7152 * lin(d[i + 1]) + 0.0722 * lin(d[i + 2]));
+    L.sort((a, b) => a - b);
+    return (L[L.length - 1] + 0.05) / (L[Math.floor(L.length / 2)] + 0.05);
+  }, png.toString('base64'));
+}
+// Duas caixas da tela se cobrem?
+const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 
 const browser = await chromium.launch();
 
@@ -270,6 +320,22 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   assert.ok(!requests.some((u) => /recepcao\.webp/.test(u)), 'sem foto de fundo');
   assert.ok(!requests.some((u) => /geo-core\.js/.test(u)), 'geo-core.js só ao abrir Agendados');
   assert.ok(!requests.some((u) => /leaflet\.js/.test(u)), 'Leaflet só quando o mapa se aproxima da tela');
+  // Leitor de tela: só um resumo curto (role=status), não a lista inteira a cada troca.
+  assert.equal(await page.getAttribute('#heroLite', 'aria-live'), null, 'lista sem aria-live');
+  assert.equal(await page.getAttribute('#heroLiteStatus', 'role'), 'status');
+  assert.equal(await page.textContent('#heroLiteStatus'), '4 locais perto de Av. Paulista, Bela Vista');
+  // Lista acima do degradê do topo: texto claro com contraste de pelo menos 4,5:1 (WCAG AA).
+  const parts = ['#heroLite h2', '#heroLite li b', '#heroLite li small', '#heroLite .more'];
+  let worst = Infinity;
+  for (const sel of parts) {
+    for (const loc of await page.locator(sel).all()) {
+      const c = await lightTextContrast(page, loc);
+      worst = Math.min(worst, c);
+      assert.ok(c >= 4.5, `contraste de "${(await loc.textContent()).trim()}": ${c.toFixed(1)}:1`);
+    }
+  }
+  console.log(`  menor contraste na lista leve do celular: ${worst.toFixed(1)}:1`);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await shot(page, 'inicio-celular-leve');
   // economia de dados também usa o modo leve
   const b = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8, saveData: true } });
@@ -297,30 +363,44 @@ await scenario('aparelho normal: baixa o 3D só depois do H1 aparecer', async ()
   await context.close();
 });
 
-await scenario('celular com 3D: no máximo 2 rótulos, dentro da tela e sem sobreposição', async () => {
-  const { page, errors, context } = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8 } });
+await scenario('celular com 3D (tela de densidade 3, 8 locais): 1 ou 2 rótulos, dentro da tela, sem cobrir outro rótulo nem o "Você está aqui"', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, dpr: 3, motion: 'no-preference', device: { memory: 8, cores: 8 }, cnes: (r) => json(r, AROUND), partners: (r) => json(r, []) });
   await page.goto(BASE);
-  await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 20000 });
+  await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 30000 });
   if (await page.evaluate(() => document.body.dataset.hero) !== '3d') { console.log('  (sem WebGL neste navegador: confere só o modo leve)'); await context.close(); return; }
-  await page.waitForFunction(() => document.querySelectorAll('.h3d-label').length >= 3, null, { timeout: 15000 });
-  await page.waitForTimeout(2500);
-  for (let i = 0; i < 4; i++) {
-    const boxes = await page.$$eval('.h3d-label.on', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; }));
-    assert.ok(boxes.length <= 2, `no máximo 2 rótulos (${boxes.length})`);
-    const W = await page.evaluate(() => document.querySelector('#hero3d').clientWidth);
-    boxes.forEach((b) => assert.ok(b.l >= 0 && b.r <= W, `rótulo dentro da tela (${Math.round(b.l)}..${Math.round(b.r)} de ${W})`));
-    if (boxes.length === 2) { const [a, b] = boxes; assert.ok(a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t, 'rótulos não se sobrepõem'); }
-    await page.waitForTimeout(500);
-  }
+  // Tela de densidade 3: o 3D desenha com no máximo 1,5 pixel por ponto.
   const ratio = await page.evaluate(() => { const c = document.querySelector('#hero3d canvas'); return c.width / c.clientWidth; });
-  assert.ok(ratio <= 1.5 + 1e-6, `pixel ratio no máximo 1,5 (${ratio})`);
+  assert.ok(Math.abs(ratio - 1.5) < 0.01, `pixel ratio 1,5 numa tela de densidade 3 (${ratio})`);
+  await page.waitForFunction(() => document.querySelectorAll('.h3d-label').length === 8);
+  // O 3D aqui roda a poucos quadros por segundo (sem placa de vídeo): espera o primeiro rótulo aparecer.
+  await page.waitForFunction(() => document.querySelectorAll('.h3d-label.on').length >= 1, null, { timeout: 45000 });
+  let withTwo = 0;
+  for (let i = 0; i < 8; i++) {
+    const s = await page.evaluate(() => {
+      const box = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, n: e.textContent }; };
+      const me = document.querySelector('.h3d-me');
+      return { hero: box(document.querySelector('#hero3d')), labels: [...document.querySelectorAll('.h3d-label.on')].map(box), me: me.classList.contains('on') ? box(me) : null };
+    });
+    assert.ok(s.labels.length >= 1 && s.labels.length <= 2, `de 1 a 2 rótulos no celular (${s.labels.length})`);
+    if (s.labels.length === 2) withTwo += 1;
+    for (const b of s.labels) {
+      assert.ok(b.l >= s.hero.l && b.r <= s.hero.r && b.t >= s.hero.t && b.b <= s.hero.b, `rótulo inteiro dentro da área do 3D (${Math.round(b.l)}..${Math.round(b.r)} de ${Math.round(s.hero.r)})`);
+    }
+    assert.ok(s.me, '"Você está aqui" na tela');
+    const boxes = [...s.labels, s.me];
+    for (let a = 0; a < boxes.length; a++) {
+      for (let b = a + 1; b < boxes.length; b++) assert.ok(!overlap(boxes[a], boxes[b]), `"${boxes[a].n}" não cobre "${boxes[b].n}"`);
+    }
+    await page.waitForTimeout(700);
+  }
+  console.log(`  amostras com 2 rótulos: ${withTwo} de 8 (as outras com 1)`);
   await shot(page, 'inicio-celular-3d');
   assert.deepEqual(errors, []);
   await context.close();
 });
 
 await scenario('Agendados: só pedidos reais, situação do banco, avaliar e lembrete .ics', async () => {
-  const { page, log, errors, context } = await newPage(browser, { appts: APPTS });
+  const { page, log, errors, context } = await newPage(browser, { appts: APPTS, now: NOW });
   await page.goto(`${BASE}#agenda`);
   await page.waitForSelector('.appt');
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
@@ -354,7 +434,7 @@ await scenario('Agendados: só pedidos reais, situação do banco, avaliar e lem
 });
 
 await scenario('Agendados vazio e falha ao consultar a situação', async () => {
-  const { page, errors, context } = await newPage(browser, { appts: [APPTS[0]], status: (r) => json(r, { message: 'erro' }, 500) });
+  const { page, errors, context } = await newPage(browser, { appts: [APPTS[0]], now: NOW, status: (r) => json(r, { message: 'erro' }, 500) });
   await page.goto(`${BASE}#agenda`);
   await page.waitForFunction(() => /indisponível/.test(document.querySelector('#appts').textContent));
   page.once('dialog', (d) => d.accept());
@@ -366,7 +446,7 @@ await scenario('Agendados vazio e falha ao consultar a situação', async () => 
 });
 
 await scenario('Agendados: remover apaga o pedido mostrado, mesmo se a lista mudou em outra aba', async () => {
-  const { page, errors, context } = await newPage(browser, { appts: APPTS.slice(0, 2) });
+  const { page, errors, context } = await newPage(browser, { appts: APPTS.slice(0, 2), now: NOW });
   await page.goto(`${BASE}#agenda`);
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
   assert.equal(await page.evaluate(() => document.querySelector('main#conteudo').closest('[data-view]').hidden), true, 'visão início escondida com hidden');
@@ -439,6 +519,12 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
   const wide = await page.evaluate(() => [...document.querySelectorAll('main *, header *, footer *')].filter((el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.right > innerWidth + 1 && st.position !== 'fixed' && !el.closest('.cats,.cities,.hchips,.h3d-labels,.leaflet-container'); }).map((el) => el.className || el.tagName).slice(0, 5));
   assert.deepEqual(wide, [], 'nenhum elemento passa da largura da tela');
+  // Fontes do Google sempre com reserva: aqui elas nem carregam (rede simulada), e nada pode cair em Times.
+  const lone = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => {
+    const f = getComputedStyle(el).fontFamily;
+    return /^\s*["']?(Sora|Inter)\b/i.test(f) && !/,\s*sans-serif\s*$/i.test(f);
+  }).map((el) => el.className || el.tagName).slice(0, 5));
+  assert.deepEqual(lone, [], 'toda regra com Sora ou Inter termina numa fonte sem serifa do aparelho');
   const items = await page.$$eval('.bnav > *', (els) => els.map((e) => [e.textContent.trim(), e.getAttribute('href'), e.getBoundingClientRect().height]));
   assert.deepEqual(items.map((i) => i[0]), ['Início', 'Perto de mim', 'Agendados', 'Conta']);
   assert.equal(items[3][1], 'conta.html');
@@ -503,6 +589,179 @@ await scenario('guias de exames: sem preço nem clínica fictícia, com link par
   if (SHOTS) { await page.goto(`${BASE}exames/raio-x.html`); await page.screenshot({ path: join(SHOTS, 'guia-raio-x.png'), fullPage: true }); }
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+await scenario('service worker ligado: com economia de dados ou 2G, não instala e não baixa o 3D', async () => {
+  // Os outros cenários bloqueiam o service worker; aqui ele fica livre, e quem conta os arquivos é o servidor.
+  const swSrc = await readFile(join(ROOT, 'sw.js'), 'utf8');
+  const core = (swSrc.match(/const CORE = \[([\s\S]*?)\];/) || ['', ''])[1];
+  const HEAVY_3D = /three\.module\.min\.js|hero3d\.js/;
+  const OTHER = /leaflet\.js|geo-core\.js|painel\.js|local\.js|perto\.js/;
+  for (const [name, device, wantSW] of [
+    ['economia de dados', { memory: 8, cores: 8, saveData: true }, false],
+    ['internet 2G', { memory: 8, cores: 8, effectiveType: '2g' }, false],
+    ['economia de dados e pouca memória', { memory: 1, cores: 8, saveData: true }, false],
+    ['pouca memória', { memory: 1, cores: 8 }, true],
+  ]) {
+    const from = served.length;
+    const { page, errors, context } = await newPage(browser, { mobile: true, motion: 'no-preference', device, sw: true });
+    await page.goto(BASE);
+    await page.waitForSelector('#heroLite li a');
+    await page.waitForLoadState('load');
+    await page.waitForTimeout(3000); // tempo de sobra para o service worker instalar e baixar a lista dele
+    assert.equal(await page.evaluate(() => document.body.dataset.hero), 'leve', `${name}: modo leve`);
+    const reg = await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration()));
+    assert.equal(reg, wantSW, `${name}: service worker ${wantSW ? 'instalado' : 'não instalado'}`);
+    const got = served.slice(from);
+    const got3d = got.filter((p) => HEAVY_3D.test(p));
+    if (!wantSW) {
+      assert.deepEqual(got3d, [], `${name}: three.js e hero3d.js não são baixados`);
+      assert.deepEqual(got.filter((p) => OTHER.test(p)), [], `${name}: nada de Leaflet, geo-core ou scripts de outras páginas`);
+    } else if (HEAVY_3D.test(core)) {
+      // Pouca memória sem economia de dados: o service worker continua (site abre sem internet), mas a lista
+      // CORE do sw.js ainda pré-baixa o 3D. A correção é tirar esses arquivos do CORE (fora desta frente).
+      console.log(`  aviso (${name}): o CORE do sw.js ainda pré-baixa ${got3d.join(', ') || 'o 3D'}; tirar do CORE (integrador)`);
+    } else {
+      assert.deepEqual(got3d, [], `${name}: three.js e hero3d.js não são baixados`);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Aparelho normal: o service worker continua instalado (o site abre sem internet e pode virar app).
+  const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 }, sw: true });
+  await page.goto(BASE);
+  await page.waitForLoadState('load');
+  let registered = false;
+  for (let i = 0; i < 40 && !registered; i++) {
+    registered = await page.evaluate(async () => !!(await navigator.serviceWorker.getRegistration()));
+    if (!registered) await page.waitForTimeout(250);
+  }
+  assert.ok(registered, 'aparelho normal: service worker instalado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('lista leve não fica em "Carregando…" quando o banco falha antes de o 3D falhar', async () => {
+  // Aparelho normal: pede os locais e começa a baixar o 3D. O banco responde erro na hora; o three.js falha depois.
+  const { page, errors, context } = await newPage(browser, {
+    mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8 },
+    cnes: (r) => json(r, { message: 'erro' }, 500),
+    three: async (route) => { await new Promise((ok) => setTimeout(ok, 800)); await route.abort(); },
+  });
+  await page.goto(BASE);
+  await page.waitForFunction(() => document.body.classList.contains('no-webgl'), null, { timeout: 20000 });
+  await page.waitForTimeout(300);
+  const txt = await page.textContent('#heroLite');
+  assert.ok(!/Carregando/.test(txt), `sem "Carregando…" preso (${txt})`);
+  assert.match(txt, /Veja clínicas, laboratórios e hospitais perto de você na busca/);
+  assert.equal(await page.getAttribute('#heroLite a.more', 'href'), 'perto.html?usar=localizacao');
+  assert.match(await page.textContent('#heroLiteStatus'), /não está disponível agora/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('iPhone (o Safari informa 4 núcleos em todo iPhone) recebe o 3D; Android com 4 núcleos fica no modo leve', async () => {
+  const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const ANDROID = 'Mozilla/5.0 (Linux; Android 14; SM-A155M) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+  for (const [name, ua, want] of [['iPhone', IPHONE, '3d'], ['Android', ANDROID, 'leve']]) {
+    const from = served.length;
+    const { page, errors, context } = await newPage(browser, { mobile: true, motion: 'no-preference', ua, device: { memory: 4, cores: 4 } });
+    await page.goto(BASE);
+    await page.waitForFunction(() => ['carregando', '3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 20000 });
+    const mode = await page.evaluate(() => (document.body.classList.contains('no-webgl') ? 'sem-webgl' : document.body.dataset.hero));
+    if (mode === 'sem-webgl') { console.log(`  (${name}: sem WebGL neste navegador)`); await context.close(); continue; }
+    if (want === '3d') {
+      assert.ok(['carregando', '3d'].includes(mode), `${name}: 3D (${mode})`);
+      await page.waitForFunction(() => document.body.dataset.hero === '3d', null, { timeout: 30000 });
+      assert.ok(served.slice(from).some((p) => /three\.module\.min\.js/.test(p)), `${name}: baixa o three.js`);
+    } else {
+      assert.equal(mode, 'leve', `${name}: modo leve`);
+      await page.waitForTimeout(1000);
+      assert.ok(!served.slice(from).some((p) => /three\.module\.min\.js|hero3d\.js/.test(p)), `${name}: não baixa o 3D`);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('Agendados com horário marcado: hora de São Paulo (aparelho em outro fuso), confirmado e lembrete na hora exata', async () => {
+  // Aparelho no fuso de Tóquio: a página tem de mostrar a hora de São Paulo, não a do aparelho.
+  const { page, log, errors, context } = await newPage(browser, { appts: SLOT_APPTS, now: NOW, tz: 'Asia/Tokyo', status: (r) => json(r, { message: 'erro' }, 500) });
+  await page.goto(`${BASE}#agenda`);
+  await page.waitForFunction(() => document.querySelectorAll('.appt').length === 2 && !/Consultando/.test(document.querySelector('#appts').textContent));
+  assert.equal(log.status.length, 1, 'consultou a situação no banco');
+  const cards = await page.$$eval('.appt', (els) => els.map((e) => e.textContent.replace(/\s+/g, ' ')));
+  assert.match(cards[0], /Horário marcado: quinta-feira, 05 de novembro às 09:30/);
+  assert.match(cards[1], /Horário marcado: sexta-feira, 06 de novembro às 23:30/, 'dia de São Paulo, não o do relógio mundial');
+  assert.ok(cards.every((c) => !/Preferência/.test(c)), 'horário marcado não é "preferência"');
+  // O banco não respondeu: vale o "confirmado" que o aparelho guardou quando o horário foi marcado.
+  const st = await page.$$eval('.appt .status', (els) => els.map((e) => [e.textContent, e.className]));
+  assert.deepEqual(st.map((s) => s[0]), ['Confirmado', 'Confirmado']);
+  assert.ok(st.every((s) => /\bok\b/.test(s[1])), 'selo verde de confirmado');
+  const ics = async (n) => {
+    const [download] = await Promise.all([page.waitForEvent('download'), page.click(`.appt >> nth=${n} >> button:has-text("Adicionar à agenda")`)]);
+    return (await readFile(await download.path(), 'utf8')).replace(/\r\n /g, '');
+  };
+  const a = await ics(0);
+  assert.match(a, /DTSTART;TZID=America\/Sao_Paulo:20261105T093000/);
+  assert.match(a, /DTEND;TZID=America\/Sao_Paulo:20261105T100000/);
+  assert.match(a, /STATUS:CONFIRMED/);
+  assert.ok(!/STATUS:TENTATIVE/.test(a));
+  assert.match(a, /Horário confirmado. Chegue com 15 minutos de antecedência./);
+  assert.ok(!/O horário é confirmado pela clínica/.test(a), 'sem o texto de pedido ainda não confirmado');
+  assert.match(a, /Retire objetos de metal/, 'preparo da ressonância');
+  const b = await ics(1);
+  assert.match(b, /DTSTART;TZID=America\/Sao_Paulo:20261106T233000/);
+  assert.match(b, /DTEND;TZID=America\/Sao_Paulo:20261107T000000/);
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Com resposta do banco, vale a situação dele (por exemplo, cancelado pela clínica).
+  const live = await newPage(browser, { appts: SLOT_APPTS, now: NOW, status: (r) => json(r, [{ id: SID1, status: 'confirmed', reviewed: false }, { id: SID2, status: 'cancelled', reviewed: false }]) });
+  await live.page.goto(`${BASE}#agenda`);
+  await live.page.waitForFunction(() => /Cancelado/.test(document.querySelector('#appts').textContent));
+  const st2 = await live.page.$$eval('.appt .status', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(st2, ['Confirmado', 'Cancelado']);
+  assert.equal(await live.page.locator('.appt >> nth=1 >> button:has-text("Adicionar à agenda")').count(), 0, 'cancelado: sem lembrete');
+  await shot(live.page, 'inicio-agendados-horario');
+  assert.deepEqual(live.errors, []);
+  await live.context.close();
+});
+
+await scenario('computador em modo leve: o cartão da lista não cobre o título nem a busca (980 a 1366 px)', async () => {
+  const { page, errors, context } = await newPage(browser, { viewport: { width: 980, height: 800 } });
+  await page.goto(BASE);
+  await page.waitForSelector('#heroLite li a');
+  for (const w of [980, 1000, 1024, 1100, 1280, 1366]) {
+    await page.setViewportSize({ width: w, height: 800 });
+    await page.waitForTimeout(150);
+    const m = await page.evaluate(() => {
+      const card = document.querySelector('#heroLite').getBoundingClientRect();
+      const right = Math.max(...[...document.querySelectorAll('.hero-in > *')].map((e) => e.getBoundingClientRect().right));
+      return { left: card.left, right: card.right, top: card.top, text: right };
+    });
+    assert.ok(m.left >= m.text + 8, `${w} px: cartão começa em ${Math.round(m.left)}, texto e busca vão até ${Math.round(m.text)}`);
+    assert.ok(m.right <= w, `${w} px: cartão dentro da tela`);
+  }
+  await page.setViewportSize({ width: 980, height: 800 });
+  await shot(page, 'inicio-desktop-980-leve');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('foto da fachada: celular com tela de alta densidade baixa a versão menor', async () => {
+  for (const [name, opts, want, avoid] of [
+    ['celular, densidade 3', { mobile: true, dpr: 3 }, /fachada-sm\.webp$/, /\/fachada\.webp/],
+    ['computador', {}, /\/fachada\.webp$/, /fachada-sm\.webp/],
+  ]) {
+    const { page, errors, context, requests } = await newPage(browser, opts);
+    await page.goto(BASE);
+    await page.locator('#clinicas').scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => { const i = document.querySelector('#clinicas img'); return i && i.complete && i.naturalWidth > 0; }, null, { timeout: 10000 });
+    assert.match(await page.evaluate(() => document.querySelector('#clinicas img').currentSrc), want, name);
+    assert.ok(!requests.some((u) => avoid.test(u)), `${name}: só uma versão da foto é baixada`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await browser.close();

@@ -7,6 +7,8 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// iPhone e iPad (todos os navegadores do iOS usam o motor do Safari, o WebKit).
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const ico = (k) => `assets/img/ico-${k}.webp`;
 const fmtInt = (n) => Number(n).toLocaleString('pt-BR');
 const fmtDist = (m) => (m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km');
@@ -311,21 +313,27 @@ async function loadHeroPlaces() {
     if (window.HERO) window.HERO.setOrigin();
     if (heroLite) renderHeroLite();
   } catch {
-    // sem dados: o 3D continua só com a cidade; no modo leve, um texto neutro com link para a busca
-    if (seq === heroSeq && heroLite) { heroLoaded = true; renderHeroLite(); }
+    // Sem dados: o 3D continua só com a cidade; no modo leve, um texto neutro com link para a busca.
+    // Marca como carregado mesmo fora do modo leve: se o 3D falhar depois, a lista não fica em "Carregando…".
+    if (seq === heroSeq) { heroLoaded = true; if (heroLite) renderHeroLite(); }
   }
 }
+// O leitor de tela ouve só este resumo (role=status), não a lista inteira a cada troca.
+function liteStatus(text) { const s = $('#heroLiteStatus'); if (s && s.textContent !== text) s.textContent = text; }
 // Modo leve (aparelho simples, economia de dados ou "reduzir movimento"): sem 3D, só a ilustração
 // de fundo e a lista dos mesmos locais reais perto do ponto escolhido.
 function renderHeroLite() {
   const box = $('#heroLite'); if (!box) return;
   const list = heroList.slice(0, innerWidth < 700 ? 4 : 5);
-  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto de ${esc(placeName())}</h2>`;
+  const where = placeName();
+  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto de ${esc(where)}</h2>`;
   if (!list.length) {
     box.innerHTML = title + (heroLoaded ? '<p>Veja clínicas, laboratórios e hospitais perto de você na busca.</p>' : '<p>Carregando os locais perto daqui…</p>')
       + '<a class="more" href="perto.html?usar=localizacao">Buscar perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
+    liteStatus(heroLoaded ? 'A lista de locais não está disponível agora. Use a busca perto de você.' : `Carregando os locais perto de ${where}…`);
     return;
   }
+  liteStatus(`${list.length} ${list.length === 1 ? 'local' : 'locais'} perto de ${where}`);
   box.innerHTML = title + '<ol>' + list.map((c) => {
     const r = c.row, k = kindOf(r.kind), url = localUrl(r) || 'perto.html';
     return `<li><a href="${esc(url)}"><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)}</small></span></a></li>`;
@@ -372,9 +380,14 @@ function liteReason() {
   if (/(^|-)2g$/.test(con.effectiveType || '')) return 'rede';
   if (typeof n.deviceMemory === 'number' && n.deviceMemory <= 2) return 'memoria';
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700;
-  if (phone && n.hardwareConcurrency && n.hardwareConcurrency <= 4) return 'processador';
+  // No iPhone o número de núcleos não serve: o Safari (WebKit) informa 4 em qualquer aparelho com menos
+  // de 8 núcleos, então todo iPhone pareceria fraco. Lá a regra dos núcleos não vale.
+  if (phone && !isIOS && n.hardwareConcurrency && n.hardwareConcurrency <= 4) return 'processador';
   return '';
 }
+const LITE = liteReason();
+// Economia de dados ligada ou internet 2G: a pessoa quer gastar pouca internet.
+const SAVE_DATA = LITE === 'economia' || LITE === 'rede';
 function goLite(why) {
   heroLite = true;
   document.body.classList.add('lite');
@@ -392,8 +405,7 @@ function whenVisible(el, fn) {
 }
 function startHero() {
   const el = $('#hero3d');
-  const why = liteReason();
-  if (why) { goLite(why); return; }
+  if (LITE) { goLite(LITE); return; }
   document.body.dataset.hero = 'espera';
   // Primeiro o conteúdo aparece (dois quadros); depois, com o navegador livre e o topo na tela, baixa o 3D.
   requestAnimationFrame(() => requestAnimationFrame(() => whenIdle(() => whenVisible(el, load3D))));
@@ -433,6 +445,16 @@ function fmtDate(d) {
   const [y, m, dd] = d.split('-').map(Number);
   return new Date(y, m - 1, dd).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
 }
+// Horário marcado (slot, ISO) no fuso de São Paulo, qualquer que seja o fuso do aparelho:
+// { date: 'AAAA-MM-DD', time: 'HH:MM' }; inválido → null. Mesma regra de geo-core.js (spDateTime),
+// repetida aqui para não baixar o geo-core.js só para desenhar o cartão.
+const SP_PARTS = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+function slotAt(iso) {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(SP_PARTS.formatToParts(d).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour === '24' ? '00' : p.hour}:${p.minute}` };
+}
 let liveStatus = {}, statusState = 'idle';
 async function fetchStatus(list) {
   const withTok = list.filter((a) => a.id && a.token);
@@ -464,15 +486,23 @@ function drawAppts(list) {
   box.innerHTML = list.map((a) => {
     const key = apptKey(a);
     const live = a.id && liveStatus[a.id];
+    // Com horário marcado (agenda da clínica parceira), o pedido já nasce confirmado no banco.
+    const at = a.slot ? slotAt(a.slot) : null;
     let st, cls;
     if (live) { st = label(live.status); cls = { confirmed: 'ok', completed: 'ok', cancelled: 'no' }[live.status] || ''; }
     else if (a.id && a.token && statusState === 'loading') { st = 'Consultando…'; cls = 'muted'; }
+    // Sem resposta do banco: vale o que o aparelho guardou quando o horário foi marcado.
+    else if (a.status === 'confirmado') { st = 'Confirmado'; cls = 'ok'; }
     else if (a.id && a.token && statusState === 'fail') { st = 'Situação indisponível agora'; cls = 'muted'; }
     else { st = 'Pedido enviado'; cls = 'muted'; }
-    const when = [fmtDate(a.date) ? `Preferência: ${esc(fmtDate(a.date))}` : '', PERIOD[a.period] ? esc(PERIOD[a.period]) : (a.time ? esc(a.time) : '')].filter(Boolean).join(' · ');
+    const when = at
+      ? `Horário marcado: ${esc(fmtDate(at.date))} às ${esc(at.time)}`
+      : [fmtDate(a.date) ? `Preferência: ${esc(fmtDate(a.date))}` : '', PERIOD[a.period] ? esc(PERIOD[a.period]) : (a.time ? esc(a.time) : '')].filter(Boolean).join(' · ');
     const items = Array.isArray(a.items) ? a.items : [];
     const review = live && live.status === 'completed' && !live.reviewed ? `<a class="btn btn-coral" href="conta.html#pedido-${encodeURIComponent(a.id)}"><i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>Avaliar</a>` : '';
-    const cal = isoDate(a.date) && a.date >= todayIso() && !(live && ['cancelled', 'completed'].includes(live.status)) ? `<button class="btn btn-ghost" type="button" data-ics="${esc(key)}"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : '';
+    // Lembrete só para o que ainda vai acontecer: horário marcado no futuro ou dia de hoje em diante.
+    const ahead = at ? Date.parse(a.slot) > Date.now() : isoDate(a.date) && a.date >= todayIso();
+    const cal = ahead && !(live && ['cancelled', 'completed'].includes(live.status)) ? `<button class="btn btn-ghost" type="button" data-ics="${esc(key)}"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : '';
     return `<article class="appt" ${a.id ? `id="pedido-${esc(a.id)}"` : ''}>
       <span class="lg" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span>
       <div style="flex:1;min-width:0">
@@ -500,9 +530,14 @@ async function downloadIcs(a) {
   const items = Array.isArray(a.items) && a.items.length ? a.items.join(', ') : 'Atendimento';
   const prep = (m.PREP && (m.PREP[a.exam] || m.PREP.outro)) || '';
   const site = C.siteUrl || location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '');
-  const desc = [`Pedido de agendamento ${a.code || ''} no IMED. O horário é confirmado pela clínica.`, prep ? `Preparo: ${prep}` : ''].filter(Boolean).join('\n');
+  // Horário marcado: evento na hora exata e já confirmado (STATUS:CONFIRMED); sem horário, a faixa do período.
+  const slot = a.slot && slotAt(a.slot) ? a.slot : null;
+  const head = slot
+    ? [`Agendamento ${a.code || ''}`.trim(), 'no IMED. Horário confirmado. Chegue com 15 minutos de antecedência.'].join(' ')
+    : [`Pedido de agendamento ${a.code || ''}`.trim(), 'no IMED. O horário é confirmado pela clínica.'].join(' ');
+  const desc = [head, prep ? `Preparo: ${prep}` : ''].filter(Boolean).join('\n');
   let txt;
-  try { txt = m.icsFile({ id: a.id || a.code, title: `${items} · ${a.name}`, date: a.date, period: a.period, description: desc, url: a.id ? `${site}conta.html#pedido-${a.id}` : site }); }
+  try { txt = m.icsFile({ id: a.id || a.code, title: `${items} · ${a.name}`, date: a.date, period: a.period, slot, description: desc, url: a.id ? `${site}conta.html#pedido-${a.id}` : site }); }
   catch { toast('Não foi possível criar o lembrete agora.'); return; }
   const url = URL.createObjectURL(new Blob([txt], { type: 'text/calendar;charset=utf-8' }));
   const link = document.createElement('a');
@@ -576,7 +611,6 @@ addEventListener('hashchange', route);
 /* ======================= APP INSTALÁVEL ======================= */
 let installEvt = null;
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const showInstall = (on) => document.querySelectorAll('.install-auto').forEach((b) => b.classList.toggle('hide', !on));
 addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (!isStandalone()) showInstall(true); });
 addEventListener('appinstalled', () => { installEvt = null; showInstall(false); toast('App IMED instalado!'); });
@@ -598,7 +632,9 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   // Quando sai uma versão nova do site, recarrega uma vez sozinho para mostrá-la.
   const hadSW = !!navigator.serviceWorker.controller; let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !reloaded) { reloaded = true; location.reload(); } });
-  addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}));
+  // Com economia de dados ou internet 2G, não instala o service worker: ao instalar (e a cada versão nova),
+  // ele baixa de uma vez os arquivos de todas as páginas, inclusive o 3D que o modo leve não usa.
+  if (!SAVE_DATA) addEventListener('load', () => navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((r) => r.update()).catch(() => {}));
 }
 
 /* ======================= APARECER AO ROLAR ======================= */

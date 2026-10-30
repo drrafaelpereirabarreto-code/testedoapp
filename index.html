@@ -39,12 +39,15 @@
   --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
   --sh3:0 40px 100px rgba(5,22,30,.35);
   --ease:cubic-bezier(.2,.8,.2,1);
+  /* fontes com reserva: enquanto a do Google não chega (ou se falhar), usa a do aparelho, nunca Times */
+  --fh:'Sora','Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --fb:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;scroll-padding-top:90px}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
+body{font-family:var(--fb);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden;padding-bottom:calc(72px + env(safe-area-inset-bottom))}
 @media (min-width:861px){body{padding-bottom:0}}
-h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacing:-.02em;line-height:1.15}
+h1,h2,h3,h4{font-family:var(--fh);color:var(--ink);letter-spacing:-.02em;line-height:1.15}
 button,input,select{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none}
 a{color:inherit;text-decoration:none}
@@ -73,7 +76,7 @@ img{display:block;max-width:100%}
 body:not(.at-hero) .top{background:rgba(255,255,255,.84);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);border-color:var(--line)}
 body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .top-row{display:flex;align-items:center;gap:14px;height:72px}
-.logo{display:flex;align-items:center;gap:9px;font-family:'Sora';font-weight:800;font-size:22px;color:var(--hc);flex-shrink:0;letter-spacing:-.02em}
+.logo{display:flex;align-items:center;gap:9px;font-family:var(--fh);font-weight:800;font-size:22px;color:var(--hc);flex-shrink:0;letter-spacing:-.02em}
 .logo-mk{position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#16A6C9,#0E7C9C);color:#fff;font-size:15px;box-shadow:0 6px 16px rgba(14,124,156,.4),inset 0 1px 0 rgba(255,255,255,.3)}
 .logo-mk::after{content:"";position:absolute;top:-3px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--coral);border:2px solid #fff}
 .tabs{display:flex;gap:2px;margin-left:10px}
@@ -123,7 +126,7 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .sug{display:flex;align-items:center;gap:12px;width:100%;padding:8px 10px;border-radius:12px;text-align:left}
 .sug:hover,.sug.act{background:var(--bg2)}
 .sug img{width:38px;height:38px;object-fit:contain}
-.sug .lg{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#fff;font:800 13px Sora}
+.sug .lg{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;color:#fff;font:800 13px var(--fh)}
 .sug b{display:block;font-size:14.5px}
 .sug small{color:var(--muted);font-size:12.5px}
 .hchips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
@@ -137,7 +140,7 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .h3d-label.hot,.h3d-label:hover{background:rgba(14,124,156,.9);box-shadow:0 18px 40px rgba(14,124,156,.45)}
 .h3d-label::after{content:"";position:absolute;left:calc(50% + var(--ax,0px));bottom:-6px;width:11px;height:11px;transform:translateX(-50%) rotate(45deg);background:rgba(7,32,43,.66);border-right:1px solid rgba(127,240,228,.24);border-bottom:1px solid rgba(127,240,228,.24)}
 .h3d-label.hot::after,.h3d-label:hover::after{background:rgba(14,124,156,.9)}
-.h3d-label .lg{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:800 12px Sora;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
+.h3d-label .lg{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:800 12px var(--fh);color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .h3d-label b{display:block;font-weight:700;font-size:13px}
 .h3d-label small{color:rgba(255,255,255,.75);font-size:11.5px}
 .h3d-me{position:absolute;left:0;top:0;padding:5px 11px;border-radius:999px;background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;font-size:11.5px;font-weight:700;white-space:nowrap;box-shadow:0 8px 22px rgba(255,107,74,.5);opacity:0;transition:opacity .5s;pointer-events:none;will-change:transform}
@@ -154,7 +157,7 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .h3d-lite{position:relative;z-index:3;display:none}
 body.lite .h3d-lite{display:block}
 body.lite .hero-hint{display:none}
-.h3d-lite{position:absolute;right:max(28px,calc((100vw - 1240px)/2 + 20px));top:50%;transform:translateY(-50%);width:min(380px,34vw);padding:18px;border-radius:22px;background:rgba(7,32,43,.72);border:1px solid rgba(127,240,228,.22);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.h3d-lite{position:absolute;right:max(28px,calc((100vw - 1240px)/2 + 20px));top:50%;transform:translateY(-50%);width:min(380px,max(280px,calc(100% - 690px)));padding:18px;border-radius:22px;background:rgba(7,32,43,.72);border:1px solid rgba(127,240,228,.22);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.3)}
 .h3d-lite h2{color:#fff;font-size:16px;letter-spacing:-.01em;margin-bottom:10px}
 .h3d-lite h2 i{color:var(--coral);margin-right:6px}
 .h3d-lite ol{list-style:none;display:grid;gap:6px}
@@ -169,7 +172,10 @@ body.lite .hero-hint{display:none}
   .hero{min-height:auto}
   .hero::after{background:linear-gradient(180deg,rgba(5,22,30,.15) 0%,rgba(5,22,30,0) 40%,rgba(5,22,30,.75) 100%)}
   .hero-in{min-height:auto;padding:118px 0 8px;max-width:none}
-  .hero-3d{position:relative;inset:auto;height:430px;margin-top:-8px}
+  /* z-index:auto: o .hero-3d deixa de ser uma camada própria. O desenho (canvas e fundo em SVG) continua
+     embaixo do degradê do .hero::after, mas os rótulos e a lista leve (z-index 3) ficam por cima dele,
+     com o texto branco legível. */
+  .hero-3d{position:relative;inset:auto;height:430px;margin-top:-8px;z-index:auto}
   body.lite .hero-3d{height:auto;min-height:430px;padding:18px 20px 60px;display:flex;flex-direction:column;justify-content:center}
   .h3d-lite{position:relative;right:auto;top:auto;transform:none;width:100%;max-width:560px;margin:0 auto}
   .hero-hint{display:none}
@@ -220,7 +226,7 @@ body.lite .hero-hint{display:none}
 .rm-where i{color:var(--coral);margin-right:4px}
 .rm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .rm-stat{padding:10px 6px;border-radius:14px;background:#fff;border:1px solid var(--line);text-align:center}
-.rm-stat b{display:block;font:800 20px Sora;color:var(--ink)}
+.rm-stat b{display:block;font:800 20px var(--fh);color:var(--ink)}
 .rm-stat span{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--muted)}
 .rm-stat i{width:8px;height:8px;border-radius:50%}
 .rm-list{list-style:none;display:grid;gap:8px}
@@ -256,7 +262,7 @@ body.lite .hero-hint{display:none}
 .near-cta:hover{transform:translateY(-2px);box-shadow:0 24px 54px rgba(46,230,214,.3)}
 .near-cta .ic{position:relative;width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(145deg,#7FF0E4,#2EE6D6 45%,#13A9C4);color:var(--navy);font-size:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 .near-cta .ic::after{content:"";position:absolute;inset:0;border-radius:15px;animation:ping 2s infinite}
-.near-cta b{display:block;font-family:'Sora';font-size:17px;letter-spacing:-.015em}
+.near-cta b{display:block;font-family:var(--fh);font-size:17px;letter-spacing:-.015em}
 .near-cta small{display:block;color:rgba(255,255,255,.76);font-size:13px;margin-top:2px}
 .near-cta>i{margin-left:8px;color:var(--aqua2)}
 @media (max-width:520px){.near-cta{align-self:stretch;padding-right:16px}.near-cta b{font-size:16px}}
@@ -286,6 +292,7 @@ body.lite .hero-hint{display:none}
 @media (max-width:900px){.wl{grid-template-columns:1fr;padding:40px 24px;border-radius:30px}.wl-art{height:150px;order:-1}.wl-art img{width:86px!important;height:86px!important}.wl-art .a3{left:42%;top:10%}.wl-art .a5{bottom:0}}
 /* parceiros CTA */
 .partner{position:relative;overflow:hidden;border-radius:40px;min-height:460px;display:flex;align-items:center;isolation:isolate;color:#fff}
+.partner picture{display:contents}
 .partner img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;transform:scale(1.04)}
 .partner::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(5,22,30,.92) 0%,rgba(5,22,30,.72) 42%,rgba(5,22,30,.1) 100%)}
 .partner .p-in{padding:56px;max-width:620px}
@@ -307,7 +314,7 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 /* footer */
 footer{background:var(--navy);color:rgba(255,255,255,.65);padding:56px 0 30px;margin-top:80px;font-size:14px}
 .f-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:32px}
-.f-grid h5{color:#fff;font-size:14px;margin-bottom:12px;font-family:'Sora'}
+.f-grid h5{color:#fff;font-size:14px;margin-bottom:12px;font-family:var(--fh)}
 .f-grid a,.f-grid button{display:block;padding:4px 0;color:rgba(255,255,255,.65);text-align:left}
 .f-grid a:hover,.f-grid button:hover{color:#fff}
 footer .logo{--hc:#fff;margin-bottom:12px}
@@ -318,7 +325,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .view-pad{padding-top:104px}
 @media (max-width:860px){.view-pad{padding-top:130px}}
 .appt{border:1px solid var(--line);border-radius:20px;padding:16px;display:flex;gap:14px;align-items:flex-start;margin-bottom:12px;background:#fff}
-.appt .lg{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;font-weight:800;font-family:'Sora';flex-shrink:0;overflow:hidden}
+.appt .lg{width:56px;height:56px;border-radius:16px;display:grid;place-items:center;color:#fff;font-weight:800;font-family:var(--fh);flex-shrink:0;overflow:hidden}
 .appt .lg img{width:100%;height:100%;object-fit:cover}
 .appt b{color:var(--ink)}
 .appt p{font-size:14px;color:var(--muted);margin-top:3px}
@@ -348,7 +355,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 @keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
 .ok h3{font-size:22px}
 .ok p{color:var(--muted);margin-top:8px;line-height:1.55}
-.ok .code{display:inline-block;margin-top:14px;font-family:'Sora';font-weight:700;letter-spacing:.06em;background:var(--bg2);padding:8px 14px;border-radius:10px;color:var(--ink)}
+.ok .code{display:inline-block;margin-top:14px;font-family:var(--fh);font-weight:700;letter-spacing:.06em;background:var(--bg2);padding:8px 14px;border-radius:10px;color:var(--ink)}
 .opt{display:flex;align-items:center;gap:12px;padding:13px 4px;border-bottom:1px solid var(--line);cursor:pointer;font-size:15px}
 .opt input{accent-color:var(--primary);width:19px;height:19px}
 .opt img{width:34px;height:34px;object-fit:contain}
@@ -382,8 +389,8 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .how .sub{color:rgba(255,255,255,.72);font-size:16.5px;line-height:1.6;max-width:640px}
 .how-steps{list-style:none;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:34px 0 30px;counter-reset:st}
 .how-steps li{padding:22px;border-radius:22px;background:rgba(255,255,255,.06);border:1px solid rgba(127,240,228,.18)}
-.how-steps .n{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--aqua);color:var(--navy);font:800 18px Sora;margin-bottom:14px}
-.how-steps b{display:block;font:700 18px Sora;color:#fff;letter-spacing:-.015em}
+.how-steps .n{display:grid;place-items:center;width:44px;height:44px;border-radius:14px;background:var(--aqua);color:var(--navy);font:800 18px var(--fh);margin-bottom:14px}
+.how-steps b{display:block;font:700 18px var(--fh);color:#fff;letter-spacing:-.015em}
 .how-steps p{color:rgba(255,255,255,.7);font-size:14.5px;line-height:1.6;margin-top:8px}
 .how-cta{display:flex;gap:12px;flex-wrap:wrap}
 @media (max-width:900px){.how{padding:44px 22px;border-radius:30px}.how-steps{grid-template-columns:1fr}}
@@ -395,7 +402,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .city i{color:var(--coral)}
 .city b{display:block;color:var(--ink);font-size:15px}
 .city small{color:var(--muted);font-size:12.5px}
-.city .uf{margin-left:auto;font:700 12px Inter;color:var(--primary-d);background:var(--primary-s);padding:3px 8px;border-radius:8px}
+.city .uf{margin-left:auto;font:700 12px var(--fb);color:var(--primary-d);background:var(--primary-s);padding:3px 8px;border-radius:8px}
 .cities-empty{color:var(--muted);font-size:15px}
 
 /* teleconsulta em breve + lista de espera */
@@ -522,7 +529,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
         <button class="install-hero install-auto hide" type="button" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt="" width="40" height="40" loading="lazy"></span><span><b>Instale o app IMED</b><small>Abre em tela cheia, como um aplicativo</small></span><i class="fa-solid fa-download" aria-hidden="true"></i></button>
       </div>
     </div>
-    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite" aria-live="polite"></div></div>
+    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite"></div><p class="sr" role="status" id="heroLiteStatus"></p></div>
     <div class="hero-hint"><i class="fa-solid fa-computer-mouse" aria-hidden="true"></i> Arraste para girar · clique num local</div>
     <span class="scroll-cue" aria-hidden="true"></span>
   </section>
@@ -593,7 +600,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
       <section class="sec rv" id="clinicas" aria-labelledby="partnerTitle">
         <div class="partner">
-          <img src="assets/img/fachada.webp" srcset="assets/img/fachada-sm.webp 640w, assets/img/fachada.webp 1264w" sizes="(max-width:760px) 100vw, 1240px" alt="" width="1264" height="848" loading="lazy" decoding="async">
+          <picture><source media="(max-width:760px)" srcset="assets/img/fachada-sm.webp" width="640" height="429"><img src="assets/img/fachada.webp" alt="" width="1264" height="848" loading="lazy" decoding="async"></picture>
           <div class="p-in">
             <span class="kicker light">Para clínicas</span>
             <h2 id="partnerTitle">Sua clínica já está no IMED? Assuma o cadastro</h2>

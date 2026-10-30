@@ -521,15 +521,12 @@ export function initHero3D(el, api) {
       });
     });
     hideLotsNear(spots);
-    pickLabels();
   }
 
-  let labelIds = new Set();
+  // Rótulos: no celular no máximo 2, no computador 4. Os candidatos são os locais mais perto do ponto
+  // (a página manda a lista em ordem de distância); se um cobre outro ou o "Você está aqui", vale o seguinte.
   const maxLabels = () => (W < 700 ? 2 : 4);
-  function pickLabels() {
-    const n = maxLabels();
-    labelIds = new Set(clinicObjs.filter(o => o.c.open !== false).sort((a, b) => a.group.position.length() - b.group.position.length()).slice(0, n).map(o => o.id));
-  }
+  const maxCands = () => (W < 700 ? 5 : 6);
 
   // câmera
   const target = new THREE.Vector3(0, .4, 0);
@@ -585,7 +582,9 @@ export function initHero3D(el, api) {
   function tick(now) {
     if (!running) return;
     requestAnimationFrame(tick);
-    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    // Limite de .25 s por quadro: num aparelho lento a cena anda no tempo real (com menos quadros),
+    // em vez de virar câmera lenta e demorar para mostrar os pinos e os rótulos.
+    const dt = Math.min(.25, (now - last) / 1000); last = now;
     if (!reduce) t += dt;
     growUniforms.uTime.value = t;
 
@@ -627,30 +626,44 @@ export function initHero3D(el, api) {
     placeLabels(t);
   }
 
+  // Caixas na tela (px): a do rótulo fica 22 px acima do pino, mais a seta embaixo.
+  const GAP = 8;
+  const overlaps = (a, b) => a.l < b.r + GAP && b.l < a.r + GAP && a.t < b.b + GAP && b.t < a.b + GAP;
+  let meW = 0, meH = 0;
   function placeLabels(time) {
     vProj.set(0, 1, 0).project(camera);
-    meLabel.style.transform = `translate3d(${((vProj.x * .5 + .5) * W).toFixed(1)}px,${((-vProj.y * .5 + .5) * H).toFixed(1)}px,0) translate(-50%,-100%)`;
-    meLabel.classList.toggle('on', time > .9);
+    const mx = (vProj.x * .5 + .5) * W, my = (-vProj.y * .5 + .5) * H;
+    meLabel.style.transform = `translate3d(${mx.toFixed(1)}px,${my.toFixed(1)}px,0) translate(-50%,-100%)`;
+    const meOn = time > .9;
+    meLabel.classList.toggle('on', meOn);
+    if (!meW) { meW = meLabel.offsetWidth || 110; meH = meLabel.offsetHeight || 26; }
+    const meBox = meOn && vProj.z < 1 ? { l: mx - meW / 2, r: mx + meW / 2, t: my - meH, b: my } : null;
+    const hl = api.highlighted(), cands = maxCands();
     const shown = [];
-    clinicObjs.forEach(o => {
+    clinicObjs.forEach((o, i) => {
       vProj.set(0, 1.15, 0); o.pin.localToWorld(vProj); vProj.project(camera);
-      const x = (vProj.x * .5 + .5) * W, y = (-vProj.y * .5 + .5) * H;
-      const want = (labelIds.has(o.id) || hoverId === o.id || api.highlighted() === o.id) && time > o.t0 + 1 && vProj.z < 1 && x > 40 && x < W - 40 && y > 70 && y < H - 10;
-      o.sx = x; o.sy = y;
-      if (want) shown.push(o);
-    });
-    // Rótulo inteiro dentro da tela: empurra para dentro (a seta continua apontando o pino).
-    shown.forEach(o => {
+      o.sx = (vProj.x * .5 + .5) * W; o.sy = (-vProj.y * .5 + .5) * H;
+      o.forced = hoverId === o.id || hl === o.id;
+      if (!o.forced && (i >= cands || o.c.open === false)) return;
+      if (!(time > o.t0 + 1 && vProj.z < 1 && o.sx > 40 && o.sx < W - 40 && o.sy < H - 10)) return;
       if (!o.lw) { o.lw = o.label.offsetWidth || 180; o.lh = o.label.offsetHeight || 48; }
+      if (o.sy - 22 - o.lh < 4) return; // o rótulo inteiro precisa caber acima do pino
+      // Rótulo inteiro dentro da tela: empurra para dentro (a seta continua apontando o pino).
       const half = Math.min(o.lw, W - 12) / 2;
       o.cx = Math.min(Math.max(o.sx, half + 6), W - half - 6);
+      o.box = { l: o.cx - half, r: o.cx + half, t: o.sy - 22 - o.lh, b: o.sy - 14 };
+      // Ordem: o que a pessoa aponta ou abriu, o que já estava na tela (não fica piscando) e o mais perto.
+      o.rank = (hoverId === o.id ? 0 : hl === o.id ? 1 : o.vis ? 2 : 3) * 1000 + i;
+      shown.push(o);
     });
-    // evita sobreposição (caixa real de cada rótulo): o mais próximo da câmera ganha; no celular, no máximo 2
-    shown.sort((a, b) => (b.id === hoverId) - (a.id === hoverId) || (b.id === api.highlighted()) - (a.id === api.highlighted()) || a.group.position.distanceTo(camera.position) - b.group.position.distanceTo(camera.position));
+    // Sem sobreposição entre rótulos nem com o "Você está aqui"; no celular, no máximo 2.
+    shown.sort((a, b) => a.rank - b.rank);
     const kept = [], max = maxLabels();
     shown.forEach(o => {
       if (kept.length >= max) return;
-      if (kept.every(k => Math.abs(k.cx - o.cx) > (k.lw + o.lw) / 2 + 8 || Math.abs(k.sy - o.sy) > Math.max(k.lh, o.lh) + 8)) kept.push(o);
+      if (kept.some(k => overlaps(k.box, o.box))) return;
+      if (meBox && !o.forced && overlaps(meBox, o.box)) return;
+      kept.push(o);
     });
     clinicObjs.forEach(o => {
       const vis = kept.includes(o);
@@ -672,9 +685,11 @@ export function initHero3D(el, api) {
 
   const ro = new ResizeObserver(() => {
     W = el.clientWidth; H = el.clientHeight; if (!W || !H) return;
-    renderer.setSize(W, H); frame(); pickLabels(); clinicObjs.forEach(o => { o.lw = 0; });
+    renderer.setSize(W, H); frame(); meW = 0; clinicObjs.forEach(o => { o.lw = 0; });
   });
   ro.observe(el);
+  // Quando uma fonte termina de carregar, o tamanho dos rótulos muda: mede de novo (evita sobreposição).
+  if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { meW = 0; clinicObjs.forEach(o => { o.lw = 0; }); });
   const io = new IntersectionObserver(([e]) => { const was = running; running = e.isIntersecting && !document.hidden; if (running && !was) { last = performance.now(); requestAnimationFrame(tick); } });
   io.observe(el);
   document.addEventListener('visibilitychange', () => { const was = running; running = !document.hidden && el.getBoundingClientRect().bottom > 0; if (running && !was) { last = performance.now(); requestAnimationFrame(tick); } });

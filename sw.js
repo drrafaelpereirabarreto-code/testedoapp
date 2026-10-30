@@ -1,16 +1,18 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-const VERSION = 'imed-v8';
+// A cidade 3D (hero3d.js e three.module.min.js) fica fora do CORE: aparelhos fracos não a baixam;
+// nos demais ela entra no cache no primeiro uso.
+const VERSION = 'imed-v9';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html', './termos.html',
   './manifest.webmanifest',
-  './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js', './assets/js/db.js', './assets/js/hero3d.js',
+  './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js', './assets/js/db.js',
   './assets/js/inicio.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js', './assets/js/painel.js',
   './assets/js/reivindicar.js', './assets/js/cidade.js', './assets/js/local.js',
   './assets/css/conta.css', './assets/css/clinica.css', './assets/css/cidade.css', './assets/css/local.css',
   './assets/js/geo-core.js', './assets/js/perto.js', './assets/css/perto.css',
-  './assets/vendor/three.module.min.js', './assets/vendor/fa/css/all.min.css',
+  './assets/vendor/fa/css/all.min.css',
   './assets/vendor/leaflet/leaflet.js', './assets/vendor/leaflet/leaflet.css',
   './assets/vendor/fa/webfonts/fa-solid-900.woff2', './assets/vendor/fa/webfonts/fa-regular-400.woff2', './assets/vendor/fa/webfonts/fa-brands-400.woff2',
   './assets/icons/icon-192.png',
