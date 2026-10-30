@@ -314,3 +314,142 @@ test('arquivo de agenda (.ics) válido, com fuso, lembrete e escapes', () => {
   assert.match(dia, /TRIGGER:-P1D/);
   assert.throws(() => G.icsFile({ id: 'x', title: 'T', date: '03/11/2026', period: 'manha' }));
 });
+
+test('horários no fuso de São Paulo: dia, hora, período e agrupamento', () => {
+  assert.deepEqual(G.spDateTime('2026-11-05T12:30:00Z'), { date: '2026-11-05', time: '09:30' });
+  assert.deepEqual(G.spDateTime('2026-11-06T01:00:00Z'), { date: '2026-11-05', time: '22:00' }, 'vira o dia pelo fuso de SP, não pelo UTC');
+  assert.equal(G.spDateTime('xx'), null);
+  assert.equal(G.spDateTime(null), null);
+  assert.equal(G.periodOfTime('08:00'), 'manha');
+  assert.equal(G.periodOfTime('12:00'), 'tarde');
+  assert.equal(G.periodOfTime('18:30'), 'noite');
+  const g = G.groupSlots([
+    { slot_start: '2026-11-05T13:00:00Z' }, { slot_start: '2026-11-05T12:30:00+00:00' }, { slot_start: '2026-11-05T12:30:00Z' },
+    { slot_start: '2026-11-06T11:00:00Z' }, { slot_start: 'quebrado' }, null,
+  ]);
+  assert.deepEqual([...g.keys()], ['2026-11-05', '2026-11-06']);
+  assert.deepEqual(g.get('2026-11-05').map((s) => s.time), ['09:30', '10:00'], 'em ordem e sem repetir');
+  assert.equal(g.get('2026-11-05')[0].iso, '2026-11-05T12:30:00.000Z');
+  assert.deepEqual(G.dayTab('2026-11-05'), { wd: 'qui', day: '05/11' });
+  assert.match(G.formatSlot('2026-11-05T12:30:00Z'), /^quinta-feira, 05 de novembro às 09:30$/);
+  const now = Date.parse('2026-10-30T15:00:00Z');
+  const days = G.nextDays(14, now);
+  assert.equal(days.length, 14);
+  assert.equal(days[0], '2026-10-30');
+  assert.equal(days[13], '2026-11-12');
+});
+
+test('pedido com horário marcado: validação, linha do banco e resumo no aparelho', () => {
+  const imed = G.normalizeImedRow(imedRow, PAULISTA);
+  const v = { exam: 'rm', slot: '2026-11-05T17:30:00Z', name: 'Ana', phone: '(11) 98765-4321', consent: true };
+  assert.deepEqual(G.validateBooking(v, '2026-10-30', '2027-01-28'), {}, 'com horário, data e período não são pedidos');
+  assert.ok(G.validateBooking({ ...v, slot: 'nada' }, '2026-10-30', '2027-01-28').slot);
+  assert.ok(G.validateBooking({ ...v, slot: '2026-10-01T12:00:00Z' }, '2026-10-30', '2027-01-28').slot, 'horário no passado');
+  assert.ok(G.validateBooking({ ...v, slot: '' }, '2026-10-30', '2027-01-28').date, 'sem horário volta a pedir data');
+  const row = G.bookingRow(imed, v, 'id1');
+  assert.equal(row.slot_start, '2026-11-05T17:30:00.000Z');
+  assert.equal(row.preferred_date, '2026-11-05');
+  assert.equal(row.preferred_period, 'tarde', '14:30 em São Paulo');
+  assert.equal(row.clinic_id, imedRow.id);
+  assert.equal(row.consent, true);
+  assert.ok(!('status' in row), 'quem confirma é o banco');
+  assert.ok(!('slot_start' in G.bookingRow(imed, { ...v, slot: undefined, date: '2026-11-05', period: 'manha' }, 'id2')));
+  const a = G.localAppt(imed, v, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'tok', Date.parse('2026-10-30T12:00:00Z'));
+  assert.equal(a.status, 'confirmado');
+  assert.equal(a.slot, '2026-11-05T17:30:00.000Z');
+  assert.equal(a.date, '2026-11-05');
+  assert.equal(a.period, 'tarde');
+  assert.equal(a.code, 'IMED-AAAAAAAA');
+  assert.deepEqual(a.items, ['Ressonância']);
+  const b = G.localAppt(imed, { exam: 'consulta', date: '2026-11-05', period: 'manha' }, 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee', 'tok');
+  assert.equal(b.status, 'pendente');
+  assert.ok(!('slot' in b));
+  assert.equal(G.statusLabel('confirmado'), 'Confirmado');
+  assert.ok(G.isSlotTaken({ status: 409 }));
+  assert.ok(G.isSlotTaken({ status: 400, data: { code: '23P01' } }));
+  assert.ok(G.isSlotTaken({ code: '23505' }));
+  assert.ok(!G.isSlotTaken({ status: 400, data: { code: '22023' } }));
+});
+
+test('.ics com hora exata do horário marcado', () => {
+  const now = Date.parse('2026-10-30T12:00:00Z');
+  const ics = G.icsFile({ id: 'abc', title: 'Exame: RM', slot: '2026-11-05T12:30:00Z', minutes: 45 }, now);
+  assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261105T093000\r\n/);
+  assert.match(ics, /DTEND;TZID=America\/Sao_Paulo:20261105T101500\r\n/);
+  assert.match(ics, /STATUS:CONFIRMED/);
+  assert.match(ics, /BEGIN:VTIMEZONE/);
+  const late = G.icsFile({ id: 'x', title: 'T', slot: '2026-11-06T02:45:00Z' }, now);
+  assert.match(late, /DTSTART;TZID=America\/Sao_Paulo:20261105T234500/);
+  assert.match(late, /DTEND;TZID=America\/Sao_Paulo:20261106T001500/, 'termina no dia seguinte');
+  assert.throws(() => G.icsFile({ id: 'x', title: 'T', slot: 'amanhã' }));
+  const imed = G.normalizeImedRow(imedRow, PAULISTA);
+  const full = G.bookingIcs(imed, { exam: 'rm', slot: '2026-11-05T12:30:00Z' }, 'aaaaaaaa-0000-4000-8000-000000000000', 'https://imed.example/', now);
+  assert.match(full, /DTSTART;TZID=America\/Sao_Paulo:20261105T093000/);
+  assert.match(full.replace(/\r\n /g, ''), /Agendamento IMED-AAAAAAAA/);
+  const pedido = G.bookingIcs(imed, { exam: 'rm', date: '2026-11-05', period: 'manha' }, 'aaaaaaaa-0000-4000-8000-000000000000', 'https://imed.example/', now);
+  assert.match(pedido, /STATUS:TENTATIVE/);
+  assert.match(pedido, /T080000/);
+});
+
+test('página de cada local: referências, consultas e conversão das linhas do banco', () => {
+  assert.deepEqual(G.parseLocalRef('cnes:2077485'), { source: 'cnes', key: '2077485' });
+  assert.deepEqual(G.parseLocalRef('imed:AAAAAAAA-0000-4000-8000-000000000001'), { source: 'imed', key: 'aaaaaaaa-0000-4000-8000-000000000001' });
+  assert.equal(G.parseLocalRef('cnes:123'), null);
+  assert.equal(G.parseLocalRef('imed:1 or 1=1'), null);
+  assert.equal(G.parseLocalRef('osm:n1'), null);
+  const paths = G.localPaths({ source: 'cnes', key: '2077485' });
+  assert.match(paths.main, /^establishments\?select=.*location.*municipalities\(name,uf,cnes_code\)&cnes=eq\.2077485$/);
+  assert.equal(paths.partner, 'clinics?select=id&cnes=eq.2077485&status=eq.published');
+  assert.match(G.localPaths({ source: 'imed', key: imedRow.id }).main, /clinic_exams\(exam_code,price_cents,price_updated_at\)&id=eq\..*&status=eq\.published$/);
+
+  assert.deepEqual(G.pointFromGeo({ type: 'Point', coordinates: [-46.66, -23.56] }), { lat: -23.56, lng: -46.66 });
+  assert.deepEqual(G.pointFromGeo('{"type":"Point","coordinates":[-46.66,-23.56]}'), { lat: -23.56, lng: -46.66 });
+  assert.deepEqual(G.pointFromGeo('0101000020E61000003D0AD7A3705D47C0B81E85EB51C837C0'), { lat: -23.7825, lng: -46.73 }, 'EWKB em hexadecimal');
+  assert.equal(G.pointFromGeo(null), null);
+  assert.equal(G.pointFromGeo('qualquer coisa'), null);
+  assert.equal(G.pointFromGeo({ type: 'Point', coordinates: [0, 0] }), null);
+
+  const est = G.establishmentToPlace({
+    cnes: '2077485', name: 'Hospital Santa Exemplo', legal_name: 'Assoc. Exemplo', kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625',
+    neighborhood: 'Cerqueira César', cep: '01409001', phone: '(11) 3141-1000', shift: 'Manhã e tarde', open_24h: false, sus: true,
+    services: ['rm'], specialties: ['Cardiologia'], cnes_updated_at: '2026-09-15', location_source: 'cnes',
+    location: { type: 'Point', coordinates: [-46.6602, -23.5598] }, city_ibge: 3550308, municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 },
+  });
+  assert.equal(est.id, 'cnes:2077485');
+  assert.equal(est.address, 'Rua Peixoto Gomide, 625 · Cerqueira César · São Paulo - SP');
+  assert.equal(est.cep, '01409-001');
+  assert.deepEqual([est.lat, est.lng], [-23.5598, -46.6602]);
+  assert.equal(est.distance_m, null);
+  assert.deepEqual(est.hours, ['Manhã e tarde']);
+  assert.equal(est.sus, true);
+  assert.equal(G.localUrl(est), 'local.html?cnes=2077485');
+  assert.equal(G.localTitle(est), 'Hospital Santa Exemplo em São Paulo - SP | IMED');
+  assert.match(G.localDescription(est), /^Hospital em São Paulo - SP\. Endereço, telefone, exames \(Ressonância\) e como agendar pelo IMED\. Atende SUS\.$/);
+  const noGeo = G.establishmentToPlace({ cnes: '1234567', name: 'Sem Local', kind: 'clinica', location: null, municipalities: null });
+  assert.equal(noGeo.lat, null);
+  assert.equal(G.localTitle(noGeo), 'Sem Local | IMED');
+
+  const cl = G.clinicToPlace({
+    ...imedRow, lat: undefined, lng: undefined, exams: undefined, location: { type: 'Point', coordinates: [-46.6525, -23.5655] },
+    clinic_exams: [{ exam_code: 'tc', price_cents: null }, { exam_code: 'rm', price_cents: 45000, price_updated_at: '2026-10-01' }, { exam_code: 'xyz' }],
+  });
+  assert.equal(cl.id, `imed:${imedRow.id}`);
+  assert.deepEqual(cl.services, ['rm', 'tc']);
+  assert.equal(G.priceFor(cl, 'rm'), 45000);
+  assert.equal(G.priceFor(cl, 'tc'), null);
+  assert.deepEqual(cl.priceDates, { rm: '2026-10-01' });
+  assert.equal(G.localUrl(cl), `local.html?id=${imedRow.id}`);
+  assert.equal(G.localUrl({ source: 'osm', id: 'osm:n1' }), null);
+
+  const ld = G.localJsonLd(est, 'https://x/local.html?cnes=2077485');
+  assert.equal(ld['@type'], 'Hospital');
+  assert.equal(ld.address.postalCode, '01409-001');
+  assert.equal(ld.address.streetAddress, 'Rua Peixoto Gomide, 625');
+  assert.deepEqual(ld.geo, { '@type': 'GeoCoordinates', latitude: -23.5598, longitude: -46.6602 });
+  assert.ok(!('aggregateRating' in ld), 'sem avaliação, sem nota');
+  assert.ok(!('aggregateRating' in G.localJsonLd(est, 'u', { rating: 4, reviews: 0 })));
+  assert.deepEqual(G.localJsonLd(est, 'u', { rating: 4.6, reviews: 12 }).aggregateRating, { '@type': 'AggregateRating', ratingValue: 4.6, reviewCount: 12, bestRating: 5, worstRating: 1 });
+  assert.equal(G.localJsonLd(cl, 'u')['@type'], 'DiagnosticLab');
+  assert.equal(G.localJsonLd(cl, 'u').address.streetAddress, 'Av. Paulista, 1000, Bela Vista');
+  assert.ok(!('geo' in G.localJsonLd(noGeo, 'u')));
+});

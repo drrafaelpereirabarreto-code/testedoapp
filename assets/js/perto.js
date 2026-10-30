@@ -41,6 +41,9 @@ const S = {
   f: { ...G.DEFAULT_FILTERS, exam: Object.hasOwn(G.EXAMS, params.get('exame') ?? '') ? params.get('exame') : '' },
   ratings: new Map(), // id do local → { rating, reviews }, só o que veio do banco
   ratingsAsked: new Set(),
+  scheduled: new Set(), // parceiros com agenda online (horários livres para escolher)
+  scheduleAsked: new Set(),
+  pendingOpen: null, // local pedido em ?local=, aberto quando a busca em volta dele termina
   selected: null,
   demo: params.get('demo') === '1',
   seq: 0,
@@ -175,8 +178,11 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
   const needOsm = !google && S.coverage?.status !== 'done';
   if (!google && !needOsm) { S.places = []; S.placesState = 'idle'; S.truncated = false; }
   S.phase = 'results';
+  if (S.pendingOpen) includePending(origin);
   render(!refresh || !userMoved);
   loadRatings(seq);
+  loadSchedules(seq);
+  if (S.pendingOpen && !refresh) openPending();
   if (S.coverage?.status === 'loading' && S.retries < 4) {
     S.retryTimer = setTimeout(() => {
       if (seq !== S.seq) return;
@@ -221,6 +227,86 @@ async function loadRatings(seq) {
   } catch {
     keys.forEach((k) => S.ratingsAsked.delete(k));
   }
+}
+
+// Parceiros na tela que têm agenda online. Falha não atrapalha: o botão continua sendo o pedido.
+async function loadSchedules(seq) {
+  const ids = S.imed.map((p) => p.clinic_id).filter((id) => id && !S.scheduleAsked.has(id)).slice(0, 300);
+  if (!ids.length) return;
+  ids.forEach((id) => S.scheduleAsked.add(id));
+  try {
+    const rows = await rpc('clinics_with_schedule', { p_ids: ids });
+    let got = 0;
+    for (const r of Array.isArray(rows) ? rows : []) if (r.clinic_id && !S.scheduled.has(r.clinic_id)) { S.scheduled.add(r.clinic_id); got += 1; }
+    if (got && seq === S.seq && S.phase === 'results') {
+      render();
+      const open = S.selected && $('#ov').classList.contains('open') && $('#sheet [data-book]');
+      if (open && hasSchedule(placeById(S.selected))) openDetails(S.selected);
+    }
+  } catch {
+    ids.forEach((id) => S.scheduleAsked.delete(id));
+  }
+}
+const hasSchedule = (p) => !!p && p.source === 'imed' && p.accepts_online_booking && S.scheduled.has(p.clinic_id);
+
+/* ======================= abrir um local direto (?local=cnes:… ou imed:…) ======================= */
+async function restGet(path) {
+  const t = linkedSignal(null, 15000);
+  try {
+    const res = await fetch(`${CFG.supabaseUrl}/rest/v1/${path}`, { headers: authHeaders(), signal: t.signal });
+    if (!res.ok) throw new Error(`banco ${res.status}`);
+    return await res.json();
+  } finally {
+    t.done();
+  }
+}
+
+async function fetchLocal(ref) {
+  const paths = G.localPaths(ref);
+  const [rows, partner] = await Promise.all([restGet(paths.main), paths.partner ? restGet(paths.partner).catch(() => []) : null]);
+  const pid = Array.isArray(partner) ? partner[0]?.id : null;
+  // Estabelecimento do CNES que virou parceiro: abre o parceiro.
+  if (pid && G.isUuid(pid)) return fetchLocal({ source: 'imed', key: pid.toLowerCase() });
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return null;
+  return ref.source === 'cnes' ? G.establishmentToPlace(row) : G.clinicToPlace(row);
+}
+
+async function openLocal(ref) {
+  S.phase = 'loading';
+  render();
+  let p = null;
+  try { p = await fetchLocal(ref); } catch { p = undefined; }
+  if (!p || !Number.isFinite(p.lat)) {
+    S.phase = 'intro';
+    render();
+    setQMsg(p === undefined ? 'Não foi possível abrir este local agora. Verifique sua internet e tente de novo.'
+      : p === null ? 'Não encontramos este local. Ele pode ter mudado ou deixado de funcionar. Digite um CEP, cidade ou endereço para buscar por perto.'
+      : 'Não encontramos a localização deste local. Digite um CEP, cidade ou endereço para buscar por perto.', true);
+    return;
+  }
+  // A busca começa no próprio local (arredondado, como qualquer busca) e o detalhe dele abre em seguida.
+  S.pendingOpen = p;
+  runSearch({ lat: G.roundCoord(p.lat), lng: G.roundCoord(p.lng) }, p.name, 'busca', 'endereco');
+}
+
+// Garante que o local pedido está na lista, mesmo que a busca em volta não o traga.
+function includePending(origin) {
+  const p = S.pendingOpen;
+  if (placeById(p.id) || allPlaces().some((x) => x.id === p.id)) return;
+  const item = { ...p, distance_m: Math.round(G.haversine(origin, p)) };
+  if (p.source === 'imed') S.imed = [item, ...S.imed];
+  else S.cnes = [item, ...S.cnes];
+}
+
+function openPending() {
+  const p = S.pendingOpen;
+  S.pendingOpen = null;
+  const shown = allPlaces().find((x) => x.id === p.id) ? p.id : null;
+  if (!shown) return;
+  moveMap(() => map.setView([p.lat, p.lng], 16));
+  userMoved = true;
+  openDetails(p.id);
 }
 
 function retryPlaces() {
@@ -435,7 +521,8 @@ function badgesHTML(p) {
   if (p.source === 'imed') {
     if (p.is_demo) b.push('<span class="bd bd-demo">Demonstração</span>');
     else b.push('<span class="bd bd-imed" title="Preço e agenda confirmados pela clínica"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado</span>');
-    if (p.accepts_online_booking) b.push('<span class="bd bd-ok">Agenda pelo IMED</span>');
+    if (hasSchedule(p)) b.push('<span class="bd bd-agenda"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Agenda online</span>');
+    else if (p.accepts_online_booking) b.push('<span class="bd bd-ok">Agenda pelo IMED</span>');
   } else if (p.source === 'cnes') {
     b.push('<span class="bd bd-cnes"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Cadastro oficial</span>');
     if (p.hours?.[0] === 'Aberto 24 horas') b.push('<span class="bd bd-ok">24 horas</span>');
@@ -474,7 +561,8 @@ function cardLabel(p) {
   const parts = [p.name, distanceText(p)];
   if (p.source === 'imed') {
     parts.push(p.is_demo ? 'Demonstração' : 'Parceiro verificado');
-    if (p.accepts_online_booking) parts.push('Agenda pelo IMED');
+    if (hasSchedule(p)) parts.push('Agenda online');
+    else if (p.accepts_online_booking) parts.push('Agenda pelo IMED');
   } else if (p.source === 'cnes') {
     parts.push('Cadastro oficial');
     if (p.hours?.[0] === 'Aberto 24 horas') parts.push('24 horas');
@@ -756,7 +844,10 @@ function openDetails(id) {
   }
 
   let cta = '';
-  if (p.source === 'imed' && p.accepts_online_booking) {
+  const page = G.localUrl(p);
+  if (hasSchedule(p)) {
+    cta = `<a class="btn btn-coral" href="${esc(agendaUrl(p))}" data-book-slots><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Ver horários e agendar</a>`;
+  } else if (p.source === 'imed' && p.accepts_online_booking) {
     cta = `<button class="btn btn-coral" type="button" data-book="${esc(p.id)}"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Solicitar agendamento</button>`;
   } else if (p.source === 'imed') {
     cta = tel ? `<a class="btn btn-primary" href="${esc(tel)}"><i class="fa-solid fa-phone" aria-hidden="true"></i>Ligar para agendar</a>` : '';
@@ -786,6 +877,7 @@ function openDetails(id) {
       <p>${esc(k.n)} · <b>${distanceText(p)}</b> ${S.originKind === 'gps' ? 'de você (aproximado)' : 'do ponto da busca'}${rating ? ` · ${rating}` : ''}</p>
       <p>${esc(p.address || 'Endereço não informado no mapa')}${p.cep ? ` · CEP ${esc(p.cep)}` : ''}</p></div></div>
     <div class="dt-acts">${acts.join('')}</div>
+    ${page ? `<p class="dt-full"><a class="link" href="${esc(page)}"><i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>Ver página completa</a></p>` : ''}
     ${p.description ? `<div class="dt-sec"><h4><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Sobre</h4><p>${esc(p.description)}</p></div>` : ''}
     <div class="dt-sec"><h4><i class="fa-solid fa-notes-medical" aria-hidden="true"></i>Serviços</h4>${servicesHTML(p)}</div>
     ${p.specialties.length ? `<div class="dt-sec"><h4><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Especialidades</h4><div class="dt-chips">${p.specialties.map((s) => `<span class="svc">${esc(s)}</span>`).join('')}</div></div>` : ''}
@@ -799,9 +891,17 @@ function openDetails(id) {
 }
 
 /* ======================= painel: pedido de agendamento ======================= */
+// Horários da página do local, já com o exame que o paciente filtrou na busca (se a clínica faz).
+function agendaUrl(p) {
+  const exam = S.f.exam && p.services?.includes(S.f.exam) ? `&exame=${encodeURIComponent(S.f.exam)}` : '';
+  return `${G.localUrl(p)}${exam}#agendar`;
+}
+
 function openBooking(id) {
   const p = placeById(id);
   if (!p) return;
+  // Parceiro com agenda: os horários livres ficam na página do local.
+  if (hasSchedule(p)) { location.href = agendaUrl(p); return; }
   const imed = p.source === 'imed';
   const codes = imed ? p.services.filter((c) => G.EXAMS[c]) : Object.keys(G.EXAMS);
   const pre = S.f.exam && codes.includes(S.f.exam) ? S.f.exam : '';
@@ -931,28 +1031,14 @@ function saveLocal(p, v, id, token) {
   try {
     let list = JSON.parse(localStorage.getItem('imed_appts') || '[]');
     if (!Array.isArray(list)) list = [];
-    list.unshift({
-      type: 'pedido', code: G.protocolFromId(id), id, token, place_key: p.id, name: p.name,
-      exam: Object.hasOwn(G.PREP, v.exam ?? '') ? v.exam : null, items: [examLabel(v.exam)], date: v.date, period: v.period,
-      status: 'pendente', created: new Date().toISOString(),
-    });
+    list.unshift(G.localAppt(p, v, id, token));
     localStorage.setItem('imed_appts', JSON.stringify(list.slice(0, 30)));
   } catch { /* armazenamento indisponível: o pedido já foi enviado */ }
 }
 
 // Lembrete na agenda do celular (.ics), com o preparo do exame e lembrete um dia antes.
 function downloadIcs(p, v, id) {
-  const site = CFG.siteUrl || location.origin + '/';
-  const guide = G.EXAMS[v.exam]?.slug;
-  const title = v.exam === 'consulta' || v.exam === 'outro' ? `${examLabel(v.exam)} — ${p.name}` : `Exame: ${examLabel(v.exam)} — ${p.name}`;
-  const description = [
-    `Pedido ${G.protocolFromId(id)} · ${p.name}${p.address ? ` · ${p.address}` : ''}`,
-    G.PREP[v.exam] ? `Preparo: ${G.PREP[v.exam]}` : '',
-    'Confirme o horário com o IMED. O horário só fica garantido depois da confirmação.',
-    guide ? `Guia do exame: ${site}exames/${guide}.html#preparo` : '',
-    `IMED: ${site}`,
-  ].filter(Boolean).join('\n');
-  const ics = G.icsFile({ id, title, date: v.date, period: v.period, description, url: site });
+  const ics = G.bookingIcs(p, v, id, CFG.siteUrl || location.origin + '/');
   const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
@@ -963,7 +1049,7 @@ function downloadIcs(p, v, id) {
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-const examLabel = (c) => G.EXAMS[c]?.n ?? (c === 'consulta' ? 'Consulta' : 'Outro atendimento');
+const examLabel = G.examLabel;
 
 function bookingDone(p, v, id, logged) {
   const imed = p.source === 'imed';
@@ -1076,6 +1162,8 @@ async function init() {
     const rest = params.toString();
     history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
   }
+  const localRef = G.parseLocalRef(params.get('local'));
+  if (localRef) return openLocal(localRef);
   const state = await permissionState();
   // Só pede a localização quando a pessoa tocou em "Encontrar clínicas perto de mim"
   // ou quando ela já tinha permitido antes; senão, mostra a explicação e espera o toque.

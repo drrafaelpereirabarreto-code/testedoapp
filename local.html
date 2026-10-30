@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Local de saúde · IMED</title>
+<meta name="description" content="Endereço, telefone, horários, exames e como agendar em clínicas, laboratórios, centros de diagnóstico e hospitais reais, pelo IMED.">
+<meta name="theme-color" content="#05161e">
+<meta property="og:title" content="Local de saúde · IMED">
+<meta property="og:description" content="Endereço, telefone, horários, exames e como agendar pelo IMED.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg">
+<link rel="canonical" id="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/perto.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="stylesheet" href="assets/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="assets/css/perto.css">
+<link rel="stylesheet" href="assets/css/local.css">
+</head>
+<body class="lc-page">
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="exames/">Guias de exames</a>
+      <a href="./#agenda">Agendados</a>
+    </nav>
+    <a class="pt-partner" href="parceiros.html">Para clínicas</a>
+  </div>
+</header>
+
+<main class="lc" id="main" tabindex="-1">
+  <div id="app" aria-busy="true">
+    <div class="lc-load" role="status"><span class="spin" aria-hidden="true"></span>Carregando informações do local…</div>
+  </div>
+</main>
+
+<footer class="lc-foot">
+  <p>IMED · Clínicas, laboratórios e hospitais reais perto de você. <a class="link" href="privacidade.html">Privacidade</a> · <a class="link" href="parceiros.html">Para clínicas</a></p>
+</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/vendor/leaflet/leaflet.js"></script>
+<script type="module" src="assets/js/local.js"></script>
+</body>
+</html>

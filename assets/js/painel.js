@@ -12,27 +12,66 @@ const ACTIONS = ['contacted', 'confirmed', 'completed', 'cancelled'];
 const DAYS = [['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'], ['qui', 'Quinta'], ['sex', 'Sexta'], ['sab', 'Sábado'], ['dom', 'Domingo']];
 export const COMMON_INSURANCES = ['Amil', 'Bradesco Saúde', 'SulAmérica', 'Unimed', 'Hapvida', 'NotreDame Intermédica', 'Porto Seguro', 'Prevent Senior', 'Cassi', 'Golden Cross'];
 const EXAM_CODES = ['rx', 'usg', 'tc', 'rm', 'mamo', 'dens', 'ecg', 'eco', 'lab'];
-const REQ_COLS = 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status';
-const IMED_COLS = `${REQ_COLS},place_source,place_ref,place_name,place_address,place_phone`;
+const BASE_COLS = 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status';
+const REQ_COLS = `${BASE_COLS},slot_start`;
+const IMED_COLS = `${BASE_COLS},place_source,place_ref,place_name,place_address,place_phone`;
 
-const state = { admin: false, clinics: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '' } };
+const state = { admin: false, clinics: [], memberIds: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null };
 const app = () => $('#app');
 const clinic = () => state.clinics.find((c) => c.id === state.clinicId) || null;
 const uuidOk = (v) => /^[0-9a-f-]{36}$/i.test(String(v));
+
+// ---------- datas no fuso de São Paulo ----------
+// Tudo o que é dia e hora aparece e é montado no horário de São Paulo (o Brasil não tem horário de verão desde 2019).
+const TZ = 'America/Sao_Paulo';
+const SP_OFFSET = '-03:00';
+const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' });
+const timeFmt = new Intl.DateTimeFormat('pt-BR', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+export const spDay = (d) => dayFmt.format(new Date(d));
+export const spTime = (d) => timeFmt.format(new Date(d));
+export const addDays = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+export const spIso = (day, time = '00:00') => `${day}T${time}:00${SP_OFFSET}`;
+const fmtSlot = (iso) => `${fmtDate(spDay(iso))} às ${spTime(iso)}`;
+const slotOf = (r) => (r.slot_start && !Number.isNaN(Date.parse(r.slot_start)) ? r.slot_start : null);
+
+// Dia do exame: o horário marcado pela agenda ou a data preferida do pedido.
+const PERIOD_TIME = { manha: '08:00', tarde: '13:00', noite: '18:00' };
+export const apptDay = (r) => (slotOf(r) ? spDay(r.slot_start) : /^\d{4}-\d{2}-\d{2}$/.test(r.preferred_date || '') ? r.preferred_date : '');
+const apptTime = (r) => (slotOf(r) ? Date.parse(r.slot_start) : apptDay(r) ? Date.parse(spIso(r.preferred_date, PERIOD_TIME[r.preferred_period] || '12:00')) : NaN);
+// Próximos primeiro (do mais perto ao mais longe); depois os de dias que já passaram (do mais recente ao mais antigo).
+export function sortByAppointment(rows, today) {
+  const up = (r) => { const d = apptDay(r); return !!d && d >= today; };
+  return [...rows].sort((a, b) => {
+    const ua = up(a); const ub = up(b);
+    if (ua !== ub) return ua ? -1 : 1;
+    const ta = apptTime(a); const tb = apptTime(b);
+    const na = Number.isNaN(ta); const nb = Number.isNaN(tb);
+    if (na !== nb) return na ? 1 : -1;
+    if (!na && ta !== tb) return ua ? ta - tb : tb - ta;
+    return String(b.created_at).localeCompare(String(a.created_at));
+  });
+}
+const WHEN = { '': 'Qualquer data', hoje: 'Hoje', semana: 'Próximos 7 dias' };
+export const inWhen = (r, when, today) => {
+  if (!when) return true;
+  const d = apptDay(r);
+  if (!d) return false;
+  return when === 'hoje' ? d === today : d >= today && d <= addDays(today, 6);
+};
 
 // ---------- entrada ----------
 function renderAccount() {
   renderAuth($('#authBox'), {
     back: () => `${location.origin}${location.pathname}`,
     intro: 'Entre com o <b>mesmo e-mail usado no pedido de cadastro</b> da clínica. Enviamos um link de entrada; não precisa de senha.',
-    onSignOut: () => { state.clinics = []; state.lists = {}; app().innerHTML = ''; renderAccount(); toast('Você saiu da sua conta.'); },
+    onSignOut: () => { state.clinics = []; state.lists = {}; state.agenda = null; app().innerHTML = ''; renderAccount(); toast('Você saiu da sua conta.'); },
   });
 }
 
 // A renovação da entrada falhou e auth.js apagou a sessão: volta para o quadro de entrada.
 function lost() {
   if (auth.user()) return false;
-  state.clinics = []; state.lists = {}; state.admin = false;
+  state.clinics = []; state.lists = {}; state.admin = false; state.agenda = null;
   app().innerHTML = '';
   $('#flash').innerHTML = note(esc(EXPIRED), 'warn');
   renderAccount();
@@ -49,7 +88,14 @@ async function loadAll() {
     ]);
     state.admin = admin;
     const ids = [...new Set((members || []).map((m) => m.clinic_id).filter(uuidOk))];
-    state.clinics = ids.length ? (await auth.select(`clinics?select=*&id=in.(${ids.join(',')})&order=name`)) || [] : [];
+    // A equipe do IMED também abre qualquer clínica (agenda, pedidos, dados): o banco libera para is_imed_admin.
+    const [mine, all] = await Promise.all([
+      ids.length ? auth.select(`clinics?select=*&id=in.(${ids.join(',')})&order=name`) : [],
+      admin ? auth.select('clinics?select=*&order=name&limit=500') : [],
+    ]);
+    const seen = new Set();
+    state.memberIds = ids;
+    state.clinics = [...(mine || []), ...(all || [])].filter((c) => c && uuidOk(c.id) && !seen.has(c.id) && seen.add(c.id));
   } catch (err) {
     if (lost()) return;
     app().innerHTML = `<section class="cl-card">${note(esc(friendlyError(err, 'Não foi possível carregar sua área agora. Tente de novo em instantes.')), 'err')}
@@ -64,14 +110,16 @@ async function loadAll() {
       <div class="cl-actions"><a class="btn btn-coral" href="reivindicar.html" id="goClaim">Assumir o cadastro da minha clínica</a></div></section>`;
     return;
   }
-  state.clinicId = state.clinics.some((c) => c.id === state.clinicId) ? state.clinicId : state.clinics[0]?.id ?? null;
+  // Começa pela primeira clínica da própria conta; a equipe do IMED sem clínica começa nas abas da equipe.
+  const own = state.clinics.filter((c) => state.memberIds.includes(c.id));
+  state.clinicId = state.clinics.some((c) => c.id === state.clinicId) ? state.clinicId : own[0]?.id ?? null;
   renderShell();
 }
 
 // ---------- abas ----------
 function tabs() {
   const t = [];
-  if (clinic()) t.push(['pedidos', 'Pedidos'], ['dados', 'Dados da clínica'], ['exames', 'Exames e preços']);
+  if (clinic()) t.push(['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['dados', 'Dados da clínica'], ['exames', 'Exames e preços']);
   if (state.admin) t.push(['cadastros', 'Pedidos de cadastro'], ['concierge', 'Pedidos ao IMED']);
   return t;
 }
@@ -86,9 +134,19 @@ function renderShell() {
   const c = clinic();
   const list = tabs();
   if (!list.some(([id]) => id === state.tab)) state.tab = list[0][0];
-  const picker = state.clinics.length > 1
-    ? `<label class="cl-lbl sr" for="clinicPick">Clínica</label><select id="clinicPick" class="cl-pick">${state.clinics.map((x) => `<option value="${esc(x.id)}"${x.id === state.clinicId ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`
-    : '';
+  const opt = (x) => `<option value="${esc(x.id)}"${x.id === state.clinicId ? ' selected' : ''}>${esc(x.name)}${x.status !== 'published' ? ' (rascunho)' : ''}</option>`;
+  const own = state.clinics.filter((x) => state.memberIds.includes(x.id));
+  const others = state.clinics.filter((x) => !state.memberIds.includes(x.id));
+  let picker = '';
+  if (state.admin && others.length) {
+    picker = `<label class="cl-lbl sr" for="clinicPick">Clínica</label><select id="clinicPick" class="cl-pick">
+      <option value=""${state.clinicId ? '' : ' selected'}>Equipe do IMED (sem clínica)</option>
+      ${own.length ? `<optgroup label="Minhas clínicas">${own.map(opt).join('')}</optgroup>` : ''}
+      <optgroup label="Todas as clínicas (equipe do IMED)">${others.map(opt).join('')}</optgroup></select>`;
+  } else if (state.clinics.length > 1) {
+    picker = `<label class="cl-lbl sr" for="clinicPick">Clínica</label><select id="clinicPick" class="cl-pick">${state.clinics.map(opt).join('')}</select>`;
+  }
+  const asAdmin = c && state.admin && !state.memberIds.includes(c.id);
   app().innerHTML = `<section class="cl-card" aria-labelledby="clinicTitle">
       <div class="cl-bar">
         <div><h2 id="clinicTitle">${c ? esc(c.name) : 'Equipe do IMED'}</h2>
@@ -96,6 +154,7 @@ function renderShell() {
         </div>
         ${picker}
       </div>
+      ${asAdmin ? note('Você está vendo esta clínica como equipe do IMED. As mudanças valem para a clínica.', 'info') : ''}
       <div id="clinicNotes">${clinicNotes(c)}</div>
     </section>
     <div class="cl-tabs" role="tablist" aria-label="Seções da área da clínica">
@@ -103,7 +162,7 @@ function renderShell() {
     </div>
     <section class="cl-card cl-panel" role="tabpanel" id="panel" aria-labelledby="tab-${state.tab}" tabindex="0"></section>`;
   const pick = $('#clinicPick');
-  if (pick) pick.onchange = () => { state.clinicId = pick.value; state.lists = {}; renderShell(); };
+  if (pick) pick.onchange = () => { state.clinicId = pick.value || null; state.lists = {}; state.agenda = null; renderShell(); $('#clinicPick')?.focus(); };
   const tl = $('[role="tablist"]');
   tl.addEventListener('click', (e) => { const b = e.target.closest('[role="tab"]'); if (b) selectTab(b.dataset.tab, true); });
   tl.addEventListener('keydown', (e) => {
@@ -120,7 +179,8 @@ function renderShell() {
 }
 
 const REQUEST_TABS = ['pedidos', 'concierge'];
-const listKey = (tab) => (tab === 'pedidos' ? `pedidos:${state.clinicId}` : tab);
+// Pedidos da clínica: uma lista guardada por clínica e por filtro “Quando” (hoje e 7 dias vêm do banco pela data do exame).
+const listKey = (tab) => (tab === 'pedidos' ? `pedidos:${state.clinicId}:${state.filter.when || 'todas'}` : tab);
 
 function selectTab(id, focus) {
   // Ao voltar para uma lista de pedidos, busca de novo para mostrar os pedidos novos.
@@ -138,8 +198,8 @@ function selectTab(id, focus) {
 
 function renderTab() {
   const p = $('#panel');
-  p.onclick = null;
-  ({ pedidos: tabRequests, dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge })[state.tab](p);
+  p.onclick = null; p.oninput = null; p.onchange = null;
+  ({ pedidos: tabRequests, agenda: tabAgenda, dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge })[state.tab](p);
 }
 
 // ---------- pedidos (clínica e IMED) ----------
@@ -150,44 +210,62 @@ function requestCard(r, withPlace) {
   const tel = telHref(r.patient_phone);
   const wa = waHref(r.patient_phone);
   const placeTel = telHref(r.place_phone);
+  const slot = slotOf(r);
   const rows = [
     withPlace ? ['Local', `${esc(r.place_name)}${r.place_address ? `<br><small>${esc(r.place_address)}</small>` : ''}`] : null,
     withPlace ? ['Telefone do local', r.place_phone ? (placeTel ? `<a href="${placeTel}">${esc(r.place_phone)}</a>` : esc(r.place_phone)) : 'Não informado'] : null,
     ['Exame', esc(examName(r.exam_code))],
-    ['Data preferida', esc(fmtDate(r.preferred_date) || r.preferred_date)],
-    ['Período', esc(PERIODS[r.preferred_period] || r.preferred_period || '')],
+    slot ? ['Horário marcado', `<b>${esc(fmtSlot(slot))}</b>`] : null,
+    slot ? null : ['Data preferida', esc(fmtDate(r.preferred_date) || r.preferred_date)],
+    slot ? null : ['Período', esc(PERIODS[r.preferred_period] || r.preferred_period || '')],
     ['Paciente', esc(r.patient_name)],
     ['Telefone', `<span class="rq-contact">${tel ? `<a href="${tel}">${esc(fmtPhone(r.patient_phone))}</a>` : esc(r.patient_phone)}${wa ? ` <a href="${wa}" target="_blank" rel="noopener">WhatsApp<span class="sr"> de ${esc(r.patient_name)} (abre em nova aba)</span></a>` : ''}</span>`],
     r.patient_email ? ['E-mail', `<a href="mailto:${esc(r.patient_email)}">${esc(r.patient_email)}</a>`] : null,
     r.notes ? ['Observações', esc(r.notes)] : null,
   ].filter(Boolean);
-  return `<li class="rq" id="rq-${esc(r.id)}">
-      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTime(r.created_at))}</small></div>
+  const hints = [r.status === 'completed' ? '' : '“Concluído” libera a avaliação do paciente', slot && r.status !== 'cancelled' ? '“Cancelado” libera o horário para outro paciente' : ''].filter(Boolean);
+  return `<li class="rq${slot ? ' rq-has-slot' : ''}" id="rq-${esc(r.id)}">
+      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTime(r.created_at))}</small>
+        ${slot ? `<p class="rq-slot"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>${r.status === 'confirmed' ? 'Agendado pelo site (confirmado)' : 'Horário escolhido pelo paciente no site'}</p>` : ''}</div>
         <span class="rq-st st-${esc(r.status)}">${esc(statusLabel(r.status) || r.status)}</span></div>
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
       <div class="rq-act" role="group" aria-label="Mudar a situação do pedido de ${esc(r.patient_name)}">
-        <span class="lbl">Mudar situação${r.status === 'completed' ? '' : ' · “Concluído” libera a avaliação do paciente'}:</span>
+        <span class="lbl">Mudar situação${hints.length ? ` · ${hints.join(' · ')}` : ''}:</span>
         ${ACTIONS.map((s) => `<button class="btn btn-ghost btn-sm" type="button" data-id="${esc(r.id)}" data-st="${s}" aria-pressed="${r.status === s}"${r.status === s ? ' disabled' : ''}>${esc(statusLabel(s))}</button>`).join('')}
       </div>
     </li>`;
 }
 
 // key: 'pedidos' ou 'concierge' (filtro e ids); cache: chave em state.lists (por clínica nos pedidos).
+// Na clínica, a lista vem pela data do exame (horário marcado ou data preferida) e tem o filtro “Quando”.
 function renderRequestList(p, key, intro, withPlace, cache) {
   const rows = state.lists[cache] || [];
   const again = () => renderRequestList(p, key, intro, withPlace, cache);
   const f = state.filter[key];
-  const shown = f ? rows.filter((r) => r.status === f) : rows;
+  const byDate = key === 'pedidos';
+  const when = byDate ? state.filter.when : '';
+  const today = spDay(Date.now());
+  const view = () => {
+    const base = byDate ? sortByAppointment(rows, today) : rows;
+    return base.filter((r) => (!f || r.status === f) && inWhen(r, when, today));
+  };
+  const shown = view();
   const counts = Object.fromEntries(STATUSES.map((s) => [s, rows.filter((r) => r.status === s).length]));
+  // Sem contagem nas opções: só a lista aberta tem o número certo (o “Todos (n)” ao lado).
+  const whenSel = byDate ? `<label class="cl-lbl" for="flt-when" style="margin:0">Quando</label>
+      <select id="flt-when">${Object.entries(WHEN).map(([v, n]) => `<option value="${v}"${when === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : '';
   p.innerHTML = `<p class="cl-help">${intro}</p>
     <div class="cl-filter"><label class="cl-lbl" for="flt-${key}" style="margin:0">Mostrar</label>
       <select id="flt-${key}"><option value="">Todos (${rows.length})</option>${STATUSES.map((s) => `<option value="${s}"${f === s ? ' selected' : ''}>${esc(statusLabel(s))} (${counts[s]})</option>`).join('')}</select>
+      ${whenSel}
       <button class="btn btn-ghost btn-sm" type="button" id="rf-${key}"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar lista</button></div>
-    ${!rows.length ? '<p class="cl-help">Nenhum pedido ainda. Quando um paciente pedir agendamento, ele aparece aqui.</p>'
-      : !shown.length ? '<p class="cl-help">Nenhum pedido com essa situação.</p>'
+    ${!rows.length ? `<p class="cl-help">${when ? `Nenhum pedido para ${when === 'hoje' ? 'hoje' : 'os próximos 7 dias'}.` : 'Nenhum pedido ainda. Quando um paciente pedir agendamento, ele aparece aqui.'}</p>`
+      : !shown.length ? `<p class="cl-help">${when ? 'Nenhum pedido para esse período com esse filtro.' : 'Nenhum pedido com essa situação.'}</p>`
         : `<ul class="rq-list">${shown.map((r) => requestCard(r, withPlace)).join('')}</ul>`}
     <div id="rqMsg" aria-live="polite"></div>`;
   $(`#flt-${key}`).onchange = (e) => { state.filter[key] = e.target.value; again(); $(`#flt-${key}`).focus(); };
+  // Trocar o “Quando” busca de novo no banco (a lista guardada pode ter ficado velha).
+  if (byDate) $('#flt-when').onchange = (e) => { state.filter.when = e.target.value; delete state.lists[listKey('pedidos')]; state.refocus = '#flt-when'; renderTab(); };
   $(`#rf-${key}`).onclick = () => { delete state.lists[cache]; state.refocus = `#rf-${key}`; renderTab(); };
   p.onclick = async (e) => {
     const b = e.target.closest('[data-st]');
@@ -199,7 +277,7 @@ function renderRequestList(p, key, intro, withPlace, cache) {
       const res = await auth.rpc('set_request_status', { p_id: r.id, p_status: b.dataset.st });
       if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
       // Próximo pedido visível, para o foco não se perder se este sair do filtro.
-      const visible = (f ? rows.filter((x) => x.status === f) : rows).map((x) => x.id);
+      const visible = view().map((x) => x.id);
       const after = visible.slice(visible.indexOf(r.id) + 1).concat(visible.slice(0, visible.indexOf(r.id)).reverse());
       r.status = b.dataset.st;
       const text = `Situação do pedido de ${r.patient_name || 'paciente'} mudada para “${statusLabel(r.status)}”.`;
@@ -244,15 +322,533 @@ async function loadList(p, tab, path, render) {
   }
 }
 
+// Consulta dos pedidos da clínica. “Hoje” e “Próximos 7 dias” filtram no banco pela data do exame:
+// o gatilho preenche preferred_date a partir do horário marcado, então vale para os dois tipos de pedido.
+export function requestsPath(clinicId, when, today) {
+  const base = `appointment_requests?select=${REQ_COLS}&clinic_id=eq.${clinicId}`;
+  if (when === 'hoje') return `${base}&preferred_date=eq.${today}&order=slot_start,created_at.desc&limit=200`;
+  if (when === 'semana') return `${base}&preferred_date=gte.${today}&preferred_date=lte.${addDays(today, 6)}&order=preferred_date,slot_start,created_at.desc&limit=200`;
+  return `${base}&order=created_at.desc&limit=100`;
+}
+
 function tabRequests(p) {
   const c = clinic();
-  const intro = 'Pedidos de agendamento feitos pelos pacientes no IMED. Ligue ou chame no WhatsApp para combinar o horário e atualize a situação: o paciente acompanha pela conta dele.';
-  loadList(p, 'pedidos', `appointment_requests?select=${REQ_COLS}&clinic_id=eq.${c.id}&order=created_at.desc&limit=100`, () => renderRequestList(p, 'pedidos', intro, false, `pedidos:${c.id}`));
+  const intro = 'Pedidos de agendamento feitos pelos pacientes no IMED. Os marcados num horário da sua agenda já chegam confirmados. Nos outros, ligue ou chame no WhatsApp para combinar o horário. Atualize a situação: o paciente acompanha pela conta dele.';
+  const key = listKey('pedidos');
+  loadList(p, 'pedidos', requestsPath(c.id, state.filter.when, spDay(Date.now())), () => renderRequestList(p, 'pedidos', intro, false, key));
 }
 
 function tabConcierge(p) {
   const intro = 'Pedidos feitos ao IMED para locais que ainda não são parceiros. A equipe liga para o local, combina com o paciente e atualiza a situação.';
   loadList(p, 'concierge', `appointment_requests?select=${IMED_COLS}&clinic_id=is.null&order=created_at.desc&limit=100`, () => renderRequestList(p, 'concierge', intro, true, 'concierge'));
+}
+
+// ---------- agenda com horário ----------
+// A clínica define faixas de atendimento por dia da semana (e por exame), bloqueios (feriado, folga,
+// manutenção) e confere os próximos horários livres, que são os mesmos que o paciente vê.
+const WD = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
+const WORKDAYS = [2, 3, 4, 5]; // terça a sexta, copiados da segunda
+const SLOT_OPTIONS = [10, 15, 20, 30, 45, 60];
+const PREVIEW_DAYS = 7;
+const PREVIEW_MAX = 30;
+const naDia = (wd) => `${wd === 0 || wd === 6 ? 'no' : 'na'} ${WD[wd].toLowerCase()}`;
+const toMin = (t) => { const m = /^(\d{2}):(\d{2})/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
+const fromMin = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
+let agUid = 0;
+const newRow = (wd, o = {}) => ({ k: `r${++agUid}`, wd, start: '', end: '', slot: 30, mode: 'all', exams: [], ...o });
+
+// Linha de clinic_schedules → faixa editável.
+export function rowFromDb(x) {
+  const codes = Array.isArray(x.exam_codes) ? x.exam_codes : [];
+  return newRow(Number(x.weekday), {
+    start: String(x.start_time || '').slice(0, 5), end: String(x.end_time || '').slice(0, 5),
+    slot: Number(x.slot_minutes) || 30, mode: codes.length ? 'some' : 'all', exams: codes.filter((c) => EXAM_CODES.includes(c)),
+  });
+}
+
+// Tira das faixas os exames que a clínica não marca mais em “Exames e preços” e guarda quais saíram (r.dropped),
+// para avisar na faixa. Devolve true se alguma faixa “só alguns” perdeu exame.
+export function dropMissingExams(rows, offered) {
+  let any = false;
+  for (const r of rows) {
+    const gone = r.exams.filter((code) => !offered.includes(code));
+    if (!gone.length) continue;
+    r.exams = r.exams.filter((code) => offered.includes(code));
+    if (r.mode !== 'some') continue;
+    r.dropped = [...new Set([...(r.dropped || []), ...gone])];
+    any = true;
+  }
+  return any;
+}
+
+const sharesExam = (a, b) => a.mode === 'all' || b.mode === 'all' || a.exams.some((c) => b.exams.includes(c));
+
+// Erros por faixa ({ [k]: texto }); _all para erro geral.
+export function validateSchedule(rows) {
+  const errs = {};
+  const ok = [];
+  for (const r of rows) {
+    const s = toMin(r.start);
+    const e = toMin(r.end);
+    if (Number.isNaN(s) || Number.isNaN(e)) errs[r.k] = 'Preencha o início e o fim.';
+    else if (e <= s) errs[r.k] = 'O fim precisa ser depois do início.';
+    else if (!(r.slot >= 5 && r.slot <= 240)) errs[r.k] = 'Escolha a duração de cada horário.';
+    else if (e - s < r.slot) errs[r.k] = `A faixa precisa ter pelo menos ${r.slot} minutos (a duração de um horário).`;
+    else if (r.mode === 'some' && !r.exams.length) errs[r.k] = 'Marque pelo menos um exame ou escolha “Todos os exames”.';
+    else ok.push(r);
+  }
+  // Duas faixas do mesmo dia não podem se cruzar para o mesmo exame (o mesmo horário sairia duas vezes).
+  for (const wd of WD_ORDER) {
+    const day = ok.filter((r) => r.wd === wd).sort((a, b) => toMin(a.start) - toMin(b.start));
+    for (let j = 1; j < day.length; j++) {
+      const b = day[j];
+      const a = day.slice(0, j).find((x) => toMin(x.start) < toMin(b.end) && toMin(b.start) < toMin(x.end) && sharesExam(x, b));
+      if (a) errs[b.k] = `Esta faixa se cruza com a de ${a.start} às ${a.end} para o mesmo exame. Mude o horário ou os exames.`;
+    }
+  }
+  if (rows.length > 100) errs._all = 'Use até 100 faixas na semana.';
+  return errs;
+}
+
+// O que vai para set_my_schedule.
+export const scheduleRows = (rows) => [...rows]
+  .sort((a, b) => a.wd - b.wd || toMin(a.start) - toMin(b.start))
+  .map((r) => ({ weekday: r.wd, start: r.start, end: r.end, slot_minutes: r.slot, exams: r.mode === 'all' ? [] : EXAM_CODES.filter((c) => r.exams.includes(c)) }));
+
+// Bloqueio digitado (dias inteiros ou algumas horas de um dia) → início e fim com o fuso de São Paulo.
+export function blockRange({ kind, from, to, start, end }, now = Date.now()) {
+  const errs = {};
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  const T = /^\d{2}:\d{2}$/;
+  let starts = null;
+  let ends = null;
+  if (!D.test(from || '')) errs.bFrom = 'Escolha o dia.';
+  if (kind === 'part') {
+    if (!T.test(start || '')) errs.bStart = 'Escolha o horário de início.';
+    if (!T.test(end || '')) errs.bEnd = 'Escolha o horário de fim.';
+    else if (!errs.bStart && toMin(end) <= toMin(start)) errs.bEnd = 'O fim precisa ser depois do início.';
+    if (!Object.keys(errs).length) { starts = spIso(from, start); ends = spIso(from, end); }
+  } else if (!errs.bFrom) {
+    const last = to || from;
+    if (!D.test(last)) errs.bTo = 'Escolha o último dia.';
+    else if (last < from) errs.bTo = 'O último dia precisa ser igual ou depois do primeiro.';
+    else if (last > addDays(from, 365)) errs.bTo = 'Use até um ano em cada bloqueio.';
+    else { starts = spIso(from); ends = spIso(addDays(last, 1)); }
+  }
+  if (ends && Date.parse(ends) <= now) { errs[kind === 'part' ? 'bEnd' : to ? 'bTo' : 'bFrom'] = 'Esse período já passou.'; starts = ends = null; }
+  return { errs, starts, ends };
+}
+
+// Bloqueio em texto simples, no horário de São Paulo.
+export function blockWhen(b) {
+  const d1 = spDay(b.starts_at); const t1 = spTime(b.starts_at);
+  const d2 = spDay(b.ends_at); const t2 = spTime(b.ends_at);
+  if (t1 === '00:00' && t2 === '00:00') {
+    const last = addDays(d2, -1);
+    return last <= d1 ? `${fmtDate(d1)} (dia inteiro)` : `${fmtDate(d1)} até ${fmtDate(last)} (dias inteiros)`;
+  }
+  if (d1 === d2) return `${fmtDate(d1)}, das ${t1} às ${t2}`;
+  return `${fmtDateTime(b.starts_at)} até ${fmtDateTime(b.ends_at)}`;
+}
+
+async function tabAgenda(p) {
+  const c = clinic();
+  const cid = c.id;
+  const same = () => state.tab === 'agenda' && state.clinicId === cid && p.isConnected;
+  // Mudanças ainda não salvas continuam ao trocar de aba (e voltar).
+  const draft = state.agenda?.clinicId === cid && state.agenda.dirty ? state.agenda : null;
+  p.innerHTML = loading('Carregando a agenda…');
+  const exKey = `exames:${cid}`;
+  try {
+    const [sched, blocks, exams] = await Promise.all([
+      draft ? null : auth.select(`clinic_schedules?select=*&clinic_id=eq.${cid}&order=weekday,start_time`),
+      auth.select(`clinic_blocks?select=*&clinic_id=eq.${cid}&ends_at=gte.${new Date().toISOString()}&order=starts_at`),
+      state.lists[exKey] || auth.select(`clinic_exams?select=exam_code,price_cents&clinic_id=eq.${cid}`),
+    ]);
+    if (!same()) return;
+    state.lists[exKey] = exams || [];
+    const offered = EXAM_CODES.filter((code) => state.lists[exKey].some((x) => x.exam_code === code));
+    const rows = draft ? draft.rows : (sched || []).map(rowFromDb);
+    // Só os exames que a clínica faz hoje (marcados em “Exames e preços”). O que saiu de lá é tirado da faixa
+    // com um aviso nela, e a agenda fica com mudanças a salvar, para a clínica revisar.
+    const dropped = dropMissingExams(rows, offered);
+    const pv = draft && offered.includes(draft.previewExam) ? draft.previewExam : offered[0] || '';
+    state.agenda = { clinicId: cid, rows, dirty: !!draft || dropped, errs: draft?.errs || {}, offered, blocks: blocks || [], previewExam: pv, pvSeq: 0 };
+  } catch (err) {
+    if (lost() || !same()) return;
+    p.innerHTML = `${note(esc(friendlyError(err, 'Não foi possível carregar a agenda agora.')), 'err')}<div class="cl-actions"><button class="btn btn-ghost btn-sm" type="button" id="retryTab">Tentar de novo</button></div>`;
+    $('#retryTab').onclick = () => renderTab();
+    return;
+  }
+  renderAgenda(p);
+}
+
+function agendaNote(c) {
+  if (c.status !== 'published' || !c.accepts_online_booking) {
+    return note(`A agenda só aparece para os pacientes quando <b>“Aceito pedidos de agendamento pelo site”</b> estiver ligado em <button class="link" type="button" data-go="dados">Dados da clínica</button>${c.status !== 'published' ? ' e o cadastro estiver publicado pela equipe do IMED' : ''}.`, 'warn');
+  }
+  return note('Os pacientes veem os horários livres e marcam direto pelo site. O pedido chega na aba “Pedidos” já confirmado.', 'info');
+}
+
+function rowHtml(r) {
+  const a = state.agenda;
+  const k = r.k;
+  const err = a.errs[k] || '';
+  const inv = err ? ' aria-invalid="true"' : '';
+  const opts = [...new Set([...SLOT_OPTIONS, r.slot])].sort((x, y) => x - y);
+  const exams = a.offered.map((code) => `<label class="cl-check"><input type="checkbox" data-f="ex" value="${code}" id="ag-x-${k}-${code}"${r.exams.includes(code) ? ' checked' : ''}><span>${esc(EXAMS[code].n)}</span></label>`).join('');
+  return `<li class="ag-row${err ? ' bad' : ''}" data-k="${k}">
+      <div class="ag-times">
+        <div><label class="cl-lbl" for="ag-s-${k}">Início</label><input type="time" id="ag-s-${k}" data-f="start" value="${esc(r.start)}" step="300" aria-describedby="ag-e-${k}"${inv}></div>
+        <div><label class="cl-lbl" for="ag-f-${k}">Fim</label><input type="time" id="ag-f-${k}" data-f="end" value="${esc(r.end)}" step="300" aria-describedby="ag-e-${k}"${inv}></div>
+        <div><label class="cl-lbl" for="ag-d-${k}">Cada horário</label><select id="ag-d-${k}" data-f="slot">${opts.map((m) => `<option value="${m}"${m === r.slot ? ' selected' : ''}>${m} min</option>`).join('')}</select></div>
+        <button class="btn btn-danger btn-sm ag-rm" type="button" data-rm="${k}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remover<span class="sr"> esta faixa ${naDia(r.wd)}${r.start ? `, ${esc(r.start)} às ${esc(r.end)}` : ''}</span></button>
+      </div>
+      <fieldset class="ag-ex"><legend>Exames nesta faixa</legend>
+        <div class="ag-mode">
+          <label class="cl-check"><input type="radio" name="ag-m-${k}" value="all" data-f="mode"${r.mode === 'all' ? ' checked' : ''}><span>Todos os exames</span></label>
+          <label class="cl-check"><input type="radio" name="ag-m-${k}" value="some" data-f="mode"${r.mode === 'some' ? ' checked' : ''}><span>Só alguns</span></label>
+        </div>
+        <div class="ag-exl"${r.mode === 'all' ? ' hidden' : ''}>${exams || '<span class="cl-hint">Nenhum exame marcado em “Exames e preços”.</span>'}</div>
+      </fieldset>
+      ${r.dropped?.length ? `<div class="ag-drop">${note(esc(`${listNames(r.dropped)} ${r.dropped.length === 1 ? 'saiu' : 'saíram'} de “Exames e preços” e ${r.dropped.length === 1 ? 'foi tirada' : 'foram tirados'} desta faixa. ${r.exams.length ? 'Confira e salve a agenda.' : 'Marque outro exame, escolha “Todos os exames” ou remova a faixa, e salve a agenda.'}`), 'warn')}</div>` : ''}
+      <p class="cl-err" id="ag-e-${k}">${esc(err)}</p>
+    </li>`;
+}
+
+const listNames = (codes) => {
+  const n = codes.map((code) => examName(code) || code);
+  return n.length > 1 ? `${n.slice(0, -1).join(', ')} e ${n.at(-1)}` : n[0];
+};
+
+function dayHtml(wd) {
+  const rows = state.agenda.rows.filter((r) => r.wd === wd);
+  return `<section class="ag-day${rows.length ? '' : ' closed'}" id="agday-${wd}" aria-labelledby="agd-${wd}">
+      <div class="ag-dh"><h4 id="agd-${wd}">${WD[wd]}</h4><span class="ag-sub">${rows.length ? `${rows.length} ${rows.length === 1 ? 'faixa' : 'faixas'}` : 'Sem horários pelo site'}</span>
+        <button class="btn btn-ghost btn-sm" type="button" data-add="${wd}"><i class="fa-solid fa-plus" aria-hidden="true"></i> Adicionar faixa<span class="sr"> ${naDia(wd)}</span></button></div>
+      ${rows.length ? `<ul class="ag-rows">${rows.map(rowHtml).join('')}</ul>` : ''}
+    </section>`;
+}
+
+function blocksHtml() {
+  const list = state.agenda.blocks;
+  if (!list.length) return '<p class="cl-help">Nenhum bloqueio marcado.</p>';
+  return `<ul class="cl-list ag-blocks">${list.map((b) => `<li id="blk-${esc(b.id)}"><span><b>${esc(blockWhen(b))}</b>${b.reason ? `<small>${esc(b.reason)}</small>` : ''}</span>
+      <button class="btn btn-ghost btn-sm" type="button" data-unblock="${esc(b.id)}">Remover<span class="sr"> o bloqueio de ${esc(blockWhen(b))}</span></button></li>`).join('')}</ul>`;
+}
+
+function renderAgenda(p) {
+  const c = clinic();
+  const a = state.agenda;
+  const today = spDay(Date.now());
+  const dateField = (id, label, hint = '') => `<div class="cl-field" id="${id}Box"><label class="cl-lbl" for="${id}">${label}</label>
+      <input id="${id}" type="date" min="${today}" aria-describedby="${id}Err${hint ? ` ${id}Hint` : ''}">${hint ? `<span class="cl-hint" id="${id}Hint">${hint}</span>` : ''}<span class="cl-err" id="${id}Err"></span></div>`;
+  const timeField = (id, label) => `<div class="cl-field"><label class="cl-lbl" for="${id}">${label}</label>
+      <input id="${id}" type="time" step="300" aria-describedby="${id}Err"><span class="cl-err" id="${id}Err"></span></div>`;
+  p.innerHTML = `<div id="agNote">${agendaNote(c)}</div>
+    <h3 class="ag-h" id="agWeekTitle">Horários de atendimento da semana</h3>
+    <p class="cl-help">Crie uma ou mais faixas em cada dia, por exemplo 08:00 às 12:00 com um horário a cada 30 minutos. Dias sem faixa não têm horários pelo site. Horários com menos de 2 horas de antecedência não aparecem para o paciente.</p>
+    ${a.offered.length ? '' : note('Nenhum exame marcado em <button class="link" type="button" data-go="exames">Exames e preços</button>. Marque os exames que a clínica faz para escolher quais entram em cada faixa.', 'warn')}
+    <form id="agForm" novalidate aria-labelledby="agWeekTitle">
+      <div class="cl-actions ag-tools"><button class="btn btn-ghost btn-sm" type="button" id="agCopy"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar segunda para os dias úteis</button></div>
+      <div id="agCopyMsg" class="cl-msg" aria-live="polite"></div>
+      <div id="agWeek" class="ag-week">${WD_ORDER.map(dayHtml).join('')}</div>
+      <div id="agSum" aria-live="polite"></div>
+      <div class="cl-actions"><button class="btn btn-coral" type="submit" id="agSave">Salvar agenda</button><span class="ag-dirty" id="agDirty" aria-live="polite">${a.dirty ? 'Há mudanças ainda não salvas.' : ''}</span></div>
+      <div id="agMsg" aria-live="polite"></div>
+    </form>
+
+    <h3 class="ag-h" id="blkTitle">Bloqueios</h3>
+    <p class="cl-help">Feriados, folgas, manutenção do aparelho: nesses períodos nenhum horário aparece para o paciente. Bloquear não cancela pedidos já marcados; confira a aba “Pedidos”.</p>
+    <div id="agBlocks">${blocksHtml()}</div>
+    <div id="unblockMsg" aria-live="polite"></div>
+    <form id="blkForm" class="ag-blk" novalidate aria-labelledby="blkNew">
+      <h4 id="blkNew">Novo bloqueio</h4>
+      <fieldset class="cl-fs"><legend class="sr">Tipo de bloqueio</legend>
+        <div class="ag-mode">
+          <label class="cl-check"><input type="radio" name="blkKind" value="day" checked><span>Dia inteiro (um ou mais dias)</span></label>
+          <label class="cl-check"><input type="radio" name="blkKind" value="part"><span>Só algumas horas de um dia</span></label>
+        </div>
+      </fieldset>
+      <div class="cl-grid">
+        ${dateField('bFrom', 'Primeiro dia')}
+        ${dateField('bTo', 'Último dia', 'Em branco: só o primeiro dia.')}
+        <div class="ag-part full" id="bPart" hidden>${timeField('bStart', 'Das')}${timeField('bEnd', 'Às')}</div>
+        <div class="cl-field full"><label class="cl-lbl" for="bReason">Motivo <small>(opcional, só a clínica vê)</small></label>
+          <input id="bReason" type="text" maxlength="120" autocomplete="off" placeholder="Ex.: feriado, manutenção do aparelho"></div>
+      </div>
+      <div class="cl-actions"><button class="btn btn-primary" type="submit" id="bSave">Bloquear</button></div>
+      <div id="bMsg" aria-live="polite"></div>
+    </form>
+
+    <h3 class="ag-h" id="pvTitle">Próximos horários livres</h3>
+    <p class="cl-help">Confira aqui o que o paciente vê nos próximos ${PREVIEW_DAYS} dias, já com os bloqueios e os horários marcados. Mostra a agenda salva.</p>
+    <div class="cl-filter">
+      ${a.offered.length ? `<label class="cl-lbl" for="pvExam" style="margin:0">Exame</label><select id="pvExam">${a.offered.map((code) => `<option value="${code}"${code === a.previewExam ? ' selected' : ''}>${esc(EXAMS[code].n)}</option>`).join('')}</select>` : ''}
+      <button class="btn btn-ghost btn-sm" type="button" id="pvRefresh"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar horários</button>
+    </div>
+    <div id="pvBox" aria-live="polite"></div>`;
+
+  const markDirty = () => { a.dirty = true; $('#agDirty').textContent = 'Há mudanças ainda não salvas.'; $('#agMsg').innerHTML = ''; };
+  const rowOf = (el) => a.rows.find((r) => r.k === el.closest('.ag-row')?.dataset.k);
+  const onEdit = (e) => {
+    const t = e.target;
+    const r = t.dataset?.f ? rowOf(t) : null;
+    if (!r) return;
+    if (t.dataset.f === 'start' || t.dataset.f === 'end') r[t.dataset.f] = t.value;
+    else if (t.dataset.f === 'slot') r.slot = Number(t.value);
+    else if (t.dataset.f === 'mode') {
+      r.mode = t.value;
+      $('.ag-exl', t.closest('.ag-row')).hidden = r.mode === 'all';
+    } else if (t.dataset.f === 'ex') r.exams = $$('input[data-f="ex"]:checked', t.closest('.ag-row')).map((x) => x.value);
+    markDirty();
+  };
+  p.oninput = onEdit;
+  p.onchange = (e) => {
+    if (e.target.id === 'pvExam') { a.previewExam = e.target.value; loadPreview(); return; }
+    if (e.target.name === 'blkKind') {
+      const part = e.target.value === 'part';
+      $('#bPart').hidden = !part;
+      $('#bToBox').hidden = part;
+      $('label[for="bFrom"]').textContent = part ? 'Dia' : 'Primeiro dia';
+      return;
+    }
+  };
+  const redrawDay = (wd) => { $(`#agday-${wd}`).outerHTML = dayHtml(wd); };
+  p.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.go) { selectTab(b.dataset.go, true); return; }
+    if (b.dataset.add) {
+      const wd = Number(b.dataset.add);
+      const same = a.rows.filter((r) => r.wd === wd);
+      const last = same.at(-1);
+      let start = '08:00'; let end = '12:00';
+      if (last) {
+        const s = Number.isNaN(toMin(last.end)) ? NaN : toMin(last.end) + 60;
+        if (Number.isNaN(s) || s + 60 > 24 * 60 - 1) { start = ''; end = ''; } else { start = fromMin(s); end = fromMin(Math.min(s + 240, 23 * 60 + 55)); }
+      }
+      const r = newRow(wd, { start, end, slot: last?.slot || 30 });
+      a.rows.push(r);
+      redrawDay(wd);
+      markDirty();
+      $(`#ag-s-${r.k}`).focus();
+      return;
+    }
+    if (b.dataset.rm) {
+      const r = a.rows.find((x) => x.k === b.dataset.rm);
+      a.rows = a.rows.filter((x) => x !== r);
+      delete a.errs[r.k];
+      redrawDay(r.wd);
+      markDirty();
+      $(`#agday-${r.wd} [data-add]`).focus();
+      return;
+    }
+    if (b.id === 'agCopy') {
+      const mon = a.rows.filter((r) => r.wd === 1);
+      const msg = $('#agCopyMsg');
+      msg.className = 'cl-msg';
+      if (!mon.length) { msg.textContent = 'Segunda ainda não tem faixas. Adicione uma faixa na segunda primeiro.'; msg.classList.add('err'); return; }
+      const replaced = a.rows.some((r) => WORKDAYS.includes(r.wd));
+      a.rows = a.rows.filter((r) => !WORKDAYS.includes(r.wd))
+        .concat(WORKDAYS.flatMap((wd) => mon.map((r) => newRow(wd, { start: r.start, end: r.end, slot: r.slot, mode: r.mode, exams: [...r.exams] }))));
+      Object.keys(a.errs).forEach((k) => { if (k !== '_all' && !a.rows.some((r) => r.k === k)) delete a.errs[k]; });
+      WORKDAYS.forEach(redrawDay);
+      markDirty();
+      msg.textContent = `Pronto: terça a sexta agora têm os mesmos horários de segunda${replaced ? ' (as faixas que havia nesses dias foram trocadas)' : ''}. Falta salvar.`;
+      msg.classList.add('ok');
+      return;
+    }
+    if (b.dataset.unblock) { removeBlock(b); return; }
+    if (b.id === 'pvRefresh') loadPreview();
+  };
+  $('#agForm').onsubmit = saveAgenda;
+  $('#blkForm').onsubmit = saveBlock;
+  loadPreview();
+}
+
+async function saveAgenda(e) {
+  e.preventDefault();
+  const c = clinic();
+  const a = state.agenda;
+  a.errs = validateSchedule(a.rows);
+  WD_ORDER.forEach((wd) => { $(`#agday-${wd}`).outerHTML = dayHtml(wd); });
+  $('#agMsg').innerHTML = '';
+  const bad = Object.keys(a.errs).filter((k) => k !== '_all');
+  if (bad.length || a.errs._all) {
+    $('#agSum').innerHTML = note(esc(a.errs._all || (bad.length === 1 ? 'Confira a faixa marcada em vermelho.' : `Confira as ${bad.length} faixas marcadas em vermelho.`)), 'err');
+    $('.ag-row.bad input[data-f="start"]')?.focus();
+    return;
+  }
+  $('#agSum').innerHTML = '';
+  const btn = $('#agSave');
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  const rows = scheduleRows(a.rows);
+  const sent = JSON.stringify(rows);
+  try {
+    const res = await auth.rpc('set_my_schedule', { p_clinic: c.id, p_rows: rows });
+    if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
+    // A pessoa pode ter mexido nos campos (ou trocado de aba e voltado) enquanto salvava:
+    // só fica “salvo” se a agenda na tela for igual à que foi enviada.
+    const cur = state.agenda?.clinicId === a.clinicId ? state.agenda : null;
+    if (cur) {
+      cur.dirty = JSON.stringify(scheduleRows(cur.rows)) !== sent;
+      if (!cur.dirty) {
+        const days = new Set(cur.rows.filter((r) => r.dropped?.length).map((r) => r.wd));
+        cur.rows.forEach((r) => { delete r.dropped; });
+        days.forEach((wd) => { const el = $(`#agday-${wd}`); if (el && state.agenda === cur) el.outerHTML = dayHtml(wd); });
+      }
+      const d = $('#agDirty');
+      if (d && state.agenda === cur) d.textContent = cur.dirty ? 'Há mudanças ainda não salvas.' : '';
+    }
+    const live = c.status === 'published' && c.accepts_online_booking;
+    const okText = !rows.length ? 'Agenda salva sem horários. Os pacientes voltam a fazer o pedido sem horário, e a clínica liga para combinar.'
+      : live ? 'Agenda salva. Os horários livres já aparecem para os pacientes.' : 'Agenda salva. Os horários aparecem para os pacientes quando “Aceito pedidos de agendamento pelo site” estiver ligado.';
+    const box = $('#agMsg');
+    if (box && state.agenda === cur) box.innerHTML = note(`${okText}${cur?.dirty ? ' As mudanças feitas enquanto salvava ainda não foram salvas.' : ''}`, 'ok');
+    toast('Agenda salva.');
+    loadPreview();
+  } catch (err) {
+    if (lost()) return;
+    const m = err.result === 'forbidden' ? 'Sua conta não pode mudar a agenda desta clínica.' : friendlyError(err, 'Não foi possível salvar a agenda agora. Tente de novo em instantes.');
+    const box = $('#agMsg');
+    if (box && state.agenda?.clinicId === a.clinicId) box.innerHTML = note(esc(m), 'err');
+    else toast(m);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Salvar agenda';
+    if (btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus();
+  }
+}
+
+// Busca de novo os bloqueios da clínica; vale para a agenda aberta agora, se for a mesma clínica.
+async function refreshBlocks(clinicId) {
+  const rows = (await auth.select(`clinic_blocks?select=*&clinic_id=eq.${clinicId}&ends_at=gte.${new Date().toISOString()}&order=starts_at`)) || [];
+  const cur = state.agenda;
+  if (cur?.clinicId !== clinicId) return;
+  cur.blocks = rows;
+  const box = $('#agBlocks');
+  if (box) box.innerHTML = blocksHtml();
+}
+const agendaOf = (clinicId) => (state.agenda?.clinicId === clinicId ? state.agenda : null);
+
+async function saveBlock(e) {
+  e.preventDefault();
+  const c = clinic();
+  const a = state.agenda;
+  const kind = $('input[name="blkKind"]:checked').value;
+  const { errs, starts, ends } = blockRange({ kind, from: $('#bFrom').value, to: kind === 'part' ? '' : $('#bTo').value, start: $('#bStart').value, end: $('#bEnd').value });
+  let first = null;
+  for (const id of ['bFrom', 'bTo', 'bStart', 'bEnd']) {
+    const el = $(`#${id}`);
+    $(`#${id}Err`).textContent = errs[id] || '';
+    if (errs[id]) { el.setAttribute('aria-invalid', 'true'); first ||= el; } else el.removeAttribute('aria-invalid');
+  }
+  $('#bMsg').innerHTML = '';
+  if (first) { first.focus(); return; }
+  const btn = $('#bSave');
+  btn.disabled = true;
+  btn.textContent = 'Salvando…';
+  try {
+    const reason = $('#bReason').value.trim().replace(/\s+/g, ' ').slice(0, 120);
+    const res = await auth.rpc('add_my_block', { p_clinic: c.id, p_starts: starts, p_ends: ends, p_reason: reason || null });
+    if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
+    // A pessoa pode ter saído da aba enquanto salvava: só mexe no formulário se ele ainda estiver na tela.
+    const form = $('#blkForm');
+    if (form && state.agenda === a) {
+      form.reset();
+      $('#bPart').hidden = true; $('#bToBox').hidden = false; $('label[for="bFrom"]').textContent = 'Primeiro dia';
+    }
+    await refreshBlocks(a.clinicId).catch(() => {});
+    const box = $('#bMsg');
+    if (box && state.agenda === a) box.innerHTML = note('Bloqueio salvo. Nesse período nenhum horário aparece para os pacientes.', 'ok');
+    toast('Bloqueio salvo.');
+    if (agendaOf(a.clinicId)) loadPreview();
+  } catch (err) {
+    if (lost()) return;
+    const m = err.result === 'forbidden' ? 'Sua conta não pode bloquear horários desta clínica.' : friendlyError(err, 'Não foi possível salvar o bloqueio agora. Tente de novo em instantes.');
+    const box = $('#bMsg');
+    if (box && state.agenda === a) box.innerHTML = note(esc(m), 'err');
+    else toast(m);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Bloquear';
+    if (btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus();
+  }
+}
+
+async function removeBlock(b) {
+  const a = state.agenda;
+  const id = b.dataset.unblock;
+  const blk = a.blocks.find((x) => x.id === id);
+  if (!blk) return;
+  const ids = a.blocks.map((x) => x.id);
+  const next = ids[ids.indexOf(id) + 1] || ids[ids.indexOf(id) - 1];
+  b.disabled = true;
+  const msg = $('#unblockMsg');
+  msg.innerHTML = '';
+  try {
+    const res = await auth.rpc('remove_my_block', { p_block: id });
+    if (res !== 'ok' && res !== 'not_found') throw Object.assign(new Error(res), { result: res });
+    const text = `Bloqueio de ${blockWhen(blk)} removido.`;
+    toast('Bloqueio removido.');
+    // A agenda aberta agora pode ser outra (a pessoa saiu da aba e voltou): tira o bloqueio dela também.
+    const cur = agendaOf(a.clinicId);
+    if (cur) cur.blocks = cur.blocks.filter((x) => x.id !== id);
+    if (a !== cur) a.blocks = a.blocks.filter((x) => x.id !== id);
+    const list = $('#agBlocks');
+    if (!list || !cur) return;
+    list.innerHTML = blocksHtml();
+    if (msg.isConnected) msg.innerHTML = note(esc(text), 'ok');
+    ($(`#agBlocks [data-unblock="${CSS.escape(next || '')}"]`) || $('#bFrom'))?.focus();
+    loadPreview();
+  } catch (err) {
+    if (lost()) return;
+    b.disabled = false;
+    const m = err.result === 'forbidden' ? 'Sua conta não pode remover bloqueios desta clínica.' : friendlyError(err, 'Não foi possível remover o bloqueio agora. Tente de novo.');
+    if (msg.isConnected) msg.innerHTML = note(esc(m), 'err');
+    else toast(m);
+  }
+}
+
+async function loadPreview() {
+  const box = $('#pvBox');
+  const a = state.agenda;
+  if (!box || !a) return;
+  const seq = ++a.pvSeq;
+  const exam = a.previewExam || null;
+  box.innerHTML = loading('Buscando horários livres…');
+  try {
+    const rows = (await auth.rpc('available_slots', { p_clinic: a.clinicId, p_exam: exam, p_from: null, p_days: PREVIEW_DAYS })) || [];
+    if (state.agenda !== a || seq !== a.pvSeq || !box.isConnected) return;
+    box.innerHTML = previewHtml(Array.isArray(rows) ? rows : [], exam);
+  } catch (err) {
+    if (lost() || state.agenda !== a || seq !== a.pvSeq || !box.isConnected) return;
+    box.innerHTML = note(esc(friendlyError(err, 'Não foi possível buscar os horários livres agora.')), 'err');
+  }
+}
+
+function previewHtml(rows, exam) {
+  const c = clinic();
+  const list = rows.map((r) => r?.slot_start).filter((x) => x && !Number.isNaN(Date.parse(x)));
+  if (!list.length) {
+    const why = c.status !== 'published' || !c.accepts_online_booking
+      ? 'Com “Aceito pedidos de agendamento pelo site” desligado ou o cadastro em rascunho, nenhum horário aparece.'
+      : 'Confira se a agenda está salva, se há faixas para este exame e se não há bloqueios nesses dias.';
+    return `<p class="cl-help">Nenhum horário livre nos próximos ${PREVIEW_DAYS} dias${exam ? ` para ${esc(examName(exam))}` : ''}. ${why}</p>`;
+  }
+  const top = list.slice(0, PREVIEW_MAX);
+  const groups = [];
+  for (const t of top) {
+    const d = spDay(t);
+    if (groups.at(-1)?.[0] !== d) groups.push([d, []]);
+    groups.at(-1)[1].push(t);
+  }
+  const head = list.length > PREVIEW_MAX ? `Mostrando os ${PREVIEW_MAX} primeiros de ${list.length} horários livres.` : `${list.length} ${list.length === 1 ? 'horário livre' : 'horários livres'}.`;
+  return `<p class="cl-help">${head}</p>
+    <div class="ag-pv">${groups.map(([d, ts]) => `<div class="ag-pv-day"><h4>${esc(fmtDate(d))}</h4><ul class="ag-slots">${ts.map((t) => `<li>${esc(spTime(t))}</li>`).join('')}</ul></div>`).join('')}</div>`;
 }
 
 // ---------- dados da clínica ----------
@@ -281,7 +877,7 @@ function tabData(p) {
         <p class="cl-help">Escreva como quiser, por exemplo 07:00–19:00. Deixe em branco os dias fechados ou sem horário definido.</p>
         <div class="hours">${DAYS.map(([k, n]) => `<label>${n}<input id="h-${k}" type="text" maxlength="40" value="${esc(hours[k] ?? '')}" autocomplete="off"></label>`).join('')}</div>
       </fieldset>
-      <div class="cl-field full"><label class="cl-check"><input id="dOnline" type="checkbox"${c.accepts_online_booking ? ' checked' : ''}><span><b>Aceito pedidos de agendamento pelo site.</b> Os pedidos aparecem na aba “Pedidos” e a clínica entra em contato com o paciente.</span></label></div>
+      <div class="cl-field full"><label class="cl-check"><input id="dOnline" type="checkbox"${c.accepts_online_booking ? ' checked' : ''}><span><b>Aceito pedidos de agendamento pelo site.</b> Os pedidos aparecem na aba “Pedidos”. Com a aba “Agenda” montada, o paciente escolhe um horário livre; sem agenda, a clínica entra em contato para combinar.</span></label></div>
       <div class="cl-field full"><label class="cl-lbl" for="dSpec">Especialidades</label>
         <input id="dSpec" type="text" maxlength="1500" value="${esc((c.specialties || []).join(', '))}" aria-describedby="dSpecHint dSpecErr" autocomplete="off">
         <span class="cl-hint" id="dSpecHint">Separe por vírgula. Até 30. Ex.: Cardiologia, Radiologia</span><span class="cl-err" id="dSpecErr"></span></div>

@@ -21,6 +21,8 @@ Páginas principais:
 - `conta.html`: conta do paciente (login por link no e-mail), pedidos da conta e do aparelho, avaliação de pedidos concluídos.
 - `reivindicar.html`: a clínica encontra o próprio estabelecimento do CNES e pede para assumir o cadastro (aceita `?cnes=`).
 - `painel.html`: área da clínica (pedidos, situação, dados, convênios, horários, exames e preços) e, para a equipe do IMED, aprovação dos pedidos de cadastro e pedidos de locais não parceiros.
+- `local.html`: página própria de cada local (`?cnes=<código>` para o cadastro oficial, `?id=<uuid>` para parceiro), com mapa, contatos, exames, convênios, avaliações, dados estruturados para o Google e, nos parceiros com agenda, escolha do horário com confirmação na hora. A busca abre um local direto com `perto.html?local=cnes:<código>` ou `?local=imed:<uuid>`.
+- `sobre.html` e `termos.html`: quem somos (responsável técnico médico) e termos de uso.
 - `cidades/`: páginas por cidade e por tipo, geradas por `scripts/gerar-cidades.mjs` (para o Google), com `sitemap.xml` e `robots.txt`.
 - `parceiros.html`: cadastro de clínicas e médicos interessados em parceria.
 - `exames/`: guias de preparo dos exames.
@@ -72,6 +74,7 @@ Estados tratados na tela:
 - **Avaliações:** `reviews`, uma por pedido concluído. `place_ratings` e `place_reviews` são públicas. A equipe do IMED pode ocultar (`status = 'hidden'`).
 - **Reivindicar cadastro:** `establishment_claims` → no `painel.html`, a equipe do IMED aprova (`approve_claim`): o estabelecimento vira clínica parceira publicada e quem pediu vira dono (`clinic_members`).
 - **Painel da clínica:** `update_my_clinic` (dados, horários, convênios, especialidades) e `set_my_clinic_exams` (exames e preços).
+- **Agenda com horário:** a clínica monta a agenda semanal (`clinic_schedules`, via `set_my_schedule`) e os bloqueios (`clinic_blocks`, via `add_my_block`/`remove_my_block`) na aba Agenda do painel. O site mostra os horários livres (`available_slots`) e o pedido com `slot_start` já sai **confirmado**; o gatilho do banco recusa horário ocupado (erro 23P01) e o índice único impede duas reservas no mesmo horário.
 - **Admins:** e-mails em `admin_emails`.
 
 ### Configurar uma vez (no painel do Supabase)

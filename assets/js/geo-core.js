@@ -426,12 +426,18 @@ export const protocolFromId = (id) => `IMED-${id.replace(/-/g, '').slice(0, 8).t
 export const PERIODS = { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite', qualquer: 'Qualquer horário' };
 export const BOOKING_DAYS = 90;
 
+// v.slot (horário exato, ISO) troca a data e o período: vale para clínica parceira com agenda.
 export function validateBooking(v, today = spDate(0), maxDate = spDate(BOOKING_DAYS)) {
   const err = {};
   if (!v.exam) err.exam = 'Escolha o exame ou o tipo de atendimento.';
-  if (!v.date) err.date = 'Escolha a data que prefere.';
-  else if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date) || v.date < today || v.date > maxDate) err.date = `Escolha uma data entre hoje e os próximos ${BOOKING_DAYS} dias.`;
-  if (!PERIODS[v.period]) err.period = 'Escolha um período.';
+  if (v.slot) {
+    const t = spDateTime(v.slot);
+    if (!t || t.date < today || t.date > maxDate) err.slot = 'Escolha um dos horários livres.';
+  } else {
+    if (!v.date) err.date = 'Escolha a data que prefere.';
+    else if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date) || v.date < today || v.date > maxDate) err.date = `Escolha uma data entre hoje e os próximos ${BOOKING_DAYS} dias.`;
+    if (!PERIODS[v.period]) err.period = 'Escolha um período.';
+  }
   if (String(v.name ?? '').trim().length < 2) err.name = 'Digite seu nome.';
   if (!isValidPhone(onlyDigits(v.phone))) err.phone = 'Digite um celular com DDD, por exemplo (11) 98765-4321.';
   if (v.email && !isValidEmail(v.email)) err.email = 'Confira o e-mail ou deixe em branco.';
@@ -445,6 +451,8 @@ export function bookingRow(place, v, id, extra = {}) {
   const imed = place.source === 'imed';
   const notes = String(v.notes ?? '').trim();
   const email = String(v.email ?? '').trim().toLowerCase();
+  // Com horário: o banco confere se está livre e já grava o pedido como confirmado.
+  const slot = v.slot ? spDateTime(v.slot) : null;
   return {
     id,
     clinic_id: imed ? place.clinic_id : null,
@@ -454,13 +462,14 @@ export function bookingRow(place, v, id, extra = {}) {
     place_address: place.address ? place.address.slice(0, 300) : null,
     place_phone: place.phone ? place.phone.slice(0, 30) : null,
     exam_code: v.exam,
-    preferred_date: v.date,
-    preferred_period: v.period,
+    preferred_date: slot ? slot.date : v.date,
+    preferred_period: slot ? periodOfTime(slot.time) : v.period,
     patient_name: String(v.name).trim().replace(/\s+/g, ' ').slice(0, 120),
     patient_phone: onlyDigits(v.phone),
     patient_email: email || null,
     notes: notes ? notes.slice(0, 500) : null,
     consent: true,
+    ...(slot ? { slot_start: new Date(v.slot).toISOString() } : {}),
     ...extra,
   };
 }
@@ -481,7 +490,7 @@ export const PREP = {
 };
 
 const STATUS_PT = {
-  pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado',
+  pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', confirmado: 'Confirmado',
   cancelled: 'Cancelado', completed: 'Concluído',
 };
 export const statusLabel = (status) => STATUS_PT[status] ?? '';
@@ -511,11 +520,15 @@ const nextDay = (iso) => {
 };
 
 // Arquivo .ics com o pedido (dia inteiro ou faixa do período) e lembrete um dia antes.
-export function icsFile({ id, title, date, period, description = '', url = '' }, now = Date.now()) {
+// Com slot (horário exato, ISO): evento na hora marcada, com duração de `minutes` minutos, já confirmado.
+export function icsFile({ id, title, date, period, slot = null, minutes = 30, description = '', url = '' }, now = Date.now()) {
+  const at = slot ? spDateTime(slot) : null;
+  if (slot && !at) throw new Error('horário inválido');
+  if (at) date = at.date;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new Error('data inválida');
   const day = date.replace(/-/g, '');
   const stamp = new Date(now).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-  const h = ICS_HOURS[period];
+  const h = at ? [at.time, spDateTime(new Date(new Date(slot).getTime() + minutes * 60000).toISOString())] : ICS_HOURS[period];
   const lines = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//IMED//Pedidos de agendamento//PT-BR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
   ];
@@ -524,13 +537,213 @@ export function icsFile({ id, title, date, period, description = '', url = '' },
       'TZOFFSETFROM:-0300', 'TZOFFSETTO:-0300', 'TZNAME:-03', 'END:STANDARD', 'END:VTIMEZONE');
   }
   lines.push('BEGIN:VEVENT', `UID:${icsEscape(id || stamp)}@imed`, `DTSTAMP:${stamp}`);
-  if (h) lines.push(`DTSTART;TZID=America/Sao_Paulo:${day}T${h[0]}0000`, `DTEND;TZID=America/Sao_Paulo:${day}T${h[1]}0000`);
+  if (at) {
+    const end = h[1];
+    lines.push(`DTSTART;TZID=America/Sao_Paulo:${day}T${at.time.replace(':', '')}00`,
+      `DTEND;TZID=America/Sao_Paulo:${end.date.replace(/-/g, '')}T${end.time.replace(':', '')}00`);
+  } else if (h) lines.push(`DTSTART;TZID=America/Sao_Paulo:${day}T${h[0]}0000`, `DTEND;TZID=America/Sao_Paulo:${day}T${h[1]}0000`);
   else lines.push(`DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${nextDay(date).replace(/-/g, '')}`);
   lines.push(`SUMMARY:${icsEscape(title)}`);
   if (description) lines.push(`DESCRIPTION:${icsEscape(description)}`);
   if (url) lines.push(`URL:${String(url).replace(/[\r\n]/g, '')}`);
-  lines.push('STATUS:TENTATIVE', 'TRANSP:OPAQUE',
+  lines.push(at ? 'STATUS:CONFIRMED' : 'STATUS:TENTATIVE', 'TRANSP:OPAQUE',
     'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Amanhã: ${title}`)}`, 'TRIGGER:-P1D', 'END:VALARM',
     'END:VEVENT', 'END:VCALENDAR');
   return lines.map(icsFold).join('\r\n') + '\r\n';
+}
+
+/* ======================= horários com hora marcada (agenda das clínicas parceiras) ======================= */
+const SP_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+// Dia e hora de um instante no fuso de São Paulo: { date: 'AAAA-MM-DD', time: 'HH:MM' }. Inválido: null.
+export function spDateTime(iso) {
+  const d = new Date(iso);
+  if (iso == null || iso === '' || Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(SP_FMT.formatToParts(d).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour === '24' ? '00' : p.hour}:${p.minute}` };
+}
+
+export const periodOfTime = (hhmm) => (hhmm < '12:00' ? 'manha' : hhmm < '18:00' ? 'tarde' : 'noite');
+
+// Próximos n dias (a partir de hoje, em São Paulo), como 'AAAA-MM-DD'.
+export const nextDays = (n, now = Date.now()) => Array.from({ length: n }, (_, i) => spDate(i, now));
+
+// Horários livres (linhas de available_slots) agrupados por dia de São Paulo, em ordem.
+export function groupSlots(rows) {
+  const byDay = new Map();
+  const seen = new Set();
+  for (const r of Array.isArray(rows) ? rows : []) {
+    const iso = r?.slot_start;
+    const t = spDateTime(iso);
+    if (!t) continue;
+    const key = new Date(iso).toISOString();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!byDay.has(t.date)) byDay.set(t.date, []);
+    byDay.get(t.date).push({ iso: key, time: t.time });
+  }
+  for (const list of byDay.values()) list.sort((a, b) => a.iso.localeCompare(b.iso));
+  return byDay;
+}
+
+// Aba do dia: { wd: 'qui', day: '05/11' }.
+export function dayTab(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '');
+  return { wd, day: `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}` };
+}
+
+// "quinta-feira, 05 de novembro às 09:30" (fuso de São Paulo).
+export function formatSlot(iso) {
+  const t = spDateTime(iso);
+  return t ? `${formatDateLong(t.date)} às ${t.time}` : '';
+}
+
+// O banco recusa o horário que acabou de ser ocupado (23P01) ou que outra pessoa pegou ao mesmo tempo (23505).
+export function isSlotTaken(err) {
+  const code = err?.data?.code ?? err?.code;
+  return err?.status === 409 || code === '23P01' || code === '23505';
+}
+
+export const examLabel = (c) => EXAMS[c]?.n ?? (c === 'consulta' ? 'Consulta' : 'Outro atendimento');
+
+// Resumo do pedido guardado no aparelho (imed_appts), lido pela página inicial e pela conta.
+export function localAppt(p, v, id, token, now = Date.now()) {
+  const at = v.slot ? spDateTime(v.slot) : null;
+  return {
+    type: 'pedido', code: protocolFromId(id), id, token, place_key: p.id, name: p.name,
+    exam: Object.hasOwn(PREP, v.exam ?? '') ? v.exam : null, items: [examLabel(v.exam)],
+    date: at ? at.date : v.date, period: at ? periodOfTime(at.time) : v.period,
+    ...(at ? { slot: new Date(v.slot).toISOString() } : {}),
+    status: at ? 'confirmado' : 'pendente', created: new Date(now).toISOString(),
+  };
+}
+
+// Lembrete .ics do pedido (ou do horário confirmado), com o preparo do exame.
+export function bookingIcs(p, v, id, site, now = Date.now()) {
+  const guide = EXAMS[v.exam]?.slug;
+  const title = v.exam === 'consulta' || v.exam === 'outro' ? `${examLabel(v.exam)} — ${p.name}` : `Exame: ${examLabel(v.exam)} — ${p.name}`;
+  const description = [
+    `${v.slot ? 'Agendamento' : 'Pedido'} ${protocolFromId(id)} · ${p.name}${p.address ? ` · ${p.address}` : ''}`,
+    PREP[v.exam] ? `Preparo: ${PREP[v.exam]}` : '',
+    v.slot ? 'Horário confirmado pelo IMED. Chegue com 15 minutos de antecedência.' : 'Confirme o horário com o IMED. O horário só fica garantido depois da confirmação.',
+    guide ? `Guia do exame: ${site}exames/${guide}.html#preparo` : '',
+    `IMED: ${site}`,
+  ].filter(Boolean).join('\n');
+  return icsFile({ id, title, date: v.date, period: v.period, slot: v.slot || null, description, url: site }, now);
+}
+
+/* ======================= página de cada local (local.html) ======================= */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const isCnesCode = (v) => /^\d{7}$/.test(String(v ?? ''));
+export const isUuid = (v) => UUID_RE.test(String(v ?? ''));
+
+// "cnes:1234567" ou "imed:<uuid>" → { source, key }; outra coisa → null.
+export function parseLocalRef(v) {
+  const m = /^(cnes|imed):(.+)$/.exec(String(v ?? '').trim());
+  if (!m) return null;
+  if (m[1] === 'cnes' && isCnesCode(m[2])) return { source: 'cnes', key: m[2] };
+  if (m[1] === 'imed' && isUuid(m[2])) return { source: 'imed', key: m[2].toLowerCase() };
+  return null;
+}
+
+// Endereço da página completa de um local (só cadastro oficial e parceiros têm página).
+export function localUrl(p) {
+  if (p?.source === 'cnes' && isCnesCode(p.id.slice(5))) return `local.html?cnes=${p.id.slice(5)}`;
+  if (p?.source === 'imed' && isUuid(p.clinic_id)) return `local.html?id=${p.clinic_id}`;
+  return null;
+}
+
+export const ESTABLISHMENT_SELECT = 'cnes,name,legal_name,kind,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,location,city_ibge,municipalities(name,uf,cnes_code)';
+export const CLINIC_SELECT = '*,clinic_exams(exam_code,price_cents,price_updated_at)';
+
+// Consultas REST (PostgREST) para abrir um local pela referência.
+export function localPaths(ref) {
+  if (ref?.source === 'cnes') {
+    return {
+      main: `establishments?select=${ESTABLISHMENT_SELECT}&cnes=eq.${ref.key}`,
+      partner: `clinics?select=id&cnes=eq.${ref.key}&status=eq.published`,
+    };
+  }
+  if (ref?.source === 'imed') return { main: `clinics?select=${CLINIC_SELECT}&id=eq.${ref.key}&status=eq.published` };
+  return null;
+}
+
+// Ponto vindo do banco: GeoJSON (objeto ou texto) ou EWKB em hexadecimal. Sem coordenadas válidas: null.
+export function pointFromGeo(g) {
+  let lng, lat;
+  if (typeof g === 'string' && /^\s*\{/.test(g)) { try { g = JSON.parse(g); } catch { return null; } }
+  if (g && typeof g === 'object' && g.type === 'Point' && Array.isArray(g.coordinates)) [lng, lat] = g.coordinates.map(Number);
+  else if (typeof g === 'string' && /^[0-9a-f]+$/i.test(g) && g.length >= 42) {
+    const bytes = new Uint8Array(g.match(/../g).map((h) => parseInt(h, 16)));
+    const dv = new DataView(bytes.buffer);
+    const le = bytes[0] === 1;
+    const type = dv.getUint32(1, le);
+    if ((type & 0xff) !== 1) return null;
+    const off = type & 0x20000000 ? 9 : 5;
+    if (bytes.length < off + 16) return null;
+    lng = dv.getFloat64(off, le); lat = dv.getFloat64(off + 8, le);
+  } else return null;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null;
+  return { lat, lng };
+}
+
+// Linha da tabela establishments (com municipalities) no mesmo formato da busca. Sem distância.
+export function establishmentToPlace(r) {
+  const pt = pointFromGeo(r.location);
+  const m = r.municipalities ?? {};
+  const p = normalizeCnes({ ...r, city: m.name ?? null, uf: m.uf ?? null, city_code: m.cnes_code ?? null, lat: pt?.lat ?? null, lng: pt?.lng ?? null }, pt ?? { lat: 0, lng: 0 });
+  return { ...p, distance_m: null, city: m.name ?? null, uf: m.uf ?? null, legal_name: r.legal_name ?? null, sus: r.sus === true, susKnown: typeof r.sus === 'boolean' };
+}
+
+// Linha da tabela clinics (com clinic_exams) no mesmo formato da busca. Sem distância.
+export function clinicToPlace(r) {
+  const pt = pointFromGeo(r.location);
+  const exams = (r.clinic_exams ?? []).filter((e) => EXAMS[e.exam_code]).sort((a, b) => a.exam_code.localeCompare(b.exam_code))
+    .map((e) => ({ code: e.exam_code, price_cents: e.price_cents ?? null, price_updated_at: e.price_updated_at ?? null }));
+  const p = normalizeImedRow({ ...r, exams, lat: pt?.lat ?? null, lng: pt?.lng ?? null }, pt ?? { lat: 0, lng: 0 });
+  const priceDates = Object.fromEntries(exams.filter((e) => e.price_updated_at).map((e) => [e.code, e.price_updated_at]));
+  return { ...p, distance_m: null, city: r.city ?? null, uf: r.state ?? null, priceDates };
+}
+
+// Título e descrição da página de um local, só com o que o cadastro tem.
+export function localTitle(p) {
+  return p.city && p.uf ? `${p.name} em ${p.city} - ${p.uf} | IMED` : `${p.name} | IMED`;
+}
+export function localDescription(p) {
+  const where = [p.city && p.uf ? `${p.city} - ${p.uf}` : p.city].filter(Boolean).join('');
+  const exams = p.services.filter((c) => EXAMS[c]).slice(0, 4).map((c) => EXAMS[c].n);
+  const parts = [`${KINDS[p.kind]?.n ?? 'Estabelecimento de saúde'}${where ? ` em ${where}` : ''}.`];
+  parts.push(`Endereço${p.phone ? ', telefone' : ''}${exams.length ? `, exames (${exams.join(', ')})` : ''} e como agendar pelo IMED.`);
+  if (p.source === 'cnes' && p.sus) parts.push('Atende SUS.');
+  return parts.join(' ').slice(0, 300);
+}
+
+const SCHEMA_TYPE = { hospital: 'Hospital', laboratorio: 'DiagnosticLab', imagem: 'DiagnosticLab', clinica: 'MedicalClinic' };
+const dropEmpty = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v != null && v !== '' && !(Array.isArray(v) && !v.length)));
+
+// Dados estruturados (schema.org) do local. Nota só quando há avaliações reais publicadas.
+export function localJsonLd(p, url, rating = null) {
+  const street = p.source === 'cnes' ? p.address?.split(' · ')[0] : p.address?.split(' · ').slice(0, -1).join(', ');
+  const ld = dropEmpty({
+    '@context': 'https://schema.org',
+    '@type': SCHEMA_TYPE[p.kind] ?? 'MedicalClinic',
+    name: p.name,
+    url,
+    telephone: p.phone || null,
+    sameAs: p.website || null,
+    address: dropEmpty({
+      '@type': 'PostalAddress', streetAddress: street || null, addressLocality: p.city || null, addressRegion: p.uf || null,
+      postalCode: p.cep || null, addressCountry: 'BR',
+    }),
+    geo: Number.isFinite(p.lat) && Number.isFinite(p.lng) ? { '@type': 'GeoCoordinates', latitude: p.lat, longitude: p.lng } : null,
+    medicalSpecialty: p.specialties?.length ? p.specialties : null,
+    isAcceptingNewPatients: p.source === 'imed' && p.accepts_online_booking ? true : null,
+  });
+  if (rating && Number(rating.reviews) > 0 && Number.isFinite(Number(rating.rating))) {
+    ld.aggregateRating = { '@type': 'AggregateRating', ratingValue: Number(rating.rating), reviewCount: Number(rating.reviews), bestRating: 5, worstRating: 1 };
+  }
+  return ld;
 }

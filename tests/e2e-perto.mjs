@@ -66,14 +66,14 @@ const CNES_ROWS = [
   { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', cnes_type: 39, address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5655, lng: -46.6520, distance_m: 640, location_source: 'endereco', phone: '(11) 3000-2000', shift: 'Manhã e tarde', open_24h: false, sus: true, services: ['lab'], specialties: [], cnes_updated_at: '2026-08-02' },
 ];
 
-async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, ratings, reviews } = {}) {
+async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, ratings, reviews, scheduled = [], rest } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block',
     ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
-  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [], ratings: [], reviews: [] };
+  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [], ratings: [], reviews: [], schedule: [], rest: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -108,6 +108,18 @@ async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass,
     log.reviews.push(body);
     if (reviews) return reviews(route, body);
     return json(route, (REVIEWS[body.p_key] ?? []).slice(0, body.p_limit));
+  });
+  await context.route(`${REST}rpc/clinics_with_schedule`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.schedule.push(body);
+    return json(route, body.p_ids.filter((id) => scheduled.includes(id)).map((id) => ({ clinic_id: id })));
+  });
+  await context.route((u) => u.href.startsWith(`${REST}establishments`) || u.href.startsWith(`${REST}clinics`), async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+    const u = new URL(route.request().url());
+    log.rest.push(u.pathname.split('/').pop() + u.search);
+    return rest ? rest(route, u) : json(route, []);
   });
   await context.route(`${REST}appointment_requests`, async (route) => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
@@ -764,6 +776,94 @@ await scenario('celular (390px): selos, filtros, faixa de preço e detalhes sem 
   assert.ok(ov2 <= 0, `sem rolagem lateral (${ov2}px)`);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+const PARTNER_ID = PARTNER_ROWS[0].id;
+await scenario('parceiro com agenda online: selo no cartão e botão "Ver horários e agendar"', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: fullFn, scheduled: [PARTNER_ID] });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.waitForSelector('.pc.imed .bd-agenda');
+  assert.deepEqual(log.schedule[0].p_ids.sort(), PARTNER_ROWS.map((r) => r.id).sort(), 'pergunta só pelos parceiros exibidos');
+  const card = page.locator(`.pc[data-id="imed:${PARTNER_ID}"]`);
+  assert.match(await card.textContent(), /Agenda online/);
+  assert.match(await card.getAttribute('aria-label'), /Agenda online/);
+  const other = page.locator('.pc:has-text("Clínica Jardins Verificada")');
+  assert.equal(await other.locator('.bd-agenda').count(), 0, 'sem agenda, sem selo');
+  assert.match(await other.textContent(), /Agenda pelo IMED/);
+  assert.equal(await page.locator('.pc:has-text("Hospital Santa Exemplo") .bd-agenda').count(), 0);
+  await card.click();
+  await page.waitForSelector('.sh-ov.open');
+  const btn = page.locator('#sheet [data-book-slots]');
+  assert.match(await btn.textContent(), /Ver horários e agendar/);
+  assert.equal(await btn.getAttribute('href'), `local.html?id=${PARTNER_ID}#agendar`);
+  assert.equal(await page.locator('#sheet [data-book]').count(), 0, 'não abre o pedido sem horário');
+  assert.equal(await page.getAttribute('#sheet .dt-full a', 'href'), `local.html?id=${PARTNER_ID}`);
+  await shot(page, '23-agenda-online');
+  await page.keyboard.press('Escape');
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  assert.equal(await page.getAttribute('#sheet .dt-full a', 'href'), 'local.html?cnes=2077485', 'CNES também tem página completa');
+  assert.match(await page.textContent('#sheet [data-book]'), /Pedir ao IMED para agendar/);
+  await page.keyboard.press('Escape');
+  await page.click('.pc:has-text("Clínica Jardins Verificada")');
+  assert.match(await page.textContent('#sheet [data-book]'), /Solicitar agendamento/, 'parceiro sem agenda segue com o pedido');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+// PostgREST devolve geography como EWKB em hexadecimal (o caso real em produção).
+const ewkb = (lng, lat) => {
+  const b = Buffer.alloc(25);
+  b.writeUInt8(1, 0); b.writeUInt32LE(0x20000001, 1); b.writeUInt32LE(4326, 5);
+  b.writeDoubleLE(lng, 9); b.writeDoubleLE(lat, 17);
+  return b.toString('hex').toUpperCase();
+};
+const EST_ROW = { cnes: '2077485', name: 'Hospital Santa Exemplo', legal_name: null, kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César', cep: '01409001', phone: '(11) 3141-1000', shift: null, open_24h: true, sus: false, services: ['rm', 'tc', 'rx'], specialties: ['Cardiologia'], cnes_updated_at: '2026-09-15', location_source: 'cnes', location: ewkb(-46.6602, -23.5598), city_ibge: 3550308, municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 } };
+const restLocal = (route, u) => {
+  if (u.pathname.endsWith('/establishments')) return json(route, u.searchParams.get('cnes') === 'eq.2077485' ? [EST_ROW] : []);
+  return json(route, []);
+};
+
+await scenario('?local=cnes:… abre o local direto: busca em volta dele e mostra o detalhe', async () => {
+  const { page, log, errors, context } = await newPage(browser, { geo: false, fn: fullFn, rest: restLocal });
+  await page.goto(`${BASE}perto.html?local=cnes:2077485`);
+  await page.waitForSelector('.sh-ov.open');
+  assert.match(await page.textContent('#shTitle'), /Hospital Santa Exemplo/);
+  assert.ok(log.rest.some((r) => r.startsWith('establishments?select=') && r.includes('cnes=eq.2077485')));
+  assert.ok(log.rest.some((r) => r.startsWith('clinics?select=id&cnes=eq.2077485')), 'confere se virou parceiro');
+  const search = log.fn.find((b) => b.action === 'search');
+  assert.deepEqual([search.lat, search.lng], [-23.56, -46.66], 'origem é o local, arredondada');
+  assert.match(await page.textContent('#count'), /Hospital Santa Exemplo/);
+  const c = await page.evaluate(() => { const m = document.querySelector('#map'); return m && m.getBoundingClientRect().width; });
+  assert.ok(c > 0);
+  await page.keyboard.press('Escape');
+  assert.ok((await names(page)).includes('Hospital Santa Exemplo'));
+  await shot(page, '24-local-direto');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('?local= de parceiro (imed:…) e de local inexistente', async () => {
+  const clinic = { ...PARTNER_ROWS[0], location: { type: 'Point', coordinates: [PARTNER_ROWS[0].lng, PARTNER_ROWS[0].lat] }, status: 'published', clinic_exams: [{ exam_code: 'rm', price_cents: 45000 }] };
+  const rest = (route, u) => (u.pathname.endsWith('/clinics') && u.searchParams.get('id') === `eq.${PARTNER_ID}` ? json(route, [clinic]) : json(route, []));
+  const a = await newPage(browser, { geo: false, fn: fullFn, rest, scheduled: [PARTNER_ID] });
+  await a.page.goto(`${BASE}perto.html?local=imed:${PARTNER_ID}`);
+  await a.page.waitForSelector('.sh-ov.open');
+  assert.match(await a.page.textContent('#shTitle'), /Imagem Paulista Verificada/);
+  await a.page.waitForSelector('#sheet [data-book-slots]');
+  assert.deepEqual(a.errors, []);
+  await a.context.close();
+
+  const b = await newPage(browser, { geo: false, fn: fullFn });
+  await b.page.goto(`${BASE}perto.html?local=cnes:0000000`);
+  await b.page.waitForSelector('#qMsg:not([hidden])');
+  assert.match(await b.page.textContent('#qMsg'), /Não encontramos este local\. Ele pode ter mudado/, 'local inexistente não é "sem localização"');
+  assert.doesNotMatch(await b.page.textContent('#qMsg'), /localização/);
+  assert.equal(b.log.fn.filter((x) => x.action === 'search').length, 0);
+  await b.page.goto(`${BASE}perto.html?local=cnes:abc`);
+  await b.page.waitForSelector('.st h2');
+  assert.match(await b.page.textContent('.st h2'), /Veja o que tem perto de você/, 'referência inválida: página normal');
+  await b.context.close();
 });
 
 await browser.close();

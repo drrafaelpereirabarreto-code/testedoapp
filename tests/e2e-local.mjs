@@ -1,0 +1,495 @@
+// Teste de ponta a ponta da página de cada local (local.html) num navegador de verdade (Playwright),
+// com respostas simuladas do banco (Supabase). Rodar com: node tests/e2e-local.mjs
+// Opcional: SHOTS=pasta node tests/e2e-local.mjs  salva capturas de tela nessa pasta.
+import http from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import * as G from '../assets/js/geo-core.js';
+
+const { chromium } = createRequire(import.meta.url)('playwright');
+
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+const SHOTS = process.env.SHOTS || '';
+const REST = 'https://pyoqiecupxhdzigjudyd.supabase.co/rest/v1/';
+const SITE = 'https://drrafaelpereirabarreto-code.github.io/testedoapp/';
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
+const TILE = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/+F9PQAJYwN6V0E0WwAAAABJRU5ErkJggg==', 'base64');
+
+const server = http.createServer(async (req, res) => {
+  const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  let file = normalize(join(ROOT, path));
+  if (!file.startsWith(ROOT)) { res.writeHead(403).end(); return; }
+  if (path.endsWith('/')) file = join(file, 'index.html');
+  try {
+    const body = await readFile(file);
+    res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' }).end(body);
+  } catch {
+    res.writeHead(404).end('não encontrado');
+  }
+});
+await new Promise((r) => server.listen(8771, '127.0.0.1', r));
+const BASE = 'http://127.0.0.1:8771/';
+
+/* ======================= dados simulados ======================= */
+// PostgREST devolve geography como EWKB em hexadecimal (o caso real em produção, sem Accept: application/geo+json).
+const ewkb = (lng, lat) => {
+  const b = Buffer.alloc(25);
+  b.writeUInt8(1, 0); b.writeUInt32LE(0x20000001, 1); b.writeUInt32LE(4326, 5);
+  b.writeDoubleLE(lng, 9); b.writeDoubleLE(lat, 17);
+  return b.toString('hex').toUpperCase();
+};
+const EST = {
+  '2077485': {
+    cnes: '2077485', name: 'Hospital Santa Exemplo', legal_name: 'Associação Santa Exemplo', kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625',
+    neighborhood: 'Cerqueira César', cep: '01409001', phone: '(11) 3141-1000', shift: 'Manhã, tarde e noite', open_24h: false, sus: true,
+    services: ['rm', 'tc'], specialties: ['Cardiologia', 'Ortopedia'], cnes_updated_at: '2026-09-15', location_source: 'cnes',
+    location: ewkb(-46.6602, -23.5598), city_ibge: 3550308, municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 },
+  },
+  '6543210': {
+    cnes: '6543210', name: 'Laboratório Sem Mapa', legal_name: null, kind: 'laboratorio', address_line: 'Alameda Santos, 200',
+    neighborhood: 'Bela Vista', cep: null, phone: null, shift: null, open_24h: false, sus: null,
+    services: ['lab'], specialties: [], cnes_updated_at: null, location_source: null, location: null, city_ibge: 3550308,
+    municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 },
+  },
+  '7654321': {
+    cnes: '7654321', name: 'Imagem Paulista (CNES)', legal_name: null, kind: 'imagem', address_line: 'Av. Paulista, 1500', neighborhood: 'Bela Vista',
+    cep: '01310200', phone: null, shift: null, open_24h: false, sus: false, services: [], specialties: [], cnes_updated_at: null,
+    location_source: 'cnes', location: { type: 'Point', coordinates: [-46.6565, -23.5625] }, city_ibge: 3550308, municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 },
+  },
+};
+const PARTNER_ID = 'bbbbbbbb-0000-4000-8000-000000000011';
+const NOSCHED_ID = 'bbbbbbbb-0000-4000-8000-000000000012';
+const CLINICS = {
+  [PARTNER_ID]: {
+    id: PARTNER_ID, name: 'Imagem Paulista Verificada', kind: 'imagem', description: 'Centro de diagnóstico por imagem <b>na Paulista</b>.', address_line: 'Av. Paulista, 1500',
+    neighborhood: 'Bela Vista', city: 'São Paulo', state: 'SP', cep: '01310-200', location: { type: 'Point', coordinates: [-46.6565, -23.5625] },
+    phone: '(11) 3222-1000', whatsapp: '5511988887777', email: 'contato@imagempaulista.com.br', website: 'https://imagempaulista.com.br',
+    specialties: ['Radiologia'], opening_hours: { seg: '07:00–19:00', sab: '08:00–12:00' }, accepts_online_booking: true, status: 'published', is_demo: false,
+    insurances: ['Bradesco Saúde', 'SulAmérica'], cnes: '7654321',
+    clinic_exams: [{ exam_code: 'tc', price_cents: 30000, price_updated_at: '2026-10-01T10:00:00Z' }, { exam_code: 'rm', price_cents: 45000, price_updated_at: '2026-10-01T01:30:00+00:00' }, { exam_code: 'rx', price_cents: null, price_updated_at: null }],
+  },
+  [NOSCHED_ID]: {
+    id: NOSCHED_ID, name: 'Clínica Jardins Verificada', kind: 'clinica', description: null, address_line: 'Rua Oscar Freire, 100', neighborhood: 'Jardins', city: 'São Paulo', state: 'SP', cep: null,
+    location: { type: 'Point', coordinates: [-46.665, -23.5672] }, phone: null, whatsapp: null, email: null, website: null, specialties: ['Cardiologia'], opening_hours: null,
+    accepts_online_booking: true, status: 'published', is_demo: false, insurances: ['Amil'], cnes: null, clinic_exams: [{ exam_code: 'ecg', price_cents: null, price_updated_at: null }],
+  },
+};
+const PARTNER_BY_CNES = { '7654321': PARTNER_ID };
+const SCHEDULED = new Set([PARTNER_ID]);
+const RATINGS = { 'cnes:2077485': { rating: 4.6, reviews: 12 } };
+const REVIEWS = { 'cnes:2077485': [
+  { rating: 5, comment: '<b>Ótimo</b> atendimento, rápido.', author_name: 'Maria Silva', created_at: '2026-10-20T13:00:00Z' },
+  { rating: 4, comment: null, author_name: 'João', created_at: '2026-10-01T02:00:00+00:00' },
+] };
+
+// Horários livres (em São Paulo): amanhã 09:00, 09:30 e 14:00; daqui a 3 dias 08:00. Tomografia só amanhã 16:00.
+const D1 = G.spDate(1), D3 = G.spDate(3);
+const pg = (local) => new Date(local).toISOString().replace('.000Z', '+00:00');
+const SLOTS = {
+  rm: [`${D1}T09:00:00-03:00`, `${D1}T09:30:00-03:00`, `${D1}T14:00:00-03:00`, `${D3}T08:00:00-03:00`].map(pg),
+  tc: [`${D1}T16:00:00-03:00`].map(pg),
+};
+
+const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
+const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: CORS });
+const preflight = (route) => route.request().method() === 'OPTIONS' && (route.fulfill({ status: 204, headers: CORS }), true);
+
+async function newPage(browser, { mobile = false, tz = 'America/Sao_Paulo', est, clinics, insert, slots, initScript } = {}) {
+  const context = await browser.newContext({
+    viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
+    deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz, serviceWorkers: 'block', acceptDownloads: true,
+  });
+  if (initScript) await context.addInitScript(initScript);
+  const log = { est: [], clinics: [], rpc: [], insert: [] };
+  await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+  await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
+  await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
+  await context.route((u) => u.href.startsWith(`${REST}establishments`), async (route) => {
+    if (preflight(route)) return;
+    const u = new URL(route.request().url());
+    log.est.push(u.search);
+    if (est) return est(route, u);
+    const cnes = u.searchParams.get('cnes')?.replace('eq.', '');
+    return json(route, EST[cnes] ? [EST[cnes]] : []);
+  });
+  await context.route((u) => u.href.startsWith(`${REST}clinics`), async (route) => {
+    if (preflight(route)) return;
+    const u = new URL(route.request().url());
+    log.clinics.push(u.search);
+    if (clinics) return clinics(route, u);
+    const id = u.searchParams.get('id')?.replace('eq.', '');
+    const cnes = u.searchParams.get('cnes')?.replace('eq.', '');
+    if (cnes) return json(route, PARTNER_BY_CNES[cnes] ? [{ id: PARTNER_BY_CNES[cnes] }] : []);
+    return json(route, CLINICS[id] ? [CLINICS[id]] : []);
+  });
+  await context.route((u) => u.href.startsWith(`${REST}rpc/`), async (route) => {
+    if (preflight(route)) return;
+    const fn = new URL(route.request().url()).pathname.split('/').pop();
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.rpc.push({ fn, body });
+    if (fn === 'place_ratings') return json(route, body.p_keys.filter((k) => RATINGS[k]).map((k) => ({ place_key: k, ...RATINGS[k] })));
+    if (fn === 'place_reviews') return json(route, (REVIEWS[body.p_key] ?? []).slice(0, body.p_limit));
+    if (fn === 'clinics_with_schedule') return json(route, body.p_ids.filter((id) => SCHEDULED.has(id)).map((id) => ({ clinic_id: id })));
+    if (fn === 'available_slots') {
+      if (slots) return slots(route, body, log);
+      return json(route, (SLOTS[body.p_exam] ?? []).map((s) => ({ slot_start: s })));
+    }
+    return json(route, []);
+  });
+  await context.route(`${REST}appointment_requests`, async (route) => {
+    if (preflight(route)) return;
+    log.insert.push({ body: JSON.parse(route.request().postData()), headers: route.request().headers() });
+    return (insert ?? ((r) => r.fulfill({ status: 201, body: '', headers: CORS })))(route, log);
+  });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
+  return { context, page, log, errors };
+}
+
+const shot = async (page, name) => { if (SHOTS) { await page.waitForTimeout(450); await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true }); } };
+const results = [];
+async function scenario(name, fn) {
+  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 4).join('\n  ')}`); }
+}
+const ld = (page) => page.$eval('script[type="application/ld+json"]', (s) => JSON.parse(s.textContent));
+const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+const fillPerson = async (page) => {
+  await page.fill('#bkName', 'Ana Teste');
+  await page.fill('#bkPhone', '11987654321');
+  await page.check('input[name="consent"]');
+};
+
+const browser = await chromium.launch();
+
+await scenario('ficha do CNES: dados reais, SUS, turno com ressalva, mapa, avaliações e SEO', async () => {
+  // Navegador em outro fuso: datas continuam as de São Paulo. Localização vem como EWKB (texto hexadecimal).
+  const { page, errors, context } = await newPage(browser, { tz: 'Asia/Tokyo' });
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('#lcName');
+  await page.waitForSelector('#avaliacoes:not([hidden]) li');
+  assert.equal(await page.textContent('h1'), 'Hospital Santa Exemplo');
+  const head = await page.textContent('.lc-head');
+  assert.match(head, /Cadastro oficial/);
+  assert.match(head, /Atende SUS/);
+  assert.match(head, /Hospital · São Paulo - SP/);
+  assert.match(head, /Rua Peixoto Gomide, 625 · Cerqueira César · São Paulo - SP · CEP 01409-001/);
+  assert.match(head, /Razão social: Associação Santa Exemplo/);
+  assert.match(head, /4,6 \(12 avaliações\)/);
+  assert.equal(await page.locator('.lc-head a:has-text("Parceiro verificado")').count(), 0);
+  assert.match(await page.textContent('#horario'), /Manhã, tarde e noite.*não é o horário exato/s, 'turno com a ressalva');
+  assert.match(await page.textContent('#atendimento'), /Atende SUS, segundo o cadastro oficial/);
+  assert.match(await page.textContent('#exames'), /Ressonância.*Tomografia/s);
+  assert.ok(!/R\$/.test(await page.textContent('#exames')), 'sem preço para quem não é parceiro');
+  assert.match(await page.textContent('#especialidades'), /Cardiologia.*Ortopedia/s);
+  // mapa com o ponto
+  await page.waitForSelector('#lcMap .leaflet-marker-icon');
+  assert.equal(await page.locator('#lcMap .leaflet-marker-icon').count(), 1);
+  // avaliações: HTML escapado
+  const rv = await page.textContent('#avaliacoes');
+  assert.match(rv, /<b>Ótimo<\/b> atendimento/, 'comentário aparece como texto');
+  assert.equal(await page.locator('#avaliacoes b:has-text("Ótimo")').count(), 0);
+  assert.match(rv, /Maria/);
+  assert.match(rv, /João · set\.? de 2026/, 'mês da avaliação no fuso de São Paulo (30/09 às 23h)');
+  assert.ok(!/Silva/.test(rv), 'só o primeiro nome');
+  // ações
+  const tel = await page.getAttribute('.lc-acts a:has-text("Ligar")', 'href');
+  assert.equal(tel, 'tel:+551131411000');
+  const dir = await page.getAttribute('.lc-acts a:has-text("Como chegar")', 'href');
+  assert.ok(dir.startsWith('https://www.google.com/maps/dir/?api=1&destination='), dir);
+  assert.match(decodeURIComponent(dir), /Rua Peixoto Gomide, 625, Cerqueira César, São Paulo - SP, 01409-001/);
+  assert.equal(await page.getAttribute('.lc-acts a:has-text("Ver no mapa")', 'href'), 'perto.html?local=cnes%3A2077485');
+  assert.equal(await page.getAttribute('a:has-text("Assuma o cadastro")', 'href'), 'reivindicar.html?cnes=2077485');
+  assert.match(await page.textContent('a:has-text("Assuma o cadastro")'), /É o responsável\? Assuma o cadastro/);
+  assert.match(await page.textContent('.lc-rest .note'), /CNES.*atualizados em 15\/09\/2026/s);
+  // SEO
+  assert.equal(await page.title(), 'Hospital Santa Exemplo em São Paulo - SP | IMED');
+  assert.match(await page.getAttribute('meta[name="description"]', 'content'), /^Hospital em São Paulo - SP\..*Atende SUS\.$/);
+  assert.equal(await page.getAttribute('link[rel="canonical"]', 'href'), `${SITE}local.html?cnes=2077485`);
+  const data = await ld(page);
+  assert.equal(data['@type'], 'Hospital');
+  assert.equal(data.name, 'Hospital Santa Exemplo');
+  assert.equal(data.telephone, '(11) 3141-1000');
+  assert.equal(data.address.postalCode, '01409-001');
+  assert.deepEqual(data.geo, { '@type': 'GeoCoordinates', latitude: -23.5598, longitude: -46.6602 });
+  assert.deepEqual(data.aggregateRating, { '@type': 'AggregateRating', ratingValue: 4.6, reviewCount: 12, bestRating: 5, worstRating: 1 }, 'nota real, com os números do banco');
+  await shot(page, 'l01-ficha-cnes');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('ficha do CNES sem avaliações e sem localização: sem nota, sem mapa', async () => {
+  const { page, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?cnes=6543210`);
+  await page.waitForSelector('#lcName');
+  await page.waitForFunction(() => document.querySelector('script[type="application/ld+json"]'));
+  await page.waitForTimeout(300);
+  const data = await ld(page);
+  assert.equal(data['@type'], 'DiagnosticLab');
+  assert.ok(!('aggregateRating' in data), 'sem avaliações, sem AggregateRating');
+  assert.ok(!('geo' in data));
+  assert.equal(await page.locator('#lcMap').count(), 0, 'sem coordenadas, sem mapa');
+  assert.match(await page.textContent('#localizacao'), /não tem a localização exata/);
+  assert.equal(await page.locator('#avaliacoes').isHidden(), true);
+  assert.equal(await page.locator('.lc-rate').count(), 0);
+  assert.equal(await page.locator('.lc-acts a:has-text("Ver no mapa")').count(), 0);
+  assert.equal(await page.locator('#atendimento').count(), 0, 'SUS sem informação não aparece');
+  assert.match(await page.textContent('#horario'), /Horário não informado/);
+  assert.match(await page.textContent('#contato'), /não informou telefone/);
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+await scenario('compartilhar: usa o compartilhamento do celular ou copia o link', async () => {
+  const shared = await newPage(browser, { initScript: () => { navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; } });
+  await shared.page.goto(`${BASE}local.html?cnes=2077485`);
+  await shared.page.click('[data-act="share"]');
+  const d = await shared.page.evaluate(() => window.__shared);
+  assert.equal(d.url, `${SITE}local.html?cnes=2077485`);
+  assert.equal(d.title, 'Hospital Santa Exemplo em São Paulo - SP | IMED');
+  await shared.context.close();
+  const copy = await newPage(browser, { initScript: () => {
+    Object.defineProperty(navigator, 'share', { value: undefined, configurable: true });
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } }, configurable: true });
+  } });
+  await copy.page.goto(`${BASE}local.html?cnes=2077485`);
+  await copy.page.click('[data-act="share"]');
+  await copy.page.waitForSelector('.toast.show');
+  assert.match(await copy.page.textContent('#toast'), /Link copiado/);
+  assert.equal(await copy.page.evaluate(() => window.__copied), `${SITE}local.html?cnes=2077485`);
+  assert.deepEqual(copy.errors, []);
+  await copy.context.close();
+});
+
+await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('#agendar [data-act="pedido"]');
+  assert.match(await page.textContent('#agendar'), /ainda não é parceiro do IMED/);
+  await page.click('#agendar [data-act="pedido"]');
+  await page.click('#bkBtn');
+  assert.ok(await page.locator('[data-f="exam"].bad').count(), 'exige o exame');
+  assert.ok(await page.locator('[data-f="consent"].bad').count(), 'exige o consentimento');
+  assert.equal(log.insert.length, 0);
+  await page.selectOption('#bkExam', 'rm');
+  await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
+  await page.check('input[name="periodo"][value="tarde"]', { force: true });
+  await fillPerson(page);
+  await page.click('#bkBtn');
+  await page.waitForSelector('.lc-ok');
+  assert.match(await page.textContent('.lc-ok'), /Recebemos seu pedido!.*IMED-/s);
+  const row = log.insert[0].body;
+  assert.equal(row.clinic_id, null);
+  assert.equal(row.place_source, 'cnes');
+  assert.equal(row.place_ref, 'cnes:2077485');
+  assert.equal(row.preferred_period, 'tarde');
+  assert.equal(row.consent, true);
+  assert.ok(!('slot_start' in row));
+  assert.match(row.review_token_hash, /^[0-9a-f]{64}$/);
+  assert.equal(log.insert[0].headers.prefer, 'return=minimal');
+  const appts = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
+  assert.equal(appts[0].status, 'pendente');
+  assert.ok(!('slot' in appts[0]));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('parceiro com agenda: preços, horários em São Paulo e agendamento confirmado', async () => {
+  // Navegador em outro fuso: os horários continuam no horário de São Paulo.
+  const { page, log, errors, context } = await newPage(browser, { tz: 'Asia/Tokyo' });
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}`);
+  await page.waitForSelector('.sl-t');
+  const head = await page.textContent('.lc-head');
+  assert.match(head, /Parceiro verificado/);
+  assert.match(head, /Agenda online/);
+  const exams = await page.textContent('#exames');
+  assert.match(exams, /Ressonância preparo\s*R\$\s*450/);
+  assert.match(exams, /Tomografia preparo\s*R\$\s*300/);
+  assert.match(exams, /Raio-X preparo\s*Preço sob consulta/);
+  assert.match(exams, /Ressonância preparo\s*R\$\s*450\s*informado em 30\/09\/2026/, 'data do preço no fuso de São Paulo (01:30 UTC = 30/09 22:30)');
+  assert.match(exams, /Tomografia preparo\s*R\$\s*300\s*informado em 01\/10\/2026/);
+  assert.match(await page.textContent('#atendimento'), /Bradesco Saúde.*SulAmérica/s);
+  assert.match(await page.textContent('#horario'), /Segunda: 07:00–19:00.*Sábado: 08:00–12:00.*Informado pela clínica/s);
+  assert.match(await page.textContent('#sobre'), /<b>na Paulista<\/b>/, 'descrição escapada');
+  assert.equal(await page.getAttribute('.lc-acts a.wa', 'href'), `https://wa.me/5511988887777?text=${encodeURIComponent('Olá! Encontrei vocês pelo IMED e gostaria de agendar.')}`);
+  assert.equal(await page.locator('a:has-text("Assuma o cadastro")').count(), 0);
+  assert.equal(await page.getAttribute('link[rel="canonical"]', 'href'), `${SITE}local.html?id=${PARTNER_ID}`);
+  assert.equal((await ld(page))['@type'], 'DiagnosticLab');
+  assert.ok(!('aggregateRating' in await ld(page)));
+  // horários
+  const call = log.rpc.find((c) => c.fn === 'available_slots');
+  assert.deepEqual(call.body, { p_clinic: PARTNER_ID, p_exam: 'rm', p_from: G.spDate(0), p_days: 14 });
+  assert.equal(await page.locator('.sl-day').count(), 14, 'próximos 14 dias');
+  assert.equal(await page.locator('.sl-day:not([disabled])').count(), 2, 'só dias com horário livre');
+  assert.equal(await page.getAttribute('.sl-day.on', 'data-day'), D1);
+  assert.deepEqual(await page.$$eval('.sl-t', (els) => els.map((e) => e.textContent)), ['09:00', '09:30', '14:00']);
+  await shot(page, 'l02-parceiro-horarios');
+  await page.click(`.sl-day[data-day="${D3}"]`);
+  assert.deepEqual(await page.$$eval('.sl-t', (els) => els.map((e) => e.textContent)), ['08:00']);
+  // outro exame busca de novo
+  await page.selectOption('#slExam', 'tc');
+  await page.waitForFunction(() => document.querySelectorAll('.sl-t').length === 1 && document.querySelector('.sl-t').textContent === '16:00');
+  assert.equal(log.rpc.filter((c) => c.fn === 'available_slots').at(-1).body.p_exam, 'tc');
+  await page.selectOption('#slExam', 'rm');
+  await page.waitForFunction(() => document.querySelectorAll('.sl-t').length === 3);
+  await page.click('.sl-t:has-text("09:30")');
+  await page.waitForSelector('#bookForm[data-mode="slot"]');
+  assert.match(await page.textContent('.sl-chosen'), new RegExp(`Ressonância.*${G.formatDateLong(D1)} às 09:30`, 's'));
+  await page.click('#bkBtn');
+  assert.ok(await page.locator('[data-f="consent"].bad').count(), 'exige o consentimento');
+  assert.equal(log.insert.length, 0);
+  await fillPerson(page);
+  await page.fill('#bkEmail', 'Ana@Exemplo.com');
+  await page.click('#bkBtn');
+  await page.waitForSelector('.lc-ok');
+  const row = log.insert[0].body;
+  const expected = new Date(`${D1}T09:30:00-03:00`).toISOString();
+  assert.equal(row.slot_start, expected, 'envia o horário escolhido');
+  assert.equal(row.clinic_id, PARTNER_ID);
+  assert.equal(row.exam_code, 'rm');
+  assert.equal(row.preferred_date, D1);
+  assert.equal(row.preferred_period, 'manha');
+  assert.equal(row.consent, true);
+  assert.equal(row.patient_email, 'ana@exemplo.com');
+  assert.equal(row.patient_phone, '11987654321');
+  assert.equal(log.insert[0].headers.prefer, 'return=minimal');
+  const ok = await page.textContent('.lc-ok');
+  assert.match(ok, new RegExp(`Agendamento confirmado para ${G.formatDateLong(D1)} às 09:30`));
+  assert.match(ok, /IMED-[0-9A-F]{8}/);
+  await shot(page, 'l03-agendamento-confirmado');
+  // .ics com hora exata
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="ics"]')]);
+  const ics = await readFile(await dl.path(), 'utf8');
+  assert.match(ics, new RegExp(`DTSTART;TZID=America/Sao_Paulo:${D1.replace(/-/g, '')}T093000`));
+  assert.match(ics, new RegExp(`DTEND;TZID=America/Sao_Paulo:${D1.replace(/-/g, '')}T100000`));
+  assert.match(ics, /STATUS:CONFIRMED/);
+  // resumo no aparelho
+  const appts = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
+  assert.equal(appts[0].status, 'confirmado');
+  assert.equal(appts[0].slot, expected);
+  assert.equal(appts[0].place_key, `imed:${PARTNER_ID}`);
+  assert.equal(appts[0].date, D1);
+  assert.match(appts[0].token, /^[0-9a-f]{64}$/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('horário ocupado (409 / 23P01): aviso e horários recarregados', async () => {
+  let taken = false;
+  const { page, log, errors, context } = await newPage(browser, {
+    insert: (r) => { taken = true; return r.fulfill({ status: 409, contentType: 'application/json', headers: CORS, body: JSON.stringify({ code: '23P01', message: 'Este horário não está mais livre. Escolha outro.', details: null, hint: null }) }); },
+    slots: (r, body) => json(r, (SLOTS[body.p_exam] ?? []).filter((s) => !(taken && s === SLOTS.rm[0])).map((s) => ({ slot_start: s }))),
+  });
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}#agendar`);
+  await page.click('.sl-t:has-text("09:00")');
+  await fillPerson(page);
+  const before = log.rpc.filter((c) => c.fn === 'available_slots').length;
+  await page.click('#bkBtn');
+  await page.waitForSelector('#slNotice');
+  assert.match(await page.textContent('#slNotice'), /acabou de ser ocupado/);
+  await page.waitForSelector('.sl-t');
+  assert.equal(log.rpc.filter((c) => c.fn === 'available_slots').length, before + 1, 'busca os horários de novo');
+  assert.deepEqual(await page.$$eval('.sl-t', (els) => els.map((e) => e.textContent)), ['09:30', '14:00'], 'o horário ocupado some');
+  assert.equal(await page.locator('#bookForm').count(), 0);
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'slNotice', 'foco vai para o aviso');
+  assert.equal(await page.evaluate(() => localStorage.getItem('imed_appts')), null, 'nada guardado como agendado');
+  // Ao escolher outro horário, o que o paciente já digitou continua preenchido.
+  await page.click('.sl-t:has-text("09:30")');
+  await page.waitForSelector('#bookForm[data-mode="slot"]');
+  assert.equal(await page.inputValue('#bkName'), 'Ana Teste');
+  assert.equal(await page.inputValue('#bkPhone'), '(11) 98765-4321');
+  assert.ok(await page.isChecked('input[name="consent"]'), 'consentimento mantido');
+  await shot(page, 'l04-horario-ocupado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('parceiro sem agenda: pedido de agendamento, sem horários', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?id=${NOSCHED_ID}`);
+  await page.waitForSelector('#agendar [data-act="pedido"]');
+  assert.equal(log.rpc.filter((c) => c.fn === 'available_slots').length, 0);
+  assert.equal(await page.locator('.bd-agenda').count(), 0);
+  assert.match(await page.textContent('#exames'), /Eletrocardiograma preparo\s*Preço sob consulta/);
+  await page.click('#agendar [data-act="pedido"]');
+  assert.deepEqual(await page.$$eval('#bkExam option', (els) => els.map((e) => e.value)), ['', 'ecg', 'consulta', 'outro'], 'só os exames da clínica');
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+await scenario('CNES que virou parceiro abre a página do parceiro', async () => {
+  const { page, errors, context } = await newPage(browser);
+  await page.goto(`${BASE}local.html?cnes=7654321`);
+  await page.waitForURL(`**/local.html?id=${PARTNER_ID}`);
+  await page.waitForSelector('#lcName');
+  assert.equal(await page.textContent('h1'), 'Imagem Paulista Verificada');
+  // O exame escolhido na busca segue junto no redirecionamento.
+  await page.goto(`${BASE}local.html?cnes=7654321&exame=tc#agendar`);
+  await page.waitForURL(`**/local.html?id=${PARTNER_ID}&exame=tc#agendar`);
+  await page.waitForSelector('.sl-t');
+  assert.equal(await page.inputValue('#slExam'), 'tc');
+  assert.deepEqual(await page.$$eval('.sl-t', (els) => els.map((e) => e.textContent)), ['16:00']);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('não encontrado e erro com "Tentar de novo"', async () => {
+  const nf = await newPage(browser);
+  await nf.page.goto(`${BASE}local.html?cnes=0000000`);
+  await nf.page.waitForSelector('.lc-st h1');
+  assert.equal(await nf.page.textContent('.lc-st h1'), 'Local não encontrado');
+  assert.equal(await nf.page.getAttribute('.lc-st a', 'href'), 'perto.html');
+  assert.equal(await nf.page.getAttribute('meta[name="robots"]', 'content'), 'noindex');
+  const asked = nf.log.clinics.length + nf.log.est.length;
+  await nf.page.goto(`${BASE}local.html?id=nao-e-um-id`);
+  await nf.page.waitForSelector('.lc-st h1');
+  assert.equal(await nf.page.textContent('.lc-st h1'), 'Local não encontrado');
+  assert.equal(nf.log.clinics.length + nf.log.est.length, asked, 'referência inválida nem chega ao banco');
+  await nf.context.close();
+
+  let fail = true;
+  const er = await newPage(browser, { est: (r, u) => (fail ? json(r, { message: 'erro' }, 500) : json(r, [EST[u.searchParams.get('cnes').slice(3)]])) });
+  await er.page.goto(`${BASE}local.html?cnes=2077485`);
+  await er.page.waitForSelector('[data-act="reload"]');
+  assert.match(await er.page.textContent('.lc-st'), /Não foi possível carregar/);
+  fail = false;
+  await er.page.click('[data-act="reload"]');
+  await er.page.waitForSelector('#lcName');
+  assert.equal(await er.page.textContent('h1'), 'Hospital Santa Exemplo');
+  await er.context.close();
+});
+
+await scenario('celular (390px): ficha e agenda sem rolagem lateral', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true });
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('#avaliacoes:not([hidden]) li');
+  assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  await shot(page, 'l05-celular-cnes');
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}`);
+  await page.waitForSelector('.sl-t');
+  assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  const book = await page.$eval('#agendar', (el) => el.getBoundingClientRect().top);
+  const exams = await page.$eval('#exames', (el) => el.getBoundingClientRect().top);
+  assert.ok(book < exams, 'no celular, a agenda vem logo depois do topo');
+  await shot(page, 'l06-celular-horarios');
+  await page.click('.sl-t >> nth=0');
+  await fillPerson(page);
+  assert.ok(await overflow(page) <= 0);
+  await page.click('#bkBtn');
+  await page.waitForSelector('.lc-ok');
+  assert.ok(await overflow(page) <= 0);
+  await shot(page, 'l07-celular-confirmado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await browser.close();
+server.close();
+const failed = results.filter(([s]) => s !== 'ok');
+console.log(`\n${results.length - failed.length}/${results.length} cenários passaram`);
+process.exit(failed.length ? 1 : 0);
