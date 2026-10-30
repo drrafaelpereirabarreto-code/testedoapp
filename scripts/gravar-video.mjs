@@ -201,12 +201,35 @@ async function roteiro(page, tela, cena) {
   await cena('mapa-reais', async () => {
     await semLegenda(page);
     await rolar(page, { ate: '#reais', ms: 2200, folga: 10 });
+    if (movel) {
+      // Celular: a lista dos mais perto vem primeiro; o mapa abre em tela cheia com um toque em "Ver no mapa"
+      // (só aí o Leaflet é baixado) e fecha em "Voltar para a lista".
+      await page.locator('#realList li a').first().waitFor({ timeout: 15000 }).catch(() => {});
+      await pausa(900);
+      await L('Locais reais, do cadastro oficial do Ministério da Saúde (CNES)');
+      await pausa(3000);
+      await semLegenda(page);
+      await tocar(page, '#mapOpen');
+      await page.locator('#realMap .leaflet-tile-loaded').first().waitFor({ timeout: 10000 }).catch(() => {});
+      await pausa(700);
+      await L('No mapa, os mesmos números da lista');
+      await pausa(3200);
+      await semLegenda(page);
+      await tocar(page, '#mapClose');
+      await pausa(900);
+      await rolar(page, { dy: 360, ms: 1800 });
+      await pausa(1400);
+      return;
+    }
     await page.locator('#realMap .leaflet-tile-loaded').first().waitFor({ timeout: 10000 }).catch(() => {});
     await pausa(700);
     await L('Locais reais, do cadastro oficial do Ministério da Saúde (CNES)');
     await pausa(3800);
-    await rolar(page, { dy: movel ? 360 : 260, ms: 1800 });
+    await rolar(page, { dy: 260, ms: 1800 });
     await pausa(1600);
+  }, async () => {
+    // Plano B: o mapa ficou aberto em tela cheia (algo falhou no meio da cena): fecha para a próxima cena.
+    if (await page.locator('#pvMapa.cheio').count()) await page.keyboard.press('Escape');
   });
 
   await cena('busca-exame', async () => {

@@ -23,6 +23,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { simularGeo } from './geo-simulado.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -265,13 +266,17 @@ async function mockSupabase(context, { admin = false, member = false } = {}) {
 
 // mobile: celular de 390 px com toque. motion: 'reduce' liga o "reduzir movimento" do aparelho.
 // session: entra na conta (equipe do IMED); admin/member: o que essa conta é no banco. appts: pedidos do aparelho.
-async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, appts = APPTS, geo = true, lgpd = false } = {}) {
+// geo: localização permitida pelo Playwright (false: o Chromium recusa sem perguntar). geoSim: no lugar dela, a
+// permissão e a localização simuladas (tests/geo-simulado.mjs), para a página inicial perguntar ({estado:'prompt'}),
+// ficar bloqueada ({estado:'denied'}) ou já ter a permissão ({estado:'granted'}), sempre no mesmo ponto.
+async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, appts = APPTS, geo = true, geoSim = null, lgpd = false } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block', reducedMotion: motion, bypassCSP: true, acceptDownloads: true,
-    ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
+    ...(geo && !geoSim ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
+  if (geoSim) await simularGeo(context, { pos: { lat: -23.561234, lng: -46.656789 }, ...geoSim });
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -310,7 +315,13 @@ const PAGES = [
   { name: 'Início (modo leve)', url: 'index.html', motion: 'reduce', open: async (p) => { await p.waitForSelector('#heroLite li a'); await openHome(p); } },
   { name: 'Início · Meus pedidos', url: 'index.html#agenda', open: async (p) => { await p.waitForSelector('.appt'); } },
   { name: 'Início · aviso de privacidade', url: 'index.html', lgpd: true, motion: 'reduce', open: async (p) => { await p.waitForSelector('.lgpd button'); } },
-  { name: 'Início · janela da cidade', url: 'index.html', motion: 'reduce', open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.click('#realChoose'); await p.waitForSelector('.ov.open #citySel'); await waitIdle(p); } },
+  { name: 'Início · janela da cidade', url: 'index.html', motion: 'reduce', open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.waitForSelector('#realList li b'); await p.click('#cityBtn'); await p.waitForSelector('.ov.open #cityQ'); await p.waitForSelector('#cityIdle .cid-op'); await waitIdle(p); } },
+  // Pedido de localização aberto e sem resposta: o aviso fixo no alto (já com o "Não apareceu a pergunta?", aos 8 s)
+  // e o cartão "Aguardando sua permissão…". O foco pelo Tab não pode ficar atrás do aviso (scroll-padding-top).
+  { name: 'Início · aguardando a permissão', url: 'index.html', motion: 'reduce', geoSim: { estado: 'prompt', resposta: 'nunca' }, open: async (p) => { await p.waitForSelector('#reais[data-estado="aguardando"]'); await p.waitForSelector('#geoAviso:not([hidden])'); await p.waitForSelector('#geoAvisoMais:not([hidden])', { timeout: 30000 }); await p.waitForSelector('#heroLite li a'); await waitIdle(p); } },
+  { name: 'Início · localização bloqueada', url: 'index.html', motion: 'reduce', geoSim: { estado: 'denied' }, open: async (p) => { await p.waitForSelector('#reais[data-estado="negada"]'); await p.waitForSelector('#pvEstado .pv-at'); await waitIdle(p); } },
+  // Mapa da tela: no computador, ao lado da lista; no celular, em tela cheia (janela aberta pelo "Ver no mapa").
+  { name: 'Início · mapa', url: 'index.html', motion: 'reduce', geoSim: { estado: 'granted' }, open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.waitForSelector('#realList li b'); if (await p.isVisible('#mapOpen')) { await p.click('#mapOpen'); await p.waitForSelector('#pvMapa.cheio'); } await p.waitForSelector('#realMap .leaflet-marker-icon'); await waitIdle(p); } },
   { name: 'Perto de mim', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc'); await p.waitForFunction(() => !document.querySelector('.pt-more')); } },
   { name: 'Perto · ficha', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc'); await p.click('.pc[data-id] >> nth=0'); await p.waitForSelector('.sh-ov.open'); await p.waitForTimeout(300); } },
   { name: 'Perto · pedido', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc:not(.imed)'); await p.click('.pc:not(.imed) >> nth=0'); await p.waitForSelector('.sh-ov.open [data-book]'); await p.click('.sh-ov.open [data-book]'); await p.waitForSelector('#bookForm'); await p.waitForTimeout(300); } },
@@ -654,7 +665,7 @@ const browser = await chromium.launch();
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, lgpd: def.lgpd });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, lgpd: def.lgpd, geoSim: def.geoSim });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);
@@ -891,51 +902,115 @@ await scenario('teclado: Meus pedidos pelo menu do topo, cancelar com confirmaç
   await context.close();
 });
 
-await scenario('janelas: na página inicial, "Escolha sua cidade" prende o foco, Esc fecha e o foco volta', async () => {
+await scenario('janelas: na página inicial, o seletor de cidade prende o foco, Esc fecha e o foco volta', async () => {
   for (const mobile of [false, true]) {
     const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce' });
     await page.goto(`${BASE}index.html`);
     await page.evaluate(() => document.querySelector('#reais').scrollIntoView());
     await page.waitForSelector('#realList li b');
-    await page.focus('#realChoose');
+    await page.focus('#cityBtn');
     await page.keyboard.press('Enter');
     await page.waitForSelector('.ov.open');
-    await page.waitForFunction(() => document.activeElement?.closest('#sheet'));
+    await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
     assert.equal(await page.getAttribute('#sheet', 'role'), 'dialog');
+    await page.waitForSelector('#cityIdle .cid-op');
     await trapped(page, '#sheet', 12);
     await page.keyboard.press('Escape');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'realChoose', 'o foco volta para "Escolha sua cidade"');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn', 'o foco volta para o botão da cidade');
     assert.deepEqual(errors, []);
     await context.close();
   }
 });
 
-await scenario('janelas: escolher a cidade pelo "Escolha sua cidade" do aviso de exemplo (que some) deixa o foco num botão visível', async () => {
+await scenario('janelas: escolher a cidade por um botão que some (cartão sem localização) deixa o foco num botão visível', async () => {
   for (const mobile of [false, true]) {
-    const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce' });
+    // Sem a permissão do Playwright: o Chromium recusa sem perguntar e a tela mostra o cartão com "Escolher minha cidade".
+    const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce', geo: false });
     await page.goto(`${BASE}index.html`);
-    await page.evaluate(() => document.querySelector('#reais').scrollIntoView());
-    await page.waitForSelector('#realList li b');
-    await page.focus('#realChoose');
+    await page.waitForFunction(() => document.querySelector('#reais').dataset.estado === 'naoapareceu');
+    await page.focus('#pvEstado [data-bt="escolher"]');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('#citySel:not([disabled])');
-    await page.selectOption('#citySel', '3304557');
+    await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
+    await page.keyboard.type('rio');
+    await page.waitForSelector('#cityList [role=option]');
+    await page.keyboard.press('Enter');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    await page.waitForFunction(() => document.querySelector('#realExample')?.hidden);
+    await page.waitForFunction(() => document.querySelector('#reais').dataset.estado !== 'naoapareceu');
     const f = await page.evaluate(() => { const a = document.activeElement; return { id: a?.id || '', tag: a?.tagName, visible: !!a?.getClientRects().length }; });
     assert.notEqual(f.tag, 'BODY', 'o foco não cai no <body>');
     assert.ok(f.visible, `o foco fica num elemento visível (${f.id || f.tag})`);
-    assert.equal(f.id, 'realPlace', 'o foco vai para o "trocar" do mesmo mapa');
-    // Bairro, pelo "trocar": o foco volta para o próprio "trocar".
+    assert.equal(f.id, 'cityBtn', 'o foco vai para o botão da cidade da mesma tela');
+    // Pelo botão da cidade: o foco volta para ele.
     await page.keyboard.press('Enter');
-    await page.waitForSelector('#sheet button[data-pl]');
-    await page.click('#sheet button[data-pl] >> nth=1');
+    await page.waitForSelector('#cityIdle .cid-op');
+    await page.click('#cityIdle .cid-op >> nth=0');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'realPlace');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn');
     assert.deepEqual(errors, []);
     await context.close();
   }
+});
+
+await scenario('teclado: abas com Tab, Enter e Espaço, "Mostrar mais 4" e a busca da cidade (setas, Enter e Esc) na tela "Clínicas perto de você" (celular)', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, motion: 'reduce', geoSim: { estado: 'granted' } });
+  // 10 locais do CNES + o parceiro: a lista mostra 6 no celular e o "Mostrar mais 4". O banco simulado respeita a aba.
+  const MAIS = [...CNES_ROWS, ...Array.from({ length: 6 }, (_, i) => ({ ...CNES_ROWS[i % 4], cnes: String(7100001 + i), name: `Local Perto ${i + 1}`, distance_m: 1300 + i * 100, lat: -23.5635 + i / 1000, lng: -46.65 - i / 1000 }))];
+  await context.route(`${SUPA}/rest/v1/rpc/nearby_establishments`, (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fallback();
+    const b = JSON.parse(route.request().postData() || '{}');
+    return json(route, MAIS.filter((r) => !b.p_kind || r.kind === b.p_kind).map((r) => ({ ...r, total: MAIS.length })));
+  });
+  await page.goto(`${BASE}index.html`);
+  await page.waitForSelector('#reais[data-estado="lista"]');
+  await page.waitForFunction(() => document.querySelectorAll('#realList li b').length === 10);
+  // Do botão da cidade, o Tab chega às abas; Enter escolhe e o foco fica na aba.
+  await page.focus('#cityBtn');
+  const passos = await tabTo(page, '#pvTabs button[data-tipo="laboratorio"]');
+  assert.ok(passos <= 4, `as abas vêm logo depois do botão da cidade (${passos} Tabs)`);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#pvTabs button[data-tipo="laboratorio"]').getAttribute('aria-pressed') === 'true');
+  await page.waitForFunction(() => { const s = [...document.querySelectorAll('#realList .pv-txt small')]; return s.length > 0 && s.every((x) => /Laboratório/.test(x.textContent)); });
+  assert.ok(await page.evaluate(() => document.activeElement?.matches('#pvTabs button[data-tipo="laboratorio"]')), 'o foco fica na aba');
+  assert.equal(await page.getAttribute('#pvTabs button[data-tipo=""]', 'aria-pressed'), 'false');
+  // Espaço também escolhe: de volta a Todos.
+  await tabTo(page, '#pvTabs button[data-tipo=""]', { back: true });
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelectorAll('#realList li').length === 10);
+  assert.equal(await page.getAttribute('#pvTabs button[data-tipo=""]', 'aria-pressed'), 'true');
+  assert.ok(await page.evaluate(() => document.activeElement?.matches('#pvTabs button[data-tipo=""]')));
+  // "Mostrar mais 4": Enter mostra o resto e leva o foco ao 7º local.
+  await tabTo(page, '#pvMore');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement === document.querySelector('#realList li:nth-child(7) a'));
+  assert.ok(await page.locator('#pvMore').isHidden());
+  // Busca da cidade: ↓ escolhe, Esc com texto limpa (a janela fica), Enter confirma e Esc com o campo vazio fecha.
+  await tabTo(page, '#cityBtn', { back: true });
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
+  await page.keyboard.type('rio');
+  await page.waitForSelector('#cityList [role=option]');
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-activedescendant'), 'cityOpt-3304557');
+  assert.equal(await page.getAttribute('#cityOpt-3304557', 'aria-selected'), 'true');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.inputValue('#cityQ'), '', 'Esc com texto limpa o campo');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-expanded'), 'false');
+  assert.equal(await page.locator('#ov.open').count(), 1, 'e a janela continua aberta');
+  await page.keyboard.type('rio');
+  await page.waitForSelector('#cityList [role=option]');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
+  await page.waitForFunction(() => document.querySelector('#cityName').textContent === 'Rio de Janeiro - RJ');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn', 'o foco volta para o botão da cidade');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn');
+  assert.deepEqual(errors, []);
+  await context.close();
 });
 
 await scenario('reduzir movimento: nada se mexe sozinho, a rolagem não desliza e o 3D não carrega', async () => {

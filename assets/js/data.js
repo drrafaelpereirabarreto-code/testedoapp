@@ -1,6 +1,7 @@
-// Listas fixas da página inicial: nomes dos exames (com o código usado na busca e o endereço do guia)
-// e bairros de São Paulo para escolher o ponto de partida do mapa (as cidades vêm do banco: imported_cities). Nada aqui é preço, nota ou horário:
-// esses dados só aparecem quando vêm do banco do IMED ou do cadastro oficial (CNES).
+// Listas fixas da página inicial: nomes dos exames (com o código usado na busca e o endereço do guia) e o exemplo
+// da Av. Paulista, usado no topo (3D e lista leve) enquanto não há localização nem cidade escolhida, sempre marcado
+// como exemplo. As cidades vêm do banco (imported_cities). Nada aqui é preço, nota ou horário: esses dados só
+// aparecem quando vêm do banco do IMED ou do cadastro oficial (CNES).
 const EXAMS = {
   rx:   {slug:'raio-x',                n:'Raio-X',         full:'Raio-X (radiografia)'},
   usg:  {slug:'ultrassom',             n:'Ultrassom',      full:'Ultrassom'},
@@ -12,13 +13,7 @@ const EXAMS = {
   eco:  {slug:'ecocardiograma',        n:'Ecocardiograma', full:'Ecocardiograma'},
   lab:  {slug:null,                    n:'Laboratório',    full:'Exames de laboratório (sangue, urina)'}
 };
-// de: o nome com a preposição certa ("da Av. Paulista", "de Pinheiros", "do Tatuapé").
+// de: o nome com a preposição certa ("da Av. Paulista").
 const PLACES = {
-  paulista:{n:'Av. Paulista, Bela Vista', s:'Av. Paulista', de:'da Av. Paulista', lat:-23.5650, lng:-46.6520},
-  pinheiros:{n:'Pinheiros', s:'Pinheiros', de:'de Pinheiros', lat:-23.5667, lng:-46.6930},
-  vilamariana:{n:'Vila Mariana', s:'Vila Mariana', de:'da Vila Mariana', lat:-23.5890, lng:-46.6340},
-  moema:{n:'Moema', s:'Moema', de:'de Moema', lat:-23.6010, lng:-46.6640},
-  centro:{n:'Centro', s:'Centro', de:'do Centro', lat:-23.5455, lng:-46.6390},
-  tatuape:{n:'Tatuapé', s:'Tatuapé', de:'do Tatuapé', lat:-23.5400, lng:-46.5760},
-  santana:{n:'Santana', s:'Santana', de:'de Santana', lat:-23.5020, lng:-46.6250}
+  paulista:{n:'Av. Paulista, Bela Vista', s:'Av. Paulista', de:'da Av. Paulista', lat:-23.5650, lng:-46.6520}
 };
