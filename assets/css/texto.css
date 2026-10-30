@@ -1,0 +1,40 @@
+/* Páginas de texto do IMED (Quem somos, Como funciona, Termos, Privacidade e Acessibilidade).
+   Usado junto com assets/css/guia.css (cores, topo e botões). */
+.pv{max-width:820px;margin:0 auto;padding:48px 20px 72px}
+.pv h1{font-size:clamp(32px,4vw,46px);letter-spacing:-.035em}
+.pv .upd{color:var(--muted);margin-top:8px}
+.pv .lead{font-size:18px;line-height:1.6;color:var(--text);margin-top:16px}
+.pv .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0 8px}
+.pv .sum div{padding:16px;border-radius:18px;background:var(--bg2);line-height:1.5;font-size:14.5px}
+.pv .sum i{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);margin-bottom:10px}
+.pv h2{font-size:22px;margin:34px 0 12px;letter-spacing:-.02em;scroll-margin-top:90px}
+.pv h3{font-size:17px;margin:22px 0 8px;letter-spacing:-.01em}
+.pv p,.pv li{line-height:1.7;font-size:16px}
+.pv p+p,.pv ul+p,.pv ol+p{margin-top:12px}
+.pv ul,.pv ol{padding-left:22px;display:grid;gap:8px;margin-top:8px}
+.pv table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14.5px}
+.pv th,.pv td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line);line-height:1.5}
+.pv th{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
+.pv td small{display:block;color:var(--muted);font-size:13px;margin-top:4px}
+.pv a{color:var(--primary-d);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.pv .toc{margin:24px 0 0;padding:16px 18px;border-radius:18px;border:1px solid var(--line);background:#fff}
+.pv .toc b{display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.pv .toc ol{margin-top:0;gap:4px}
+.pv .box{display:flex;gap:12px;align-items:flex-start;margin-top:16px;padding:14px 16px;border-radius:16px;background:var(--primary-s);color:#0A4E63;line-height:1.6}
+.pv .box>i{margin-top:4px;color:var(--primary)}
+.pv .box.warn{background:var(--coral-s);color:#8a2f1a}
+.pv .box.warn>i{color:var(--coral-d)}
+.pv .box.ok{background:var(--green-s);color:#145F3A}
+.pv .box.ok>i{color:var(--green)}
+.pv .box p{font-size:15.5px}
+.pv .tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:8px;vertical-align:1px}
+.pv .tag.imed{background:#FFF6E3;color:#9A5B00}
+.pv .tag.cnes{background:#E8F1FF;color:#1F5FBF}
+.pv .tag.pat{background:#EEF2F5;color:#33464F}
+@media (max-width:640px){.pv{padding-top:32px}.pv .sum{grid-template-columns:1fr}.pv table,.pv thead,.pv tbody,.pv tr,.pv th,.pv td{display:block}.pv thead{display:none}.pv td{border:0;padding:4px 0}.pv tr{padding:12px 0;border-bottom:1px solid var(--line)}.pv td[data-l]::before{content:attr(data-l);display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}}
+
+/* Celular e telas de toque: os links do sumário ("Nesta página") com pelo menos 44 px de altura. */
+@media (max-width:860px),(pointer:coarse){
+  .pv .toc a{display:inline-flex;align-items:center;min-height:44px}
+  .pv .toc ol{gap:0}
+}

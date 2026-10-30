@@ -2,550 +2,252 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>IMED Parceiros — Cadastre sua clínica</title>
-<meta name="description" content="Coloque sua clínica de imagem no IMED e receba novos pacientes todos os dias: agenda online, pagamento pelo app e painel de gestão.">
-<meta name="theme-color" content="#0A2E3D">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Para clínicas, laboratórios e hospitais | IMED</title>
+<meta name="description" content="Sua clínica, laboratório ou hospital provavelmente já aparece no IMED pelo cadastro oficial (CNES). Assuma o cadastro sem custo para receber pedidos de agendamento e informar exames, preços, convênios e horários.">
+<meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
+<meta property="og:title" content="Para clínicas | IMED">
+<meta property="og:description" content="Seja um dos primeiros parceiros do IMED: assuma o cadastro do seu estabelecimento, sem custo, para receber pedidos de agendamento.">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:title" content="IMED Parceiros — Cadastre sua clínica">
-<meta property="og:description" content="Receba novos pacientes todos os dias: agenda online, pagamento pelo app e painel de gestão.">
-<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/fachada.webp">
+<meta property="og:site_name" content="IMED">
 <meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='14' fill='%230E7C9C'/%3E%3Cpath d='M20 12h8v8h8v8h-8v8h-8v-8h-8v-8h8z' fill='%23fff'/%3E%3Ccircle cx='37' cy='11' r='5' fill='%23FF6B4A'/%3E%3C/svg%3E">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style data-fontes="Sora:600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
+<link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
+<link rel="stylesheet" href="assets/css/clinica.css">
 <style>
-:root{
-  --primary:#0E7C9C; --primary-dark:#0A5C76; --primary-soft:#E6F4F8; --navy:#0A2E3D; --ink:#14232D;
-  --coral:#FF6B4A; --coral-dark:#E8512F; --coral-soft:#FFF0EC; --green:#1E9E5A; --green-soft:#E7F6EE; --gold:#F5A524;
-  --text:#2B3A44; --muted:#6B7C87; --line:#E7ECEF; --bg2:#F5F7F9;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',system-ui,sans-serif;color:var(--text);background:#fff;-webkit-font-smoothing:antialiased}
-h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacing:-.015em;line-height:1.15}
-a{color:inherit;text-decoration:none}
-button,input,select{font:inherit;color:inherit}
-button{cursor:pointer;border:0;background:none}
-.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
-.hide{display:none!important}
-.top{position:sticky;top:0;z-index:30;background:#fff;border-bottom:1px solid var(--line)}
-.top .wrap{display:flex;align-items:center;gap:18px;height:66px}
-.logo{display:flex;align-items:center;gap:8px;font-family:'Sora';font-weight:800;font-size:21px;color:var(--primary)}
-.logo i{display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:var(--primary);color:#fff;font-size:14px}
-.logo small{font-family:'Inter';font-weight:600;font-size:13px;color:var(--muted);margin-left:2px}
-.top nav{display:flex;gap:4px;margin-left:auto}
-.top nav a{padding:9px 12px;border-radius:10px;font-weight:600;font-size:14px;color:var(--muted)}
-.top nav a:hover{color:var(--primary);background:var(--primary-soft)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:14px 22px;border-radius:12px;font-weight:700;font-size:15px;transition:.15s}
-.btn-coral{background:var(--coral);color:#fff}.btn-coral:hover{background:var(--coral-dark)}
-.btn-line{border:1.5px solid var(--primary);color:var(--primary)}.btn-line:hover{background:var(--primary-soft)}
-.btn-sm{padding:10px 16px;font-size:14px}
-@media (max-width:820px){.top nav{display:none}.top .btn{margin-left:auto}}
-
-.hero{position:relative;background:linear-gradient(100deg,rgba(5,22,30,.96) 0%,rgba(5,22,30,.86) 42%,rgba(8,42,55,.55) 100%),url(assets/img/fachada.webp) center 40%/cover;color:#fff;padding:72px 0 84px}
-.hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
-.hero .eyebrow{display:inline-flex;gap:8px;align-items:center;background:rgba(255,255,255,.12);padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600}
-.hero h1{color:#fff;font-size:44px;margin:16px 0 14px}
-.hero h1 em{font-style:normal;color:#7ff0e4}
-.hero p.lead{font-size:18px;opacity:.9;line-height:1.55;max-width:540px}
-.hero ul{list-style:none;margin-top:22px;display:grid;gap:10px}
-.hero li{display:flex;gap:10px;align-items:center;font-weight:500}
-.hero li i{color:#7ff0e4}
-@media (max-width:900px){.hero .wrap{grid-template-columns:1fr}.hero h1{font-size:32px}.hero{padding:36px 0 44px}}
-
-.form-card{background:#fff;color:var(--text);border-radius:22px;padding:24px;box-shadow:0 30px 70px rgba(0,0,0,.25)}
-.form-card h2{font-size:21px}
-.form-card>p{color:var(--muted);font-size:14px;margin:6px 0 16px}
-.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--bg2);border-radius:12px;padding:4px;margin-bottom:14px}
-.seg button{padding:10px;border-radius:9px;font-weight:600;font-size:14px;color:var(--muted)}
-.seg button.on{background:#fff;color:var(--primary);box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.fld{display:block;margin-bottom:10px}
-.fld span{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:5px}
-.fld input,.fld select{width:100%;border:1px solid var(--line);border-radius:11px;padding:12px 13px;outline:none;background:#fff;font-size:15px}
-.fld input:focus,.fld select:focus{border-color:var(--primary)}
-.fld input.bad,.fld select.bad{border-color:var(--coral);background:#FFF7F5}
+.pc-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.pc-cta .btn-light{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.3)}
+.pc-cta .btn-light:hover{background:rgba(255,255,255,.18)}
+.pc-num{display:flex;gap:10px;align-items:flex-start;margin-top:18px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.08);border:1px solid rgba(127,240,228,.28);color:rgba(255,255,255,.9);font-size:14.5px;max-width:680px}
+.pc-num i{color:#7FF0E4;margin-top:3px}
+.pc-num b{color:#fff}
+.pc-steps{list-style:none;display:grid;gap:12px;counter-reset:st}
+.pc-steps li{position:relative;padding:14px 16px 14px 60px;border:1px solid var(--line);border-radius:16px;background:#fff;counter-increment:st}
+.pc-steps li::before{content:counter(st);position:absolute;left:14px;top:13px;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(145deg,#C8442A,#B83A20);color:#fff;font:800 15px Sora,sans-serif}
+.pc-steps b{display:block;color:var(--ink);font-size:16px}
+.pc-steps p{color:var(--muted);font-size:14.5px;margin-top:4px}
+.pc-list{list-style:none;display:grid;gap:10px}
+.pc-list li{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.pc-list li>i{color:var(--primary);margin-top:4px;width:18px;text-align:center;flex-shrink:0}
+.pc-list.no li>i{color:var(--coral-d)}
+.pc-faq details{border-bottom:1px solid var(--line);padding:14px 0}
+.pc-faq summary{cursor:pointer;font-weight:700;color:var(--ink);list-style:none;display:flex;justify-content:space-between;gap:12px}
+.pc-faq summary::-webkit-details-marker{display:none}
+.pc-faq summary::after{content:"+";flex-shrink:0;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:var(--bg2);color:var(--primary);font-size:17px;line-height:1}
+.pc-faq details[open] summary::after{content:"–"}
+.pc-faq details p{color:var(--muted);margin-top:8px;font-size:15px}
+.pc-doc{display:flex;gap:14px;align-items:flex-start}
+.pc-doc>i{display:grid;place-items:center;flex-shrink:0;width:44px;height:44px;border-radius:14px;background:var(--primary-s);color:var(--primary);font-size:19px}
 .hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
-.ferr{display:none;color:var(--coral-dark);font-size:13.5px;line-height:1.5;margin:-4px 0 12px}
-.ferr.show{display:block}
-.ferr a{color:var(--primary);font-weight:700}
-.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;animation:sp .8s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-.check{display:flex;gap:10px;align-items:flex-start;font-size:13px;color:var(--muted);margin:6px 0 14px}
-.check input{accent-color:var(--primary);margin-top:2px;width:16px;height:16px;flex-shrink:0}
-.form-card .btn{width:100%}
-.done{text-align:center;padding:20px 6px}
-.done .ic{width:76px;height:76px;margin:0 auto 14px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;font-size:34px}
-.done p{color:var(--muted);margin-top:8px;line-height:1.55}
-@media (max-width:480px){.grid2{grid-template-columns:1fr}}
-
-section{padding:72px 0}
-section.gray{background:var(--bg2)}
-.head{text-align:center;max-width:680px;margin:0 auto 40px}
-.head .k{color:var(--coral-dark);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase}
-.head h2{font-size:34px;margin-top:8px}
-.head p{color:var(--muted);margin-top:10px;font-size:17px;line-height:1.55}
-@media (max-width:700px){section{padding:52px 0}.head h2{font-size:26px}}
-
-.nums{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:-34px;position:relative;z-index:2}
-.num{background:#fff;border-radius:18px;padding:20px;box-shadow:0 14px 34px rgba(20,35,45,.10);text-align:center}
-.num b{display:block;font-family:'Sora';font-size:28px;color:var(--primary)}
-.num span{color:var(--muted);font-size:14px}
-@media (max-width:760px){.nums{grid-template-columns:1fr 1fr}}
-
-.benefits{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
-.ben{border:1px solid var(--line);border-radius:20px;padding:24px;background:#fff}
-.ben .ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary);font-size:22px;margin-bottom:16px}
-.ben h3{font-size:18px}
-.ben p{color:var(--muted);margin-top:8px;line-height:1.55;font-size:15px}
-@media (max-width:980px){.benefits{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.benefits{grid-template-columns:1fr}}
-
-.plans{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:900px;margin:0 auto}
-.plan{background:#fff;border:1.5px solid var(--line);border-radius:22px;padding:28px;position:relative;display:flex;flex-direction:column}
-.plan.best{border-color:var(--primary);box-shadow:0 20px 50px rgba(14,124,156,.18)}
-.plan .rib{position:absolute;top:-13px;left:28px;background:var(--coral);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:999px}
-.plan h3{font-size:22px}
-.plan .sub{color:var(--muted);margin-top:4px}
-.plan .price{margin:20px 0 6px;display:flex;align-items:baseline;gap:8px}
-.plan .price b{font-family:'Sora';font-size:42px;color:var(--ink)}
-.plan .price span{color:var(--muted)}
-.plan .fee{color:var(--muted);font-size:14px}
-.plan ul{list-style:none;margin:20px 0 24px;display:grid;gap:12px;flex:1}
-.plan li{display:flex;gap:10px;align-items:flex-start;font-size:15px}
-.plan li i{color:var(--green);margin-top:3px}
-.plan li.no{color:#9AA8B1}
-.plan li.no i{color:#C3CDD3}
-.fine{text-align:center;color:var(--muted);font-size:13px;margin-top:18px}
-@media (max-width:760px){.plans{grid-template-columns:1fr}}
-
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;counter-reset:s}
-.step{position:relative;padding:24px 20px;border-radius:20px;background:#fff;border:1px solid var(--line)}
-.step::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--coral);color:#fff;font-weight:800;font-family:'Sora';margin-bottom:14px}
-.step h3{font-size:17px}
-.step p{color:var(--muted);margin-top:6px;font-size:15px;line-height:1.5}
-@media (max-width:900px){.steps{grid-template-columns:1fr 1fr}}
-@media (max-width:520px){.steps{grid-template-columns:1fr}}
-
-.split{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
-.appsec{display:grid;grid-template-columns:.9fr 1.1fr;gap:56px;align-items:center}
-.appsec h2{font-size:34px;letter-spacing:-.03em}
-.appsec p{color:var(--muted);margin-top:12px;line-height:1.6;font-size:17px}
-.appsec ul{list-style:none;margin-top:20px;display:grid;gap:14px}
-.appsec li{display:flex;gap:12px;align-items:flex-start}
-.appsec li i{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary);font-size:13px;flex-shrink:0}
-.stage{position:relative;perspective:1400px;display:grid;place-items:center;min-height:600px}
-.mphone{position:relative;width:280px;height:582px;border-radius:52px;padding:11px;background:linear-gradient(150deg,#4b636e,#16242b 35%,#0b151a 70%,#2a3c45);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.22),inset 0 0 0 7px #0a1216,0 50px 90px -20px rgba(5,22,30,.5);transform:rotateY(-18deg) rotateX(6deg) rotateZ(2deg);transform-style:preserve-3d}
-.mphone img{width:100%;height:100%;object-fit:cover;object-position:top;border-radius:42px}
-.mphone .isl{position:absolute;top:21px;left:50%;transform:translateX(-50%);width:92px;height:27px;border-radius:20px;background:#04080a}
-.mfl{position:absolute;display:flex;align-items:center;gap:10px;padding:11px 15px;border-radius:18px;background:#fff;color:var(--ink);font-weight:700;font-size:14px;box-shadow:0 24px 50px rgba(15,31,40,.2);white-space:nowrap}
-.mfl small{display:block;color:var(--muted);font-weight:600;font-size:11.5px}
-.mfl .ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#fff;font-size:15px}
-.mfl.a{top:80px;left:2%}.mfl.b{bottom:110px;right:0}
-@media (max-width:900px){.appsec{grid-template-columns:1fr}.stage{min-height:560px}.mfl.a{left:0}.appsec h2{font-size:26px}}
-.gallery{display:grid;grid-template-columns:1.4fr 1fr 1fr;grid-template-rows:220px 220px;gap:14px}
-.gallery figure{position:relative;border-radius:22px;overflow:hidden}
-.gallery figure:first-child{grid-row:span 2}
-.gallery img{width:100%;height:100%;object-fit:cover;transition:transform 1.2s cubic-bezier(.2,.8,.2,1)}
-.gallery figure:hover img{transform:scale(1.07)}
-.gallery figcaption{position:absolute;left:12px;bottom:12px;padding:6px 11px;border-radius:10px;background:rgba(7,32,43,.55);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#fff;font-size:12.5px;font-weight:700}
-@media (max-width:760px){.gallery{grid-template-columns:1fr 1fr;grid-template-rows:200px 160px 160px}.gallery figure:first-child{grid-column:span 2;grid-row:auto}}
-.split h2{font-size:32px}
-.split p{color:var(--muted);margin-top:12px;line-height:1.6;font-size:17px}
-.split ul{list-style:none;margin-top:18px;display:grid;gap:10px}
-.split li{display:flex;gap:10px}
-.split li i{color:var(--primary);margin-top:3px}
-@media (max-width:860px){.split{grid-template-columns:1fr}.split h2{font-size:26px}}
-.dash{background:var(--navy);border-radius:22px;padding:20px;color:#fff;box-shadow:0 30px 60px rgba(10,46,61,.3)}
-.dash .row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
-.dash .kpi{background:rgba(255,255,255,.08);border-radius:14px;padding:12px}
-.dash .kpi small{opacity:.7;font-size:12px}
-.dash .kpi b{display:block;font-family:'Sora';font-size:22px;margin-top:4px}
-.dash .kpi em{font-style:normal;color:#7ff0e4;font-size:12px;font-weight:600}
-.bars{display:flex;align-items:flex-end;gap:8px;height:120px;background:rgba(255,255,255,.05);border-radius:14px;padding:12px}
-.bars div{flex:1;background:linear-gradient(180deg,#2ee6d6,#0E7C9C);border-radius:6px 6px 2px 2px}
-.dash .ag{margin-top:12px;display:grid;gap:8px}
-.dash .ag div{display:flex;gap:10px;align-items:center;background:rgba(255,255,255,.06);border-radius:10px;padding:9px 12px;font-size:14px}
-.dash .ag span{margin-left:auto;font-size:12px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(46,230,214,.18);color:#7ff0e4}
-
-.calc{background:#fff;border:1px solid var(--line);border-radius:22px;padding:24px;max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:center}
-.calc label{display:block;font-weight:600;color:var(--ink);margin:14px 0 8px}
-.calc input[type=range]{width:100%;accent-color:var(--primary)}
-.calc .val{float:right;color:var(--primary);font-weight:700}
-.calc .out{background:var(--primary-soft);border-radius:18px;padding:22px;text-align:center}
-.calc .out b{display:block;font-family:'Sora';font-size:36px;color:var(--primary-dark);margin:6px 0}
-.calc .out small{color:var(--muted)}
-@media (max-width:760px){.calc{grid-template-columns:1fr}}
-
-.quotes{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
-.quote{background:#fff;border-radius:20px;padding:24px;border:1px solid var(--line)}
-.quote p{line-height:1.6}
-.quote .who{display:flex;gap:12px;align-items:center;margin-top:16px}
-.quote .av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;object-fit:cover;flex-shrink:0}
-.quote .who b{display:block;color:var(--ink)}
-.quote .who small{color:var(--muted)}
-.quote .st{color:var(--gold);margin-bottom:10px}
-@media (max-width:900px){.quotes{grid-template-columns:1fr}}
-
-details{border-bottom:1px solid var(--line);padding:18px 0;max-width:820px;margin:0 auto}
-summary{cursor:pointer;font-weight:600;color:var(--ink);list-style:none;display:flex;justify-content:space-between;gap:12px;font-size:17px}
-summary::after{content:"+";color:var(--primary);font-size:22px;line-height:1}
-details[open] summary::after{content:"–"}
-details p{color:var(--muted);margin-top:10px;line-height:1.6}
-
-.final{background:linear-gradient(135deg,#FF6B4A,#F5A524);border-radius:26px;padding:40px;color:#fff;display:grid;grid-template-columns:1fr auto;gap:24px;align-items:center}
-.final h2{color:#fff;font-size:30px}
-.final p{opacity:.95;margin-top:8px;font-size:17px}
-.final .btn{background:#fff;color:var(--coral-dark)}
-@media (max-width:760px){.final{grid-template-columns:1fr;padding:28px}.final h2{font-size:24px}}
-footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:13px}
-footer .wrap{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between}
-footer a{color:var(--primary);font-weight:600}
-.note{font-size:12.5px;color:var(--muted);text-align:center;margin-top:12px}
+.pc-ok{display:flex;gap:12px;align-items:flex-start}
+.pc-ok>i{color:var(--green);font-size:22px;margin-top:2px}
 </style>
+<link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 
-<header class="top">
-  <div class="wrap">
-    <a class="logo" href="index.html"><i class="fa-solid fa-plus"></i>IMED <small>Parceiros</small></a>
-    <nav>
-      <a href="#vantagens">Vantagens</a>
-      <a href="#planos">Planos</a>
-      <a href="#como">Como funciona</a>
-      <a href="#faq">Dúvidas</a>
-      <a href="index.html">Sou paciente</a>
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk" aria-hidden="true"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="parceiros.html" aria-current="page">Para clínicas</a>
     </nav>
-    <a class="btn btn-coral btn-sm" href="#cadastro">Cadastrar clínica</a>
+    <a class="pt-partner" href="painel.html">Área da clínica</a>
   </div>
 </header>
 
-<div class="hero" id="cadastro">
-  <div class="wrap">
-    <div>
-      <span class="eyebrow"><i class="fa-solid fa-location-dot"></i> Pacientes buscando exames perto de você agora</span>
-      <h1>Coloque sua clínica no IMED e <em>receba novos pacientes</em> todos os dias</h1>
-      <p class="lead">Sua clínica aparece no app para quem está por perto procurando o exame que você faz, com preço, avaliação e próximo horário. O paciente agenda e paga pelo app.</p>
-      <ul>
-        <li><i class="fa-solid fa-circle-check"></i> Cadastro grátis e sem fidelidade</li>
-        <li><i class="fa-solid fa-circle-check"></i> Agenda online sincronizada com a recepção</li>
-        <li><i class="fa-solid fa-circle-check"></i> Repasse dos pagamentos em até 24h</li>
-      </ul>
+<main id="main" tabindex="-1">
+<div class="cl-hero">
+  <div class="cl-hero-in">
+    <h1>Para clínicas, laboratórios e hospitais</h1>
+    <p>Seja um dos primeiros parceiros do IMED. Seu estabelecimento provavelmente já aparece no IMED com os dados do cadastro oficial do Ministério da Saúde (CNES). Assuma o cadastro para receber pedidos de agendamento e informar exames, preços, convênios e horários.</p>
+    <ul class="cl-points">
+      <li><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Cadastro sem custo</li>
+      <li><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Pedidos de agendamento</li>
+      <li><i class="fa-solid fa-tags" aria-hidden="true"></i>Você informa exames, preços e horários</li>
+    </ul>
+    <div class="pc-cta">
+      <a class="btn btn-coral" href="reivindicar.html"><i class="fa-solid fa-hospital-user" aria-hidden="true"></i>Assumir o cadastro</a>
+      <a class="btn btn-light" href="painel.html">Já sou parceiro: Área da clínica</a>
     </div>
+    <p class="pc-num" id="numeros" hidden></p>
+  </div>
+</div>
 
-    <div class="form-card" id="formCard">
-      <div id="formWrap">
-        <h2>Cadastre-se em 2 minutos</h2>
-        <p>Preencha os dados e nossa equipe entra em contato para ativar sua clínica.</p>
-        <div class="seg" role="tablist">
-          <button type="button" class="on" data-kind="clinica">Clínica de imagem</button>
-          <button type="button" data-kind="medico">Médico (teleconsulta)</button>
+<div class="cl">
+  <section class="cl-card" aria-labelledby="passosTitle">
+    <h2 id="passosTitle">Como funciona, passo a passo</h2>
+    <ol class="pc-steps">
+      <li><b>Ache o seu estabelecimento e peça o cadastro</b><p>Em <a class="link" href="reivindicar.html">Assumir o cadastro</a>, busque pela cidade e pelo nome, entre com o seu e-mail e informe os seus dados de responsável.</p></li>
+      <li><b>A equipe do IMED confere</b><p>Conferimos se você responde pelo estabelecimento do cadastro oficial antes de liberar o acesso. Podemos pedir mais informações.</p></li>
+      <li><b>Sua página no ar como “Parceiro verificado”</b><p>Na <a class="link" href="painel.html">Área da clínica</a>, você informa exames, preços, convênios e horários, abre a agenda se quiser e responde aos pedidos de agendamento.</p></li>
+    </ol>
+  </section>
+
+  <section class="cl-card" aria-labelledby="muda">
+    <h2 id="muda">O que a sua clínica recebe</h2>
+    <ul class="pc-list">
+      <li><i class="fa-solid fa-calendar-check" aria-hidden="true"></i><span>Pedidos de agendamento de pacientes, com o exame e o dia que preferem. Com a agenda aberta no IMED, o paciente escolhe um horário livre e ele já fica reservado.</span></li>
+      <li><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>Uma página com os dados que você mantém: exames, preços, convênios, horários, telefone e WhatsApp. Preço só aparece quando você informa.</span></li>
+      <li><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>O selo “Parceiro verificado”, que mostra ao paciente que a página é cuidada pelo próprio estabelecimento.</span></li>
+      <li><i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i><span>Avaliações só de pacientes que fizeram o pedido pelo IMED e tiveram o atendimento concluído.</span></li>
+    </ul>
+  </section>
+
+  <section class="cl-card" aria-labelledby="regras">
+    <h2 id="regras">Regras que valem para todos</h2>
+    <ul class="pc-list">
+      <li><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span>A lista de resultados é ordenada por distância. Ninguém paga para aparecer primeiro.</span></li>
+      <li><i class="fa-solid fa-ban" aria-hidden="true"></i><span>Selo não se vende, e ninguém paga para mudar nota ou posição.</span></li>
+      <li><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span>Os dados dos pacientes servem só para responder ao pedido, conforme a LGPD.</span></li>
+    </ul>
+    <p class="cl-help" style="margin:14px 0 0">Veja os detalhes em <a class="link" href="como-funciona.html">Como funciona</a> e nos <a class="link" href="termos.html">Termos de uso</a>.</p>
+  </section>
+
+  <section class="cl-card" aria-labelledby="contatoTitle" id="contato">
+    <h2 id="contatoTitle">Não achou o seu estabelecimento?</h2>
+    <p class="cl-help">Se ele ainda não aparece no IMED (por exemplo, porque a sua cidade ainda não foi carregada), deixe o contato. A equipe do IMED fala com você.</p>
+    <form id="pform" novalidate>
+      <div class="cl-grid">
+        <div class="cl-field full">
+          <label class="cl-lbl" for="pNome">Nome do estabelecimento *</label>
+          <input id="pNome" name="nome" type="text" autocomplete="organization" maxlength="200" required aria-describedby="pNomeErr">
+          <span class="cl-err" id="pNomeErr"></span>
         </div>
-        <form id="pform" novalidate>
-          <label class="fld"><span id="nameLbl">Nome da clínica</span><input name="nome" required autocomplete="organization" maxlength="200"></label>
-          <div class="grid2">
-            <label class="fld"><span id="docLbl">CNPJ</span><input name="doc" required inputmode="numeric" placeholder="00.000.000/0000-00" maxlength="18"></label>
-            <label class="fld"><span>Celular (WhatsApp)</span><input name="tel" required inputmode="tel" placeholder="(11) 90000-0000" autocomplete="tel" maxlength="15"></label>
-          </div>
-          <label class="fld hide" id="crmFld"><span>CRM / UF</span><input name="crm" placeholder="123456-SP" maxlength="20" autocapitalize="characters"></label>
-          <label class="fld"><span>E-mail</span><input name="email" type="email" required autocomplete="email" maxlength="200"></label>
-          <div class="grid2">
-            <label class="fld"><span>Cidade</span><input name="cidade" required autocomplete="address-level2" maxlength="120"></label>
-            <label class="fld"><span id="espLbl">Principal exame</span>
-              <select name="esp" id="esp"></select>
-            </label>
-          </div>
-          <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
-          <label class="check"><input type="checkbox" required name="lgpd"> Aceito que o IMED use estes dados para entrar em contato sobre a parceria, conforme a <a href="privacidade.html" style="color:var(--primary);font-weight:600">política de privacidade</a> (LGPD).</label>
-          <p class="ferr" id="ferr" role="alert"></p>
-          <button class="btn btn-coral" type="submit" id="pSend">Quero ser parceiro <i class="fa-solid fa-arrow-right"></i></button>
-        </form>
+        <div class="cl-field">
+          <label class="cl-lbl" for="pTipo">Tipo *</label>
+          <select id="pTipo" name="tipo" required aria-describedby="pTipoErr">
+            <option value="">Escolha</option>
+            <option>Clínica</option>
+            <option>Laboratório</option>
+            <option>Diagnóstico por imagem</option>
+            <option>Hospital</option>
+            <option>Outro</option>
+          </select>
+          <span class="cl-err" id="pTipoErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="pDoc">CNPJ *</label>
+          <input id="pDoc" name="doc" type="text" inputmode="numeric" autocomplete="off" maxlength="18" required placeholder="00.000.000/0000-00" aria-describedby="pDocErr">
+          <span class="cl-err" id="pDocErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="pTel">Celular (WhatsApp) *</label>
+          <input id="pTel" name="tel" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="15" required placeholder="(11) 98765-4321" aria-describedby="pTelErr">
+          <span class="cl-err" id="pTelErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="pEmail">E-mail *</label>
+          <input id="pEmail" name="email" type="email" autocomplete="email" maxlength="200" required aria-describedby="pEmailErr">
+          <span class="cl-err" id="pEmailErr"></span>
+        </div>
+        <div class="cl-field full">
+          <label class="cl-lbl" for="pCidade">Cidade *</label>
+          <input id="pCidade" name="cidade" type="text" autocomplete="address-level2" maxlength="120" required aria-describedby="pCidadeErr">
+          <span class="cl-err" id="pCidadeErr"></span>
+        </div>
+        <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <div class="cl-field full">
+          <label class="cl-check"><input id="pLgpd" name="lgpd" type="checkbox" required aria-describedby="pLgpdErr"><span>Aceito que o IMED use estes dados para falar comigo sobre a entrada do estabelecimento no IMED, conforme a <a class="link" href="privacidade.html">política de privacidade</a>.</span></label>
+          <span class="cl-err" id="pLgpdErr"></span>
+        </div>
       </div>
-    </div>
-  </div>
+      <div class="cl-actions"><button class="btn btn-primary" type="submit" id="pSend"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar contato</button></div>
+      <div id="pMsg" aria-live="polite"></div>
+    </form>
+  </section>
+
+  <section class="cl-card" aria-labelledby="medTitle">
+    <div class="pc-doc"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><div>
+      <h2 id="medTitle" style="font-size:19px">É médico e quer atender por teleconsulta?</h2>
+      <p class="cl-help" style="margin:8px 0 0">A teleconsulta do IMED atende com médicos de cadastro aprovado pela equipe do IMED, que confere nome e CRM na busca do Conselho Federal de Medicina. Faça o seu cadastro na <a class="link" href="medico.html">área do médico</a>.</p>
+    </div></div>
+  </section>
+
+  <section class="cl-card pc-faq" aria-labelledby="faqTitle">
+    <h2 id="faqTitle">Perguntas frequentes</h2>
+    <details><summary>Quanto custa?</summary><p>Assumir o cadastro e usar a Área da clínica não têm custo.</p></details>
+    <details><summary>Quem pode pedir o cadastro?</summary><p>Quem responde pelo estabelecimento: proprietário, sócio, gestor ou responsável técnico, ou alguém com autorização para representá-lo.</p></details>
+    <details><summary>Quais dados preciso informar?</summary><p>Nome completo, cargo, CPF ou CNPJ, celular e, se tiver, o CRM. A equipe do IMED usa esses dados só para conferir que você responde pelo local.</p></details>
+    <details><summary>Preciso ter agenda online?</summary><p>Não. Sem agenda, você recebe os pedidos com o exame, o dia e o período que o paciente prefere e liga para ele para confirmar. Com a agenda, o paciente escolhe um horário livre e ele já fica reservado.</p></details>
+    <details><summary>O cadastro oficial da minha clínica está errado. Como corrijo?</summary><p>A correção no CNES é feita pelo próprio estabelecimento, com a secretaria de saúde do município ou do estado. No IMED, depois de assumir o cadastro, você mantém exames, preços, convênios, horários e contato pela Área da clínica.</p></details>
+  </section>
 </div>
+</main>
 
-<div class="wrap">
-  <div class="nums">
-    <div class="num"><b>+500</b><span>clínicas parceiras</span></div>
-    <div class="num"><b>+50 mil</b><span>exames agendados</span></div>
-    <div class="num"><b>4,8 ★</b><span>avaliação média</span></div>
-    <div class="num"><b>24h</b><span>para receber</span></div>
-  </div>
-  <p class="note">Números ilustrativos do protótipo.</p>
-</div>
-
-<section id="vantagens">
-  <div class="wrap">
-    <div class="head"><span class="k">Por que o IMED</span><h2>Sua clínica na palma da mão de quem precisa de exame</h2><p>Funciona como um app de delivery: o paciente abre, vê as clínicas por perto e escolhe pela distância, preço, nota e horário.</p></div>
-    <div class="benefits">
-      <div class="ben"><div class="ic"><i class="fa-solid fa-location-crosshairs"></i></div><h3>Mais visibilidade</h3><p>Apareça para pacientes do seu bairro na hora em que estão procurando o exame.</p></div>
-      <div class="ben"><div class="ic"><i class="fa-solid fa-calendar-days"></i></div><h3>Agenda sem buracos</h3><p>Abra horários ociosos e preencha a agenda com pacientes novos, sem ligação.</p></div>
-      <div class="ben"><div class="ic"><i class="fa-solid fa-file-medical"></i></div><h3>Pedidos completos</h3><p>Receba pacientes com o pedido médico inteiro: o app mostra quem faz todos os exames.</p></div>
-      <div class="ben"><div class="ic"><i class="fa-solid fa-wallet"></i></div><h3>Pagamento garantido</h3><p>Pix e cartão pelo app, com repasse rápido e menos faltas.</p></div>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
     </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap appsec">
-    <div class="stage">
-      <div class="mphone"><img src="assets/img/screen-2.webp" alt="Clínicas listadas no app do IMED" loading="lazy"><span class="isl"></span></div>
-      <div class="mfl a"><span class="ic" style="background:linear-gradient(145deg,#1290B3,#0E7C9C)"><i class="fa-solid fa-location-dot"></i></span><span>705 m do paciente<small>aparece primeiro na busca</small></span></div>
-      <div class="mfl b"><span class="ic" style="background:linear-gradient(145deg,#34C27C,#1E9E5A)"><i class="fa-solid fa-calendar-check"></i></span><span>Novo agendamento<small>Ressonância · hoje 16:00</small></span></div>
-    </div>
-    <div>
-      <span class="k" style="color:var(--coral-dark);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Sua vitrine</span>
-      <h2 style="margin-top:8px">É assim que os pacientes encontram sua clínica</h2>
-      <p>Como um app de delivery: a clínica aparece com foto, nota, distância, preço de cada exame e o próximo horário livre. O paciente escolhe, paga e chega com tudo pronto.</p>
-      <ul>
-        <li><i class="fa-solid fa-image"></i><span><b>Fotos e selo de qualidade</b><br><span style="color:var(--muted)">Mostre sua estrutura e ganhe o selo Super Clínica com boas avaliações.</span></span></li>
-        <li><i class="fa-solid fa-tags"></i><span><b>Preço por exame e desconto no Pix</b><br><span style="color:var(--muted)">Você controla valores, promoções e convênios aceitos.</span></span></li>
-        <li><i class="fa-solid fa-file-medical"></i><span><b>Pedidos completos</b><br><span style="color:var(--muted)">Quem manda o pedido médico vê só as clínicas que fazem todos os exames.</span></span></li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<section class="gray" id="planos">
-  <div class="wrap">
-    <div class="head"><span class="k">Planos</span><h2>Escolha como quer aparecer</h2><p>Você só paga quando o paciente agenda. Troque de plano quando quiser.</p></div>
-    <div class="plans">
-      <div class="plan">
-        <h3>Plano Básico</h3><p class="sub">Para começar a receber pacientes</p>
-        <div class="price"><b>8%</b><span>por agendamento</span></div>
-        <p class="fee">Sem mensalidade</p>
-        <ul>
-          <li><i class="fa-solid fa-check"></i>Página da clínica com exames e preços</li>
-          <li><i class="fa-solid fa-check"></i>Agenda online e lembretes ao paciente</li>
-          <li><i class="fa-solid fa-check"></i>Pagamento por Pix e cartão no app</li>
-          <li><i class="fa-solid fa-check"></i>Painel com agendamentos e avaliações</li>
-          <li class="no"><i class="fa-solid fa-xmark"></i>Destaque na busca e nos banners</li>
-          <li class="no"><i class="fa-solid fa-xmark"></i>Selo Super Clínica</li>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
         </ul>
-        <a class="btn btn-line" href="#cadastro" data-plan="Básico">Começar no Básico</a>
       </div>
-      <div class="plan best">
-        <span class="rib">Mais escolhido</span>
-        <h3>Plano Destaque</h3><p class="sub">Para lotar a agenda mais rápido</p>
-        <div class="price"><b>12%</b><span>por agendamento</span></div>
-        <p class="fee">+ R$ 149/mês · 1º mês grátis</p>
-        <ul>
-          <li><i class="fa-solid fa-check"></i>Tudo do Plano Básico</li>
-          <li><i class="fa-solid fa-check"></i>Topo da lista no seu bairro</li>
-          <li><i class="fa-solid fa-check"></i>Banners e campanhas de cupom</li>
-          <li><i class="fa-solid fa-check"></i>Pode ganhar o selo Super Clínica</li>
-          <li><i class="fa-solid fa-check"></i>Relatórios de concorrência e preço</li>
-          <li><i class="fa-solid fa-check"></i>Gerente de conta dedicado</li>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
         </ul>
-        <a class="btn btn-coral" href="#cadastro" data-plan="Destaque">Quero o Destaque</a>
       </div>
-    </div>
-    <p class="fine">Valores de exemplo para o protótipo. Ajuste conforme o modelo de negócio do IMED.</p>
-  </div>
-</section>
-
-<section>
-  <div class="wrap">
-    <div class="head"><span class="k">Simulador</span><h2>Quanto sua clínica pode faturar a mais?</h2></div>
-    <div class="calc">
-      <div>
-        <label>Novos pacientes por semana <span class="val" id="vPac">20</span></label>
-        <input type="range" id="rPac" min="5" max="150" step="5" value="20">
-        <label>Ticket médio por exame <span class="val" id="vTk">R$ 250</span></label>
-        <input type="range" id="rTk" min="80" max="900" step="10" value="250">
-        <label>Plano</label>
-        <div class="seg" id="calcPlan" style="margin:0"><button type="button" class="on" data-p="b">Básico (8%)</button><button type="button" data-p="d">Destaque (12%)</button></div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
       </div>
-      <div class="out"><small>Faturamento extra estimado por mês</small><b id="oVal">R$ 0</b><small id="oNet"></small></div>
-    </div>
+    </nav>
   </div>
-</section>
-
-<section style="padding-top:0">
-  <div class="wrap">
-    <div class="head"><span class="k">Rede IMED</span><h2>Clínicas como a sua já estão no mapa</h2><p>Estruturas de todos os tamanhos: do consultório de ultrassom ao centro de diagnóstico completo.</p></div>
-    <div class="gallery">
-      <figure><img src="assets/img/recepcao.webp" alt="Recepção de clínica parceira" loading="lazy"><figcaption>Recepção · Bela Vista</figcaption></figure>
-      <figure><img src="assets/img/rm-sm.webp" alt="Sala de ressonância magnética" loading="lazy"><figcaption>Ressonância</figcaption></figure>
-      <figure><img src="assets/img/usg-sm.webp" alt="Sala de ultrassom" loading="lazy"><figcaption>Ultrassom</figcaption></figure>
-      <figure><img src="assets/img/mamo-sm.webp" alt="Sala de mamografia" loading="lazy"><figcaption>Mamografia</figcaption></figure>
-      <figure><img src="assets/img/eco-sm.webp" alt="Sala de cardiologia" loading="lazy"><figcaption>Cardiologia</figcaption></figure>
-    </div>
-    <p class="note">Imagens ilustrativas geradas por IA.</p>
-  </div>
-</section>
-
-<section class="gray" id="como">
-  <div class="wrap">
-    <div class="head"><span class="k">Como funciona</span><h2>Do cadastro ao primeiro paciente</h2></div>
-    <div class="steps">
-      <div class="step"><h3>Cadastre-se</h3><p>Preencha o formulário com os dados da clínica. Leva 2 minutos.</p></div>
-      <div class="step"><h3>Envie os documentos</h3><p>CNPJ, alvará, CNES e responsável técnico. Validamos em até 3 dias úteis.</p></div>
-      <div class="step"><h3>Monte sua vitrine</h3><p>Cadastre exames, preços, fotos, convênios e horários no painel.</p></div>
-      <div class="step"><h3>Receba pacientes</h3><p>Sua clínica entra no app e os agendamentos começam a chegar.</p></div>
-    </div>
-  </div>
-</section>
-
-<section>
-  <div class="wrap split">
-    <div>
-      <span class="k" style="color:var(--coral-dark);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase">Painel do parceiro</span>
-      <h2>Tudo da sua clínica em um só lugar</h2>
-      <p>Acompanhe agendamentos em tempo real, responda avaliações, ajuste preços e abra horários pelo computador ou celular.</p>
-      <ul>
-        <li><i class="fa-solid fa-circle-check"></i>Agenda do dia com confirmação automática</li>
-        <li><i class="fa-solid fa-circle-check"></i>Faturamento e repasses detalhados</li>
-        <li><i class="fa-solid fa-circle-check"></i>Avaliações e nota da clínica</li>
-        <li><i class="fa-solid fa-circle-check"></i>Laudos enviados direto para o app do paciente</li>
-      </ul>
-    </div>
-    <div class="dash" aria-label="Exemplo do painel">
-      <div class="row">
-        <div class="kpi"><small>Agendamentos</small><b>148</b><em>+38% no mês</em></div>
-        <div class="kpi"><small>Faturamento</small><b>R$ 41 mil</b><em>+22%</em></div>
-        <div class="kpi"><small>Nota</small><b>4,8 ★</b><em>312 avaliações</em></div>
-      </div>
-      <div class="bars"><div style="height:35%"></div><div style="height:48%"></div><div style="height:42%"></div><div style="height:60%"></div><div style="height:72%"></div><div style="height:66%"></div><div style="height:90%"></div></div>
-      <div class="ag">
-        <div><i class="fa-solid fa-magnet"></i>14:30 · Ressonância · Ana P.<span>Pago</span></div>
-        <div><i class="fa-solid fa-wave-square"></i>15:00 · Ultrassom · Carlos M.<span>Pago</span></div>
-        <div><i class="fa-solid fa-x-ray"></i>15:40 · Raio-X · Fernanda S.<span>Convênio</span></div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="gray">
-  <div class="wrap">
-    <div class="head"><span class="k">Parceiros</span><h2>Quem já está no IMED</h2></div>
-    <div class="quotes">
-      <div class="quote"><div class="st">★★★★★</div><p>"Os horários vazios da tarde começaram a ser preenchidos na primeira semana."</p><div class="who"><img class="av" src="assets/img/av-gestora.webp" alt="" loading="lazy"><span><b>Gestora</b><small>Clínica de imagem · São Paulo</small></span></div></div>
-      <div class="quote"><div class="st">★★★★★</div><p>"O paciente já chega com tudo pago e o pedido completo. A recepção ficou bem mais leve."</p><div class="who"><img class="av" src="assets/img/av-diretor.webp" alt="" loading="lazy"><span><b>Diretor clínico</b><small>Centro de diagnóstico · São Paulo</small></span></div></div>
-      <div class="quote"><div class="st">★★★★☆</div><p>"Atendo por vídeo e o pedido de exame já cai no app ligado às clínicas. Economiza tempo de todo mundo."</p><div class="who"><img class="av" src="assets/img/av-camila.webp" alt="" loading="lazy"><span><b>Médica parceira</b><small>Cardiologia · Teleconsulta</small></span></div></div>
-    </div>
-    <p class="note">Depoimentos ilustrativos do protótipo. Substitua por relatos reais antes de divulgar.</p>
-  </div>
-</section>
-
-<section id="faq">
-  <div class="wrap">
-    <div class="head"><span class="k">Dúvidas</span><h2>Perguntas frequentes</h2></div>
-    <details><summary>Quanto custa para entrar no IMED?</summary><p>O cadastro é grátis. No Plano Básico você paga apenas uma porcentagem por agendamento realizado, sem mensalidade.</p></details>
-    <details><summary>Quais documentos são necessários?</summary><p>CNPJ ativo, alvará de funcionamento, registro no CNES, dados do responsável técnico e conta bancária no nome da empresa.</p></details>
-    <details><summary>Posso aceitar convênios?</summary><p>Sim. Você informa os convênios aceitos e o paciente escolhe “Convênio” no agendamento. A cobertura é confirmada pela sua equipe.</p></details>
-    <details><summary>Como recebo os pagamentos?</summary><p>Pagamentos por Pix e cartão feitos no app são repassados para sua conta em até 24h após o atendimento, já descontada a comissão do plano.</p></details>
-    <details><summary>E se o paciente faltar?</summary><p>O app envia lembretes automáticos e você define a política de cancelamento. Exames pagos antecipadamente reduzem muito as faltas.</p></details>
-    <details><summary>Médicos podem atender só por teleconsulta?</summary><p>Sim. Escolha “Médico (teleconsulta)” no cadastro. Você define sua agenda e valor, e atende por vídeo dentro do app.</p></details>
-  </div>
-</section>
-
-<div class="wrap" style="padding-bottom:64px">
-  <div class="final">
-    <div><h2>Pronto para lotar sua agenda?</h2><p>Cadastre sua clínica hoje e apareça para pacientes perto de você.</p></div>
-    <a class="btn" href="#cadastro">Cadastrar agora <i class="fa-solid fa-arrow-right"></i></a>
-  </div>
-</div>
-
-<footer>
-  <div class="wrap">
-    <span><b style="color:var(--ink)">IMED Parceiros</b> · Criado por Rafael Pereira Barreto Silva</span>
-    <span><a href="index.html">App para pacientes</a> · <a href="exames/">Guias de exames</a> · <a href="privacidade.html">Privacidade</a> · <a href="mailto:contato@imed.com.br">contato@imed.com.br</a></span>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
   </div>
 </footer>
+<!-- /rodape -->
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/js/aviso.js" defer></script>
-<script src="assets/js/config.js"></script>
-<script src="assets/js/db.js"></script>
-<script>
-// E-mail mostrado como alternativa se o envio pelo site falhar. Troque pelo e-mail real do IMED.
-const PARTNER_EMAIL = 'contato@imed.com.br';
-
-const OPTS = {
-  clinica:{name:'Nome da clínica',doc:'CNPJ',docPh:'00.000.000/0000-00',esp:'Principal exame',list:['Raio-X','Ultrassom','Tomografia','Ressonância magnética','Mamografia','Densitometria','Cardiologia (eletro/eco)','Vários exames']},
-  medico:{name:'Nome completo',doc:'CPF ou CNPJ',docPh:'000.000.000-00',esp:'Especialidade',list:['Clínico geral','Cardiologia','Dermatologia','Pediatria','Ginecologia','Psiquiatria','Ortopedia','Outra']}
-};
-let kind='clinica', plan='';
-const $=s=>document.querySelector(s);
-const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-const digits=s=>s.replace(/\D/g,'');
-const fmtCPF=d=>{d=d.slice(0,11);let o=d.slice(0,3);if(d.length>3)o+='.'+d.slice(3,6);if(d.length>6)o+='.'+d.slice(6,9);if(d.length>9)o+='-'+d.slice(9);return o};
-const fmtCNPJ=d=>{d=d.slice(0,14);let o=d.slice(0,2);if(d.length>2)o+='.'+d.slice(2,5);if(d.length>5)o+='.'+d.slice(5,8);if(d.length>8)o+='/'+d.slice(8,12);if(d.length>12)o+='-'+d.slice(12);return o};
-const fmtTel=d=>{d=d.slice(0,11);if(!d)return '';if(d.length<=2)return '('+d;const r=d.slice(2);let o='('+d.slice(0,2)+') ';if(r.length<=4)return o+r;return o+(d.length===11?r.slice(0,5)+'-'+r.slice(5):r.slice(0,4)+'-'+r.slice(4))};
-function setKind(k){
-  kind=k;const o=OPTS[k];
-  document.querySelectorAll('[data-kind]').forEach(b=>b.classList.toggle('on',b.dataset.kind===k));
-  $('#nameLbl').textContent=o.name;$('#docLbl').textContent=o.doc;$('#espLbl').textContent=o.esp;
-  const doc=$('[name=doc]');doc.placeholder=o.docPh;doc.value='';doc.classList.remove('bad');
-  $('#crmFld').classList.toggle('hide',k!=='medico');
-  $('[name=nome]').autocomplete=k==='clinica'?'organization':'name';
-  $('#esp').innerHTML=o.list.map(x=>`<option>${x}</option>`).join('');
-}
-document.querySelectorAll('[data-kind]').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
-document.querySelectorAll('[data-plan]').forEach(a=>a.addEventListener('click',()=>{plan=a.dataset.plan}));
-setKind('clinica');
-
-$('[name=doc]').addEventListener('input',e=>{const d=digits(e.target.value);e.target.value=kind==='clinica'||d.length>11?fmtCNPJ(d):fmtCPF(d)});
-$('[name=tel]').addEventListener('input',e=>{e.target.value=fmtTel(digits(e.target.value))});
-
-function check(f){
-  const v=n=>(f.elements[n].value||'').trim();
-  const bad={
-    nome:v('nome').length<2,
-    doc:kind==='clinica'?digits(v('doc')).length!==14:![11,14].includes(digits(v('doc')).length),
-    tel:![10,11].includes(digits(v('tel')).length),
-    crm:kind==='medico'&&v('crm').length<4,
-    email:!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v('email')),
-    cidade:v('cidade').length<2,
-    lgpd:!f.elements.lgpd.checked
-  };
-  Object.entries(bad).forEach(([n,b])=>f.elements[n].classList.toggle('bad',b));
-  const first=Object.keys(bad).find(n=>bad[n]);
-  return first?{first,msg:{doc:kind==='clinica'?'Confira o CNPJ (14 números).':'Confira o CPF (11 números) ou CNPJ (14 números).',tel:'Confira o celular com DDD.',email:'Confira o e-mail.',crm:'Informe o CRM e o estado (ex.: 123456-SP).',lgpd:'Para continuar, aceite o uso dos dados para contato.'}[first]||'Preencha os campos destacados.'}:null;
-}
-
-$('#pform').addEventListener('submit',e=>{
-  e.preventDefault();
-  const f=e.target, err=$('#ferr'), btn=$('#pSend');
-  err.classList.remove('show');
-  const bad=check(f);
-  if(bad){err.textContent=bad.msg;err.classList.add('show');f.elements[bad.first].focus();return}
-  const d=Object.fromEntries(new FormData(f));
-  const services=[`${OPTS[kind].esp}: ${d.esp}`,kind==='medico'?`CRM ${d.crm.trim().toUpperCase()}`:'',plan?`Plano de interesse: ${plan}`:''].filter(Boolean).join(' · ');
-  const row={partner_type:kind,name:d.nome.trim(),cnpj:d.doc.trim(),phone:d.tel.trim(),email:d.email.trim().toLowerCase(),address:d.cidade.trim(),services,online_only:kind==='medico'};
-  const done=()=>{$('#formWrap').innerHTML=`<div class="done"><div class="ic"><i class="fa-solid fa-check"></i></div><h2>Cadastro recebido!</h2><p>Obrigado, <b>${esc(row.name)}</b>. Nossa equipe vai entrar em contato pelo WhatsApp <b>${esc(row.phone)}</b> ou pelo e-mail <b>${esc(row.email)}</b> em até 1 dia útil.</p></div>`;$('#formCard').scrollIntoView({behavior:'smooth',block:'center'})};
-  if(d.website){done();return}
-  btn.disabled=true;btn.innerHTML='<span class="spin"></span> Enviando…';
-  imedInsert('partner_leads',row).then(done).catch(()=>{
-    const body=`Cadastro de parceiro IMED\n\nTipo: ${kind==='clinica'?'Clínica de imagem':'Médico (teleconsulta)'}\nNome: ${row.name}\n${OPTS[kind].doc}: ${row.cnpj}\nCelular: ${row.phone}\nE-mail: ${row.email}\nCidade: ${row.address}\n${services}`;
-    const link=`mailto:${PARTNER_EMAIL}?subject=${encodeURIComponent('Cadastro de parceiro: '+row.name)}&body=${encodeURIComponent(body)}`;
-    err.innerHTML=`Não conseguimos enviar agora (verifique sua internet). Tente de novo ou <a href="${link}">envie seus dados por e-mail</a>.`;err.classList.add('show');
-    btn.disabled=false;btn.innerHTML='Tentar de novo <i class="fa-solid fa-rotate-right"></i>';
-  });
-});
-
-// simulador
-const brl=n=>'R$ '+Math.round(n).toLocaleString('pt-BR');
-let cp='b';
-function calc(){
-  const pac=+$('#rPac').value,tk=+$('#rTk').value;
-  $('#vPac').textContent=pac;$('#vTk').textContent=brl(tk);
-  const gross=pac*4.3*tk,fee=gross*(cp==='b'?.08:.12)+(cp==='d'?149:0);
-  $('#oVal').textContent=brl(gross);
-  $('#oNet').textContent=`Você recebe ${brl(gross-fee)} após a comissão${cp==='d'?' e mensalidade':''}`;
-}
-$('#rPac').oninput=calc;$('#rTk').oninput=calc;
-document.querySelectorAll('#calcPlan button').forEach(b=>b.onclick=()=>{cp=b.dataset.p;document.querySelectorAll('#calcPlan button').forEach(x=>x.classList.toggle('on',x===b));calc()});
-calc();
-if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));
-</script>
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/visitas.js" defer></script>
+<script src="assets/js/db.js" defer></script>
+<script src="assets/js/parceiros.js" defer></script>
 </body>
 </html>

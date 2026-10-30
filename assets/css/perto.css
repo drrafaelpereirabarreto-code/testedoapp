@@ -1,10 +1,10 @@
 /* Página "Clínicas perto de você" — mesma identidade visual da página inicial do IMED. */
 :root{
   --navy:#05161e; --navy2:#082431;
-  --primary:#0E7C9C; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
-  --coral:#FF6B4A; --coral-d:#E8512F; --coral-s:#FFF0EC; --gold:#F5A524; --gold-s:#FFF6E3;
-  --green:#1E9E5A; --green-s:#E7F6EE; --purple:#6C4BD8; --purple-s:#F1ECFF;
-  --ink:#0F1F28; --text:#2B3A44; --muted:#667A86; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
+  --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --coral:#FF6B4A; --coral-d:#BF3B20; --coral-s:#FFF0EC; --gold:#F5A524; --gold-s:#FFF6E3;
+  --green:#137A44; --green-s:#E7F6EE; --purple:#6C4BD8; --purple-s:#F1ECFF;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
   --sh1:0 1px 2px rgba(15,31,40,.05),0 8px 24px rgba(15,31,40,.06);
   --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
   --sh3:0 40px 100px rgba(5,22,30,.35);
@@ -12,7 +12,7 @@
   --top:64px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--top) + 16px)}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg2);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacing:-.02em;line-height:1.2}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -23,14 +23,16 @@ img{display:block;max-width:100%}
 .hide{display:none!important}
 .skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:#fff;color:var(--ink);font-weight:700;box-shadow:var(--sh2)}
 .skip:focus{top:12px}
-:focus-visible{outline:3px solid rgba(46,230,214,.9);outline-offset:2px}
+:focus-visible{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
+/* nas partes escuras (topo, busca), o contorno do foco fica claro */
+.pt-top :focus-visible,.pt-hero :focus-visible,.ct-hero :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
 
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 20px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .2s var(--ease),box-shadow .2s,background .2s;white-space:nowrap;text-align:center}
 .btn:active{transform:scale(.98)}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
-.btn-coral{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;box-shadow:0 10px 24px rgba(255,107,74,.3),inset 0 1px 0 rgba(255,255,255,.25)}
+.btn-coral{background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;box-shadow:0 10px 24px rgba(184,58,32,.3),inset 0 1px 0 rgba(255,255,255,.25)}
 .btn-coral:hover{box-shadow:0 14px 30px rgba(255,107,74,.4)}
-.btn-primary{background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26),inset 0 1px 0 rgba(255,255,255,.2)}
+.btn-primary{background:linear-gradient(180deg,#0F7B9A,#0B6F8C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26),inset 0 1px 0 rgba(255,255,255,.2)}
 .btn-ghost{background:var(--bg2);color:var(--ink);border:1px solid var(--line)}
 .btn-ghost:hover{background:#eaf1f4}
 .btn-sm{padding:9px 14px;font-size:14px;border-radius:12px}
@@ -40,7 +42,7 @@ img{display:block;max-width:100%}
 /* ============ topo ============ */
 .pt-top{position:sticky;top:0;z-index:40;height:var(--top);background:var(--navy);color:#fff;border-bottom:1px solid rgba(255,255,255,.06)}
 .pt-top-in{height:100%;display:flex;align-items:center;gap:18px;padding:0 20px}
-.logo{display:flex;align-items:center;gap:9px;font-family:'Sora';font-weight:800;font-size:21px;color:#fff;letter-spacing:-.02em;flex-shrink:0}
+.logo{display:flex;align-items:center;gap:9px;font-family:'Sora','Inter',system-ui,-apple-system,sans-serif;font-weight:800;font-size:21px;color:#fff;letter-spacing:-.02em;flex-shrink:0}
 .logo-mk{position:relative;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(145deg,#16A6C9,#0E7C9C);color:#fff;font-size:14px;box-shadow:0 6px 16px rgba(14,124,156,.4),inset 0 1px 0 rgba(255,255,255,.3)}
 .logo-mk::after{content:"";position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--coral);border:2px solid var(--navy)}
 .pt-nav{display:flex;gap:2px;margin-left:8px}
@@ -64,11 +66,12 @@ img{display:block;max-width:100%}
 .pt-hero h1{color:#fff;font-size:27px;letter-spacing:-.035em}
 .pt-hero>p{color:rgba(255,255,255,.72);font-size:14.5px;margin-top:6px;line-height:1.5}
 .pt-search{display:flex;gap:6px;margin-top:18px;background:#fff;border-radius:16px;padding:6px;box-shadow:0 18px 44px rgba(0,0,0,.3)}
-.pt-field{flex:1;display:flex;align-items:center;gap:10px;padding:0 10px;min-width:0}
+.pt-field{flex:1;display:flex;align-items:center;gap:10px;padding:0 10px;min-width:0;border-radius:11px}
+.pt-field:focus-within{outline:3px solid #0B7290;outline-offset:1px}
 .pt-field i{color:var(--primary)}
 .pt-field input{flex:1;min-width:0;border:0;outline:none;background:none;color:var(--ink);font-size:16px;padding:11px 0}
 .pt-field input::-webkit-search-cancel-button{cursor:pointer}
-.pt-go{padding:12px 18px;border-radius:12px;background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;font-weight:700;box-shadow:0 8px 18px rgba(255,107,74,.32)}
+.pt-go{padding:12px 18px;border-radius:12px;background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;font-weight:700;box-shadow:0 8px 18px rgba(184,58,32,.32)}
 .pt-go:disabled{opacity:.6;cursor:wait}
 .pt-loc{display:inline-flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px 10px 12px;border-radius:12px;background:rgba(46,230,214,.14);border:1px solid rgba(127,240,228,.38);color:#fff;font-weight:700;font-size:14.5px;transition:background .2s}
 .pt-loc:hover{background:rgba(46,230,214,.24)}
@@ -116,6 +119,13 @@ img{display:block;max-width:100%}
 .bd-agenda{background:var(--green-s);color:var(--green)}
 .bd-agenda i{color:var(--green)}
 .pc h3{font-size:16px;line-height:1.3;overflow-wrap:anywhere}
+/* O título do cartão é o botão que abre a ficha; o ::after cobre o cartão todo (toque/clique em qualquer
+   parte) e desenha o contorno do foco em volta do cartão. Telefone e WhatsApp ficam por cima dele. */
+.pc-open{display:inline;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;letter-spacing:inherit}
+.pc-open::after{content:"";position:absolute;inset:0;border-radius:20px}
+.pc-open:focus{outline:none}
+.pc-open:focus-visible::after{outline:3px solid var(--primary);outline-offset:2px}
+.pc-contact a{position:relative;z-index:1}
 .pc-addr{font-size:13.5px;color:var(--muted);margin-top:3px;line-height:1.45}
 .pc-svc{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
 .svc{font-size:12px;font-weight:600;padding:4px 9px;border-radius:999px;background:var(--ks,var(--bg2));color:var(--ink)}
@@ -301,6 +311,8 @@ img{display:block;max-width:100%}
 .fld textarea{resize:vertical;min-height:84px}
 .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.15)}
 .fld.bad input,.fld.bad select,.fld.bad textarea{border-color:var(--coral-d);box-shadow:0 0 0 3px rgba(232,81,47,.12)}
+/* campo com erro e em foco: o contorno do foco aparece por cima do vermelho do erro */
+.fld.bad input:focus,.fld.bad select:focus,.fld.bad textarea:focus{outline:3px solid #0B7290;outline-offset:2px}
 .fld .err{color:var(--coral-d);font-size:13px;font-weight:600}
 .fld .err:empty{display:none}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
@@ -311,7 +323,7 @@ fieldset.fld{border:0}
 .seg input{position:absolute;opacity:0;width:1px;height:1px}
 .seg span{display:inline-block;padding:9px 14px;border-radius:12px;border:1px solid var(--line);font-size:14px;font-weight:600;cursor:pointer;background:#fff}
 .seg input:checked+span{background:var(--primary);border-color:var(--primary);color:#fff}
-.seg input:focus-visible+span{outline:3px solid rgba(46,230,214,.9);outline-offset:2px}
+.seg input:focus-visible+span{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
 .consent{display:flex;gap:12px;align-items:flex-start;margin-top:18px;padding:14px;border-radius:14px;background:var(--bg2);font-size:13.5px;line-height:1.5;cursor:pointer}
 .consent input{width:20px;height:20px;margin-top:2px;accent-color:var(--primary);flex-shrink:0}
 .consent a{color:var(--primary);font-weight:700;text-decoration:underline}
@@ -324,11 +336,29 @@ fieldset.fld{border:0}
 @keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.08)}100%{transform:scale(1);opacity:1}}
 .ok h3{font-size:22px}
 .ok p{color:var(--muted);margin-top:8px;line-height:1.6;font-size:15px}
-.ok .code{display:inline-block;margin-top:14px;font-family:'Sora';font-weight:700;letter-spacing:.06em;background:var(--bg2);padding:8px 14px;border-radius:10px;color:var(--ink)}
+.ok .code{display:inline-block;margin-top:14px;font-family:'Sora','Inter',system-ui,sans-serif;font-weight:700;letter-spacing:.06em;background:var(--bg2);padding:8px 14px;border-radius:10px;color:var(--ink)}
 .ok ol{text-align:left;display:grid;gap:8px;margin:18px auto 0;max-width:420px;padding-left:22px;font-size:14.5px;line-height:1.5}
 
 .toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-90px);z-index:2100;max-width:calc(100% - 32px);padding:12px 18px;border-radius:14px;background:var(--ink);color:#fff;font-weight:600;font-size:14px;box-shadow:var(--sh3);transition:transform .3s var(--ease);text-align:center}
 .toast.show{transform:translate(-50%,0)}
+
+/* ============ avisos de confiança: emergência, gratuito (golpes) e privacidade ============ */
+.pt-sos{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:13px;line-height:1.45;color:rgba(255,255,255,.8)}
+.pt-sos i{color:#FF9A80;margin-top:2px}
+.pt-sos a{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.sos{display:flex;gap:8px;align-items:flex-start;margin-top:14px;padding:9px 12px;border-radius:12px;background:var(--coral-s);color:#8a2f1a;font-size:13px;line-height:1.45}
+.sos i{color:var(--coral-d);margin-top:2px}
+.sos a{color:#8a2f1a;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+.trust{display:grid;gap:8px;margin-top:16px;text-align:left}
+.trust p{display:flex;gap:10px;align-items:flex-start;margin:0;padding:10px 12px;border-radius:12px;background:var(--bg2);color:var(--text);font-size:13px;line-height:1.5}
+.trust p>i{flex-shrink:0;width:16px;margin-top:3px;text-align:center;color:var(--primary)}
+.trust p.free{background:var(--green-s);color:#145F3A}
+.trust p.free>i{color:var(--green)}
+.trust p.free b{color:#0F4A2D}
+.pt-legend-more{margin-top:8px;line-height:1.5}
+/* rodapé (assets/css/rodape.css) no fim da coluna da lista */
+.pt-side>.rodape{margin-top:28px}
+.pt-side:has(>.rodape){padding-bottom:0}
 
 /* ============ celular ============ */
 @media (max-width:899px){
@@ -340,6 +370,8 @@ fieldset.fld{border:0}
   body.show-map{overflow:hidden}
   .pt-toggle{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:35;display:flex;align-items:center;gap:9px;padding:13px 20px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;font-size:14.5px;box-shadow:0 14px 34px rgba(5,22,30,.4)}
   .pt-toggle.hide{display:none}
+  /* foco pelo Tab não fica atrás do topo, dos filtros fixos nem do botão "Ver mapa" */
+  html{scroll-padding-top:calc(var(--top) + 64px);scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom))}
   .pt-mapload{bottom:auto;top:68px}
   .pt-mapkey{left:10px;bottom:calc(18px + env(safe-area-inset-bottom));max-width:112px;padding:8px 10px;font-size:12px}
   .pt-mapkey.err{max-width:150px}
@@ -347,5 +379,37 @@ fieldset.fld{border:0}
 @media (max-width:420px){.pt-hero{padding:22px 16px 18px}.pt-hero h1{font-size:24px}.pt-go{padding:12px 14px}.pt-list{padding:8px 12px 24px}.pc{grid-template-columns:40px 1fr 12px;gap:12px;padding:14px}.pc-ic{width:40px;height:40px;font-size:16px;border-radius:12px}}
 /* aviso de privacidade (assets/js/aviso.js): no computador fica sobre o mapa, sem cobrir a lista */
 @media (min-width:900px){body .lgpd{left:auto;right:16px;bottom:34px;max-width:400px}}
-@media (max-width:899px){body:has(.lgpd) .pt-side{padding-bottom:200px}}
+@media (max-width:899px){
+  body:has(.lgpd) .pt-side{padding-bottom:200px}
+  /* com o rodapé, a folga para o botão "Ver mapa" (e para o aviso de privacidade) fica dentro dele */
+  .pt-side:has(>.rodape),body:has(.lgpd) .pt-side:has(>.rodape){padding-bottom:0}
+  .pt-side>.rodape .rd-base{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+  body:has(.lgpd) .pt-side>.rodape .rd-base{padding-bottom:280px}
+}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* pedido para outra pessoa ("O exame é para: mim / outra pessoa") */
+.bk-other{margin-top:4px;padding:2px 14px 14px;border-left:3px solid var(--primary-s);border-radius:0 0 0 6px}
+.bk-other .consent{margin-top:14px}
+.consent.minor{background:#fff;border:1px solid var(--line);padding:11px 14px}
+.bk-gerr{display:block;color:var(--coral-d);font-size:13px;font-weight:600;margin-top:6px}
+.bk-gerr:empty{display:none}
+.bk-other[hidden],.consent[hidden],.pt-legend li[hidden]{display:none}
+
+/* Celular e telas de toque: alvos com pelo menos 44 px (dedo, inclusive de quem tem tremor ou vista cansada)
+   e campos com letra de 16 px (o iPhone não dá zoom ao tocar). */
+@media (max-width:860px),(pointer:coarse){
+  .btn,.btn-sm,.pt-go,.pt-loc,.pt-partner,.fbtn,.fclear,.pt-toggle,.sl-t{min-height:44px}
+  .pt-partner{display:inline-flex;align-items:center}
+  .logo{min-height:44px}
+  .pt-field input{min-height:44px}
+  .fchip select{min-height:44px;font-size:16px}
+  .fbtn{font-size:15px}
+  .pt-legend summary{min-height:44px}
+  .x{width:44px;height:44px}
+  .seg span{display:inline-flex;align-items:center;min-height:44px}
+  .pc-contact a{min-height:44px;padding:8px 12px;font-size:14px}
+  .dt-contact a{display:inline-flex;align-items:center;min-height:44px}
+  .leaflet-touch .leaflet-bar a,.leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:20px}
+  .link:not(p .link):not(li .link),.dt-full .link{display:inline-flex;align-items:center;min-height:44px}
+}
