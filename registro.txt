@@ -1,0 +1,11 @@
+[16:07:26] == horizontal: 1280×720 @1.5x
+[16:07:28]   cena 1: inicio
+[16:07:33]   cena 2: mapa-reais
+[16:07:44]   cena 3: busca-exame
+[16:07:50]   cena 4: resultados
+[16:07:59]   cena 5: detalhe
+[16:08:06]   cena 6: local
+[16:08:12]   cena 7: responsavel
+[16:08:18]   cena 8: final
+[16:08:23]   466 quadros em 54.8 s; montando /home/runner/work/_temp/video/imed-horizontal.mp4
+[16:08:52] resumo: [{"formato":"horizontal","arquivo":"/home/runner/work/_temp/video/imed-horizontal.mp4","quadros":466,"segundos":54.8,"falhas":[]}]
