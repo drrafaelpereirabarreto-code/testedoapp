@@ -2,7 +2,7 @@
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
 // A cidade 3D (hero3d.js e three.module.min.js) fica fora do CORE: aparelhos fracos não a baixam;
 // nos demais ela entra no cache no primeiro uso.
-const VERSION = 'imed-v10';
+const VERSION = 'imed-v11';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html', './termos.html',

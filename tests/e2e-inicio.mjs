@@ -52,6 +52,8 @@ const CNES_ROWS = [
   { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5655, lng: -46.6520, distance_m: 640, location_source: 'endereco', phone: '(11) 3000-2000', shift: 'Manhã e tarde', open_24h: false, sus: true, services: ['lab'], specialties: [], cnes_updated_at: '2026-08-02' },
   { cnes: '7000001', name: 'Centro de Imagem <b>Teste</b>', kind: 'imagem', address_line: 'Rua Augusta, 1000', neighborhood: 'Consolação', cep: '01304001', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.556, lng: -46.657, distance_m: 900, location_source: 'cnes', phone: null, shift: null, open_24h: false, sus: false, services: ['rx'], specialties: [], cnes_updated_at: '2026-09-01' },
 ];
+// Pontos do mapa da página inicial (establishment_points): os mesmos locais, só com o necessário para o mapa.
+const POINTS = CNES_ROWS.map(({ cnes, name, kind, lat, lng, distance_m }) => ({ cnes, name, kind, lat, lng, distance_m, total: CNES_ROWS.length }));
 const ID1 = '11111111-1111-4111-8111-111111111111';
 const ID2 = '22222222-2222-4222-8222-222222222222';
 const APPTS = [
@@ -90,7 +92,8 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 // device: { memory, cores, saveData, effectiveType } simula o aparelho (navigator.deviceMemory, hardwareConcurrency,
 // connection.saveData e connection.effectiveType). dpr: densidade da tela. sw: liga o service worker.
 // tz: fuso do aparelho. ua: navegador (por exemplo, o do iPhone). now: relógio fixo. three: rota para o three.js.
-async function newPage(browser, { mobile = false, cities, cnes, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null } = {}) {
+// points: resposta de establishment_points. spyMap: guarda em window.__maps os mapas do Leaflet criados pela página.
+async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false } = {}) {
   const context = await browser.newContext({
     viewport: viewport || (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
     deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz,
@@ -98,7 +101,7 @@ async function newPage(browser, { mobile = false, cities, cnes, partners, status
   });
   if (now) await context.clock.setFixedTime(new Date(now));
   if (three) await context.route(`${BASE}assets/vendor/three.module.min.js`, three);
-  const log = { cities: 0, cnes: [], partners: [], status: [], waitlist: [] };
+  const log = { cities: 0, cnes: [], points: [], partners: [], status: [], waitlist: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -111,6 +114,12 @@ async function newPage(browser, { mobile = false, cities, cnes, partners, status
     if (route.request().method() === 'OPTIONS') return preflight(route);
     log.cnes.push(JSON.parse(route.request().postData() || '{}'));
     return (cnes ?? ((r) => json(r, CNES_ROWS)))(route);
+  });
+  // Com ?select= na URL: casa pelo começo do endereço.
+  await context.route((u) => u.href.startsWith(`${REST}rpc/establishment_points`), async (route) => {
+    if (route.request().method() === 'OPTIONS') return preflight(route);
+    log.points.push({ url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') });
+    return (points ?? ((r) => json(r, POINTS)))(route);
   });
   await context.route(`${REST}rpc/nearby_clinics`, async (route) => {
     if (route.request().method() === 'OPTIONS') return preflight(route);
@@ -138,6 +147,17 @@ async function newPage(browser, { mobile = false, cities, cnes, partners, status
     if (!sessionStorage.getItem('fav')) { localStorage.setItem('imed_fav', '["dcp"]'); sessionStorage.setItem('fav', '1'); }
     if (list && !sessionStorage.getItem('seeded')) { localStorage.setItem('imed_appts', JSON.stringify(list)); sessionStorage.setItem('seeded', '1'); }
   }, { list: appts ?? null });
+  if (spyMap) {
+    // O leaflet.js define window.L quando termina de carregar; o gancho guarda cada mapa criado.
+    await context.addInitScript(() => {
+      let lib;
+      Object.defineProperty(window, 'L', {
+        configurable: true,
+        get: () => lib,
+        set: (v) => { lib = v; if (v?.Map?.addInitHook && !v.__spy) { v.__spy = true; v.Map.addInitHook(function () { (window.__maps ||= []).push(this); }); } },
+      });
+    });
+  }
   if (device) {
     await context.addInitScript((d) => {
       if (d.memory != null) Object.defineProperty(navigator, 'deviceMemory', { get: () => d.memory, configurable: true });
@@ -235,6 +255,11 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   assert.ok(String(r.p_lat).split('.')[1].length <= 3, 'coordenada arredondada');
   const pr = log.partners.find((a) => a.p_radius_m === 2000);
   assert.ok(pr && pr.p_include_demo === false && pr.p_lat === r.p_lat, 'parceiros pedidos no mesmo ponto, sem demonstração');
+  assert.equal(r.p_limit, 8, 'a lista pede só os 8 mais próximos, com endereço');
+  const pt = log.points.find((a) => a.body.p_radius_m === 2000);
+  assert.ok(pt, 'mapa pede os pontos da área inteira (2 km)');
+  assert.match(pt.url, /\?select=cnes,name,kind,lat,lng,distance_m,total$/, 'só os campos que o mapa usa');
+  assert.deepEqual([pt.body.p_lat, pt.body.p_lng, pt.body.p_limit], [r.p_lat, r.p_lng, 3000], 'mesmo ponto da lista');
   // para clínicas e rodapé
   for (const href of ['reivindicar.html', 'painel.html', 'conta.html', 'cidades/', 'exames/', 'privacidade.html']) {
     assert.ok(await page.locator(`footer a[href="${href}"]`).count() >= 1, `rodapé com ${href}`);
@@ -243,6 +268,58 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   assert.equal(await page.getAttribute('#nearCta', 'href'), 'perto.html?usar=localizacao');
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+await scenario('mapa de clínicas reais: pontos da área inteira (2 km), não só os mais próximos', async () => {
+  // 400 locais numa espiral de 100 m a ~1,95 km do ponto da Paulista, 100 de cada tipo.
+  const KS = ['imagem', 'laboratorio', 'clinica', 'hospital'];
+  const LAT0 = -23.565, LNG0 = -46.652;
+  const AREA = Array.from({ length: 400 }, (_, i) => {
+    const ang = i * 2.399963, dist = 100 + (i * 1850) / 399;
+    const lat = LAT0 + (Math.sin(ang) * dist) / 110570, lng = LNG0 + (Math.cos(ang) * dist) / (111320 * Math.cos((LAT0 * Math.PI) / 180));
+    return { cnes: String(7200000 + i), name: `Local Teste ${i}`, kind: KS[i % 4], lat, lng, distance_m: Math.round(dist), total: 400 };
+  });
+  const { page, errors, context } = await newPage(browser, { points: (r) => json(r, AREA), spyMap: true });
+  await page.goto(BASE);
+  await scrollAll(page);
+  await page.waitForSelector('#realList li b');
+  const stats = await page.$$eval('#realStats .rm-stat b', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(stats, ['101', '100', '100', '100'], 'conta todos os pontos da área, mais o parceiro (imagem)');
+  assert.equal(await page.locator('#realList li').count(), 4, 'a lista continua com os mais próximos');
+  await page.locator('#realMap').evaluate((e) => e.scrollIntoView({ block: 'center' })); // longe do topo fixo
+  const m = await page.evaluate(() => {
+    const map = window.__maps.at(-1), b = map.getBounds();
+    let dots = 0, rings = 0;
+    map.eachLayer((l) => { if (l instanceof L.Circle) rings += 1; else if (l instanceof L.CircleMarker) dots += 1; });
+    return { n: b.getNorth(), s: b.getSouth(), e: b.getEast(), w: b.getWest(), dots, rings, canvas: !!map.getContainer().querySelector('canvas') };
+  });
+  assert.equal(m.dots, 402, '400 pontos + o parceiro + "você"');
+  assert.equal(m.rings, 1, 'círculo dos 2 km');
+  assert.ok(m.canvas, 'pontos em canvas (leve no celular)');
+  const dLat = 1950 / 110570, dLng = 1950 / (111320 * Math.cos((LAT0 * Math.PI) / 180));
+  assert.ok(m.n >= LAT0 + dLat && m.s <= LAT0 - dLat && m.e >= LNG0 + dLng && m.w <= LNG0 - dLng, `mapa enquadra os 2 km inteiros (${JSON.stringify(m)})`);
+  // Toque no ponto mais longe (~1,95 km): abre o balão com o nome e o link da página do local.
+  const far = AREA.at(-1);
+  const at = await page.evaluate(({ lat, lng }) => {
+    const map = window.__maps.at(-1), p = map.latLngToContainerPoint([lat, lng]), r = map.getContainer().getBoundingClientRect();
+    return { x: r.left + p.x, y: r.top + p.y };
+  }, far);
+  await page.mouse.click(at.x, at.y);
+  await page.waitForSelector('.leaflet-popup .rm-pop');
+  assert.match(await page.textContent('.leaflet-popup .rm-pop'), /Local Teste 399.*Hospital · 1,9 km|Local Teste 399.*Hospital · 2,0 km/s);
+  assert.equal(await page.getAttribute('.leaflet-popup .rm-pop a', 'href'), `local.html?cnes=${far.cnes}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  // Mais locais do que o limite de pontos: a contagem avisa com "+".
+  const cut = AREA.map((p) => ({ ...p, total: 5200 }));
+  const t = await newPage(browser, { points: (r) => json(r, cut) });
+  await t.page.goto(BASE);
+  await scrollAll(t.page);
+  await t.page.waitForSelector('#realList li b');
+  assert.deepEqual(await t.page.$$eval('#realStats .rm-stat b', (els) => els.map((e) => e.textContent)), ['101+', '100+', '100+', '100+']);
+  assert.deepEqual(t.errors, []);
+  await t.context.close();
 });
 
 await scenario('sem dado do banco: pílula com texto neutro, sem número e sem erro', async () => {

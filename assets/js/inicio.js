@@ -208,6 +208,7 @@ $('#addrBtn').onclick = openPlace;
 
 /* ======================= CLÍNICAS REAIS (CNES) ======================= */
 let realMap = null, realLayer = null, realSeq = 0, realStarted = false;
+const REAL_RADIUS = 2000, REAL_POINTS = 3000;
 function loadLeaflet() {
   if (window.L) return Promise.resolve();
   if (loadLeaflet.p) return loadLeaflet.p;
@@ -228,6 +229,40 @@ async function nearbyAll(o, radius, limit) {
   const cnes = (Array.isArray(est) ? est : []).filter(ok).map((r) => ({ ...r, key: 'cnes:' + r.cnes, partner: false }));
   return { rows: [...partners, ...cnes].sort((a, b) => a.distance_m - b.distance_m), full: cnes.length >= limit };
 }
+// Mapa de clínicas reais, com três chamadas no mesmo ponto:
+// - establishment_points: um ponto leve para cada estabelecimento do CNES na área toda (mapa e contagem);
+// - nearby_establishments: os 8 mais próximos, com endereço e contato (a lista);
+// - nearby_clinics: os parceiros publicados do IMED (as duas do CNES deixam de fora quem já virou parceiro).
+// Se a dos parceiros falhar, mostra só o CNES; se uma do CNES falhar, é erro (sem mapa).
+async function areaPlaces(o) {
+  const at = { p_lat: round3(o.lat), p_lng: round3(o.lng), p_radius_m: REAL_RADIUS };
+  const [pts, est, par] = await Promise.all([
+    rpc('establishment_points?select=cnes,name,kind,lat,lng,distance_m,total', { ...at, p_limit: REAL_POINTS }),
+    rpc('nearby_establishments', { ...at, p_limit: 8 }),
+    rpc('nearby_clinics', { ...at, p_include_demo: false, p_limit: 100 }).catch(() => []),
+  ]);
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const ok = (r) => r && r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng);
+  const partners = arr(par).filter(ok).map((r) => ({ ...r, uf: r.uf || r.state, key: 'imed:' + r.id, partner: true }));
+  const near = arr(est).filter(ok).map((r) => ({ ...r, key: 'cnes:' + r.cnes, partner: false }));
+  // Os mais próximos já vêm com endereço e telefone: o balão do mapa usa esses dados.
+  const full = new Map(near.map((r) => [r.cnes, r]));
+  const points = arr(pts).filter(ok).map((r) => full.get(r.cnes) || { ...r, key: 'cnes:' + r.cnes, partner: false });
+  return {
+    partners, points,
+    list: [...partners, ...near].sort((a, b) => a.distance_m - b.distance_m).slice(0, 8),
+    more: Number(arr(pts)[0]?.total) > arr(pts).length, // a área tem mais pontos do que o limite
+  };
+}
+function realPopup(r) {
+  const k = kindOf(r.kind);
+  const pop = document.createElement('div'); pop.className = 'rm-pop';
+  const add = (tag, text) => { if (!text) return; const el = document.createElement(tag); el.textContent = text; pop.appendChild(el); };
+  add('b', r.name); add('div', (r.partner ? 'Parceiro do IMED · ' : '') + k.n + ' · ' + fmtDist(r.distance_m)); add('div', [r.address_line, r.neighborhood].filter(Boolean).join(' · ')); add('div', r.phone); add('div', r.open_24h ? 'Aberto 24 horas' : r.shift);
+  const url = localUrl(r);
+  if (url) { const a = document.createElement('a'); a.href = url; a.textContent = 'Ver página do local'; pop.appendChild(a); }
+  return pop;
+}
 async function renderRealMap() {
   const box = $('#realMap'); if (!box) return;
   const seq = ++realSeq, o = origin();
@@ -235,28 +270,25 @@ async function renderRealMap() {
   try {
     await loadLeaflet();
     // Coordenadas arredondadas (~110 m): o banco só precisa da região.
-    const { rows, full: many } = await nearbyAll(o, 2000, 150);
+    const { partners, points, list, more } = await areaPlaces(o);
     if (seq !== realSeq) return;
     if (!realMap) {
-      box.innerHTML = ''; realMap = L.map(box, { scrollWheelZoom: false });
+      // Canvas: em bairro movimentado são mais de mil pontos, e um elemento por ponto pesaria no celular.
+      box.innerHTML = ''; realMap = L.map(box, { scrollWheelZoom: false, preferCanvas: true, zoomSnap: 0.5 });
       L.tileLayer(C.map.tiles, { maxZoom: C.map.maxZoom, attribution: C.map.attribution }).addTo(realMap);
       realLayer = L.layerGroup().addTo(realMap);
     }
     realLayer.clearLayers();
+    // O círculo de 2 km e o mapa enquadrado nele: aparece a área toda, não só os mais próximos.
+    L.circle([o.lat, o.lng], { radius: REAL_RADIUS, color: '#0E7C9C', weight: 1.5, opacity: 0.7, dashArray: '6 6', fill: false, interactive: false }).addTo(realLayer);
+    points.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 4.5, color: '#fff', weight: 1, fillColor: kindOf(r.kind).color, fillOpacity: 0.9 }).bindPopup(() => realPopup(r)).addTo(realLayer));
+    partners.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 8, color: '#FF6B4A', weight: 3, fillColor: kindOf(r.kind).color, fillOpacity: 0.95 }).bindPopup(() => realPopup(r)).addTo(realLayer));
     L.circleMarker([o.lat, o.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#FF6B4A', fillOpacity: 1 }).bindTooltip(S.here ? 'Você (aproximado)' : PLACES[S.place].n).addTo(realLayer);
-    rows.forEach((r) => {
-      const k = kindOf(r.kind);
-      const pop = document.createElement('div'); pop.className = 'rm-pop';
-      const add = (tag, text) => { if (!text) return; const el = document.createElement(tag); el.textContent = text; pop.appendChild(el); };
-      add('b', r.name); add('div', (r.partner ? 'Parceiro do IMED · ' : '') + k.n + ' · ' + fmtDist(r.distance_m)); add('div', [r.address_line, r.neighborhood].filter(Boolean).join(' · ')); add('div', r.phone); add('div', r.open_24h ? 'Aberto 24 horas' : r.shift);
-      const url = localUrl(r);
-      if (url) { const a = document.createElement('a'); a.href = url; a.textContent = 'Ver página do local'; pop.appendChild(a); }
-      L.circleMarker([r.lat, r.lng], { radius: r.partner ? 8 : 6.5, color: r.partner ? '#FF6B4A' : '#fff', weight: r.partner ? 3 : 1.5, fillColor: k.color, fillOpacity: 0.95 }).bindPopup(pop).addTo(realLayer);
-    });
-    realMap.setView([o.lat, o.lng], 14);
-    $('#realStats').innerHTML = Object.entries(KINDS).map(([kk, k]) => `<div class="rm-stat"><b>${rows.filter((r) => r.kind === kk).length}${many ? '+' : ''}</b><span><i style="background:${k.color}"></i>${k.plural}</span></div>`).join('');
-    $('#realList').innerHTML = rows.length
-      ? rows.slice(0, 8).map((r) => {
+    realMap.fitBounds(L.latLng(o.lat, o.lng).toBounds(REAL_RADIUS * 2), { padding: [10, 10] });
+    const count = (kk) => partners.filter((r) => r.kind === kk).length + points.filter((r) => r.kind === kk).length;
+    $('#realStats').innerHTML = Object.entries(KINDS).map(([kk, k]) => `<div class="rm-stat"><b>${fmtInt(count(kk))}${more ? '+' : ''}</b><span><i style="background:${k.color}"></i>${k.plural}</span></div>`).join('');
+    $('#realList').innerHTML = list.length
+      ? list.map((r) => {
         const k = kindOf(r.kind), url = localUrl(r);
         const inner = `<span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)}${r.neighborhood ? ' · ' + esc(r.neighborhood) : ''}</small></span><span class="d">${fmtDist(r.distance_m)}</span>`;
         return `<li>${url ? `<a href="${esc(url)}">${inner}</a>` : inner}</li>`;
@@ -264,6 +296,8 @@ async function renderRealMap() {
       : '<li>Ainda não temos o cadastro oficial desta região. Toque em <b style="display:inline">Ver todas perto de mim</b> para buscar.</li>';
   } catch {
     if (seq !== realSeq) return;
+    // O aviso substitui o mapa: o próximo "Tentar de novo" cria outro.
+    if (realMap) { realMap.remove(); realMap = null; realLayer = null; }
     box.innerHTML = '<div class="rm-wait">Não foi possível carregar o mapa agora.<button class="btn btn-ghost" type="button" id="realRetry">Tentar de novo</button></div>';
     $('#realRetry').onclick = renderRealMap;
   }
