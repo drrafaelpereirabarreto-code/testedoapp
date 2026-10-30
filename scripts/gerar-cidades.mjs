@@ -118,7 +118,7 @@ function footer(rel, dateIso) {
   return `<footer class="cd-foot">
   <div class="cd-wrap">
     <p>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde, importados no IMED. Números atualizados em ${dateLong(dateIso)}. Confirme horários e atendimento direto com o local.</p>
-    <p><a href="${rel}">Início</a> · <a href="${rel}perto.html">Perto de mim</a> · <a href="${rel}cidades/">Clínicas por cidade</a> · <a href="${rel}exames/">Guias de exames</a> · <a href="${rel}parceiros.html">Para clínicas</a> · <a href="${rel}privacidade.html">Privacidade</a></p>
+    <p><a href="${rel}">Início</a> · <a href="${rel}perto.html">Perto de mim</a> · <a href="${rel}cidades/">Clínicas por cidade</a> · <a href="${rel}exames/">Guias de exames</a> · <a href="${rel}parceiros.html">Para clínicas</a> · <a href="${rel}sobre.html">Quem somos</a> · <a href="${rel}termos.html">Termos de uso</a> · <a href="${rel}privacidade.html">Privacidade</a></p>
   </div>
 </footer>
 <script src="${rel}assets/js/aviso.js" data-base="${rel}" defer></script>
@@ -323,7 +323,7 @@ export function listExamPages(root = ROOT) {
 }
 
 export function sitemapPaths(cities, examPages = []) {
-  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'exames/', ...examPages, 'cidades/'];
+  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'sobre.html', 'termos.html', 'privacidade.html', 'exames/', ...examPages, 'cidades/'];
   for (const c of cities) {
     paths.push(cityDir(c));
     for (const t of TYPES) if (Number(c[t.kind]) > 0) paths.push(typePath(c, t));

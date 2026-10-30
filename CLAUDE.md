@@ -4,7 +4,7 @@
 > Detalhes em `memory/`. Este repositório é público (GitHub Pages): **nunca** escreva aqui segredos, senhas ou dados de pacientes.
 
 ## Quem sou eu (dono do projeto)
-Dr. Rafael Pereira Barreto, médico, dono do IMED. Fala português do Brasil, não é programador.
+Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsável técnico médico do IMED (autorizou usar nome e CRM no site). Fala português do Brasil, não é programador.
 
 ## Preferências (seguir sempre)
 - Responder em **português do Brasil**, linguagem simples, sem jargão.
@@ -44,6 +44,7 @@ Dr. Rafael Pereira Barreto, médico, dono do IMED. Fala português do Brasil, n�
   exportar `imported_cities()` para `scripts/cidades.json` e rodar o gerador de novo.
 
 ## Pendências que dependem do Dr. Rafael
+- Razão social e CNPJ do IMED → `sobre.html` (hoje "em atualização"). Termos de uso: pedir revisão de um advogado.
 - Comprar domínio (ex.: imed.com.br; dá para ver na Hostinger) → trocar `siteUrl` em `assets/js/config.js`.
 - Número de WhatsApp do IMED → `whatsapp` em `assets/js/config.js`.
 - Conectar **Resend** (e-mail) → SMTP no Supabase Auth; e Auth → URL Configuration com o endereço do site.
