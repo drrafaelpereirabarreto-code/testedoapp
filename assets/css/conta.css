@@ -4,7 +4,7 @@
 .ct-hero{color:#fff;padding:26px 0 54px;background:radial-gradient(520px 300px at 90% -10%,rgba(46,230,214,.22),transparent 60%),radial-gradient(420px 260px at -10% 120%,rgba(255,107,74,.16),transparent 60%),linear-gradient(160deg,#071f2a,#05161e)}
 .ct-hero h1{color:#fff;font-size:clamp(26px,4vw,34px);letter-spacing:-.035em}
 .ct-hero p{color:rgba(255,255,255,.76);margin-top:6px;font-size:15.5px;line-height:1.5}
-.ct{padding-bottom:140px}
+.ct{padding-bottom:56px}
 .ct>.ct-wrap{margin-top:-34px}
 .ct-card{background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--sh1);padding:20px}
 .ct-card+.ct-card,.ct-card+.ct-sec,.ct-sec+.ct-sec{margin-top:18px}
@@ -83,3 +83,12 @@
 .ct-row{display:flex;gap:8px;flex-wrap:wrap}
 @media (max-width:420px){.ct-wrap{padding:0 14px}.ct-card{padding:16px}.ct-order{padding:14px}.ct-stars label{width:42px}}
 [hidden]{display:none!important}
+
+/* cancelar pedido e "Meus dados" (LGPD) */
+.ct-cancel{color:#a33a1f}
+.ct-ask{margin-top:12px}
+.ct-rights{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.ct-rights h3{font-size:16px;margin:0 0 6px;color:var(--ink)}
+.ct-rights .ct-row{margin-top:12px}
+.ct-rights .ct-msg{margin-top:10px}
+#dados{outline:none;scroll-margin-top:16px}

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Fale com o IMED | IMED</title>
+<meta name="description" content="Fale com o IMED: dúvidas, cancelamento de pedido, pedidos sobre seus dados pessoais (LGPD) e contato de clínicas. A mensagem fica gravada e você recebe um número de protocolo na hora.">
+<meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/contato.html">
+<meta property="og:title" content="Fale com o IMED">
+<meta property="og:description" content="Dúvidas, cancelamentos, seus dados (LGPD) e contato de clínicas, com número de protocolo na hora.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="IMED">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/contato.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="stylesheet" href="assets/css/clinica.css">
+<style>
+.ct-quick{list-style:none;display:grid;gap:12px}
+.ct-quick li{display:flex;gap:12px;align-items:flex-start;font-size:15px;line-height:1.5}
+.ct-quick li>i{flex-shrink:0;width:34px;height:34px;display:grid;place-items:center;border-radius:11px;background:var(--primary-s);color:var(--primary);font-size:15px}
+.ct-quick li.sos>i{background:var(--coral-s);color:var(--coral-d)}
+.ct-quick b{color:var(--ink)}
+.ct-quick a{color:var(--primary);font-weight:700;text-decoration:underline}
+.ct-tip{margin-top:12px}
+.ct-tip[hidden]{display:none}
+.ct-count{display:block;text-align:right;font-size:12.5px;color:var(--muted);margin-top:5px}
+.ct-legal{font-size:13px;color:var(--muted);margin-top:14px;line-height:1.5}
+.ct-legal a{color:var(--primary);font-weight:700;text-decoration:underline}
+.hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.ct-done{outline:none}
+.ct-done .ic{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;background:var(--green-s);color:var(--green);font-size:24px;margin-bottom:12px}
+.ct-proto{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 4px;padding:12px 14px;border-radius:14px;background:var(--bg2);border:1px dashed #b9cdd6}
+.ct-proto b{font:800 clamp(18px,5vw,22px) Sora,Inter,sans-serif;letter-spacing:.02em;color:var(--ink);overflow-wrap:anywhere}
+.ct-done p{margin-top:8px;font-size:15px;line-height:1.55}
+.ct-done .cl-actions{margin-top:18px}
+.ct-acc{display:flex;gap:10px;align-items:flex-start}
+.ct-acc[hidden]{display:none}
+</style>
+<link rel="stylesheet" href="assets/css/rodape.css">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="./#agenda">Meus pedidos</a>
+      <a href="conta.html">Minha conta</a>
+    </nav>
+    <a class="pt-partner" href="parceiros.html">Para clínicas</a>
+  </div>
+</header>
+
+<div class="cl-hero">
+  <div class="cl-hero-in">
+    <h1>Fale com o IMED</h1>
+    <p>Dúvidas, cancelamento de pedido, pedidos sobre os seus dados pessoais (LGPD) e contato de clínicas. A mensagem fica gravada no IMED e você recebe um número de protocolo na hora.</p>
+    <ul class="cl-points">
+      <li><i class="fa-solid fa-hashtag" aria-hidden="true"></i>Protocolo na hora</li>
+      <li><i class="fa-solid fa-reply" aria-hidden="true"></i>Resposta pelo e-mail ou celular que você informar</li>
+      <li><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Sem custo</li>
+    </ul>
+  </div>
+</div>
+
+<main class="cl" id="main" tabindex="-1">
+  <section class="cl-card" aria-labelledby="antesTitle">
+    <h2 id="antesTitle">Antes de escrever</h2>
+    <ul class="ct-quick">
+      <li class="sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência?</b> Ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro mais próximo. Esta página não é para urgências.</span></li>
+      <li><i class="fa-solid fa-ban" aria-hidden="true"></i><span><b>Cancelar um pedido:</b> você mesmo cancela em <a href="./#agenda">Meus pedidos</a> (no aparelho em que fez o pedido) ou em <a href="conta.html">Minha conta</a>. Cancelar pelo IMED é grátis.</span></li>
+      <li><i class="fa-solid fa-user-shield" aria-hidden="true"></i><span><b>Seus dados:</b> baixe uma cópia em <a href="conta.html#dados">Minha conta, Meus dados</a>. Para corrigir ou apagar, escreva abaixo.</span></li>
+      <li><i class="fa-solid fa-shield-heart" aria-hidden="true"></i><span><b>O IMED é gratuito para você</b> e nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp. Se alguém pedir em nome do IMED, não pague e avise aqui.</span></li>
+    </ul>
+  </section>
+
+  <section class="cl-card" aria-labelledby="formTitle" id="contato">
+    <h2 id="formTitle">Escreva para o IMED</h2>
+    <form id="cform" novalidate>
+      <div class="cl-grid">
+        <div class="cl-field full">
+          <label class="cl-lbl" for="cAssunto">Assunto *</label>
+          <select id="cAssunto" name="assunto" required aria-describedby="cAssuntoErr">
+            <option value="">Escolha o assunto</option>
+            <option value="duvida">Dúvida sobre o IMED</option>
+            <option value="cancelamento">Cancelar um pedido</option>
+            <optgroup label="Meus dados (LGPD)">
+              <option value="dados_acesso">Quero uma cópia dos meus dados</option>
+              <option value="dados_correcao">Quero corrigir meus dados</option>
+              <option value="dados_exclusao">Quero apagar meus dados</option>
+            </optgroup>
+            <option value="clinica">Sou de uma clínica, laboratório ou hospital</option>
+            <option value="outro">Outro assunto</option>
+          </select>
+          <span class="cl-err" id="cAssuntoErr"></span>
+          <p class="cl-note info ct-tip" id="cTipCancel" hidden>Você também pode cancelar sozinho, na hora, em <a href="./#agenda">Meus pedidos</a> ou em <a href="conta.html">Minha conta</a>. Se não conseguir, escreva o protocolo do pedido (começa com IMED-).</p>
+          <p class="cl-note info ct-tip" id="cTipLgpd" hidden>Pedidos sobre seus dados seguem os prazos da LGPD. Se você tem conta no IMED, entre nela antes de enviar: assim a mensagem vai ligada à conta e confirmamos mais rápido que os dados são seus. Também podemos pedir uma confirmação pelo e-mail ou celular informado.</p>
+          <p class="cl-note info ct-tip" id="cTipClinic" hidden>Quer receber pedidos de agendamento? <a href="reivindicar.html">Assuma o cadastro do seu estabelecimento</a>, sem custo. Já é parceiro? Use a <a href="painel.html">Área da clínica</a>.</p>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cNome">Seu nome *</label>
+          <input id="cNome" name="nome" type="text" autocomplete="name" maxlength="120" required aria-describedby="cNomeErr">
+          <span class="cl-err" id="cNomeErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cContato">E-mail ou celular para a resposta *</label>
+          <input id="cContato" name="contato" type="text" autocomplete="email" maxlength="254" required placeholder="voce@exemplo.com ou (11) 98765-4321" aria-describedby="cContatoErr">
+          <span class="cl-err" id="cContatoErr"></span>
+        </div>
+        <div class="cl-field full" id="cCodeBox" hidden>
+          <label class="cl-lbl" for="cProtocolo">Protocolo do pedido <small>(opcional, começa com IMED-)</small></label>
+          <input id="cProtocolo" name="protocolo" type="text" autocomplete="off" maxlength="40" placeholder="IMED-1A2B3C4D" aria-describedby="cProtocoloErr">
+          <span class="cl-err" id="cProtocoloErr"></span>
+        </div>
+        <div class="cl-field full">
+          <label class="cl-lbl" for="cMensagem">Mensagem *</label>
+          <textarea id="cMensagem" name="mensagem" maxlength="2000" rows="6" required aria-describedby="cMensagemErr cCount"></textarea>
+          <span class="ct-count" id="cCount">0 de 2000 caracteres</span>
+          <span class="cl-err" id="cMensagemErr"></span>
+        </div>
+        <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      </div>
+      <p class="cl-note info ct-acc" id="cConta" hidden></p>
+      <p class="ct-legal">Usamos estes dados só para responder à sua mensagem. Não escreva resultados de exames nem detalhes da sua saúde. Veja a <a href="privacidade.html">política de privacidade</a>.</p>
+      <div class="cl-actions"><button class="btn btn-coral" type="submit" id="cSend"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar mensagem</button></div>
+      <div id="cMsg" aria-live="polite"></div>
+    </form>
+  </section>
+</main>
+
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script type="module" src="assets/js/contato.js"></script>
+</body>
+</html>

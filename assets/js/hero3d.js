@@ -396,7 +396,9 @@ export function initHero3D(el, api) {
     const r = new THREE.Mesh(new THREE.RingGeometry(.5, .56, 64), new THREE.MeshBasicMaterial({ color: 0xff8a6e, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     r.rotation.x = -Math.PI / 2; r.position.y = .02; r.userData.phase = i / 2; me.add(r); return r;
   });
-  const meLabel = document.createElement('div'); meLabel.className = 'h3d-me'; meLabel.textContent = 'Você está aqui'; labelsEl.appendChild(meLabel);
+  // Rótulo do ponto de partida: a página diz qual é ("Você está aqui" só com a localização do aparelho).
+  const meText = () => (typeof api.meLabel === 'function' && api.meLabel()) || 'Você está aqui';
+  const meLabel = document.createElement('div'); meLabel.className = 'h3d-me'; meLabel.textContent = meText(); labelsEl.appendChild(meLabel);
 
   // clínicas (recriadas quando a origem muda)
   let clinicObjs = [], origin = api.origin();
@@ -696,7 +698,7 @@ export function initHero3D(el, api) {
 
   el.classList.add('h3d-ready');
   return {
-    setOrigin() { origin = api.origin(); buildClinics(false); },
+    setOrigin() { origin = api.origin(); meLabel.textContent = meText(); buildClinics(false); },
     refreshLabels() { clinicObjs.forEach(o => { const s = o.label.querySelector('small'); if (s) s.textContent = api.meta(o.c); o.lw = 0; }); }
   };
 }

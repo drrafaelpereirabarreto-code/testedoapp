@@ -196,7 +196,7 @@ await scenario('adicionar à agenda baixa um .ics com data, período, preparo e 
   assert.match(ics, /^BEGIN:VCALENDAR\r\n/);
   assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261112T080000/);
   assert.match(ics, /DTEND;TZID=America\/Sao_Paulo:20261112T120000/);
-  assert.match(ics, /SUMMARY:Exame: Ressonância — Hospital Santa Exemplo/);
+  assert.match(ics, /SUMMARY:Exame: Ressonância — Hospital Santa Exemplo\r\n/, 'atendimento já concluído: sem "(a confirmar)"');
   assert.match(ics.replace(/\r\n /g, ''), /Preparo: Retire objetos de metal/);
   assert.match(ics, /TRIGGER:-P1D/);
   assert.match(ics, /END:VCALENDAR\r\n$/);
@@ -205,6 +205,11 @@ await scenario('adicionar à agenda baixa um .ics com data, período, preparo e 
   const ics2 = await readFile(await dl2.path(), 'utf8');
   assert.match(ics2, /DTSTART;VALUE=DATE:20261105/);
   assert.match(ics2, /DTEND;VALUE=DATE:20261106/);
+  // Pedido ainda aguardando o local: o lembrete avisa que o horário não está confirmado.
+  const [dl3] = await Promise.all([page.waitForEvent('download'), page.click(`#pedido-${ID.d2} [data-ics]`)]);
+  const ics3 = (await readFile(await dl3.path(), 'utf8')).replace(/\r\n /g, '');
+  assert.match(ics3, /SUMMARY:Exame: Tomografia — Imagem Paulista \(a confirmar\)\r\n/);
+  assert.match(ics3, /STATUS:TENTATIVE/);
   assert.deepEqual(errors, []);
   await context.close();
 });

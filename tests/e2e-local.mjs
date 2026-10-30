@@ -208,6 +208,14 @@ await scenario('ficha do CNES: dados reais, SUS, turno com ressalva, mapa, avali
   assert.equal(await page.getAttribute('a:has-text("Assuma o cadastro")', 'href'), 'reivindicar.html?cnes=2077485');
   assert.match(await page.textContent('a:has-text("Assuma o cadastro")'), /É o responsável\? Assuma o cadastro/);
   assert.match(await page.textContent('.lc-rest .note'), /CNES.*atualizados em 15\/09\/2026/s);
+  // Confiança: emergência na ficha; fonte oficial sem parecer coisa do governo; quem corrige o cadastro oficial.
+  assert.match(await page.textContent('.lc-head .sos'), /Emergência\? Ligue 192 \(SAMU\)/);
+  assert.equal(await page.getAttribute('.lc-head .sos a', 'href'), 'tel:192');
+  assert.match(await page.textContent('.lc-rest .note'), /O IMED é um serviço privado, sem vínculo com o governo ou o SUS\. A correção do cadastro oficial é feita pelo próprio estabelecimento, no CNES\./);
+  assert.equal(await page.locator('#avaliacoes a[href="como-funciona.html#avaliacoes"]').count(), 1, 'regras das avaliações');
+  assert.equal(await page.locator('footer.rodape').count(), 1, 'rodapé do IMED');
+  assert.match(await page.textContent('footer.rodape'), /Médico responsável: Dr\. Rafael Pereira Barreto Silva — CRM-SP 266930/);
+  assert.equal(await page.locator('.pt-nav a[href="./#agenda"]').textContent(), 'Meus pedidos');
   // SEO
   assert.equal(await page.title(), 'Hospital Santa Exemplo em São Paulo - SP | IMED');
   assert.match(await page.getAttribute('meta[name="description"]', 'content'), /^Hospital em São Paulo - SP\..*Atende SUS\.$/);
@@ -273,6 +281,11 @@ await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async ()
   await page.waitForSelector('#agendar [data-act="pedido"]');
   assert.match(await page.textContent('#agendar'), /ainda não é parceiro do IMED/);
   await page.click('#agendar [data-act="pedido"]');
+  // Formulário: emergência no começo; gratuito (contra golpes) e privacidade perto de "Enviar pedido".
+  assert.match(await page.textContent('#bookForm .sos'), /O pedido não é para emergência/);
+  assert.match(await page.textContent('#bookForm .trust .free'), /O IMED é gratuito para você\..*o pagamento é feito direto no local\. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp\./s);
+  assert.match(await page.textContent('#bookForm .trust .priv'), /só para o IMED e para o local escolhido · ficam em servidor no Brasil · sem anúncios e sem rastreadores de anúncio · sua localização é aproximada e não é gravada/);
+  assert.ok(await page.evaluate(() => document.querySelector('#bookForm .trust').nextElementSibling.contains(document.querySelector('#bkBtn'))), 'faixa logo antes do botão');
   await page.click('#bkBtn');
   assert.ok(await page.locator('[data-f="exam"].bad').count(), 'exige o exame');
   assert.ok(await page.locator('[data-f="consent"].bad').count(), 'exige o consentimento');
@@ -284,6 +297,7 @@ await scenario('CNES: pedido ao IMED (concierge) sem horário marcado', async ()
   await page.click('#bkBtn');
   await page.waitForSelector('.lc-ok');
   assert.match(await page.textContent('.lc-ok'), /Recebemos seu pedido!.*IMED-/s);
+  assert.match(await page.textContent('.lc-ok .trust .free'), /O IMED é gratuito para você.*nunca pede Pix/s, 'pedido enviado: aviso contra o golpe do falso agendamento');
   const row = log.insert[0].body;
   assert.equal(row.clinic_id, null);
   assert.equal(row.place_source, 'cnes');

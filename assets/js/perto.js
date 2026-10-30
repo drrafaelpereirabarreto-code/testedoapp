@@ -1255,6 +1255,15 @@ function renderFilters(all) {
   }
   $('#fImed').setAttribute('aria-pressed', String(S.f.onlyImed));
   $('#fSus').setAttribute('aria-pressed', String(S.f.sus));
+  // Sem parceiro na área, "Parceiros verificados" sempre daria vazio; sem preço informado por algum parceiro,
+  // o filtro de preço e "Menor preço" também. Ficam escondidos (como Convênio e Melhor avaliados), a não ser
+  // que estejam em uso: assim dá para desligar.
+  const partner = all.some((p) => p.source === 'imed');
+  const priced = all.some((p) => p.source === 'imed' && G.minPrice(p) != null);
+  $('#fImed').classList.toggle('hide', !partner && !S.f.onlyImed);
+  $('#fPriceWrap').classList.toggle('hide', !priced && !S.f.price);
+  const byPrice = $('#fSort option[value="price"]');
+  byPrice.hidden = byPrice.disabled = !priced && S.f.sort !== 'price';
   // Convênios: só os informados pelos parceiros encontrados.
   const ins = G.insuranceOptions(all);
   if (S.f.insurance && !ins.includes(S.f.insurance)) ins.unshift(S.f.insurance);
@@ -1337,6 +1346,7 @@ function render(fit = false) {
   listView = { shown, total };
   setHTML($('#count'), countHTML(shown, total));
   $('#legend').hidden = !(results && (all.length || S.pts.rows.length) && !allFailed());
+  $('#legDemo').hidden = !S.demo; // "Clínica fictícia" só no modo de teste (?demo=1)
   setHTML($('#priceBand'), priceBandHTML(all));
   drawMap(shown);
   if (fit) fitMap();
@@ -1430,7 +1440,7 @@ async function loadReviews(p) {
       const who = String(v.author_name ?? '').trim().split(/\s+/)[0];
       return `<li><div class="rv-top"><span class="rv-stars" role="img" aria-label="Nota ${n} de 5">${STARS(n)}</span><span class="rv-who">${esc(who || 'Paciente')}${when ? ` · ${esc(when)}` : ''}</span></div>${v.comment ? `<p>${esc(v.comment)}</p>` : ''}</li>`;
     }).join('')}</ul>
-    <p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED.</p>`;
+    <p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED e tiveram o atendimento concluído. <a class="link" href="como-funciona.html#avaliacoes">Como funcionam</a></p>`;
   el.hidden = false;
 }
 
@@ -1476,7 +1486,7 @@ function openDetails(id) {
       ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios, sem preço e sem horário. Serve para testar o fluxo de ponta a ponta.</p>'
       : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado do IMED: preços, exames e agenda são informados e confirmados pela própria clínica.</p>')
     : p.source === 'cnes'
-      ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele.</p>`
+      ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele. ${G.TRUST.cnes}</p>`
       : `<p class="note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Dados do ${p.source === 'osm' ? 'OpenStreetMap, mantidos por voluntários' : 'Google Maps'}. Este estabelecimento ainda não é parceiro do IMED: confirme preços e horários diretamente com ele.</p>`;
 
   openSheet(head(esc(p.name)) + `<div class="sh-body">
@@ -1494,6 +1504,7 @@ function openDetails(id) {
     <div class="dt-sec"><h4><i class="fa-solid fa-address-book" aria-hidden="true"></i>Contato</h4>${contactHTML(p)}</div>
     <div class="dt-sec" id="dtReviews" data-id="${esc(p.id)}" hidden></div>
     ${note}${claim}
+    ${G.sosHTML()}
   </div>${cta || waBtn ? `<div class="sh-foot">${cta}${waBtn}</div>` : ''}`);
   loadReviews(p);
 }
@@ -1527,6 +1538,7 @@ function openBooking(id) {
   openSheet(head(imed ? 'Solicitar agendamento' : 'Pedir ao IMED para agendar') + `<form class="sh-body" id="bookForm" novalidate>
     <div class="bk-place"><span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span><div style="min-width:0"><b>${esc(p.name)}</b><small>${esc(p.address || k.n)}</small></div></div>
     <p class="src" style="margin-top:10px">${how}</p>
+    ${G.sosHTML(G.TRUST.sosPedido)}
     <div class="fld" data-f="exam"><label for="bkExam">Exame ou atendimento</label>
       <select id="bkExam" name="exame" required><option value="">Escolha</option>${examOpts}</select><span class="err" id="e-exam"></span></div>
     <div class="fld" data-f="date"><label for="bkDate">Data que prefere <small class="h">(até ${G.BOOKING_DAYS} dias)</small></label>
@@ -1534,7 +1546,8 @@ function openBooking(id) {
     <fieldset class="fld" data-f="period"><legend>Período</legend>
       <div class="seg">${Object.entries(G.PERIODS).map(([v, l]) => `<label><input type="radio" name="periodo" value="${v}"${v === 'qualquer' ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>
       <span class="err" id="e-period"></span></fieldset>
-    <div class="fld" data-f="name"><label for="bkName">Nome completo</label>
+    ${G.forWhomHTML()}
+    <div class="fld" data-f="name"><label for="bkName">Seu nome completo</label>
       <input id="bkName" name="nome" autocomplete="name" maxlength="120" required><span class="err" id="e-name"></span></div>
     <div class="row2">
       <div class="fld" data-f="phone"><label for="bkPhone">Celular com DDD</label>
@@ -1549,6 +1562,7 @@ function openBooking(id) {
     <span class="err" id="e-consent" style="display:block;color:var(--coral-d);font-size:13px;font-weight:600;margin-top:6px"></span>
     <p class="bk-err" id="bkErr" role="alert"></p>
     ${p.is_demo ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração: o pedido fica registrado só como teste.</p>' : ''}
+    ${G.trustHTML()}
     <div class="sh-foot" style="margin:18px -20px -24px"><button class="btn btn-coral" type="submit" id="bkBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar pedido</button>
       <p class="src" style="text-align:center;margin:0">O horário só fica garantido depois da confirmação.</p></div>
   </form>`);
@@ -1566,11 +1580,17 @@ function openBooking(id) {
   };
   form.addEventListener('input', clearError);
   form.addEventListener('change', clearError);
+  // "O exame é para": campos de outra pessoa e, para menor de 18 anos, a autorização do responsável.
+  form.addEventListener('change', (e) => {
+    if (e.target.name !== 'para' && e.target.name !== 'menor') return;
+    G.forWhomToggle(form);
+    if (e.target.name === 'para' && e.target.value === 'outra') $('#bkOtherName', form)?.focus();
+  });
   form.addEventListener('submit', (e) => submitBooking(e, p));
 }
 
 function showErrors(form, errs) {
-  for (const f of ['exam', 'date', 'period', 'name', 'phone', 'email', 'notes', 'consent']) {
+  for (const f of ['exam', 'date', 'period', 'otherName', 'relationship', 'guardian', 'name', 'phone', 'email', 'notes', 'consent']) {
     const box = $(`[data-f="${f}"]`, form);
     box?.classList.toggle('bad', !!errs[f]);
     const msg = $(`#e-${f}`, form);
@@ -1591,6 +1611,7 @@ async function submitBooking(e, p) {
   const v = {
     exam: fd.get('exame') || '', date: fd.get('data') || '', period: fd.get('periodo') || '', name: fd.get('nome') || '',
     phone: fd.get('celular') || '', email: fd.get('email') || '', notes: fd.get('obs') || '', consent: fd.get('consent') === 'on',
+    ...G.forWhomValues(fd),
   };
   const errs = G.validateBooking(v);
   showErrors(form, errs);
@@ -1666,7 +1687,7 @@ function bookingDone(p, v, id, logged) {
   openSheet(head('Pedido enviado') + `<div class="sh-body ok">
     <div class="ic"><i class="fa-solid fa-check" aria-hidden="true"></i></div>
     <h3>Recebemos seu pedido!</h3>
-    <p><b>${esc(p.name)}</b><br>${esc(examLabel(v.exam))} · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}</p>
+    <p><b>${esc(p.name)}</b><br>${esc(examLabel(v.exam))} · ${esc(G.formatDateLong(v.date))} · ${esc(G.PERIODS[v.period])}${v.forOther ? `<br>Para ${esc(String(v.otherName).trim().replace(/\s+/g, ' '))} (${esc(v.relationship)})` : ''}</p>
     <span class="code">${G.protocolFromId(id)}</span>
     <ol>
       <li>${imed ? 'A clínica recebe o pedido pelo IMED.' : 'A equipe do IMED fala com o estabelecimento.'}</li>
@@ -1674,6 +1695,7 @@ function bookingDone(p, v, id, logged) {
       <li>No dia, leve documento com foto e o pedido médico.</li>
     </ol>
     <p class="note" style="text-align:left"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>O horário só fica garantido depois da confirmação.${p.is_demo ? ' Clínica de demonstração: pedido registrado só como teste.' : ''}</p>
+    <div class="trust">${G.gratisHTML()}</div>
     <div class="ok-acts">
       <button class="btn btn-primary" type="button" data-ics><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>
       ${guide ? `<a class="btn btn-ghost" href="exames/${guide}.html#preparo"><i class="fa-solid fa-book-medical" aria-hidden="true"></i>Como se preparar</a>` : ''}

@@ -63,7 +63,7 @@ const APPTS = [
   { code: 'IMED-ABCDE', type: 'exame', clinic: 'dcp', name: 'DiagnoCenter Paulista', items: ['Ressonância'], date: 'amanhã', time: '14:30', total: 405, pay: 'pix' },
   { code: 'TELE-XYZ', type: 'tele', name: 'Dra. Camila Ruiz', items: ['Teleconsulta'], date: 'Hoje', time: 'agora', total: 120 },
 ];
-// Relógio fixo dos cenários de Agendados (as datas acima e abaixo ficam sempre no futuro).
+// Relógio fixo dos cenários de Meus pedidos (as datas acima e abaixo ficam sempre no futuro).
 const NOW = '2026-10-30T12:00:00Z';
 // Pedidos com horário marcado, gravados como a página do local grava (geo-core.localAppt).
 const SLOT_PLACE = { id: `imed:${PARTNER_ID}`, name: 'Clínica Parceira Paulista' };
@@ -93,7 +93,7 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 // connection.saveData e connection.effectiveType). dpr: densidade da tela. sw: liga o service worker.
 // tz: fuso do aparelho. ua: navegador (por exemplo, o do iPhone). now: relógio fixo. three: rota para o three.js.
 // points: resposta de establishment_points. spyMap: guarda em window.__maps os mapas do Leaflet criados pela página.
-async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false } = {}) {
+async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, tele, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false } = {}) {
   const context = await browser.newContext({
     viewport: viewport || (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
     deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz,
@@ -101,7 +101,7 @@ async function newPage(browser, { mobile = false, cities, cnes, points, partners
   });
   if (now) await context.clock.setFixedTime(new Date(now));
   if (three) await context.route(`${BASE}assets/vendor/three.module.min.js`, three);
-  const log = { cities: 0, cnes: [], points: [], partners: [], status: [], waitlist: [] };
+  const log = { cities: 0, cnes: [], points: [], partners: [], status: [], waitlist: [], tele: 0 };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -130,6 +130,12 @@ async function newPage(browser, { mobile = false, cities, cnes, points, partners
     if (route.request().method() === 'OPTIONS') return preflight(route);
     log.status.push(JSON.parse(route.request().postData() || '{}'));
     return (status ?? ((r) => json(r, [{ id: ID1, status: 'confirmed', reviewed: false }, { id: ID2, status: 'completed', reviewed: false }])))(route);
+  });
+  // Médicos atendendo agora na teleconsulta (função nova da teleconsulta). Padrão: nenhum.
+  await context.route(`${REST}rpc/tele_doctors_online`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return preflight(route);
+    log.tele += 1;
+    return (tele ?? ((r) => json(r, [])))(route);
   });
   await context.route(`${REST}app_waitlist`, async (route) => {
     if (route.request().method() === 'OPTIONS') return preflight(route);
@@ -246,9 +252,37 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   assert.deepEqual(links, [`local.html?id=${PARTNER_ID}`, 'local.html?cnes=2077485', 'local.html?cnes=6543210', 'local.html?cnes=7000001'], 'cada item leva à página do local');
   // FAQ: 5 perguntas principais e "Ver todas"
   assert.equal(await page.locator('.faq details:visible').count(), 5, 'FAQ com 5 perguntas visíveis');
+  const faq = await page.textContent('.faq');
+  assert.match(faq, /O IMED cobra alguma coisa\?/);
+  assert.match(faq, /O IMED é gratuito para você.*pagamento é feito direto no local.*nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp/s);
+  assert.match(faq, /sem vínculo com o governo ou o SUS/);
   await page.click('#faqAll');
-  assert.equal(await page.locator('.faq details:visible').count(), 7, 'Ver todas mostra as outras');
+  assert.equal(await page.locator('.faq details:visible').count(), 9, 'Ver todas mostra as outras');
   assert.equal(await page.locator('#faqAll').count(), 0);
+  assert.match(await page.textContent('.faq'), /Ninguém paga para aparecer primeiro/);
+  assert.equal(await page.locator('.faq a[href="como-funciona.html#ordem"]').count(), 1, 'ordem dos resultados → Como funciona');
+  assert.equal(await page.locator('.faq a[href="como-funciona.html#avaliacoes"]').count(), 1, 'avaliações → Como funciona');
+  // Aviso de emergência fixo e discreto no topo; fonte oficial sem parecer coisa do governo.
+  assert.match(await page.textContent('.hero .sos'), /Emergência\? Ligue 192 \(SAMU\)/);
+  assert.equal(await page.getAttribute('.hero .sos a', 'href'), 'tel:192');
+  assert.match(await page.textContent('#reais .rm-src'), /O IMED é um serviço privado, sem vínculo com o governo ou o SUS/);
+  assert.match(await page.textContent('#clinicas'), /Cadastro sem custo/);
+  assert.ok(!/Pedido grátis/.test(text));
+  assert.match(await page.textContent('#clinicas .ill'), /Imagem ilustrativa/, 'foto feita por IA com o aviso junto');
+  // "Meus pedidos" no lugar de "Agendados"
+  assert.ok(!/Agendados/.test(text), 'sem "Agendados"');
+  assert.equal(await page.textContent('.tabs a[data-go="agenda"]'), 'Meus pedidos');
+  // Rodapé igual em todas as páginas: médico responsável com CRM e link do CFM, emergência e fonte dos dados.
+  const foot = await page.textContent('footer.rodape');
+  assert.match(foot, /Médico responsável: Dr\. Rafael Pereira Barreto Silva — CRM-SP 266930/);
+  assert.equal(await page.getAttribute('footer.rodape a[href^="https://portal.cfm.org.br/"]', 'href'), 'https://portal.cfm.org.br/busca-medicos/');
+  assert.match(foot, /Emergência\? Ligue 192 \(SAMU\)/);
+  assert.match(foot, /Dados de endereço: CNES\/Ministério da Saúde\. O IMED é um serviço privado, sem vínculo com o governo ou o SUS\./);
+  for (const href of ['sobre.html', 'como-funciona.html', 'termos.html', 'privacidade.html', 'acessibilidade.html', 'contato.html', 'teleconsulta.html']) {
+    assert.equal(await page.locator(`footer.rodape a[href="${href}"]`).count(), 1, `rodapé com ${href}`);
+  }
+  assert.equal(await page.locator('footer.rodape .rd-a11y .fa-universal-access').count(), 1, 'símbolo de acessibilidade no rodapé');
+  assert.ok(!/Criado por|contato@imed/.test(text), 'sem "Criado por" e sem e-mail que não é do IMED');
   const stats = await page.$$eval('#realStats .rm-stat b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(stats, ['2', '1', '0', '1'], 'contagem por tipo inclui o parceiro (imagem)');
   const r = log.cnes.find((a) => a.p_radius_m === 2000);
@@ -395,7 +429,7 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#hero3d'), '::before').backgroundImage);
   assert.match(bg, /svg/, 'fundo em SVG, sem foto');
   assert.ok(!requests.some((u) => /recepcao\.webp/.test(u)), 'sem foto de fundo');
-  assert.ok(!requests.some((u) => /geo-core\.js/.test(u)), 'geo-core.js só ao abrir Agendados');
+  assert.ok(!requests.some((u) => /geo-core\.js/.test(u)), 'geo-core.js só ao abrir Meus pedidos');
   assert.ok(!requests.some((u) => /leaflet\.js/.test(u)), 'Leaflet só quando o mapa se aproxima da tela');
   // Leitor de tela: só um resumo curto (role=status), não a lista inteira a cada troca.
   assert.equal(await page.getAttribute('#heroLite', 'aria-live'), null, 'lista sem aria-live');
@@ -476,7 +510,7 @@ await scenario('celular com 3D (tela de densidade 3, 8 locais): 1 ou 2 rótulos,
   await context.close();
 });
 
-await scenario('Agendados: só pedidos reais, situação do banco, avaliar e lembrete .ics', async () => {
+await scenario('Meus pedidos: só pedidos reais, situação do banco, avaliar e lembrete .ics', async () => {
   const { page, log, errors, context } = await newPage(browser, { appts: APPTS, now: NOW });
   await page.goto(`${BASE}#agenda`);
   await page.waitForSelector('.appt');
@@ -505,12 +539,14 @@ await scenario('Agendados: só pedidos reais, situação do banco, avaliar e lem
   assert.match(ics, /DTSTART;TZID=America\/Sao_Paulo:20261105T080000/);
   assert.match(ics, /TRIGGER:-P1D/);
   assert.match(ics.replace(/\r\n /g, ''), /Retire objetos de metal/, 'preparo da ressonância');
+  assert.match(ics.replace(/\r\n /g, ''), /SUMMARY:Ressonância · Hospital Santa Exemplo\r\n/, 'confirmado pelo local: sem "(a confirmar)"');
+  assert.match(await page.textContent('#agTitle'), /Meus pedidos/);
   await shot(page, 'inicio-agendados');
   assert.deepEqual(errors, []);
   await context.close();
 });
 
-await scenario('Agendados vazio e falha ao consultar a situação', async () => {
+await scenario('Meus pedidos vazio e falha ao consultar a situação', async () => {
   const { page, errors, context } = await newPage(browser, { appts: [APPTS[0]], now: NOW, status: (r) => json(r, { message: 'erro' }, 500) });
   await page.goto(`${BASE}#agenda`);
   await page.waitForFunction(() => /indisponível/.test(document.querySelector('#appts').textContent));
@@ -522,7 +558,7 @@ await scenario('Agendados vazio e falha ao consultar a situação', async () => 
   await context.close();
 });
 
-await scenario('Agendados: remover apaga o pedido mostrado, mesmo se a lista mudou em outra aba', async () => {
+await scenario('Meus pedidos: remover apaga o pedido mostrado, mesmo se a lista mudou em outra aba', async () => {
   const { page, errors, context } = await newPage(browser, { appts: APPTS.slice(0, 2), now: NOW });
   await page.goto(`${BASE}#agenda`);
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
@@ -547,20 +583,60 @@ await scenario('Agendados: remover apaga o pedido mostrado, mesmo se a lista mud
   await context.close();
 });
 
-await scenario('teleconsulta "em breve" com lista de espera (interesse teleconsulta)', async () => {
-  const { page, log, errors, context } = await newPage(browser);
-  await page.goto(`${BASE}#tele`);
-  await page.waitForTimeout(300);
+await scenario('teleconsulta: médicos atendendo agora vêm do banco e o botão leva à página da teleconsulta', async () => {
+  const DOCS = [{ full_name: 'Médica Um', crm: '1', crm_uf: 'SP', rqe: null, specialty: null }, { full_name: 'Médico Dois', crm: '2', crm_uf: 'RJ', rqe: null, specialty: null }];
+  const { page, log, errors, context } = await newPage(browser, { tele: (r) => json(r, DOCS) });
+  await page.goto(BASE);
+  assert.equal(log.tele, 0, 'só pergunta quando a seção se aproxima da tela');
+  await page.locator('#lista').scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => /Médicos atendendo agora: 2/.test(document.querySelector('#teleNow').textContent));
+  assert.equal(log.tele, 1);
+  assert.ok(await page.evaluate(() => document.querySelector('#teleNow').classList.contains('on')));
+  assert.equal(await page.getAttribute('#teleGo', 'href'), 'teleconsulta.html');
+  assert.match(await page.textContent('#teleGo'), /Entrar na teleconsulta/);
   const sec = await page.textContent('#lista');
-  assert.match(sec, /Em breve/);
-  assert.match(sec, /Teleconsulta/);
-  assert.ok(!/R\$|Dra\.|Dr\./.test(sec), 'sem médicos nem preço');
-  assert.equal(await page.inputValue('#wlForm select'), 'teleconsulta');
-  await page.fill('#wlForm input[name=email]', 'Maria@Exemplo.com');
-  await page.fill('#wlForm input[name=city]', 'Recife');
-  await page.click('#wlBtn');
-  await page.waitForSelector('#wlMsg.ok');
-  assert.deepEqual(log.waitlist[0], { email: 'maria@exemplo.com', city: 'Recife', interest: 'teleconsulta' });
+  assert.match(sec, /Teleconsulta não é para emergência/);
+  assert.ok(!/Em breve|em breve|médicos de verdade/.test(sec), 'nada de "em breve"');
+  assert.ok(!/R\$|Dra\.|Dr\./.test(sec), 'sem preço e sem nome de médico na página inicial');
+  assert.equal(await page.isVisible('#teleWait'), false, 'com médico atendendo, sem lista de espera');
+  assert.equal(await page.getAttribute('.hchip[href="teleconsulta.html"]', 'href'), 'teleconsulta.html', 'atalho do topo vai para a teleconsulta');
+  assert.ok(!/em breve/.test(await page.textContent('#hchips')));
+  await page.locator('#lista').evaluate((e) => e.scrollIntoView({ block: 'center' }));
+  await shot(page, 'inicio-teleconsulta');
+  await page.click('#faqAll');
+  assert.match(await page.textContent('.faq'), /Já existe teleconsulta\?\s*Sim\..*Quando não há médico atendendo, a página da teleconsulta avisa/s);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('teleconsulta sem médico atendendo ou com a função fora do ar: aviso e lista de espera', async () => {
+  for (const [name, tele] of [['nenhum médico', (r) => json(r, [])], ['função fora do ar', (r) => json(r, { message: 'not found' }, 404)]]) {
+    const { page, log, errors, context } = await newPage(browser, { tele });
+    await page.goto(`${BASE}#tele`);
+    await page.waitForFunction(() => /Nenhum médico atendendo agora/.test(document.querySelector('#teleNow').textContent));
+    assert.ok(!(await page.evaluate(() => document.querySelector('#teleNow').classList.contains('on'))), name);
+    assert.equal(await page.getAttribute('#teleGo', 'href'), 'teleconsulta.html', `${name}: o botão continua (a página avisa)`);
+    await page.waitForSelector('#teleWait:not([hidden])');
+    assert.equal(await page.inputValue('#wlForm select'), 'teleconsulta');
+    await page.fill('#wlForm input[name=email]', 'Maria@Exemplo.com');
+    await page.fill('#wlForm input[name=city]', 'Recife');
+    await page.click('#wlBtn');
+    await page.waitForSelector('#wlMsg.ok');
+    assert.deepEqual(log.waitlist[0], { email: 'maria@exemplo.com', city: 'Recife', interest: 'teleconsulta' });
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('Meus pedidos: o lembrete .ics diz "(a confirmar)" enquanto o local não confirma', async () => {
+  const { page, errors, context } = await newPage(browser, { appts: [APPTS[0]], now: NOW, status: (r) => json(r, [{ id: ID1, status: 'pending', reviewed: false }]) });
+  await page.goto(`${BASE}#agenda`);
+  await page.waitForFunction(() => /Aguardando contato/.test(document.querySelector('#appts').textContent));
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('.appt >> nth=0 >> button:has-text("Adicionar à agenda")')]);
+  const ics = (await readFile(await download.path(), 'utf8')).replace(/\r\n /g, '');
+  assert.match(ics, /SUMMARY:Ressonância · Hospital Santa Exemplo \(a confirmar\)\r\n/);
+  assert.match(ics, /STATUS:TENTATIVE/);
+  assert.match(ics, /O horário é confirmado pela clínica/);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -603,7 +679,7 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   }).map((el) => el.className || el.tagName).slice(0, 5));
   assert.deepEqual(lone, [], 'toda regra com Sora ou Inter termina numa fonte sem serifa do aparelho');
   const items = await page.$$eval('.bnav > *', (els) => els.map((e) => [e.textContent.trim(), e.getAttribute('href'), e.getBoundingClientRect().height]));
-  assert.deepEqual(items.map((i) => i[0]), ['Início', 'Perto de mim', 'Agendados', 'Conta']);
+  assert.deepEqual(items.map((i) => i[0]), ['Início', 'Perto de mim', 'Meus pedidos', 'Conta']);
   assert.equal(items[3][1], 'conta.html');
   assert.ok(items.every((i) => i[2] < 60), 'rótulos numa linha só');
   // Página mais curta: antes destas mudanças media 7.295 px (390x844, 4 cidades, modo leve).
@@ -616,7 +692,7 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
   await shot(page, 'inicio-celular-agendados');
   const ov2 = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  assert.ok(ov2 <= 0, `Agendados sem rolagem lateral (${ov2}px)`);
+  assert.ok(ov2 <= 0, `Meus pedidos sem rolagem lateral (${ov2}px)`);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -761,7 +837,7 @@ await scenario('iPhone (o Safari informa 4 núcleos em todo iPhone) recebe o 3D;
   }
 });
 
-await scenario('Agendados com horário marcado: hora de São Paulo (aparelho em outro fuso), confirmado e lembrete na hora exata', async () => {
+await scenario('Meus pedidos com horário marcado: hora de São Paulo (aparelho em outro fuso), confirmado e lembrete na hora exata', async () => {
   // Aparelho no fuso de Tóquio: a página tem de mostrar a hora de São Paulo, não a do aparelho.
   const { page, log, errors, context } = await newPage(browser, { appts: SLOT_APPTS, now: NOW, tz: 'Asia/Tokyo', status: (r) => json(r, { message: 'erro' }, 500) });
   await page.goto(`${BASE}#agenda`);

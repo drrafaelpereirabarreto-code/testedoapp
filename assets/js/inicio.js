@@ -22,10 +22,25 @@ const store = {
 // Favoritos de clínicas fictícias da versão antiga: ninguém mais lê essa chave.
 try { localStorage.removeItem('imed_fav'); } catch { /* sem armazenamento */ }
 
-const S = { view: 'inicio', place: store.get('place', 'paulista'), here: null, hl: null };
-if (!PLACES[S.place]) S.place = 'paulista';
-const origin = () => S.here || PLACES[S.place];
-const placeName = () => (S.here ? 'sua localização' : PLACES[S.place].n);
+// Ponto de partida do mapa: a localização do aparelho (here, só nesta visita), uma cidade com o cadastro oficial
+// (city: centro achado pela geocodificação da busca, guardado no aparelho) ou um bairro de São Paulo (place).
+// Até a pessoa escolher, é só um exemplo, e a página diz isso: "Exemplo: Av. Paulista (São Paulo)".
+const validCity = (c) => !!(c && typeof c === 'object' && c.name && /^[A-Z]{2}$/.test(c.uf || '') && Number.isFinite(c.lat) && Number.isFinite(c.lng));
+const savedPlace = store.get('place', null), savedCity = store.get('cidade', null);
+const S = { view: 'inicio', place: PLACES[savedPlace] ? savedPlace : 'paulista', city: validCity(savedCity) ? savedCity : null, here: null, hl: null };
+S.chosen = !!(S.city || PLACES[savedPlace]);
+const origin = () => S.here || S.city || PLACES[S.place];
+// Cidades que levam "do" (do Rio de Janeiro); as outras, "de". Mesma regra de confianca.js (deCidade).
+const DO_CIDADE = new Set(['Rio de Janeiro', 'Rio Grande', 'Recife', 'Crato', 'Guarujá']);
+const deCidade = (n) => `${DO_CIDADE.has(n) ? 'do' : 'de'} ${n}`;
+// n: nome; s: nome curto; de: com a preposição ("da Av. Paulista"); me: rótulo do ponto no mapa 3D.
+function where() {
+  if (S.here) return { n: 'Minha localização', s: 'Minha localização', de: 'da sua localização', me: 'Você está aqui' };
+  if (S.city) return { n: `${S.city.name} - ${S.city.uf}`, s: S.city.name, de: `do centro ${deCidade(S.city.name)}`, me: `Centro ${deCidade(S.city.name)}` };
+  const p = PLACES[S.place];
+  if (!S.chosen) return { n: 'Av. Paulista (São Paulo)', s: 'Exemplo: Av. Paulista', de: p.de, me: 'Exemplo: Av. Paulista', example: true };
+  return { n: p.n, s: p.s, de: p.de, me: p.s };
+}
 
 const KINDS = {
   imagem: { n: 'Diagnóstico por imagem', plural: 'Imagem', color: '#0E7C9C', h: 2.3 },
@@ -92,7 +107,7 @@ const examUrl = (k) => `perto.html?exame=${encodeURIComponent(k)}`;
 function renderHeroChips() {
   const chips = ['rm', 'usg', 'rx', 'mamo', 'lab'];
   $('#hchips').innerHTML = chips.map((k) => `<a class="hchip" href="${examUrl(k)}">${k === 'lab' ? '<i class="fa-solid fa-flask" aria-hidden="true"></i>' : `<img src="${ico(k)}" alt="">`}${esc(EXAMS[k].n)}</a>`).join('')
-    + '<a class="hchip" href="#lista" data-tele><i class="fa-solid fa-video" aria-hidden="true"></i>Teleconsulta (em breve)</a>';
+    + '<a class="hchip" href="teleconsulta.html"><i class="fa-solid fa-video" aria-hidden="true"></i>Teleconsulta</a>';
 }
 
 let sugIdx = -1, sugItems = [];
@@ -137,8 +152,22 @@ function renderPill(rows) {
   const valid = rows.filter((r) => Number(r.total) > 0);
   if (!valid.length) return;
   const total = valid.reduce((s, r) => s + Number(r.total), 0);
-  const where = valid.length === 1 ? `em ${valid[0].name}` : `em ${fmtInt(valid.length)} cidades`;
-  $('#livePill').textContent = `${fmtInt(total)} estabelecimentos oficiais ${where}`;
+  const onde = valid.length === 1 ? `em ${valid[0].name}` : `em ${fmtInt(valid.length)} cidades`;
+  $('#livePill').textContent = `${fmtInt(total)} estabelecimentos oficiais ${onde}`;
+  loadSourceDate();
+}
+// "Fonte: CNES/Ministério da Saúde, atualizado em <data>": data real da última importação do CNES no banco
+// (cnes_last_update). Sem a data, fica só a fonte.
+const MONTH_LONG = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
+async function loadSourceDate() {
+  const el = $('#heroSrc'); if (!el) return;
+  let when = '';
+  try {
+    const d = await rpc('cnes_last_update');
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) when = MONTH_LONG.format(new Date(`${d}T12:00:00Z`));
+  } catch { /* sem data: só a fonte */ }
+  el.textContent = `Fonte: CNES/Ministério da Saúde${when ? `, atualizado em ${when}` : ''}`;
+  el.hidden = false;
 }
 
 /* ======================= O QUE VOCÊ PRECISA ======================= */
@@ -175,8 +204,12 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet
 const head = (t) => `<div class="sh-head"><h3>${t}</h3><button class="x" type="button" data-close aria-label="Fechar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>`;
 
 function setPlaceLabels() {
-  $('#addrTxt').textContent = S.here ? 'Minha localização' : PLACES[S.place].n;
-  $('#heroAddr').textContent = S.here ? 'Minha localização' : PLACES[S.place].s;
+  const w = where();
+  $('#addrSmall').textContent = w.example ? 'Exemplo' : 'Ponto de partida';
+  $('#addrTxt').textContent = w.n;
+  $('#heroAddr').textContent = w.s;
+  $('#realWhere').textContent = w.de;
+  $('#realExample').hidden = !w.example;
 }
 function placeChanged() {
   setPlaceLabels();
@@ -185,26 +218,79 @@ function placeChanged() {
   if (heroWanted) loadHeroPlaces();
   if (realStarted) renderRealMap();
 }
-function openPlace() {
+function openPlace(focusCity = false) {
+  const bairro = S.chosen && !S.here && !S.city;
   openSheet(head('Ponto de partida do mapa') + `<div class="sh-body">
+    ${S.chosen || S.here ? '' : '<p class="note pl-ex">Até você escolher, o mapa mostra um exemplo: a Av. Paulista, em São Paulo.</p>'}
     <a class="upload" href="perto.html?usar=localizacao"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span><b>Buscar perto de mim</b><br>Abre a busca completa, com filtros e pedido de agendamento.</span></a>
     <button class="upload" id="geo" type="button"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span><b>Usar minha localização aqui</b><br>Mostra nesta página os locais perto de onde você está.</span></button>
-    <fieldset style="border:0"><legend class="lbl">Ou escolha um bairro de São Paulo</legend>
-    ${Object.entries(PLACES).map(([k, p]) => `<label class="opt"><input type="radio" name="pl" value="${k}" ${!S.here && S.place === k ? 'checked' : ''}>${esc(p.n)}<small>São Paulo, SP</small></label>`).join('')}
+    <div class="pl-city"><label class="lbl" for="citySel">Escolha sua cidade</label>
+      <select id="citySel" disabled><option value="">Carregando as cidades…</option></select>
+      <p class="pl-msg" id="cityMsg" role="status" aria-live="polite"></p></div>
+    <fieldset style="border:0"><legend class="lbl">Ou um bairro de São Paulo</legend>
+    ${Object.entries(PLACES).map(([k, p]) => `<label class="opt"><input type="radio" name="pl" value="${k}" ${bairro && S.place === k ? 'checked' : ''}>${esc(p.n)}<small>São Paulo, SP</small></label>`).join('')}
     </fieldset>
   </div>`, 'sm', 'Ponto de partida do mapa');
-  sheet.querySelectorAll('input[name=pl]').forEach((i) => { i.onchange = () => { S.here = null; S.place = i.value; store.set('place', S.place); closeSheet(); placeChanged(); }; });
+  sheet.querySelectorAll('input[name=pl]').forEach((i) => { i.onchange = () => { S.here = null; S.city = null; S.place = i.value; S.chosen = true; store.set('place', S.place); store.set('cidade', null); closeSheet(); placeChanged(); }; });
+  fillCities(focusCity);
   $('#geo').onclick = () => {
     if (!navigator.geolocation) return toast('Seu navegador não permite localização');
     toast('Buscando sua localização…');
     navigator.geolocation.getCurrentPosition((p) => {
       // Só a região (~110 m): a posição exata não sai do aparelho.
       S.here = { lat: round3(p.coords.latitude), lng: round3(p.coords.longitude) };
+      S.chosen = true;
       closeSheet(); placeChanged(); toast('Mapa atualizado');
     }, () => toast('Não foi possível obter a localização'), { timeout: 10000 });
   };
 }
-$('#addrBtn').onclick = openPlace;
+$('#addrBtn').onclick = () => openPlace();
+
+// Cidades com o cadastro oficial no IMED (imported_cities), em ordem alfabética, para escolher o ponto de partida.
+function fillCities(focus) {
+  const sel = $('#citySel'); if (!sel) return;
+  loadCities().then((rows) => {
+    if (!sel.isConnected) return;
+    const list = rows.filter((r) => r.name && /^[A-Z]{2}$/.test(r.uf || '') && Number(r.total) > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.uf.localeCompare(b.uf));
+    if (!list.length) { sel.closest('.pl-city').hidden = true; return; }
+    sel.innerHTML = '<option value="">Escolha a cidade</option>' + list.map((r) => `<option value="${esc(r.ibge)}"${S.city && String(S.city.ibge) === String(r.ibge) ? ' selected' : ''}>${esc(r.name)} - ${esc(r.uf)}</option>`).join('');
+    sel.disabled = false;
+    sel.onchange = () => { const r = list.find((x) => String(x.ibge) === sel.value); if (r) chooseCity(r); };
+    if (focus) sel.focus();
+  }).catch(() => { if (sel.isConnected) sel.closest('.pl-city').hidden = true; });
+}
+// Centro da cidade pela mesma geocodificação da busca (Edge Function clinicas-proximas, action geocode).
+async function geocode(q) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(`${C.functionsUrl}/clinicas-proximas`, {
+      method: 'POST', signal: ctrl.signal,
+      headers: { apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'geocode', q }),
+    });
+    const g = await res.json().catch(() => null);
+    if (!res.ok || !g?.ok || !Number.isFinite(g.lat) || !Number.isFinite(g.lng)) throw new Error('geocode');
+    return g;
+  } finally { clearTimeout(timer); }
+}
+async function chooseCity(r) {
+  const sel = $('#citySel'), msg = $('#cityMsg');
+  sel.disabled = true;
+  msg.textContent = `Procurando o centro ${deCidade(r.name)}…`;
+  try {
+    const g = await geocode(`${r.name}, ${r.uf}`);
+    S.city = { ibge: Number(r.ibge), name: String(r.name), uf: String(r.uf), lat: round3(g.lat), lng: round3(g.lng) };
+    S.here = null; S.chosen = true;
+    store.set('cidade', S.city); store.set('place', null);
+    closeSheet(); placeChanged(); toast(`Mapa a partir do centro ${deCidade(r.name)}`);
+  } catch {
+    if (!sel.isConnected) return;
+    sel.disabled = false;
+    msg.textContent = 'Não foi possível achar o centro desta cidade agora. Tente de novo ou use a busca.';
+  }
+}
 
 /* ======================= CLÍNICAS REAIS (CNES) ======================= */
 let realMap = null, realLayer = null, realSeq = 0, realStarted = false;
@@ -266,7 +352,7 @@ function realPopup(r) {
 async function renderRealMap() {
   const box = $('#realMap'); if (!box) return;
   const seq = ++realSeq, o = origin();
-  $('#realWhere').textContent = S.here ? 'sua localização' : PLACES[S.place].n;
+  setPlaceLabels();
   try {
     await loadLeaflet();
     // Coordenadas arredondadas (~110 m): o banco só precisa da região.
@@ -283,7 +369,7 @@ async function renderRealMap() {
     L.circle([o.lat, o.lng], { radius: REAL_RADIUS, color: '#0E7C9C', weight: 1.5, opacity: 0.7, dashArray: '6 6', fill: false, interactive: false }).addTo(realLayer);
     points.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 4.5, color: '#fff', weight: 1, fillColor: kindOf(r.kind).color, fillOpacity: 0.9 }).bindPopup(() => realPopup(r)).addTo(realLayer));
     partners.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 8, color: '#FF6B4A', weight: 3, fillColor: kindOf(r.kind).color, fillOpacity: 0.95 }).bindPopup(() => realPopup(r)).addTo(realLayer));
-    L.circleMarker([o.lat, o.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#FF6B4A', fillOpacity: 1 }).bindTooltip(S.here ? 'Você (aproximado)' : PLACES[S.place].n).addTo(realLayer);
+    L.circleMarker([o.lat, o.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#FF6B4A', fillOpacity: 1 }).bindTooltip(S.here ? 'Você (aproximado)' : where().n).addTo(realLayer);
     realMap.fitBounds(L.latLng(o.lat, o.lng).toBounds(REAL_RADIUS * 2), { padding: [10, 10] });
     const count = (kk) => partners.filter((r) => r.kind === kk).length + points.filter((r) => r.kind === kk).length;
     $('#realStats').innerHTML = Object.entries(KINDS).map(([kk, k]) => `<div class="rm-stat"><b>${fmtInt(count(kk))}${more ? '+' : ''}</b><span><i style="background:${k.color}"></i>${k.plural}</span></div>`).join('');
@@ -305,6 +391,7 @@ async function renderRealMap() {
 (function () {
   const sec = $('#reais'); if (!sec) return;
   $('#realPlace').onclick = () => openPlace();
+  $('#realChoose').onclick = () => openPlace(true);
   const start = () => { if (realStarted) return; realStarted = true; renderRealMap(); };
   if (!('IntersectionObserver' in window)) return start();
   const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); start(); } }, { rootMargin: '300px' });
@@ -359,15 +446,15 @@ function liteStatus(text) { const s = $('#heroLiteStatus'); if (s && s.textConte
 function renderHeroLite() {
   const box = $('#heroLite'); if (!box) return;
   const list = heroList.slice(0, innerWidth < 700 ? 4 : 5);
-  const where = placeName();
-  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto de ${esc(where)}</h2>`;
+  const de = where().de;
+  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto ${esc(de)}</h2>`;
   if (!list.length) {
     box.innerHTML = title + (heroLoaded ? '<p>Veja clínicas, laboratórios e hospitais perto de você na busca.</p>' : '<p>Carregando os locais perto daqui…</p>')
       + '<a class="more" href="perto.html?usar=localizacao">Buscar perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
-    liteStatus(heroLoaded ? 'A lista de locais não está disponível agora. Use a busca perto de você.' : `Carregando os locais perto de ${where}…`);
+    liteStatus(heroLoaded ? 'A lista de locais não está disponível agora. Use a busca perto de você.' : `Carregando os locais perto ${de}…`);
     return;
   }
-  liteStatus(`${list.length} ${list.length === 1 ? 'local' : 'locais'} perto de ${where}`);
+  liteStatus(`${list.length} ${list.length === 1 ? 'local' : 'locais'} perto ${de}`);
   box.innerHTML = title + '<ol>' + list.map((c) => {
     const r = c.row, k = kindOf(r.kind), url = localUrl(r) || 'perto.html';
     return `<li><a href="${esc(url)}"><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)}</small></span></a></li>`;
@@ -383,7 +470,7 @@ function openPlaceDetail(id) {
   const exams = r.partner && Array.isArray(r.exams) ? [...new Set(r.exams.map((e) => e && EXAMS[e.code]?.n).filter(Boolean))] : [];
   const page = localUrl(r);
   openSheet(head(esc(r.name)) + `<div class="sh-body">
-    <span class="place-kind"><span style="background:${k.color}"></span>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)} de ${esc(placeName())}</span>
+    <span class="place-kind"><span style="background:${k.color}"></span>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)} ${esc(where().de)}</span>
     <div class="place-info">
       ${addr ? `<div><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${esc(addr)}</div>` : ''}
       ${tel.length >= 10 ? `<div><i class="fa-solid fa-phone" aria-hidden="true"></i><a href="tel:+55${tel}">${esc(r.phone)}</a></div>` : ''}
@@ -403,6 +490,7 @@ const API = {
   clinics: () => heroList,
   origin,
   highlighted: () => S.hl,
+  meLabel: () => where().me,
   onPick: (id) => openPlaceDetail(id),
   meta: (c) => `${c.row.partner ? 'Parceiro · ' : ''}${kindOf(c.kind).n} · ${fmtDist(c.row.distance_m)}`,
 };
@@ -455,12 +543,15 @@ function startHero() {
   }
 }
 
-/* ======================= AGENDADOS ======================= */
+/* ======================= MEUS PEDIDOS ======================= */
 // Contrato: localStorage 'imed_appts' (mais novo primeiro, até 30). Só pedidos reais (type 'pedido').
 const PERIOD = { manha: 'manhã', tarde: 'tarde', noite: 'noite', qualquer: 'qualquer horário' };
 const STATUS_FALLBACK = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído' };
-let geoCore = null, geoCoreSync = null;
+let geoCore = null, geoCoreSync = null, trust = null, trustSync = null;
 const loadGeoCore = () => (geoCore ||= import('./geo-core.js').catch(() => ({})));
+// Regras de cancelamento (confianca.js): baixado junto com Meus pedidos.
+const loadTrust = () => (trust ||= import('./confianca.js').catch(() => ({})));
+let cancelAsk = '', cancelBusy = ''; // pedido com a pergunta "Cancelar?" aberta / sendo cancelado (apptKey)
 function readAppts() {
   let list;
   try { list = JSON.parse(localStorage.getItem('imed_appts') || '[]'); } catch { list = []; }
@@ -503,8 +594,9 @@ async function fetchStatus(list) {
   if (S.view === 'agenda') drawAppts(readAppts());
 }
 function renderAppts() {
-  // geo-core.js só é baixado quando a pessoa abre Agendados.
+  // geo-core.js e confianca.js só são baixados quando a pessoa abre Meus pedidos.
   if (!geoCoreSync) loadGeoCore().then((m) => { geoCoreSync = m; if (S.view === 'agenda') drawAppts(readAppts()); });
+  if (!trustSync) loadTrust().then((m) => { trustSync = m; if (S.view === 'agenda') drawAppts(readAppts()); });
   const list = readAppts();
   statusState = 'loading';
   drawAppts(list);
@@ -525,7 +617,8 @@ function drawAppts(list) {
     let st, cls;
     if (live) { st = label(live.status); cls = { confirmed: 'ok', completed: 'ok', cancelled: 'no' }[live.status] || ''; }
     else if (a.id && a.token && statusState === 'loading') { st = 'Consultando…'; cls = 'muted'; }
-    // Sem resposta do banco: vale o que o aparelho guardou quando o horário foi marcado.
+    // Sem resposta do banco: vale o que o aparelho guardou (horário marcado ou pedido cancelado aqui).
+    else if (a.status === 'cancelado') { st = 'Cancelado'; cls = 'no'; }
     else if (a.status === 'confirmado') { st = 'Confirmado'; cls = 'ok'; }
     else if (a.id && a.token && statusState === 'fail') { st = 'Situação indisponível agora'; cls = 'muted'; }
     else { st = 'Pedido enviado'; cls = 'muted'; }
@@ -536,27 +629,77 @@ function drawAppts(list) {
     const review = live && live.status === 'completed' && !live.reviewed ? `<a class="btn btn-coral" href="conta.html#pedido-${encodeURIComponent(a.id)}"><i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>Avaliar</a>` : '';
     // Lembrete só para o que ainda vai acontecer: horário marcado no futuro ou dia de hoje em diante.
     const ahead = at ? Date.parse(a.slot) > Date.now() : isoDate(a.date) && a.date >= todayIso();
-    const cal = ahead && !(live && ['cancelled', 'completed'].includes(live.status)) ? `<button class="btn btn-ghost" type="button" data-ics="${esc(key)}"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : '';
-    return `<article class="appt" ${a.id ? `id="pedido-${esc(a.id)}"` : ''}>
+    const gone = (live && ['cancelled', 'completed'].includes(live.status)) || (!live && a.status === 'cancelado');
+    const cal = ahead && !gone ? `<button class="btn btn-ghost" type="button" data-ics="${esc(key)}"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : '';
+    // Cancelar pelo site: com o código do pedido e a situação do banco ainda ativa (confianca.canCancel).
+    const can = !!(a.id && a.token && live && trustSync?.canCancel?.(live.status, a.slot || null));
+    const cancel = can && cancelAsk !== key ? `<button class="btn btn-ghost appt-cancel" type="button" data-cancel="${esc(key)}"><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pedido</button>` : '';
+    const ask = can && cancelAsk === key ? `<div class="appt-ask" role="group" aria-label="Confirmar o cancelamento">
+        <p>${esc(trustSync.CANCEL_CONFIRM)}</p>
+        <div class="appt-act"><button class="btn btn-coral" type="button" data-cancel-yes="${esc(key)}"${cancelBusy === key ? ' disabled' : ''}>${cancelBusy === key ? '<span class="spin" aria-hidden="true"></span>Cancelando…' : 'Sim, cancelar'}</button><button class="btn btn-ghost" type="button" data-cancel-no="${esc(key)}">Não</button></div>
+      </div>` : '';
+    return `<article class="appt" data-key="${esc(key)}" ${a.id ? `id="pedido-${esc(a.id)}"` : ''}>
       <span class="lg" aria-hidden="true"><i class="fa-solid fa-calendar-check"></i></span>
       <div style="flex:1;min-width:0">
         <b>${esc(a.name)}</b>
         ${items.length ? `<p>${items.map(esc).join(' + ')}</p>` : ''}
         ${when ? `<p><i class="fa-regular fa-calendar" aria-hidden="true"></i> ${when}</p>` : ''}
         ${a.code ? `<p style="font-size:12px">Protocolo ${esc(a.code)}</p>` : ''}
-        ${review || cal ? `<div class="appt-act">${review}${cal}</div>` : ''}
+        ${review || cal || cancel ? `<div class="appt-act">${review}${cal}${cancel}</div>` : ''}
+        ${ask}
       </div>
       <div class="side"><span class="status ${cls}">${esc(st)}</span><button class="rmv" type="button" data-rm="${esc(key)}">Remover da lista</button></div>
     </article>`;
   }).join('');
   box.querySelectorAll('[data-rm]').forEach((b) => { b.onclick = () => {
-    if (!confirm('Remover este pedido da lista deste aparelho? Para cancelar o pedido, fale com o IMED pelo contato@imed.com.br.')) return;
+    if (!confirm('Remover este pedido da lista deste aparelho? Isso não cancela o pedido: para cancelar, use o botão Cancelar pedido ou escreva pelo Fale com o IMED.')) return;
     // Pelo pedido mostrado, não pela posição: a lista pode ter mudado em outra aba.
     const all = readAppts().filter((x) => apptKey(x) !== b.dataset.rm);
     try { localStorage.setItem('imed_appts', JSON.stringify(all)); } catch { /* ignora */ }
     drawAppts(all); toast('Pedido removido da lista');
   }; });
   box.querySelectorAll('[data-ics]').forEach((b) => { b.onclick = () => { const a = readAppts().find((x) => apptKey(x) === b.dataset.ics); if (a) downloadIcs(a); else drawAppts(readAppts()); }; });
+  box.querySelectorAll('[data-cancel]').forEach((b) => { b.onclick = () => { cancelAsk = b.dataset.cancel; drawAppts(readAppts()); box.querySelector('[data-cancel-yes]')?.focus(); }; });
+  box.querySelectorAll('[data-cancel-no]').forEach((b) => { b.onclick = () => { const k = cancelAsk; cancelAsk = ''; drawAppts(readAppts()); focusCard(k, '[data-cancel]'); }; });
+  box.querySelectorAll('[data-cancel-yes]').forEach((b) => { b.onclick = () => cancelAppt(b.dataset.cancelYes); });
+}
+// Foco de volta no cartão do pedido: no botão pedido (sel) ou, sem ele, no próprio cartão.
+function focusCard(key, sel = '') {
+  const card = [...document.querySelectorAll('#appts .appt')].find((el) => el.dataset.key === key);
+  if (!card) return;
+  const target = (sel && card.querySelector(sel)) || card;
+  if (target === card) card.tabIndex = -1;
+  target.focus();
+}
+// Cancela no banco (cancel_request, com o código do pedido) e guarda "cancelado" no aparelho.
+async function cancelAppt(key) {
+  const a = readAppts().find((x) => apptKey(x) === key);
+  if (!a || !a.id || !a.token || cancelBusy) return;
+  const T = await loadTrust();
+  cancelBusy = key; drawAppts(readAppts());
+  let res;
+  try { res = await rpc('cancel_request', { p_id: a.id, p_token: a.token }); } catch { res = 'error'; }
+  cancelBusy = '';
+  if (res === 'ok' || res === 'already_cancelled') {
+    cancelAsk = '';
+    liveStatus[a.id] = { ...(liveStatus[a.id] || {}), id: a.id, status: 'cancelled' };
+    try {
+      const all = readAppts().map((x) => (apptKey(x) === key ? { ...x, status: 'cancelado' } : x));
+      localStorage.setItem('imed_appts', JSON.stringify(all));
+    } catch { /* sem armazenamento: a situação vem do banco */ }
+    drawAppts(readAppts());
+    toast(res === 'ok' ? (T.cancelDoneText?.(a.slot) || 'Pedido cancelado.') : (T.CANCEL_MSG?.already_cancelled || 'Este pedido já estava cancelado.'));
+    focusCard(key);
+    return;
+  }
+  // Não deu. Falha de internet: a pergunta continua aberta para tentar de novo. Recusa do banco (já concluído,
+  // horário passado...): fecha a pergunta e busca a situação de novo.
+  const final = ['not_cancellable', 'past', 'not_found', 'forbidden'].includes(res);
+  if (final) cancelAsk = '';
+  drawAppts(readAppts());
+  toast(T.CANCEL_MSG?.[res] || T.CANCEL_MSG?.error || 'Não foi possível cancelar agora.');
+  if (final) fetchStatus(readAppts());
+  focusCard(key, final ? '' : '[data-cancel-yes]');
 }
 async function downloadIcs(a) {
   const m = await loadGeoCore();
@@ -565,13 +708,15 @@ async function downloadIcs(a) {
   const prep = (m.PREP && (m.PREP[a.exam] || m.PREP.outro)) || '';
   const site = C.siteUrl || location.href.replace(/[#?].*$/, '').replace(/[^/]*$/, '');
   // Horário marcado: evento na hora exata e já confirmado (STATUS:CONFIRMED); sem horário, a faixa do período.
+  // Enquanto o local não confirma, o título do lembrete leva "(a confirmar)" (geo-core.icsFile).
   const slot = a.slot && slotAt(a.slot) ? a.slot : null;
+  const confirmed = !!slot || ['confirmed', 'completed'].includes(a.id && liveStatus[a.id]?.status);
   const head = slot
     ? [`Agendamento ${a.code || ''}`.trim(), 'no IMED. Horário confirmado. Chegue com 15 minutos de antecedência.'].join(' ')
-    : [`Pedido de agendamento ${a.code || ''}`.trim(), 'no IMED. O horário é confirmado pela clínica.'].join(' ');
+    : [`Pedido de agendamento ${a.code || ''}`.trim(), confirmed ? 'no IMED. Confirmado pelo local: confira o horário combinado.' : 'no IMED. O horário é confirmado pela clínica.'].join(' ');
   const desc = [head, prep ? `Preparo: ${prep}` : ''].filter(Boolean).join('\n');
   let txt;
-  try { txt = m.icsFile({ id: a.id || a.code, title: `${items} · ${a.name}`, date: a.date, period: a.period, slot, description: desc, url: a.id ? `${site}conta.html#pedido-${a.id}` : site }); }
+  try { txt = m.icsFile({ id: a.id || a.code, title: `${items} · ${a.name}`, date: a.date, period: a.period, slot, confirmed, description: desc, url: a.id ? `${site}conta.html#pedido-${a.id}` : site }); }
   catch { toast('Não foi possível criar o lembrete agora.'); return; }
   const url = URL.createObjectURL(new Blob([txt], { type: 'text/calendar;charset=utf-8' }));
   const link = document.createElement('a');
@@ -581,7 +726,31 @@ async function downloadIcs(a) {
   toast('Lembrete baixado. Abra o arquivo para pôr na agenda.');
 }
 
-/* ======================= TELECONSULTA (lista de espera) ======================= */
+/* ======================= TELECONSULTA ======================= */
+// "Médicos atendendo agora": número real da função tele_doctors_online (médicos aprovados com a página aberta).
+// Sem resposta ou sem médico: "Nenhum médico atendendo agora" e a lista de espera aparece.
+let teleStarted = false;
+async function loadTele() {
+  const box = $('#teleNow'); if (!box) return;
+  let n = 0;
+  try {
+    // Hoje a função devolve uma linha por médico; um número (ou { count }) também é aceito.
+    const rows = await rpc('tele_doctors_online');
+    const v = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object').length : Number(rows?.count ?? rows);
+    n = Number.isFinite(v) && v > 0 ? Math.floor(v) : 0;
+  } catch { n = 0; }
+  box.classList.toggle('on', n > 0);
+  // A função devolve até 50 médicos: com 50, pode haver mais.
+  box.querySelector('span').textContent = n > 0 ? `Médicos atendendo agora: ${n >= 50 ? '50 ou mais' : n}` : 'Nenhum médico atendendo agora';
+  $('#teleWait').hidden = n > 0;
+}
+(function () {
+  const sec = $('#lista'); if (!sec) return;
+  const start = () => { if (teleStarted) return; teleStarted = true; loadTele(); };
+  if (!('IntersectionObserver' in window)) return start();
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); start(); } }, { rootMargin: '400px' });
+  io.observe(sec);
+})();
 function goTele() {
   if (S.view !== 'inicio') go('inicio');
   const f = $('#wlForm'); if (f) f.interest.value = 'teleconsulta';
@@ -592,7 +761,7 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-tele]'))
   const f = $('#wlForm'); if (!f) return;
   const msg = $('#wlMsg'), btn = $('#wlBtn');
   const say = (t, cls) => { msg.textContent = t; msg.className = 'wl-msg show ' + cls; };
-  if (store.get('wl', false)) say('Você já está na lista. Avisaremos no seu e-mail.', 'ok');
+  if (store.get('wl', false)) say('Você já está na lista. Os avisos vão para o seu e-mail.', 'ok');
   f.addEventListener('submit', (e) => {
     e.preventDefault();
     const email = f.email.value.trim().toLowerCase(), city = f.city.value.trim();
@@ -600,7 +769,7 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-tele]'))
     f.email.classList.toggle('bad', bad);
     f.email.setAttribute('aria-invalid', String(bad));
     if (bad) { say('Digite um e-mail válido.', 'err'); f.email.focus(); return; }
-    const ok = () => { store.set('wl', true); f.reset(); say('Pronto! Você está na lista e vai receber um aviso quando abrir.', 'ok'); btn.disabled = false; btn.innerHTML = 'Quero ser avisado <i class="fa-solid fa-bell" aria-hidden="true"></i>'; };
+    const ok = () => { store.set('wl', true); f.reset(); say('Pronto! Você está na lista e vai receber os avisos da teleconsulta no seu e-mail.', 'ok'); btn.disabled = false; btn.innerHTML = 'Quero receber avisos <i class="fa-solid fa-bell" aria-hidden="true"></i>'; };
     if (f.website.value) { ok(); return; }
     btn.disabled = true; btn.textContent = 'Enviando…';
     window.imedInsert('app_waitlist', { email, city: city || null, interest: f.interest.value }).then(ok).catch(() => {

@@ -10,18 +10,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@700;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/testedoapp/assets/vendor/fa/css/all.min.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{min-height:100svh;display:grid;place-items:center;font-family:Inter,system-ui,sans-serif;color:#fff;text-align:center;padding:24px;background:radial-gradient(900px 600px at 70% 30%,#0f4456,transparent 60%),radial-gradient(700px 500px at 10% 100%,rgba(46,230,214,.15),transparent 60%),#05161e}
-img{width:180px;height:180px;object-fit:contain;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));animation:f 6s ease-in-out infinite}
+body{min-height:100svh;display:flex;flex-direction:column;font-family:Inter,system-ui,sans-serif;color:#fff;background:radial-gradient(900px 600px at 70% 30%,#0f4456,transparent 60%),radial-gradient(700px 500px at 10% 100%,rgba(46,230,214,.15),transparent 60%),#05161e}
+main{flex:1;display:grid;place-items:center;align-content:center;text-align:center;padding:48px 24px}
+main img{width:180px;height:180px;object-fit:contain;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));animation:f 6s ease-in-out infinite}
 @keyframes f{50%{transform:translateY(-12px) rotate(-3deg)}}
-.n{font:800 clamp(64px,12vw,120px) Sora;letter-spacing:-.05em;background:linear-gradient(92deg,#7FF0E4,#2EE6D6 40%,#FFB199);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
-h1{font:800 clamp(24px,3vw,34px) Sora;letter-spacing:-.03em;margin:8px 0 10px}
-p{color:rgba(255,255,255,.72);max-width:440px;margin:0 auto;line-height:1.6}
+@media (prefers-reduced-motion:reduce){main img{animation:none}}
+.n{font:800 clamp(64px,12vw,120px) Sora,Inter,sans-serif;letter-spacing:-.05em;background:linear-gradient(92deg,#7FF0E4,#2EE6D6 40%,#FFB199);-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+h1{font:800 clamp(24px,3vw,34px) Sora,Inter,sans-serif;letter-spacing:-.03em;margin:8px 0 10px}
+main p{color:rgba(255,255,255,.75);max-width:440px;margin:0 auto;line-height:1.6}
 .b{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:26px}
-a{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border-radius:14px;font-weight:700;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08)}
-a.p{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);border:0;box-shadow:0 10px 24px rgba(255,107,74,.35)}
+.b a{display:inline-flex;align-items:center;gap:8px;padding:13px 20px;border-radius:14px;font-weight:700;text-decoration:none;color:#fff;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08)}
+.b a.p{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);border:0;box-shadow:0 10px 24px rgba(255,107,74,.35)}
+.rodape{border-top:1px solid rgba(255,255,255,.08)}
 </style>
+<link rel="stylesheet" href="/testedoapp/assets/css/rodape.css">
 </head>
 <body>
 <main>
@@ -31,5 +36,52 @@ a.p{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);border:0;box-shadow:0 10p
   <p>Até o raio-X procurou e não encontrou nada aqui. Que tal voltar ao início ou ver os guias de exames?</p>
   <div class="b"><a class="p" href="/testedoapp/">Ir para o início</a><a href="/testedoapp/exames/">Guias de exames</a></div>
 </main>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="/testedoapp/" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="/testedoapp/perto.html">Perto de mim</a></li>
+          <li><a href="/testedoapp/cidades/">Clínicas por cidade</a></li>
+          <li><a href="/testedoapp/exames/">Guias de exames</a></li>
+          <li><a href="/testedoapp/teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="/testedoapp/#agenda">Meus pedidos</a></li>
+          <li><a href="/testedoapp/conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="/testedoapp/sobre.html">Quem somos</a></li>
+          <li><a href="/testedoapp/como-funciona.html">Como funciona</a></li>
+          <li><a href="/testedoapp/termos.html">Termos de uso</a></li>
+          <li><a href="/testedoapp/privacidade.html">Privacidade</a></li>
+          <li><a href="/testedoapp/acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="/testedoapp/contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="/testedoapp/parceiros.html">Para clínicas</a></li>
+          <li><a href="/testedoapp/reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="/testedoapp/painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
 </body>
 </html>

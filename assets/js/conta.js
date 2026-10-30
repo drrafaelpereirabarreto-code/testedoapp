@@ -2,6 +2,7 @@
 // (.ics) e avaliação do atendimento. Login por link no e-mail (assets/js/auth.js).
 // Contrato do aparelho: localStorage 'imed_appts' (mais novo primeiro), gravado pela busca (perto.js).
 import * as A from './auth.js';
+import * as T from './confianca.js';
 
 const CFG = window.IMED_CONFIG || {};
 const SITE = CFG.siteUrl || new URL('./', location.href).href;
@@ -17,8 +18,9 @@ const F = {
   PREP: {},
   statusLabel: (s) => STATUS_PT[s] ?? '',
   protocolFromId: (id) => `IMED-${String(id).replace(/-/g, '').slice(0, 8).toUpperCase()}`,
-  icsFile({ id, title, date, period, description = '', url = '' }) {
+  icsFile({ id, title, date, period, confirmed = false, description = '', url = '' }) {
     const e = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+    if (!confirmed) title = `${title} (a confirmar)`;
     const day = date.replace(/-/g, '');
     const [y, m, d] = date.split('-').map(Number);
     const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10).replace(/-/g, '');
@@ -78,7 +80,7 @@ function readDevice() {
   } catch { return []; }
 }
 
-const state = { orders: [], logged: false, liveError: false, accountError: false, opened: null };
+const state = { orders: [], logged: false, liveError: false, accountError: false, opened: null, cancelAsk: '', cancelBusy: '' };
 
 async function loadOrders() {
   const device = readDevice();
@@ -149,6 +151,8 @@ function statusHtml(o) {
 }
 
 const canReview = (o) => o.id && o.status === 'completed' && o.reviewed !== true;
+// Cancelar pelo site: pedido deste aparelho (com o código) ou da conta, ainda ativo (confianca.canCancel).
+const canCancelOrder = (o) => !!(o.id && (o.hasToken || o.fromAccount) && T.canCancel(o.status, o.slot));
 
 function orderHtml(o, i) {
   const exam = examName(o.exam) || o.items.filter(Boolean).join(', ') || null;
@@ -175,7 +179,13 @@ function orderHtml(o, i) {
       ${(o.slot ? slotFuture(o.slot) && o.status !== 'cancelled' : isDate(o.date)) ? `<button type="button" class="btn btn-ghost btn-sm" data-ics="${i}"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : ''}
       ${canReview(o) ? `<button type="button" class="btn btn-coral btn-sm" data-review="${rid}" aria-expanded="false" aria-controls="rv-${rid}"><i class="fa-solid fa-star" aria-hidden="true"></i>Avaliar</button>` : ''}
       ${o.id && o.reviewed === true ? '<span class="ct-done"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Você já avaliou</span>' : ''}
+      ${canCancelOrder(o) && state.cancelAsk !== o.id ? `<button type="button" class="btn btn-ghost btn-sm ct-cancel" data-cancel="${rid}"><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pedido</button>` : ''}
     </div>
+    ${canCancelOrder(o) && state.cancelAsk === o.id ? `<div class="ct-confirm ct-ask" role="group" aria-label="Confirmar o cancelamento">
+        <p>${esc(T.CANCEL_CONFIRM)}</p>
+        <div class="ct-row"><button class="btn btn-coral btn-sm" type="button" data-cancel-yes="${rid}"${state.cancelBusy === o.id ? ' disabled' : ''}>${state.cancelBusy === o.id ? 'Cancelando…' : 'Sim, cancelar'}</button>
+          <button class="btn btn-ghost btn-sm" type="button" data-cancel-no="${rid}">Não</button></div>
+      </div>` : ''}
     ${canReview(o) ? reviewForm(o) : ''}
   </article>`;
 }
@@ -229,7 +239,9 @@ function downloadIcs(o) {
     o.id ? `Acompanhe: ${SITE}conta.html#pedido-${o.id}` : `IMED: ${SITE}`,
   ].filter(Boolean).join('\n');
   let ics;
-  try { ics = g('icsFile')({ id: o.id || o.code, title, date: o.date, period: o.period, slot: o.slot || null, description, url: o.id ? `${SITE}conta.html#pedido-${o.id}` : SITE }); }
+  // Sem horário marcado e sem confirmação do local, o título do lembrete leva "(a confirmar)".
+  const confirmed = !!o.slot || o.status === 'confirmed' || o.status === 'completed';
+  try { ics = g('icsFile')({ id: o.id || o.code, title, date: o.date, period: o.period, slot: o.slot || null, confirmed, description, url: o.id ? `${SITE}conta.html#pedido-${o.id}` : SITE }); }
   catch { toast('Não foi possível criar o lembrete deste pedido.'); return; }
   const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
   const a = document.createElement('a');
@@ -303,9 +315,45 @@ async function submitReview(form) {
   show(REVIEW_MSG[res] || 'Não foi possível enviar a avaliação. Tente de novo mais tarde.');
 }
 
+// Cancela no banco (cancel_request): com o código do aparelho ou pela conta (o banco confere quem é o dono).
+async function cancelOrder(id) {
+  const o = state.orders.find((x) => x.id === id);
+  if (!o || state.cancelBusy) return;
+  state.cancelBusy = id;
+  renderOrders();
+  let res;
+  try { res = await A.rpc('cancel_request', { p_id: id, p_token: o.token || null }); } catch { res = 'error'; }
+  state.cancelBusy = '';
+  const card = () => document.getElementById(`pedido-${id}`);
+  if (res === 'ok' || res === 'already_cancelled') {
+    state.cancelAsk = '';
+    o.status = 'cancelled';
+    try {
+      const list = JSON.parse(localStorage.getItem('imed_appts') || '[]');
+      if (Array.isArray(list)) localStorage.setItem('imed_appts', JSON.stringify(list.map((a) => (a && a.id === id ? { ...a, status: 'cancelado' } : a))));
+    } catch { /* sem armazenamento: a situação vem do banco */ }
+    renderOrders();
+    toast(res === 'ok' ? T.cancelDoneText(o.slot) : T.CANCEL_MSG.already_cancelled);
+    card()?.focus();
+    return;
+  }
+  const final = ['not_cancellable', 'past', 'not_found', 'forbidden'].includes(res);
+  if (final) state.cancelAsk = '';
+  renderOrders();
+  toast(T.CANCEL_MSG[res] || T.CANCEL_MSG.error);
+  (final ? card() : card()?.querySelector('[data-cancel-yes]'))?.focus();
+  if (final) refresh();
+}
+
 function bindOrders() {
   const box = $('orders');
   box.addEventListener('click', (e) => {
+    const cancel = e.target.closest('[data-cancel]');
+    if (cancel) { state.cancelAsk = cancel.dataset.cancel; renderOrders(); box.querySelector('[data-cancel-yes]')?.focus(); return; }
+    const no = e.target.closest('[data-cancel-no]');
+    if (no) { const id = state.cancelAsk; state.cancelAsk = ''; renderOrders(); document.querySelector(`[data-cancel="${CSS.escape(id)}"]`)?.focus(); return; }
+    const yes = e.target.closest('[data-cancel-yes]');
+    if (yes) { cancelOrder(yes.dataset.cancelYes); return; }
     const ics = e.target.closest('[data-ics]');
     if (ics) {
       const o = state.orders[Number(ics.dataset.ics)];
@@ -395,6 +443,7 @@ function bindAccount() {
     flash('Você saiu da conta. Os pedidos deste aparelho continuam aqui.', 'info');
     await refresh();
   });
+  $('dlData').addEventListener('click', downloadData);
   $('clearBtn').addEventListener('click', () => { $('clearConfirm').hidden = false; $('clearYes').focus(); });
   $('clearNo').addEventListener('click', () => { $('clearConfirm').hidden = true; $('clearBtn').focus(); });
   $('clearYes').addEventListener('click', async () => {
@@ -405,6 +454,43 @@ function bindAccount() {
     $('ordersTitle').setAttribute('tabindex', '-1');
     $('ordersTitle').focus();
   });
+}
+
+// "Baixar meus dados" (LGPD, acesso): um arquivo JSON com o que a conta e este aparelho já mostram.
+async function downloadData() {
+  const btn = $('dlData');
+  const msg = $('dataMsg');
+  btn.disabled = true;
+  msg.hidden = true;
+  const u = state.logged ? A.user() : null;
+  let requests = [], claims = [], failed = false;
+  if (u?.id) {
+    try {
+      const uid = encodeURIComponent(u.id);
+      const [r, c] = await Promise.all([
+        A.select(`appointment_requests?select=*&user_id=eq.${uid}&order=created_at.desc&limit=500`),
+        A.select(`establishment_claims?select=*&user_id=eq.${uid}&order=created_at.desc&limit=100`),
+      ]);
+      // Só o que é da própria conta; o resumo do código do pedido (review_token_hash) não interessa a ninguém.
+      requests = (Array.isArray(r) ? r : []).filter((x) => x.user_id === u.id).map(({ review_token_hash, ...x }) => x);
+      claims = (Array.isArray(c) ? c : []).filter((x) => x.user_id === u.id);
+    } catch { failed = true; }
+  }
+  const data = T.dataExport({ email: u?.email ?? null, userId: u?.id ?? null, requests, claims, device: readDevice() });
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = T.dataExportName();
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  msg.textContent = failed ? 'Baixamos os pedidos deste aparelho. Os dados da conta não carregaram agora: tente de novo em instantes.'
+    : u ? 'Arquivo baixado com os dados da sua conta e deste aparelho.'
+      : 'Arquivo baixado com os pedidos deste aparelho. Entre na conta para incluir também os pedidos dela.';
+  msg.classList.toggle('ok', !failed);
+  msg.hidden = false;
+  btn.disabled = false;
 }
 
 async function refresh() {

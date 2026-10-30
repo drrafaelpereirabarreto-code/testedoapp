@@ -531,6 +531,22 @@ export const protocolFromId = (id) => `IMED-${id.replace(/-/g, '').slice(0, 8).t
 export const PERIODS = { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite', qualquer: 'Qualquer horário' };
 export const BOOKING_DAYS = 90;
 
+/* ======================= avisos de confiança do pedido (busca e página do local) ======================= */
+// Só fatos verdadeiros. Se algum deixar de valer (ex.: o IMED passar a cobrar ou a usar anúncios), mude aqui
+// e na política de privacidade (privacidade.html).
+export const TRUST = {
+  sos: 'Emergência? Ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro mais próximo.',
+  sosPedido: 'O pedido não é para emergência. Emergência? Ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro.',
+  gratis: '<b>O IMED é gratuito para você.</b> Se houver cobrança pelo exame, o pagamento é feito direto no local. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp.',
+  privacidade: 'Seus dados vão só para o IMED e para o local escolhido · ficam em servidor no Brasil · sem anúncios e sem rastreadores de anúncio · sua localização é aproximada e não é gravada.',
+  cnes: 'O IMED é um serviço privado, sem vínculo com o governo ou o SUS.',
+};
+export const sosHTML = (text = TRUST.sos) => `<p class="sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span>${text}</span></p>`;
+export const gratisHTML = () => `<p class="free"><i class="fa-solid fa-shield-heart" aria-hidden="true"></i><span>${TRUST.gratis}</span></p>`;
+export const privacidadeHTML = () => `<p class="priv"><i class="fa-solid fa-lock" aria-hidden="true"></i><span>${TRUST.privacidade}</span></p>`;
+// Bloco perto do botão de enviar: gratuito (contra golpes) e privacidade.
+export const trustHTML = () => `<div class="trust">${gratisHTML()}${privacidadeHTML()}</div>`;
+
 // v.slot (horário exato, ISO) troca a data e o período: vale para clínica parceira com agenda.
 export function validateBooking(v, today = spDate(0), maxDate = spDate(BOOKING_DAYS)) {
   const err = {};
@@ -543,12 +559,57 @@ export function validateBooking(v, today = spDate(0), maxDate = spDate(BOOKING_D
     else if (!/^\d{4}-\d{2}-\d{2}$/.test(v.date) || v.date < today || v.date > maxDate) err.date = `Escolha uma data entre hoje e os próximos ${BOOKING_DAYS} dias.`;
     if (!PERIODS[v.period]) err.period = 'Escolha um período.';
   }
+  // Exame para outra pessoa: nome dela e parentesco; menor de 18 anos só com a autorização do responsável legal.
+  if (v.forOther) {
+    const other = String(v.otherName ?? '').trim().replace(/\s+/g, ' ');
+    if (other.length < 2) err.otherName = 'Digite o nome de quem vai fazer o exame.';
+    else if (other.length > 120) err.otherName = 'Use até 120 caracteres.';
+    if (!RELATIONSHIPS.includes(v.relationship)) err.relationship = 'Escolha o parentesco.';
+    if (v.otherMinor && !v.guardianConsent) err.guardian = 'Para menor de 18 anos, marque a autorização do pai, da mãe ou do responsável legal.';
+  }
   if (String(v.name ?? '').trim().length < 2) err.name = 'Digite seu nome.';
   if (!isValidPhone(onlyDigits(v.phone))) err.phone = 'Digite um celular com DDD, por exemplo (11) 98765-4321.';
   if (v.email && !isValidEmail(v.email)) err.email = 'Confira o e-mail ou deixe em branco.';
   if (String(v.notes ?? '').length > 500) err.notes = 'Use até 500 caracteres.';
   if (!v.consent) err.consent = 'Para enviar, autorize o uso dos dados para o agendamento.';
   return err;
+}
+
+/* ======================= pedido para outra pessoa (filho, pai idoso...) ======================= */
+// Parentesco de quem vai fazer o exame com quem faz o pedido.
+export const RELATIONSHIPS = ['Filho ou filha', 'Pai ou mãe', 'Cônjuge ou companheiro(a)', 'Irmão ou irmã', 'Avô ou avó', 'Neto ou neta', 'Outro parente', 'Pessoa de quem cuido', 'Outra relação'];
+
+// Pergunta "O exame é para: mim / outra pessoa" do formulário de pedido (página do local e busca).
+// Os campos de outra pessoa ficam escondidos até a pessoa escolher "Outra pessoa" (forWhomToggle).
+export function forWhomHTML() {
+  const rel = RELATIONSHIPS.map((r) => `<option value="${r}">${r}</option>`).join('');
+  return `<fieldset class="fld" data-f="forwho"><legend>O exame é para</legend>
+      <div class="seg"><label><input type="radio" name="para" value="mim" checked><span>Mim</span></label><label><input type="radio" name="para" value="outra"><span>Outra pessoa</span></label></div></fieldset>
+    <div class="bk-other" data-other hidden>
+      <div class="fld" data-f="otherName"><label for="bkOtherName">Nome de quem vai fazer o exame</label>
+        <input id="bkOtherName" name="outro_nome" autocomplete="off" maxlength="120"><span class="err" id="e-otherName"></span></div>
+      <div class="fld" data-f="relationship"><label for="bkRel">Essa pessoa é seu (sua)</label>
+        <select id="bkRel" name="parentesco"><option value="">Escolha o parentesco</option>${rel}</select><span class="err" id="e-relationship"></span></div>
+      <label class="consent minor" data-f="otherMinor"><input type="checkbox" name="menor"><span>Tem menos de 18 anos</span></label>
+      <label class="consent" data-f="guardian" data-guardian hidden><input type="checkbox" name="responsavel"><span>Sou o pai, a mãe ou o responsável legal e autorizo o IMED a usar os dados dele(a), incluindo o exame, só para este agendamento (LGPD, art. 14).</span></label>
+      <span class="err bk-gerr" id="e-guardian"></span>
+    </div>`;
+}
+// Mostra ou esconde os campos de outra pessoa e a autorização do responsável (chamar no "change" do formulário).
+export function forWhomToggle(form) {
+  const other = form.querySelector('input[name="para"]:checked')?.value === 'outra';
+  const box = form.querySelector('[data-other]');
+  if (box) box.hidden = !other;
+  const minor = !!form.elements.menor?.checked;
+  const g = form.querySelector('[data-guardian]');
+  if (g) g.hidden = !(other && minor);
+}
+// Valores do formulário para validateBooking/bookingRow.
+export function forWhomValues(fd) {
+  const forOther = fd.get('para') === 'outra';
+  return forOther
+    ? { forOther, otherName: String(fd.get('outro_nome') ?? ''), relationship: String(fd.get('parentesco') ?? ''), otherMinor: fd.get('menor') === 'on', guardianConsent: fd.get('responsavel') === 'on' }
+    : { forOther: false };
 }
 
 // extra: campos a mais do pedido (por exemplo, review_token_hash).
@@ -575,6 +636,14 @@ export function bookingRow(place, v, id, extra = {}) {
     notes: notes ? notes.slice(0, 500) : null,
     consent: true,
     ...(slot ? { slot_start: new Date(v.slot).toISOString() } : {}),
+    // Só vai quando o exame é para outra pessoa: pedidos comuns ficam iguais aos de antes.
+    ...(v.forOther ? {
+      for_other: true,
+      other_name: String(v.otherName ?? '').trim().replace(/\s+/g, ' ').slice(0, 120),
+      relationship: String(v.relationship ?? '').slice(0, 60),
+      other_minor: !!v.otherMinor,
+      guardian_consent: !!(v.otherMinor && v.guardianConsent),
+    } : {}),
     ...extra,
   };
 }
@@ -626,7 +695,14 @@ const nextDay = (iso) => {
 
 // Arquivo .ics com o pedido (dia inteiro ou faixa do período) e lembrete um dia antes.
 // Com slot (horário exato, ISO): evento na hora marcada, com duração de `minutes` minutos, já confirmado.
-export function icsFile({ id, title, date, period, slot = null, minutes = 30, description = '', url = '' }, now = Date.now()) {
+// confirmed: o local já confirmou (padrão: só quando há horário marcado). Sem confirmação, o título leva
+// " (a confirmar)", para a pessoa não ir achando que já está marcado.
+export const A_CONFIRMAR = ' (a confirmar)';
+export function icsTitle(title, confirmed) {
+  const t = String(title ?? '');
+  return confirmed || t.endsWith(A_CONFIRMAR) ? t : t + A_CONFIRMAR;
+}
+export function icsFile({ id, title, date, period, slot = null, confirmed = null, minutes = 30, description = '', url = '' }, now = Date.now()) {
   const at = slot ? spDateTime(slot) : null;
   if (slot && !at) throw new Error('horário inválido');
   if (at) date = at.date;
@@ -648,11 +724,13 @@ export function icsFile({ id, title, date, period, slot = null, minutes = 30, de
       `DTEND;TZID=America/Sao_Paulo:${end.date.replace(/-/g, '')}T${end.time.replace(':', '')}00`);
   } else if (h) lines.push(`DTSTART;TZID=America/Sao_Paulo:${day}T${h[0]}0000`, `DTEND;TZID=America/Sao_Paulo:${day}T${h[1]}0000`);
   else lines.push(`DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${nextDay(date).replace(/-/g, '')}`);
-  lines.push(`SUMMARY:${icsEscape(title)}`);
+  const sure = confirmed ?? !!at;
+  const summary = icsTitle(title, sure);
+  lines.push(`SUMMARY:${icsEscape(summary)}`);
   if (description) lines.push(`DESCRIPTION:${icsEscape(description)}`);
   if (url) lines.push(`URL:${String(url).replace(/[\r\n]/g, '')}`);
-  lines.push(at ? 'STATUS:CONFIRMED' : 'STATUS:TENTATIVE', 'TRANSP:OPAQUE',
-    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Amanhã: ${title}`)}`, 'TRIGGER:-P1D', 'END:VALARM',
+  lines.push(sure ? 'STATUS:CONFIRMED' : 'STATUS:TENTATIVE', 'TRANSP:OPAQUE',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Amanhã: ${summary}`)}`, 'TRIGGER:-P1D', 'END:VALARM',
     'END:VEVENT', 'END:VCALENDAR');
   return lines.map(icsFold).join('\r\n') + '\r\n';
 }
@@ -810,7 +888,7 @@ export function clinicToPlace(r) {
     .map((e) => ({ code: e.exam_code, price_cents: e.price_cents ?? null, price_updated_at: e.price_updated_at ?? null }));
   const p = normalizeImedRow({ ...r, exams, lat: pt?.lat ?? null, lng: pt?.lng ?? null }, pt ?? { lat: 0, lng: 0 });
   const priceDates = Object.fromEntries(exams.filter((e) => e.price_updated_at).map((e) => [e.code, e.price_updated_at]));
-  return { ...p, distance_m: null, city: r.city ?? null, uf: r.state ?? null, priceDates };
+  return { ...p, distance_m: null, city: r.city ?? null, uf: r.state ?? null, priceDates, verified_at: r.verified_at ?? null };
 }
 
 // Título e descrição da página de um local, só com o que o cadastro tem.
