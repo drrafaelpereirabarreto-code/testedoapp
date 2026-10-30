@@ -9,6 +9,8 @@
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rodapeHtml } from './rodape.mjs';
+import { tagVisitas } from './aplicar-visitas.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -82,7 +84,7 @@ function head({ title, description, canonical, rel, base, ld }) {
 <meta property="og:locale" content="pt_BR">
 <meta property="og:site_name" content="IMED">
 <meta property="og:url" content="${esc(canonical)}">
-<meta property="og:image" content="${esc(base)}assets/img/og.jpg">
+<meta property="og:image" content="${esc(base)}assets/img/og.jpg?v=2">
 <link rel="icon" type="image/png" sizes="32x32" href="${rel}assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="${rel}assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="${rel}manifest.webmanifest">
@@ -95,6 +97,7 @@ function head({ title, description, canonical, rel, base, ld }) {
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="${rel}assets/vendor/fa/css/all.min.css">
 <link rel="stylesheet" href="${rel}assets/css/cidade.css">
+<link rel="stylesheet" href="${rel}assets/css/rodape.css">
 ${ld.map((o) => `<script type="application/ld+json">${ldJson(o)}</script>`).join('\n')}
 </head>`;
 }
@@ -114,16 +117,21 @@ function topbar(rel, current) {
 </header>`;
 }
 
+// Fonte dos números (com a data) e o rodapé do IMED, o mesmo de todas as páginas (scripts/rodape.mjs).
 function footer(rel, dateIso) {
-  return `<footer class="cd-foot">
+  return `<aside class="cd-src" aria-label="Fonte dos dados">
   <div class="cd-wrap">
-    <p>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde, importados no IMED. Números atualizados em ${dateLong(dateIso)}. Confirme horários e atendimento direto com o local.</p>
-    <p><a href="${rel}">Início</a> · <a href="${rel}perto.html">Perto de mim</a> · <a href="${rel}cidades/">Clínicas por cidade</a> · <a href="${rel}exames/">Guias de exames</a> · <a href="${rel}parceiros.html">Para clínicas</a> · <a href="${rel}sobre.html">Quem somos</a> · <a href="${rel}termos.html">Termos de uso</a> · <a href="${rel}privacidade.html">Privacidade</a></p>
+    <p>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), base pública do Ministério da Saúde, importados no IMED. Números atualizados em ${dateLong(dateIso)}. Confirme horários e atendimento direto com o local. O IMED é um serviço privado, sem vínculo com o governo ou o SUS. <a href="${rel}como-funciona.html#dados">De onde vêm os dados</a></p>
   </div>
-</footer>
+</aside>
+${rodapeHtml(rel)}
 <script src="${rel}assets/js/aviso.js" data-base="${rel}" defer></script>
-<script src="${rel}assets/js/config.js"></script>`;
+<script src="${rel}assets/js/config.js"></script>
+${tagVisitas(rel)}`;
 }
+
+// Quem procura hospital pode estar numa emergência: o aviso fica no topo das páginas de hospitais.
+const SOS = '<p class="cd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo. O IMED não é serviço de urgência.</span></p>';
 
 function crumbsHtml(items) {
   return `<nav class="cd-crumbs" aria-label="Você está em"><ol>${items.map((it, i) => (i === items.length - 1
@@ -239,6 +247,7 @@ ${topbar(rel, false)}
       ${crumbsHtml(crumbs)}
       <h1>${esc(cap)} em ${esc(c.name)} - ${esc(c.uf)}</h1>
       <p class="cd-lead">São <strong>${fmt(n)} ${esc(label)}</strong> em ${esc(where(c))} no cadastro oficial do Ministério da Saúde (CNES), de um total de ${fmt(c.total)} estabelecimentos de saúde na cidade. Números atualizados em ${dateLong(date)}.</p>
+      ${t.kind === 'hospital' ? SOS : ''}
       <a class="btn btn-coral" href="${rel}perto.html"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>Ver no mapa perto de mim</a>
     </div>
   </section>
@@ -323,7 +332,7 @@ export function listExamPages(root = ROOT) {
 }
 
 export function sitemapPaths(cities, examPages = []) {
-  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'sobre.html', 'termos.html', 'privacidade.html', 'exames/', ...examPages, 'cidades/'];
+  const paths = ['', 'perto.html', 'parceiros.html', 'reivindicar.html', 'sobre.html', 'como-funciona.html', 'termos.html', 'privacidade.html', 'acessibilidade.html', 'contato.html', 'exames/', ...examPages, 'cidades/'];
   for (const c of cities) {
     paths.push(cityDir(c));
     for (const t of TYPES) if (Number(c[t.kind]) > 0) paths.push(typePath(c, t));

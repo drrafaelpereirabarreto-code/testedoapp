@@ -1,8 +1,8 @@
 /* Páginas por cidade (cidades/**) — leve, mesma identidade visual do IMED. */
 :root{
-  --navy:#05161e; --primary:#0E7C9C; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
-  --coral:#FF6B4A; --coral-s:#FFF0EC; --green:#1E9E5A; --green-s:#E7F6EE;
-  --ink:#0F1F28; --text:#2B3A44; --muted:#5F7480; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
+  --navy:#05161e; --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --coral:#FF6B4A; --coral-s:#FFF0EC; --green:#137A44; --green-s:#E7F6EE;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874; --line:#E6EDF1; --bg:#fff; --bg2:#F4F8FA;
   --sh1:0 1px 2px rgba(15,31,40,.05),0 8px 24px rgba(15,31,40,.06);
   --ease:cubic-bezier(.2,.8,.2,1);
 }
@@ -22,8 +22,8 @@ a{color:inherit;text-decoration:none}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 20px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .2s var(--ease),box-shadow .2s,background .2s;text-align:center}
 .btn:active{transform:scale(.98)}
 .btn:disabled{opacity:.55;cursor:wait}
-.btn-coral{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;box-shadow:0 10px 24px rgba(255,107,74,.3)}
-.btn-primary{background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26)}
+.btn-coral{background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;box-shadow:0 10px 24px rgba(184,58,32,.3)}
+.btn-primary{background:linear-gradient(180deg,#0F7B9A,#0B6F8C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.26)}
 .btn-ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
 .btn-ghost:hover{background:#eaf1f4}
 
@@ -115,8 +115,12 @@ a{color:inherit;text-decoration:none}
 .cd-noscript{margin:12px 0;padding:14px;border-radius:14px;background:#fff;border:1px solid var(--line)}
 .cd-noscript a{color:var(--primary);font-weight:700}
 
-.cd-foot{background:var(--navy);color:rgba(255,255,255,.7);font-size:14px;padding:26px 0 120px}
-.cd-foot p+p{margin-top:10px}
-.cd-foot a{color:#fff;text-decoration:underline;text-underline-offset:2px}
+/* fonte dos números, logo acima do rodapé (assets/css/rodape.css) */
+.cd-src{margin-top:40px;padding:18px 0;border-top:1px solid var(--line);background:#fff;font-size:13.5px;line-height:1.55;color:var(--muted)}
+.cd-src a{color:var(--primary-d);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+/* aviso de emergência nas páginas de hospitais */
+.cd-sos{display:flex;gap:10px;align-items:flex-start;margin:14px 0 18px;padding:11px 14px;border-radius:14px;background:rgba(255,107,74,.16);border:1px solid rgba(255,154,128,.4);color:#fff;font-size:14.5px;line-height:1.5;max-width:720px}
+.cd-sos i{color:#FFB199;margin-top:3px}
+.cd-sos a{color:#fff;text-decoration:underline;text-underline-offset:2px}
 .link{color:var(--primary);font-weight:700;text-decoration:underline}
 [hidden]{display:none!important}

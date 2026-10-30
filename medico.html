@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Área do médico | IMED</title>
+<meta name="description" content="Área do médico da teleconsulta do IMED: cadastro com identidade e CRM conferidos pela equipe do IMED, fila de pacientes, vídeo, pedido de exames e registro da consulta.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/medico.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="stylesheet" href="assets/css/perto.css">
+<link rel="stylesheet" href="assets/css/tele.css">
+<link rel="stylesheet" href="assets/css/rodape.css">
+</head>
+<body class="tl-page md-page">
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="teleconsulta.html">Teleconsulta</a>
+      <a href="medico.html" aria-current="page">Área do médico</a>
+    </nav>
+    <a class="pt-partner" href="termo-teleconsulta.html">Termo da teleconsulta</a>
+  </div>
+</header>
+
+<main id="main" class="tl md" tabindex="-1">
+  <section class="tl-hero" aria-labelledby="mdTitle">
+    <div class="tl-wrap">
+      <span class="tl-kicker"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Teleconsulta do IMED</span>
+      <h1 id="mdTitle">Área do médico</h1>
+      <p>Atenda pacientes por vídeo, peça exames e registre a consulta. Só atende médico com cadastro aprovado pela equipe do IMED, que confere o CRM e o RQE na busca do Conselho Federal de Medicina e a identidade do médico.</p>
+    </div>
+  </section>
+
+  <div class="tl-wrap md-wrap">
+    <p class="tl-flash" id="flash" role="status" aria-live="polite" hidden></p>
+
+    <section class="tl-card" id="authCard" aria-labelledby="authTitle">
+      <h2 id="authTitle">Sua conta</h2>
+      <div id="authBox"><p class="tl-load"><span class="spin" aria-hidden="true"></span>Carregando…</p></div>
+    </section>
+
+    <!-- Aviso regulatório antes de atender -->
+    <section class="tl-card md-notice" id="noticeCard" aria-labelledby="noticeTitle" hidden>
+      <h2 id="noticeTitle" tabindex="-1">Antes de ficar disponível: leia</h2>
+      <p class="tl-muted">Resumo de regras públicas. Não é parecer jurídico e não quer dizer que o IMED já cumpre tudo.</p>
+      <h3>O que a regulação pede de você</h3>
+      <ul>
+        <li>Atender com CRM ativo e sob sua responsabilidade. Para atender por teleconsulta pacientes de outro estado, não é preciso inscrição secundária no CRM de lá (Lei 8.080/1990, art. 26-H, incluído pela Lei 14.510/2022).</li>
+        <li>Mostrar especialidade só com RQE (Res. CFM 2.336/2023).</li>
+        <li>Você pode recusar a teleconsulta e indicar atendimento presencial sempre que achar necessário (Res. CFM 2.314/2022; Lei 8.080, art. 26-C).</li>
+        <li>Informe ao paciente os limites da teleconsulta: não há exame físico completo (Res. 2.314, art. 6º).</li>
+        <li>A consulta presencial é a referência. Em doença crônica, o paciente precisa de consulta presencial com o médico que o acompanha pelo menos a cada 180 dias (Res. 2.314, art. 6º).</li>
+        <li>Confirme quem é o paciente: nome e data de nascimento e, se possível, um documento com foto mostrado na câmera, sem gravar. Menor de 18 anos: só com o responsável legal presente.</li>
+        <li>Diante de sinal de alerta ou emergência, oriente ligar 192 (SAMU) ou ir ao pronto-socorro (ou ligar 188, do CVV, quando for o caso) e registre a orientação.</li>
+        <li>Atenda em local reservado (sigilo médico).</li>
+      </ul>
+      <h3>Consentimento do paciente (TCLE)</h3>
+      <p>O paciente aceitou o <a class="link" href="termo-teleconsulta.html" target="_blank" rel="noopener">termo da teleconsulta<span class="sr"> (abre em outra aba)</span></a> antes de entrar na fila; a versão e a hora do aceite ficam no registro da consulta (Res. 2.314, art. 15; Lei 8.080, art. 26-G). Confirme em voz alta no início da chamada.</p>
+      <h3>Prontuário</h3>
+      <ul>
+        <li>Registre: motivo, história, hipóteses, conduta, orientações, exames pedidos, encaminhamentos e se a consulta continuou por telefone ou por mensagem (Res. 2.314, art. 3º; Res. CFM 1.638/2002).</li>
+        <li>A guarda mínima é de 20 anos (Lei 13.787/2018, art. 6º). No IMED, só você e a equipe médica do IMED (hoje, o médico responsável pelo IMED) abrem o registro, e cada acesso da equipe fica anotado.</li>
+        <li>A Res. 2.314 pede sistema de registro eletrônico com nível de segurança NGS2 (certificação SBIS/CFM) e padrão ICP-Brasil. <b>O registro do IMED ainda não tem essa certificação.</b></li>
+      </ul>
+      <h3>Pedido de exames e outros documentos</h3>
+      <ul>
+        <li>Documento emitido a distância deve trazer: seu nome, CRM/UF (e RQE, se houver), endereço e contato profissional; nome e dados do paciente, com o local que ele informou para o atendimento; data e hora; a informação de que foi emitido em telemedicina; e sua assinatura digital no padrão ICP-Brasil (Res. 2.314, art. 13; Res. CFM 2.299/2021 e 2.381/2024; Lei 14.063/2020).</li>
+        <li><b>O IMED monta a lista para o paciente imprimir e achar onde fazer, mas ainda não assina digitalmente.</b> Para o pedido valer, emita-o assinado com o seu certificado ICP-Brasil (por exemplo, na plataforma gratuita de prescrição eletrônica do CFM) e combine com o paciente como ele vai receber.</li>
+        <li>Nesta fase o IMED não emite receitas nem atestados.</li>
+      </ul>
+      <h3>A empresa</h3>
+      <ul>
+        <li>Quem oferece telemedicina como empresa precisa ter sede no Brasil, inscrição no CRM do estado e diretor técnico médico (Res. 2.314; Parecer CFM 15/2026).</li>
+        <li>Em 2026 o CFM também publicou orientações sobre diretorias e comissões de ética em empresas de telessaúde (Parecer CFM 15/2026) e mudou regras de direção técnica (Res. CFM 2.467/2026). O IMED ainda está conferindo com advogado o que isso muda para ele.</li>
+        <li>Médico responsável pelo IMED: Dr. Rafael Pereira Barreto Silva, CRM-SP 266930. A inscrição do IMED no CRM como empresa de telemedicina ainda está sendo confirmada, e a razão social e o CNPJ estão em atualização (veja <a class="link" href="sobre.html">Quem somos</a>). Antes de atender, confirme com ele se a inscrição já foi concluída.</li>
+      </ul>
+      <h3>O que o IMED oferece hoje</h3>
+      <ul>
+        <li>Vídeo direto entre os navegadores, sem gravação e sem servidor de retransmissão. Em algumas redes a chamada pode não conectar. Na chamada direta, o paciente pode ver o endereço de internet (IP) da sua conexão, e você o dele; para achar o caminho, os aparelhos consultam servidores públicos de conexão (STUN) do Google e da Cloudflare.</li>
+        <li>Plano B: o celular do paciente (botão Ligar) e mensagens de texto dentro da consulta. Se você ligar do seu celular, o paciente pode ver o seu número.</li>
+        <li>Lista de exames com busca de locais perto do paciente. Não há cobrança nem pagamento no site.</li>
+      </ul>
+      <label class="consent"><input type="checkbox" id="noticeOk"><span>Li e entendi. Vou atender sob minha responsabilidade profissional.</span></label>
+      <p class="bk-err" id="noticeErr" role="alert"></p>
+      <div class="tl-row"><button class="btn btn-coral" type="button" id="noticeBtn">Continuar para a fila</button></div>
+    </section>
+
+    <!-- Plantão: disponível + fila -->
+    <section class="tl-card md-duty" id="dutyCard" aria-labelledby="dutyTitle" hidden>
+      <div class="md-duty-h">
+        <h2 id="dutyTitle" tabindex="-1">Fila de pacientes</h2>
+        <button class="md-switch" type="button" role="switch" aria-checked="false" id="availBtn"><span class="md-knob" aria-hidden="true"></span><span>Disponível para atender</span></button>
+      </div>
+      <p class="tl-muted" id="availNote">Desligado: os pacientes veem “Nenhum médico atendendo agora”. Ao sair desta página, você deixa de aparecer.</p>
+      <ol class="md-queue" id="queue"></ol>
+      <p class="sr" id="queueLive" role="status" aria-live="polite"></p>
+      <p class="tl-small" id="queueAt"></p>
+    </section>
+
+    <!-- Situação do cadastro -->
+    <section class="tl-card" id="meCard" aria-labelledby="meTitle" hidden>
+      <h2 id="meTitle" tabindex="-1">Seu cadastro de médico</h2>
+      <div id="meBox"></div>
+    </section>
+
+    <!-- Cadastro / edição -->
+    <section class="tl-card" id="regCard" aria-labelledby="regTitle" hidden>
+      <h2 id="regTitle" tabindex="-1">Cadastro de médico</h2>
+      <p class="tl-muted">Antes de liberar a fila, a equipe do IMED confere o CRM e o RQE na <a class="link" href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do CFM<span class="sr"> (abre em outra aba)</span></a> e a sua identidade: por chamada de vídeo (documento oficial com foto e carteira do CRM) ou por um documento assinado com o seu certificado ICP-Brasil. A conferência vale 12 meses. O paciente vê o seu nome, CRM/UF e, só com RQE, a especialidade.</p>
+      <form id="regForm" novalidate>
+        <div class="fld"><label for="rName">Nome completo (como está no CRM)</label><input id="rName" maxlength="120" autocomplete="name" required aria-describedby="erName"><span class="err" id="erName"></span></div>
+        <div class="row2">
+          <div class="fld"><label for="rCrm">Número do CRM</label><input id="rCrm" inputmode="numeric" maxlength="12" required aria-describedby="erCrm"><span class="err" id="erCrm"></span></div>
+          <div class="fld"><label for="rUf">Estado (UF) do CRM</label><select id="rUf" required aria-describedby="erUf"><option value="">Escolha</option></select><span class="err" id="erUf"></span></div>
+        </div>
+        <div class="row2">
+          <div class="fld"><label for="rRqe">RQE <small class="h">(se for especialista)</small></label><input id="rRqe" inputmode="numeric" maxlength="12" aria-describedby="erRqe"><span class="err" id="erRqe"></span></div>
+          <div class="fld"><label for="rSpec">Especialidade do RQE</label><input id="rSpec" maxlength="80" aria-describedby="hSpec erSpec"><small class="h" id="hSpec">Só aparece para o paciente com o RQE.</small><span class="err" id="erSpec"></span></div>
+        </div>
+        <div class="fld"><label for="rPhone">Seu celular <small class="h">(opcional, só a equipe do IMED vê)</small></label><input id="rPhone" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="20" placeholder="(11) 98765-4321" aria-describedby="erPhone"><span class="err" id="erPhone"></span></div>
+        <p class="bk-err" id="regErr" role="alert"></p>
+        <div class="tl-row"><button class="btn btn-coral" type="submit" id="regBtn">Enviar para análise</button><button class="btn btn-ghost" type="button" id="regCancel" hidden>Cancelar</button></div>
+      </form>
+    </section>
+
+    <!-- Consulta -->
+    <section class="md-consult" id="consult" aria-labelledby="cTitle" hidden>
+      <div class="tl-card md-chead">
+        <div><h2 id="cTitle" tabindex="-1">Consulta</h2><p class="tl-state" id="cState" role="status" aria-live="polite"></p></div>
+        <button class="btn btn-ghost btn-sm" type="button" id="cBack" hidden><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>Voltar para a fila</button>
+      </div>
+      <div class="md-grid">
+        <div class="md-col">
+          <div class="tl-card" id="cVideoCard">
+            <div class="tl-stage" id="cStage">
+              <video id="cRemote" class="tl-remote" playsinline autoplay aria-label="Vídeo do paciente"></video>
+              <p class="tl-stage-msg" id="cStageMsg"><span class="spin" aria-hidden="true"></span><span id="cStageText">Aguardando o paciente entrar no vídeo…</span></p>
+              <video id="cLocal" class="tl-local" playsinline autoplay muted aria-label="A sua imagem"></video>
+              <button class="btn btn-coral tl-unmute" type="button" id="cUnmute" hidden><i class="fa-solid fa-volume-high" aria-hidden="true"></i>Tocar para ouvir o paciente</button>
+            </div>
+            <div class="tl-ctrls" id="cCtrls" role="group" aria-label="Controles da chamada">
+              <button class="tl-ctrl" type="button" id="cMic" disabled><i class="fa-solid fa-microphone" aria-hidden="true"></i><span>Desligar microfone</span></button>
+              <button class="tl-ctrl" type="button" id="cCam" disabled><i class="fa-solid fa-video" aria-hidden="true"></i><span>Desligar câmera</span></button>
+              <button class="tl-ctrl" type="button" id="cFlip" hidden><i class="fa-solid fa-camera-rotate" aria-hidden="true"></i><span>Trocar câmera</span></button>
+              <button class="tl-ctrl" type="button" id="cRetry"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i><span>Tentar o vídeo de novo</span></button>
+            </div>
+            <p class="tl-small md-seen" id="cSeen"></p>
+            <p class="tl-note" id="cMedia" role="status" hidden></p>
+            <div class="tl-planb md-planb" id="cPlanB" role="alert" hidden>
+              <i class="fa-solid fa-phone-volume" aria-hidden="true"></i>
+              <div>
+                <p id="cPlanBLead"><b>O vídeo não conectou.</b> Ligue para o paciente ou continue pelas mensagens. O paciente foi avisado de que você pode ligar.</p>
+                <div class="tl-row"><a class="btn btn-coral" id="cCallBtn" href="#"><i class="fa-solid fa-phone" aria-hidden="true"></i><span>Ligar para o paciente</span></a><button class="btn btn-ghost btn-sm" type="button" id="cRetry2">Tentar o vídeo de novo</button></div>
+                <p class="tl-small">Se o paciente não entrar no vídeo, ligue e peça para ele abrir a página da teleconsulta no aparelho em que fez o pedido, com a tela ligada: o vídeo começa sozinho. Ligando do seu celular, o paciente pode ver o seu número (dá para ocultar nas configurações do celular, se a operadora permitir). Registre no prontuário que a consulta continuou por telefone ou mensagem.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="tl-card md-patient" id="cPatient" aria-labelledby="cPatTitle">
+            <h3 id="cPatTitle">Paciente</h3>
+            <div id="cPatBox"></div>
+          </div>
+
+          <div class="tl-card tl-chat" id="cChat" aria-labelledby="cChatTitle">
+            <h3 id="cChatTitle">Mensagens com o paciente</h3>
+            <ol class="tl-msgs" id="cMsgs" role="log" aria-live="polite" aria-label="Mensagens da consulta"></ol>
+            <form class="tl-chatform" id="cChatForm" novalidate>
+              <label class="sr" for="cChatText">Mensagem para o paciente</label>
+              <textarea id="cChatText" rows="2" maxlength="1000" placeholder="Escreva uma mensagem para o paciente"></textarea>
+              <button class="btn btn-primary" type="submit" id="cChatBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar</button>
+            </form>
+            <p class="tl-msg err" id="cChatErr" role="alert"></p>
+          </div>
+        </div>
+
+        <div class="md-col">
+          <div class="tl-card md-exams" id="cExams" aria-labelledby="cExTitle">
+            <h3 id="cExTitle">Pedido de exames</h3>
+            <div class="fld"><label for="exSearch">Buscar exame</label><input id="exSearch" type="search" placeholder="Ex.: hemograma, tórax, tireoide" autocomplete="off" aria-describedby="exHits"><small class="h" id="exHits" aria-live="polite"></small></div>
+            <div class="md-catalog" id="exCatalog"></div>
+            <fieldset class="md-other">
+              <legend>Outro exame (texto livre)</legend>
+              <div class="fld"><label for="exOther">Nome do exame</label><input id="exOther" maxlength="120"></div>
+              <div class="fld"><label for="exOtherType">Tipo, para achar locais perto do paciente <small class="h">(opcional)</small></label><select id="exOtherType"><option value="">Nenhum</option></select></div>
+              <button class="btn btn-ghost btn-sm" type="button" id="exOtherAdd"><i class="fa-solid fa-plus" aria-hidden="true"></i>Adicionar</button>
+              <span class="err" id="exOtherErr" role="alert"></span>
+            </fieldset>
+            <h4>Exames escolhidos (<span id="exCount">0</span>)</h4>
+            <ol class="md-chosen" id="exChosen"></ol>
+            <div class="fld"><label for="exInd">Indicação clínica</label><textarea id="exInd" rows="2" maxlength="1000"></textarea></div>
+            <div class="tl-row"><button class="btn btn-primary" type="button" id="exSend"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar exames ao paciente</button></div>
+            <p class="tl-small" id="cExNote" hidden>A consulta saiu do ar: os exames escolhidos vão junto quando você tocar em “Registrar e encerrar”.</p>
+            <p class="tl-msg" id="exMsg" role="status"></p>
+          </div>
+
+          <div class="tl-card md-record" id="cRecord" aria-labelledby="cRecTitle">
+            <h3 id="cRecTitle">Orientações e registro</h3>
+            <div class="fld"><label for="cGuide">Orientações ao paciente <small class="h">(o paciente vê no resumo)</small></label><textarea id="cGuide" rows="4" maxlength="4000"></textarea></div>
+            <div class="md-notes-old" id="cOldNotes" hidden></div>
+            <div class="fld"><label for="cNotes" id="cNotesLbl">Registro da consulta (prontuário)</label><textarea id="cNotes" rows="8" maxlength="20000" aria-describedby="hNotes"></textarea>
+              <small class="h" id="hNotes">Privado: só você e a equipe médica do IMED abrem (cada acesso da equipe fica anotado). Registre motivo, história, hipóteses, conduta, orientações, exames, encaminhamentos e se a consulta continuou por telefone ou mensagem. Mudanças em exames e orientações já enviados ficam guardadas com a versão anterior.</small></div>
+            <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="cTpl">Inserir roteiro</button><button class="btn btn-ghost btn-sm" type="button" id="cPhoneNote">Registrar: continuou por telefone ou mensagem</button></div>
+            <div class="tl-row md-endrow"><button class="btn btn-coral" type="button" id="cEnd"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i><span>Encerrar consulta</span></button></div>
+            <div class="tl-confirm" id="cEndConfirm" role="group" aria-labelledby="cEndQ" hidden>
+              <p id="cEndQ">Encerrar a consulta? O vídeo é desligado e o paciente vê as orientações e os exames enviados. Você pode complementar em até 24 horas.</p>
+              <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="cEndYes">Sim, encerrar</button><button class="btn btn-ghost btn-sm" type="button" id="cEndNo">Voltar</button></div>
+            </div>
+            <p class="bk-err" id="cEndErr" role="alert"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tl-card" id="histCard" aria-labelledby="histTitle" hidden>
+      <h2 id="histTitle">Suas consultas anteriores</h2>
+      <p class="tl-muted">Dados de pacientes: use só para o atendimento. Até 24 horas depois de encerrar, você pode complementar o registro, as orientações e os exames.</p>
+      <p class="md-note" id="histNote" hidden>O seu cadastro não está aprovado agora: aqui aparecem só as consultas das últimas 24 horas, para terminar o registro, e sem o celular dos pacientes.</p>
+      <ul class="md-hist" id="hist"></ul>
+    </section>
+
+    <section class="tl-card" id="adminCard" aria-labelledby="adminTitle" hidden>
+      <h2 id="adminTitle">Médicos cadastrados (equipe do IMED)</h2>
+      <p class="tl-muted">Os dados do CFM são públicos: conferir só o nome e o CRM não prova que a pessoa é o médico. Antes de aprovar, faça a conferência de cada cadastro (situação no CFM, RQE e prova de identidade) e salve; o banco só aprova com ela completa, feita há até 30 dias. Ela vale 12 meses: depois, o cadastro é suspenso até conferir de novo. Recusar ou suspender tira o médico do ar na hora; recusar também solta o CRM para o médico verdadeiro. A observação para o médico aparece para ele.</p>
+      <div id="admin"></div>
+    </section>
+  </div>
+</main>
+
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script type="module" src="assets/js/medico.js"></script>
+</body>
+</html>

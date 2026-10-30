@@ -6,6 +6,8 @@ import {
   isValidEmail, hideDoc, maskDoc, fmtPhone, fmtDate, fmtDateTime, parsePrice, centsToInput, friendlyError, loading,
   note, finishLogin, renderAuth, toast, telHref, EXPIRED,
 } from './clinica.js';
+import * as T from './confianca.js';
+import * as V from './estatisticas.js';
 
 const STATUSES = ['pending', 'contacted', 'confirmed', 'completed', 'cancelled'];
 const ACTIONS = ['contacted', 'confirmed', 'completed', 'cancelled'];
@@ -13,8 +15,12 @@ const DAYS = [['seg', 'Segunda'], ['ter', 'Terça'], ['qua', 'Quarta'], ['qui', 
 export const COMMON_INSURANCES = ['Amil', 'Bradesco Saúde', 'SulAmérica', 'Unimed', 'Hapvida', 'NotreDame Intermédica', 'Porto Seguro', 'Prevent Senior', 'Cassi', 'Golden Cross'];
 const EXAM_CODES = ['rx', 'usg', 'tc', 'rm', 'mamo', 'dens', 'ecg', 'eco', 'lab'];
 const BASE_COLS = 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status';
-const REQ_COLS = `${BASE_COLS},slot_start`;
-const IMED_COLS = `${BASE_COLS},place_source,place_ref,place_name,place_address,place_phone`;
+// Colunas da migração de confiança (pedido para outra pessoa e quem cancelou). Se o banco ainda não as tiver,
+// a lista é buscada de novo sem elas (loadList).
+export const TRUST_COLS = ',for_other,other_name,relationship,other_minor,guardian_consent,cancelled_at,cancelled_by';
+const REQ_COLS = `${BASE_COLS},slot_start${TRUST_COLS}`;
+const IMED_COLS = `${BASE_COLS},place_source,place_ref,place_name,place_address,place_phone${TRUST_COLS}`;
+const CANCELLED_BY = { patient: 'pelo paciente, no site', clinic: 'pela clínica', imed: 'pela equipe do IMED' };
 
 const state = { admin: false, clinics: [], memberIds: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null };
 const app = () => $('#app');
@@ -120,7 +126,7 @@ async function loadAll() {
 function tabs() {
   const t = [];
   if (clinic()) t.push(['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['dados', 'Dados da clínica'], ['exames', 'Exames e preços']);
-  if (state.admin) t.push(['cadastros', 'Pedidos de cadastro'], ['concierge', 'Pedidos ao IMED']);
+  if (state.admin) t.push(['cadastros', 'Pedidos de cadastro'], ['concierge', 'Pedidos ao IMED'], ['mensagens', 'Mensagens'], ['avisos', 'Avisos de erro'], ['visitas', 'Visitas']);
   return t;
 }
 
@@ -199,7 +205,7 @@ function selectTab(id, focus) {
 function renderTab() {
   const p = $('#panel');
   p.onclick = null; p.oninput = null; p.onchange = null;
-  ({ pedidos: tabRequests, agenda: tabAgenda, dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge })[state.tab](p);
+  ({ pedidos: tabRequests, agenda: tabAgenda, dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge, mensagens: tabMessages, avisos: tabReports, visitas: tabVisits })[state.tab](p);
 }
 
 // ---------- pedidos (clínica e IMED) ----------
@@ -211,6 +217,7 @@ function requestCard(r, withPlace) {
   const wa = waHref(r.patient_phone);
   const placeTel = telHref(r.place_phone);
   const slot = slotOf(r);
+  const other = r.for_other === true;
   const rows = [
     withPlace ? ['Local', `${esc(r.place_name)}${r.place_address ? `<br><small>${esc(r.place_address)}</small>` : ''}`] : null,
     withPlace ? ['Telefone do local', r.place_phone ? (placeTel ? `<a href="${placeTel}">${esc(r.place_phone)}</a>` : esc(r.place_phone)) : 'Não informado'] : null,
@@ -218,14 +225,16 @@ function requestCard(r, withPlace) {
     slot ? ['Horário marcado', `<b>${esc(fmtSlot(slot))}</b>`] : null,
     slot ? null : ['Data preferida', esc(fmtDate(r.preferred_date) || r.preferred_date)],
     slot ? null : ['Período', esc(PERIODS[r.preferred_period] || r.preferred_period || '')],
-    ['Paciente', esc(r.patient_name)],
+    other ? ['O exame é para', `<b>${esc(r.other_name)}</b> (${esc(r.relationship)})${r.other_minor ? '<br><small class="rq-minor"><i class="fa-solid fa-child" aria-hidden="true"></i>Menor de 18 anos · autorização do responsável legal registrada no pedido</small>' : ''}`] : null,
+    [other ? 'Quem pediu' : 'Paciente', esc(r.patient_name)],
+    r.status === 'cancelled' && CANCELLED_BY[r.cancelled_by] ? ['Cancelado', `${esc(CANCELLED_BY[r.cancelled_by])}${r.cancelled_at ? ` em ${esc(fmtDateTime(r.cancelled_at))}` : ''}`] : null,
     ['Telefone', `<span class="rq-contact">${tel ? `<a href="${tel}">${esc(fmtPhone(r.patient_phone))}</a>` : esc(r.patient_phone)}${wa ? ` <a href="${wa}" target="_blank" rel="noopener">WhatsApp<span class="sr"> de ${esc(r.patient_name)} (abre em nova aba)</span></a>` : ''}</span>`],
     r.patient_email ? ['E-mail', `<a href="mailto:${esc(r.patient_email)}">${esc(r.patient_email)}</a>`] : null,
     r.notes ? ['Observações', esc(r.notes)] : null,
   ].filter(Boolean);
   const hints = [r.status === 'completed' ? '' : '“Concluído” libera a avaliação do paciente', slot && r.status !== 'cancelled' ? '“Cancelado” libera o horário para outro paciente' : ''].filter(Boolean);
   return `<li class="rq${slot ? ' rq-has-slot' : ''}" id="rq-${esc(r.id)}">
-      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTime(r.created_at))}</small>
+      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(other ? r.other_name : r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTime(r.created_at))}</small>
         ${slot ? `<p class="rq-slot"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>${r.status === 'confirmed' ? 'Agendado pelo site (confirmado)' : 'Horário escolhido pelo paciente no site'}</p>` : ''}</div>
         <span class="rq-st st-${esc(r.status)}">${esc(statusLabel(r.status) || r.status)}</span></div>
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
@@ -309,7 +318,12 @@ async function loadList(p, tab, path, render) {
   // A resposta só vale se a pessoa ainda estiver na mesma aba e na mesma clínica (e no mesmo painel).
   const same = () => state.tab === tab && listKey(tab) === key && p.isConnected;
   try {
-    const rows = (await auth.select(path)) || [];
+    let rows;
+    try { rows = (await auth.select(path)) || []; } catch (err) {
+      // Banco ainda sem as colunas novas (migração de confiança não aplicada): busca sem elas.
+      if (err?.data?.code !== '42703' || !path.includes(TRUST_COLS)) throw err;
+      rows = (await auth.select(path.replace(TRUST_COLS, ''))) || [];
+    }
     if (!same()) return;
     state.lists[key] = rows;
     done();
@@ -1072,7 +1086,7 @@ async function tabClaims(p) {
     ]);
     const codes = [...new Set([...pending, ...decided].map((r) => r.cnes).filter((c) => /^\d{7}$/.test(c)))];
     if (codes.length) {
-      const rows = (await auth.select(`establishments?select=cnes,name,kind,address_line,neighborhood,cep,city_ibge&cnes=in.(${codes.join(',')})`)) || [];
+      const rows = (await auth.select(`establishments?select=cnes,name,kind,address_line,neighborhood,cep,phone,city_ibge&cnes=in.(${codes.join(',')})`)) || [];
       est = Object.fromEntries(rows.map((r) => [r.cnes, r]));
       const ibges = [...new Set(rows.map((r) => Number(r.city_ibge)).filter(Boolean))];
       if (ibges.length) {
@@ -1086,15 +1100,43 @@ async function tabClaims(p) {
     $('#retryTab').onclick = () => renderTab();
     return;
   }
+  // Conferência já salva de cada pedido em análise (claim_checks). Sem resposta: começa em branco.
+  let checks = {};
+  if (pending.length) {
+    try {
+      const ids = pending.map((r) => String(r.id)).filter((v) => /^[\w-]{1,64}$/.test(v));
+      const rows = ids.length ? (await auth.select(`claim_checks?select=*&claim_id=in.(${ids.join(',')})`)) || [] : [];
+      checks = Object.fromEntries(rows.map((c) => [c.claim_id, c]));
+    } catch { checks = {}; }
+  }
   if (state.tab !== 'cadastros' || !p.isConnected) return;
   const placeOf = (r) => {
     const e = est[r.cnes];
     const m = e ? mun[e.city_ibge] : null;
     return { e, m, link: cnesFicha(m?.cnes_code, r.cnes) };
   };
+  const checkHtml = (r, e, link) => {
+    const ck = checks[r.id] || null;
+    const id = esc(r.id);
+    const cnesTel = e?.phone ? (telHref(e.phone) ? `<a href="${telHref(e.phone)}">${esc(e.phone)}</a>` : esc(e.phone)) : 'não informado no CNES';
+    const extra = {
+      cnes_active: link ? '' : ' Sem link do CNES: confira pelo código no site do CNES.',
+      cnpj_active: ' <a href="https://solucoes.receita.fazenda.gov.br/Servicos/cnpjreva/Cnpjreva_Solicitacao.asp" target="_blank" rel="noopener">Consulta de CNPJ da Receita<span class="sr"> (abre em nova aba)</span></a>',
+      phone_confirmed: ` Telefone do CNES: ${cnesTel}.`,
+      crm_active: ' <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">Busca de médicos do CFM<span class="sr"> (abre em nova aba)</span></a>',
+    };
+    return `<fieldset class="ck" data-claim="${id}"><legend>Conferência antes de aprovar <small>(obrigatória, fica gravada com a data)</small></legend>
+        ${T.CLAIM_CHECKS.map(([k, title, help]) => `<label class="cl-check ck-item"><input type="checkbox" data-ck="${k}"${ck?.[k] ? ' checked' : ''}><span><b>${esc(title)}</b><small>${esc(help)}${extra[k]}</small></span></label>`).join('')}
+        <label class="cl-lbl" for="ckn-${id}" style="margin-top:10px">Observação da conferência <small>(opcional, só a equipe vê; ex.: CRM 123456-SP conferido)</small></label>
+        <input id="ckn-${id}" type="text" data-ck="note" maxlength="300" autocomplete="off" value="${esc(ck?.note || '')}">
+        <p class="cl-hint" data-ck-saved>${ck ? `Conferência salva em ${esc(fmtDateTime(ck.checked_at))}.` : 'Conferência ainda não salva.'}</p>
+        <div class="cl-row"><button class="btn btn-ghost btn-sm" type="button" data-save-checks="${id}">Salvar conferência</button></div>
+      </fieldset>`;
+  };
   const card = (r) => {
     const { e, m, link } = placeOf(r);
     const tel = telHref(r.phone);
+    const complete = T.checksComplete(checks[r.id]);
     return `<li class="rq" id="cl-${esc(r.id)}">
       <div class="rq-hd"><div><h3>${esc(e?.name || 'Estabelecimento não encontrado no mapa')}</h3>
         <small>CNES ${esc(r.cnes)}${e ? ` · ${esc(kindName(e.kind))}` : ''} · pedido em ${esc(fmtDateTime(r.created_at))}</small></div>
@@ -1110,8 +1152,10 @@ async function tabClaims(p) {
         <dt>E-mail</dt><dd>${r.email ? `<a href="mailto:${esc(r.email)}">${esc(r.email)}</a>` : 'Não informado'}</dd>
         ${r.message ? `<dt>Mensagem</dt><dd>${esc(r.message)}</dd>` : ''}
       </dl>
+      ${checkHtml(r, e, link)}
       <div class="rq-act" role="group" aria-label="Decidir o pedido de ${esc(r.claimant_name)}">
-        <button class="btn btn-primary btn-sm" type="button" data-approve="${esc(r.id)}">Aprovar</button>
+        <button class="btn btn-primary btn-sm" type="button" data-approve="${esc(r.id)}"${complete ? '' : ' disabled'} aria-describedby="cka-${esc(r.id)}">Aprovar</button>
+        <span class="cl-hint ck-need" id="cka-${esc(r.id)}">${complete ? 'Conferência completa: pode aprovar.' : 'Para aprovar, marque as quatro conferências.'}</span>
         <button class="btn btn-danger btn-sm" type="button" data-reject="${esc(r.id)}" aria-expanded="false" aria-controls="rj-${esc(r.id)}">Recusar</button>
         <div class="rq-more" id="rj-${esc(r.id)}" hidden style="width:100%">
           <label class="cl-lbl" for="note-${esc(r.id)}">Motivo da recusa <small>(a pessoa vê este texto)</small></label>
@@ -1123,17 +1167,56 @@ async function tabClaims(p) {
     </li>`;
   };
   const cls = { approved: 'bd-ok', rejected: 'bd-err' };
-  p.innerHTML = `<p class="cl-help">Confira os dados na ficha do CNES antes de aprovar. Ao aprovar, o estabelecimento vira clínica parceira e a pessoa passa a cuidar do cadastro.</p>
+  p.innerHTML = `<p class="cl-help">Antes de aprovar, faça a conferência de cada pedido: CNES ativo, CNPJ ativo, ligação para o telefone oficial do CNES confirmando quem pediu e CRM ativo do médico responsável pelo local. Ela fica gravada com a data, que aparece na página do parceiro como “Verificado pelo IMED em”. Ao aprovar, o estabelecimento vira clínica parceira e a pessoa passa a cuidar do cadastro.</p>
     <h3 style="font-size:16px;margin:4px 0 10px">Aguardando decisão (${pending.length})</h3>
     ${pending.length ? `<ul class="rq-list">${pending.map(card).join('')}</ul>` : '<p class="cl-help">Nenhum pedido aguardando.</p>'}
     <h3 style="font-size:16px;margin:22px 0 10px">Decididos recentemente</h3>
     ${decided.length ? `<ul class="cl-list">${decided.map((r) => `<li><span><b>${esc(est[r.cnes]?.name || `CNES ${r.cnes}`)}</b>
         <small>${esc(r.claimant_name)}${r.decided_at ? ` · ${esc(fmtDateTime(r.decided_at))}` : ''}</small>${r.decision_note ? `<small>Motivo: ${esc(r.decision_note)}</small>` : ''}</span>
         <span class="bd ${cls[r.status] || ''}">${esc(CLAIM_STATUS[r.status] || r.status)}</span></li>`).join('')}</ul>` : '<p class="cl-help">Nenhum ainda.</p>'}`;
+  // Marcar ou desmarcar uma conferência libera ou trava o "Aprovar".
+  p.onchange = (ev) => {
+    const box = ev.target.closest('fieldset.ck');
+    if (!box || ev.target.type !== 'checkbox') return;
+    const id = box.dataset.claim;
+    const ok = T.checksComplete(Object.fromEntries([...box.querySelectorAll('input[type=checkbox][data-ck]')].map((x) => [x.dataset.ck, x.checked])));
+    $(`#cl-${CSS.escape(id)} [data-approve]`, p).disabled = !ok;
+    $(`#cka-${CSS.escape(id)}`, p).textContent = ok ? 'Conferência completa: pode aprovar.' : 'Para aprovar, marque as quatro conferências.';
+  };
+  const payloadOf = (id) => {
+    const box = $(`fieldset.ck[data-claim="${CSS.escape(id)}"]`, p);
+    return T.checksPayload((k) => {
+      const el = $(`[data-ck="${k}"]`, box);
+      return el?.type === 'checkbox' ? el.checked : el?.value ?? '';
+    });
+  };
+  const saveChecks = async (id) => {
+    const res = await auth.rpc('save_claim_checks', { p_claim: id, p_checks: payloadOf(id) });
+    if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
+  };
   p.onclick = async (ev) => {
     const t = ev.target.closest('button');
     if (!t) return;
     const msg = (id) => $(`[data-msg="${CSS.escape(id)}"]`, p);
+    if (t.dataset.saveChecks) {
+      const id = t.dataset.saveChecks;
+      t.disabled = true;
+      msg(id).className = 'cl-msg';
+      msg(id).textContent = 'Salvando a conferência…';
+      try {
+        await saveChecks(id);
+        msg(id).textContent = 'Conferência salva.';
+        msg(id).classList.add('ok');
+        const saved = $(`fieldset.ck[data-claim="${CSS.escape(id)}"] [data-ck-saved]`, p);
+        if (saved) saved.textContent = `Conferência salva em ${fmtDateTime(new Date().toISOString())}.`;
+        toast('Conferência salva.');
+      } catch (err) {
+        if (lost()) return;
+        msg(id).textContent = err.result === 'already_decided' ? 'Este pedido já foi decidido.' : err.result === 'forbidden' ? 'Só a equipe do IMED faz a conferência.' : friendlyError(err, 'Não foi possível salvar a conferência agora. Tente de novo.');
+        msg(id).classList.add('err');
+      } finally { t.disabled = false; }
+      return;
+    }
     if (t.dataset.show) {
       const r = pending.find((x) => x.id === t.dataset.show);
       const span = $(`[data-doc="${CSS.escape(r.id)}"]`, p);
@@ -1154,8 +1237,10 @@ async function tabClaims(p) {
       msg(id).textContent = 'Salvando…';
       try {
         if (t.dataset.approve) {
+          // Primeiro grava a conferência (com a data); o banco só aprova com as quatro marcadas.
+          await saveChecks(id);
           await auth.rpc('approve_claim', { p_claim: id });
-          toast('Pedido aprovado. A clínica já aparece como parceira.');
+          toast('Pedido aprovado. A clínica já aparece como parceira, com a data da conferência.');
         } else {
           const noteText = $(`#note-${CSS.escape(id)}`, p).value.trim().slice(0, 300);
           await auth.rpc('reject_claim', { p_claim: id, p_note: noteText || null });
@@ -1165,12 +1250,185 @@ async function tabClaims(p) {
       } catch (err) {
         if (lost()) return;
         btns.forEach((b) => { b.disabled = false; });
+        const ok = T.checksComplete(payloadOf(id));
+        const ap = $(`#cl-${CSS.escape(id)} [data-approve]`, p);
+        if (ap) ap.disabled = !ok;
+        if (err.result === 'already_decided') { msg(id).textContent = 'Este pedido já foi decidido.'; msg(id).classList.add('err'); return; }
         const dbMsg = err?.data?.code === '22023' ? err.data.message : '';
         msg(id).textContent = dbMsg || friendlyError(err, 'Não foi possível salvar a decisão agora. Tente de novo.');
         msg(id).classList.add('err');
       }
     }
   };
+}
+
+// ---------- equipe do IMED: mensagens do Fale com o IMED ----------
+const SUBJECT = Object.fromEntries(T.CONTACT_SUBJECTS.map(([k, l]) => [k, l]));
+const MSG_FILTER = { open: 'Em aberto', answered: 'Respondidas', '': 'Todas' };
+// WhatsApp só para celular (11 dígitos, com 9 depois do DDD).
+const waPhone = (d) => (/^[1-9]{2}9\d{8}$/.test(d || '') ? `https://wa.me/55${d}` : '');
+
+async function adminList(p, tab, path, render) {
+  p.innerHTML = loading('Carregando…');
+  const same = () => state.tab === tab && p.isConnected;
+  try {
+    const rows = (await auth.select(path)) || [];
+    if (!same()) return;
+    render(rows);
+    if (state.refocus) { $(state.refocus, p)?.focus(); state.refocus = null; }
+  } catch (err) {
+    if (lost() || !same()) return;
+    state.refocus = null;
+    p.innerHTML = `${note(esc(friendlyError(err, 'Não foi possível carregar agora. Tente de novo em instantes.')), 'err')}<div class="cl-actions"><button class="btn btn-ghost btn-sm" type="button" id="retryTab">Tentar de novo</button></div>`;
+    $('#retryTab').onclick = () => renderTab();
+  }
+}
+
+function tabMessages(p) {
+  const f = state.filter.msg ?? 'open';
+  const path = `contact_messages?select=*&order=created_at.desc&limit=200${f ? `&status=eq.${f}` : ''}`;
+  adminList(p, 'mensagens', path, (rows) => {
+    const item = (r) => {
+      const tel = r.reply_phone ? telHref(r.reply_phone) : '';
+      const wa = waPhone(r.reply_phone);
+      const reply = r.reply_email ? `<a href="mailto:${esc(r.reply_email)}?subject=${encodeURIComponent(`IMED · protocolo ${r.protocol}`)}">${esc(r.reply_email)}</a>`
+        : `${tel ? `<a href="${tel}">${esc(fmtPhone(r.reply_phone))}</a>` : esc(r.reply_phone)}${wa ? ` <a href="${wa}" target="_blank" rel="noopener">WhatsApp<span class="sr"> (abre em nova aba)</span></a>` : ''}`;
+      const answered = r.status === 'answered';
+      return `<li class="rq" id="msg-${esc(r.id)}">
+        <div class="rq-hd"><div><h3>${esc(SUBJECT[r.subject] || r.subject)}</h3><small>Protocolo ${esc(r.protocol)} · ${esc(fmtDateTime(r.created_at))}</small></div>
+          <span class="rq-st ${answered ? 'st-completed' : 'st-pending'}">${answered ? 'Respondida' : 'Em aberto'}</span></div>
+        ${T.isLgpdSubject(r.subject) ? note('Pedido sobre dados pessoais (LGPD): confirme que quem pede é o dono dos dados antes de mostrar, corrigir ou apagar qualquer coisa.', 'warn') : ''}
+        <dl>
+          <dt>Nome</dt><dd>${esc(r.name)}</dd>
+          <dt>Responder por</dt><dd><span class="rq-contact">${reply}</span></dd>
+          ${r.account_email ? `<dt>Conta no IMED</dt><dd>${esc(r.account_email)} <small>(estava logado ao enviar)</small></dd>` : ''}
+          ${r.request_code ? `<dt>Protocolo do pedido</dt><dd>${esc(r.request_code)}</dd>` : ''}
+          <dt>Mensagem</dt><dd class="msg-body">${esc(r.message)}</dd>
+          ${answered && r.answered_at ? `<dt>Respondida em</dt><dd>${esc(fmtDateTime(r.answered_at))}</dd>` : ''}
+        </dl>
+        <div class="rq-act"><button class="btn btn-ghost btn-sm" type="button" data-msg-status="${answered ? 'open' : 'answered'}" data-id="${esc(r.id)}">${answered ? 'Voltar para em aberto' : 'Marcar como respondida'}<span class="sr"> a mensagem ${esc(r.protocol)}</span></button></div>
+      </li>`;
+    };
+    p.innerHTML = `<p class="cl-help">Mensagens do <a class="link" href="contato.html">Fale com o IMED</a>. Responda pelo contato que a pessoa deixou, citando o protocolo, e marque como respondida.</p>
+      <div class="cl-filter"><label class="cl-lbl" for="flt-msg" style="margin:0">Mostrar</label>
+        <select id="flt-msg">${Object.entries(MSG_FILTER).map(([v, n]) => `<option value="${v}"${f === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <button class="btn btn-ghost btn-sm" type="button" id="rf-msg"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar lista</button></div>
+      ${rows.length ? `<ul class="rq-list">${rows.map(item).join('')}</ul>` : `<p class="cl-help">${f === 'open' ? 'Nenhuma mensagem em aberto.' : 'Nenhuma mensagem.'}</p>`}
+      <div id="msgMsg" aria-live="polite"></div>`;
+    $('#flt-msg').onchange = (e) => { state.filter.msg = e.target.value; state.refocus = '#flt-msg'; renderTab(); };
+    $('#rf-msg').onclick = () => { state.refocus = '#rf-msg'; renderTab(); };
+    p.onclick = async (e) => {
+      const b = e.target.closest('[data-msg-status]');
+      if (!b) return;
+      b.disabled = true;
+      try {
+        const res = await auth.rpc('set_contact_status', { p_id: b.dataset.id, p_status: b.dataset.msgStatus });
+        if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
+        const r = rows.find((x) => x.id === b.dataset.id);
+        toast(b.dataset.msgStatus === 'answered' ? `Mensagem ${r?.protocol || ''} marcada como respondida.` : 'Mensagem de volta para em aberto.');
+        state.refocus = '#flt-msg';
+        renderTab();
+      } catch (err) {
+        if (lost()) return;
+        b.disabled = false;
+        $('#msgMsg', p).innerHTML = note(esc(err.result === 'forbidden' ? 'Só a equipe do IMED cuida das mensagens.' : err.result === 'not_found' ? 'Esta mensagem não existe mais.' : friendlyError(err, 'Não foi possível salvar agora. Tente de novo.')), 'err');
+      }
+    };
+  });
+}
+
+// ---------- equipe do IMED: avisos "Algo errado aqui?" ----------
+const REPORT_FILTER = { open: 'Em aberto', resolved: 'Resolvidos', '': 'Todos' };
+function tabReports(p) {
+  const f = state.filter.rep ?? 'open';
+  const path = `place_reports?select=*,establishments(name,address_line,neighborhood,phone,municipalities(name,uf,cnes_code)),clinics(name,city,state,cnes)&order=created_at.desc&limit=200${f ? `&status=eq.${f}` : ''}`;
+  adminList(p, 'avisos', path, (rows) => {
+    const item = (r) => {
+      const est = r.establishments || null;
+      const cli = r.clinics || null;
+      const m = est?.municipalities || null;
+      const name = cli?.name || est?.name || (r.cnes ? `CNES ${r.cnes}` : 'Local');
+      const where = cli ? [cli.city, cli.state].filter(Boolean).join(' - ') : [est?.address_line, est?.neighborhood, m && `${m.name} - ${m.uf}`].filter(Boolean).join(' · ');
+      const page = r.clinic_id ? `local.html?id=${encodeURIComponent(r.clinic_id)}` : `local.html?cnes=${encodeURIComponent(r.cnes)}`;
+      const ficha = r.cnes ? cnesFicha(m?.cnes_code, r.cnes) : '';
+      const done = r.status === 'resolved';
+      return `<li class="rq" id="rep-${esc(r.id)}">
+        <div class="rq-hd"><div><h3>${esc(T.reportKindLabel(r.kind))}</h3><small>${esc(name)} · ${esc(fmtDateTime(r.created_at))}</small></div>
+          <span class="rq-st ${done ? 'st-completed' : 'st-pending'}">${done ? 'Resolvido' : 'Em aberto'}</span></div>
+        <dl>
+          <dt>Local</dt><dd><a href="${esc(page)}" target="_blank" rel="noopener">${esc(name)}<span class="sr"> (abre em nova aba)</span></a>${where ? `<br><small>${esc(where)}</small>` : ''}</dd>
+          <dt>Origem</dt><dd>${r.clinic_id ? 'Parceiro do IMED (a clínica corrige pela área dela)' : `Cadastro oficial (CNES ${esc(r.cnes)})${ficha ? ` · <a href="${esc(ficha)}" target="_blank" rel="noopener">Ficha no CNES<span class="sr"> (abre em nova aba)</span></a>` : ''}`}</dd>
+          ${est?.phone && !r.clinic_id ? `<dt>Telefone no CNES</dt><dd>${esc(est.phone)}</dd>` : ''}
+          ${r.note ? `<dt>O que a pessoa escreveu</dt><dd class="msg-body">${esc(r.note)}</dd>` : ''}
+          ${done && r.resolved_at ? `<dt>Resolvido em</dt><dd>${esc(fmtDateTime(r.resolved_at))}</dd>` : ''}
+        </dl>
+        <div class="rq-act"><button class="btn btn-ghost btn-sm" type="button" data-rep-status="${done ? 'open' : 'resolved'}" data-id="${esc(r.id)}">${done ? 'Reabrir' : 'Marcar como resolvido'}<span class="sr"> o aviso sobre ${esc(name)}</span></button></div>
+      </li>`;
+    };
+    p.innerHTML = `<p class="cl-help">Avisos de dados errados enviados pelos visitantes na página de cada local. Confira com o local. No cadastro oficial, a correção é feita pelo próprio estabelecimento no CNES; nos parceiros, pela clínica na área dela.</p>
+      <div class="cl-filter"><label class="cl-lbl" for="flt-rep" style="margin:0">Mostrar</label>
+        <select id="flt-rep">${Object.entries(REPORT_FILTER).map(([v, n]) => `<option value="${v}"${f === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <button class="btn btn-ghost btn-sm" type="button" id="rf-rep"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar lista</button></div>
+      ${rows.length ? `<ul class="rq-list">${rows.map(item).join('')}</ul>` : `<p class="cl-help">${f === 'open' ? 'Nenhum aviso em aberto.' : 'Nenhum aviso.'}</p>`}
+      <div id="repMsg" aria-live="polite"></div>`;
+    $('#flt-rep').onchange = (e) => { state.filter.rep = e.target.value; state.refocus = '#flt-rep'; renderTab(); };
+    $('#rf-rep').onclick = () => { state.refocus = '#rf-rep'; renderTab(); };
+    p.onclick = async (e) => {
+      const b = e.target.closest('[data-rep-status]');
+      if (!b) return;
+      b.disabled = true;
+      try {
+        const res = await auth.rpc('set_place_report_status', { p_id: b.dataset.id, p_status: b.dataset.repStatus });
+        if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
+        toast(b.dataset.repStatus === 'resolved' ? 'Aviso marcado como resolvido.' : 'Aviso reaberto.');
+        state.refocus = '#flt-rep';
+        renderTab();
+      } catch (err) {
+        if (lost()) return;
+        b.disabled = false;
+        $('#repMsg', p).innerHTML = note(esc(err.result === 'forbidden' ? 'Só a equipe do IMED cuida dos avisos.' : err.result === 'not_found' ? 'Este aviso não existe mais.' : friendlyError(err, 'Não foi possível salvar agora. Tente de novo.')), 'err');
+      }
+    };
+  });
+}
+
+// ---------- equipe do IMED: contador de visitas próprio (sem cookies e sem dados pessoais) ----------
+// Banco ainda sem a função admin_stats (migração 20261030073000_visitas): o PostgREST responde 404 (PGRST202).
+const noStatsFn = (err) => err?.status === 404 || err?.data?.code === 'PGRST202' || err?.data?.code === '42883';
+
+async function tabVisits(p) {
+  const days = state.filter.vis ?? 7;
+  const same = () => state.tab === 'visitas' && p.isConnected && (state.filter.vis ?? 7) === days;
+  let body = $('#vsBody', p);
+  if (body) {
+    // Trocou o período ou atualizou: os números de antes ficam (mais claros) até os novos chegarem.
+    body.classList.add('vs-busy');
+    body.setAttribute('aria-busy', 'true');
+  } else {
+    p.innerHTML = `<p class="cl-help">Contagem própria do IMED, <b>sem cookies e sem dados pessoais</b>: cada página aberta soma 1 no dia, e as buscas somam o exame, o tipo de local e a cidade, cada um separado. O banco não guarda IP, aparelho nem quem visitou. Não entram robôs, testes e quem liga “Não rastrear” ou o Controle Global de Privacidade no navegador. <a class="link" href="privacidade.html#cookies">Veja na política de privacidade</a>.</p>
+      <div class="cl-filter"><label class="cl-lbl" for="flt-vis" style="margin:0">Período</label>
+        <select id="flt-vis">${V.PERIODS.map(([v, n]) => `<option value="${v}"${days === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
+        <button class="btn btn-ghost btn-sm" type="button" id="rf-vis"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar</button></div>
+      <div id="vsBody" class="vs-root" aria-busy="true">${loading('Carregando os números…')}</div>`;
+    body = $('#vsBody', p);
+    $('#flt-vis', p).onchange = (e) => { state.filter.vis = Number(e.target.value) === 30 ? 30 : 7; renderTab(); };
+    $('#rf-vis', p).onclick = () => renderTab();
+  }
+  const done = () => { body.classList.remove('vs-busy'); body.removeAttribute('aria-busy'); };
+  try {
+    const raw = await auth.rpc('admin_stats', { p_days: days });
+    if (!same()) return;
+    body.innerHTML = V.statsHtml(V.normalizeStats(raw, days));
+    done();
+  } catch (err) {
+    if (lost() || !same()) return;
+    body.innerHTML = noStatsFn(err)
+      ? note('O contador de visitas ainda não está ligado no banco. Os números aparecem aqui depois que a atualização do banco for aplicada.', 'warn')
+      : `${note(esc(friendlyError(err, 'Não foi possível carregar os números agora. Tente de novo em instantes.')), 'err')}<div class="cl-actions"><button class="btn btn-ghost btn-sm" type="button" id="retryVis">Tentar de novo</button></div>`;
+    done();
+    const retry = $('#retryVis', p);
+    if (retry) retry.onclick = () => renderTab();
+  }
 }
 
 // ---------- início ----------

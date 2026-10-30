@@ -4,8 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Política de privacidade | IMED</title>
-<meta name="description" content="Como o IMED trata seus dados: lista de espera, cadastro de parceiros, localização e seus direitos pela LGPD.">
+<meta name="description" content="Como o IMED trata seus dados: pedidos de agendamento, conta, avaliações, teleconsulta, localização, onde os dados ficam, por quanto tempo e seus direitos pela LGPD.">
 <meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/privacidade.html">
+<meta property="og:title" content="Política de privacidade | IMED">
+<meta property="og:description" content="Como o IMED trata seus dados, onde eles ficam, por quanto tempo e quais são os seus direitos pela LGPD. Nunca vendemos dado de saúde.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="IMED">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/privacidade.html">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -14,101 +25,185 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
 <link rel="stylesheet" href="assets/css/guia.css">
-<style>
-.pv{max-width:820px;margin:0 auto;padding:48px 20px 72px}
-.pv h1{font-size:clamp(32px,4vw,46px);letter-spacing:-.035em}
-.pv .upd{color:var(--muted);margin-top:8px}
-.pv .sum{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:28px 0 8px}
-.pv .sum div{padding:16px;border-radius:18px;background:var(--bg2);line-height:1.5;font-size:14.5px}
-.pv .sum i{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);margin-bottom:10px}
-.pv h2{font-size:22px;margin:34px 0 12px;letter-spacing:-.02em}
-.pv p,.pv li{line-height:1.7;font-size:16px}
-.pv ul{padding-left:22px;display:grid;gap:8px;margin-top:8px}
-.pv table{width:100%;border-collapse:collapse;margin-top:10px;font-size:14.5px}
-.pv th,.pv td{text-align:left;vertical-align:top;padding:12px;border-bottom:1px solid var(--line);line-height:1.5}
-.pv th{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
-.pv a{color:var(--primary);font-weight:600}
-@media (max-width:640px){.pv .sum{grid-template-columns:1fr}.pv table,.pv thead,.pv tbody,.pv tr,.pv th,.pv td{display:block}.pv thead{display:none}.pv td{border:0;padding:4px 0}.pv tr{padding:12px 0;border-bottom:1px solid var(--line)}}
-</style>
+<link rel="stylesheet" href="assets/css/texto.css">
+<link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
 <header class="g-top"><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <nav><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="reivindicar.html">Para clínicas</a></nav>
-  <a class="btn btn-coral" href="index.html">Voltar ao site</a>
+  <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+  <nav aria-label="Seções"><a href="perto.html">Perto de mim</a><a href="cidades/">Por cidade</a><a href="exames/">Guias de exames</a><a href="parceiros.html">Para clínicas</a></nav>
+  <a class="btn btn-coral" href="./">Voltar ao site</a>
 </div></header>
 
-<main class="pv">
+<main class="pv" id="main" tabindex="-1">
   <h1>Política de privacidade</h1>
   <p class="upd">Última atualização: 30 de outubro de 2026</p>
 
   <div class="sum">
-    <div><i class="fa-solid fa-location-dot"></i>Sua localização só é usada com a sua permissão, de forma aproximada, para buscar clínicas na sua região. Não guardamos onde você está.</div>
-    <div><i class="fa-solid fa-envelope-open-text"></i>Só guardamos o que você envia nos formulários: lista de espera, cadastro de parceiros e pedidos de agendamento.</div>
-    <div><i class="fa-solid fa-user-shield"></i>Você pode pedir para ver, corrigir ou apagar seus dados a qualquer momento.</div>
+    <div><i class="fa-solid fa-user-shield" aria-hidden="true"></i>Seus dados vão só para o IMED e para o local que você escolher. <b>Nunca vendemos seus dados</b>, nem os de saúde, e não usamos anúncios.</div>
+    <div><i class="fa-solid fa-location-dot" aria-hidden="true"></i>A localização só é usada com a sua permissão, de forma aproximada, para buscar locais perto de você. Ela não é gravada.</div>
+    <div><i class="fa-solid fa-server" aria-hidden="true"></i>Pedidos, contas, avaliações e teleconsultas ficam num servidor no Brasil (São Paulo). Você pode pedir para ver, corrigir ou apagar seus dados.</div>
   </div>
 
-  <h2>Quem somos</h2>
-  <p>O IMED é uma plataforma, hoje em fase de protótipo, que ajuda pacientes a encontrar clínicas de imagem e teleconsulta perto de casa. Esta política explica quais dados tratamos, por quê e quais são os seus direitos pela Lei Geral de Proteção de Dados (Lei nº 13.709/2018, LGPD). Contato para assuntos de privacidade: <a href="mailto:contato@imed.com.br">contato@imed.com.br</a>.</p>
+  <nav class="toc" aria-label="Nesta página"><b>Nesta página</b>
+    <ol>
+      <li><a href="#quem">Quem é o responsável pelos seus dados</a></li>
+      <li><a href="#dados">Quais dados tratamos, para quê e com que base legal</a></li>
+      <li><a href="#teleconsulta">Teleconsulta</a></li>
+      <li><a href="#onde">Onde os dados ficam e quem acessa</a></li>
+      <li><a href="#fora">Serviços fora do Brasil</a></li>
+      <li><a href="#tempo">Por quanto tempo guardamos</a></li>
+      <li><a href="#seguranca">Segurança e incidentes</a></li>
+      <li><a href="#direitos">Seus direitos</a></li>
+      <li><a href="#cookies">Cookies, contador de visitas e dados no seu aparelho</a></li>
+    </ol>
+  </nav>
 
-  <h2>Quais dados tratamos e para quê</h2>
+  <h2 id="quem">Quem é o responsável pelos seus dados</h2>
+  <p>O IMED é um serviço on-line para encontrar clínicas, laboratórios, centros de diagnóstico e hospitais reais perto de você, pedir um agendamento e fazer teleconsulta. Esta política explica quais dados tratamos, por quê e quais são os seus direitos pela Lei Geral de Proteção de Dados (Lei nº 13.709/2018, LGPD).</p>
+  <p>O responsável pelos seus dados (o “controlador”, na LGPD) é o <b>Dr. Rafael Pereira Barreto Silva</b>, médico, CRM-SP 266930, responsável pelo IMED. Quando a razão social e o CNPJ do IMED forem publicados em <a href="sobre.html">Quem somos</a>, a empresa passa a constar aqui. Para assuntos de privacidade, use o <a href="contato.html">Fale com o IMED</a>: os pedidos sobre dados pessoais são respondidos pelo responsável.</p>
+
+  <h2 id="dados">Quais dados tratamos, para quê e com que base legal</h2>
   <table>
-    <thead><tr><th>Situação</th><th>Dados</th><th>Para quê</th></tr></thead>
+    <thead><tr><th>Situação</th><th>Dados</th><th>Para quê</th><th>Base legal (LGPD)</th></tr></thead>
     <tbody>
-      <tr><td><b>Lista de espera do app</b></td><td>E-mail, cidade (opcional) e interesse</td><td>Avisar você quando o app lançar na sua cidade.</td></tr>
-      <tr><td><b>Cadastro de parceiros</b></td><td>Nome ou razão social, CNPJ ou CPF, CRM (médicos), celular, e-mail, cidade e especialidade</td><td>Entrar em contato sobre a parceria e avaliar o cadastro.</td></tr>
-      <tr><td><b>Localização</b></td><td>Coordenadas do seu aparelho, só quando você permite no navegador. Antes de sair do aparelho, são arredondadas: a posição enviada tem precisão de cerca de 100 metros. Isso não limita a distância da busca, que cobre a região que você escolher.</td><td>Buscar e ordenar por distância as clínicas, laboratórios e centros de diagnóstico perto de você. As coordenadas arredondadas vão para o servidor de busca do IMED, que as usa para descobrir a sua cidade (pelo Photon/OpenStreetMap) e buscar os estabelecimentos do cadastro oficial do Ministério da Saúde. Elas também podem ir para o serviço de mapas usado na busca (OpenStreetMap ou Google Maps). Não são gravadas no banco, nos registros do servidor nem no seu aparelho. O banco guarda só quais cidades já tiveram os estabelecimentos importados, sem dizer quem buscou.</td></tr>
-      <tr><td><b>Busca por CEP, cidade ou endereço</b></td><td>O texto que você digita</td><td>Encontrar o ponto no mapa. É enviado ao servidor do IMED e aos serviços de endereço (ViaCEP, BrasilAPI, Photon/OpenStreetMap ou Google) e não é guardado.</td></tr>
-      <tr><td><b>Pedido de agendamento</b></td><td>Nome, celular, e-mail (opcional), exame ou atendimento desejado, data e período preferidos, observações e o estabelecimento escolhido</td><td>Encaminhar o pedido ao estabelecimento e entrar em contato com você para confirmar o horário. A sua localização não faz parte do pedido.</td></tr>
-      <tr><td><b>Conta no IMED (opcional)</b></td><td>E-mail. Para entrar, enviamos um link de acesso para ele</td><td>Acompanhar seus pedidos em qualquer aparelho e avaliar os locais. Os pedidos feitos com a conta aberta ficam ligados a ela.</td></tr>
-      <tr><td><b>Avaliação de um atendimento</b></td><td>Nota de 1 a 5, comentário (opcional) e o seu primeiro nome</td><td>Mostrar a outros pacientes a nota do local. Só quem teve o pedido concluído pode avaliar, uma vez por pedido. Aparecem só a nota, o comentário, o primeiro nome e a data.</td></tr>
-      <tr><td><b>Clínica que assume o próprio cadastro</b></td><td>Nome, cargo, CPF ou CNPJ, CRM (opcional), celular, e-mail e mensagem</td><td>Conferir se a pessoa é responsável pelo estabelecimento antes de liberar a área da clínica. Só a equipe do IMED vê esses dados.</td></tr>
-      <tr><td><b>Dados no seu aparelho</b></td><td>Bairro escolhido, o resumo dos pedidos enviados (sem localização) e um código aleatório de cada pedido. Se você entrar na conta, também a sessão de acesso</td><td>Mostrar seus pedidos em “Agendados”, consultar a situação deles e permitir a avaliação sem precisar de conta. O banco guarda só uma versão embaralhada (hash) do código. Tudo fica só no seu navegador, e você pode apagar em “Minha conta”.</td></tr>
+      <tr><td data-l="Situação"><b>Pedido de agendamento</b></td><td data-l="Dados">Nome, celular, e-mail (opcional), exame ou atendimento desejado, data e período preferidos (ou o horário escolhido), observações e o local escolhido. Quando o exame é para outra pessoa: o nome dela, o parentesco e se ela tem menos de 18 anos (nesse caso, com a autorização do pai, da mãe ou do responsável legal, como pede a LGPD no art. 14)</td><td data-l="Para quê">Encaminhar o pedido ao local e falar com você para confirmar o horário. Se você cancelar pelo site, guardamos quando e por quem o pedido foi cancelado. A sua localização não faz parte do pedido.</td><td data-l="Base legal">Seu consentimento, pedido de forma específica e destacada no formulário, porque o exame desejado é um dado de saúde (art. 11, I).</td></tr>
+      <tr><td data-l="Situação"><b>Conta no IMED</b> (opcional)</td><td data-l="Dados">E-mail. Para entrar, enviamos um link de acesso para ele</td><td data-l="Para quê">Acompanhar seus pedidos em qualquer aparelho e avaliar os locais. Os pedidos feitos com a conta aberta ficam ligados a ela.</td><td data-l="Base legal">Prestar o serviço que você pediu ao criar a conta (art. 7º, V).</td></tr>
+      <tr><td data-l="Situação"><b>Avaliação de um atendimento</b></td><td data-l="Dados">Nota de 1 a 5, comentário (opcional) e o seu primeiro nome</td><td data-l="Para quê">Mostrar a outros pacientes a nota do local. Aparecem só a nota, o comentário, o primeiro nome e a data. Não escreva dados de saúde no comentário.</td><td data-l="Base legal">Seu consentimento, ao enviar a avaliação (art. 7º, I).</td></tr>
+      <tr><td data-l="Situação"><b>Lista de espera da teleconsulta</b></td><td data-l="Dados">E-mail, cidade (opcional) e o assunto que você escolheu (teleconsulta, novidades de exames ou os dois)</td><td data-l="Para quê">Mandar avisos sobre a teleconsulta e, se você escolheu, novidades de exames. Sem propaganda de terceiros.</td><td data-l="Base legal">Seu consentimento (art. 7º, I).</td></tr>
+      <tr><td data-l="Situação"><b>Teleconsulta</b></td><td data-l="Dados">Veja a seção <a href="#teleconsulta">Teleconsulta</a></td><td data-l="Para quê">Fazer a consulta por vídeo e registrar o atendimento.</td><td data-l="Base legal">Tutela da saúde, em atendimento feito por médico (art. 11, II, f), e o seu consentimento no termo da teleconsulta.</td></tr>
+      <tr><td data-l="Situação"><b>Clínica que assume o próprio cadastro</b></td><td data-l="Dados">Nome, cargo, CPF ou CNPJ, CRM (opcional), celular, e-mail e mensagem</td><td data-l="Para quê">Conferir se a pessoa responde pelo estabelecimento antes de liberar a área da clínica. Só a equipe do IMED vê esses dados.</td><td data-l="Base legal">Procedimentos para a parceria, a pedido da clínica (art. 7º, V), e prevenção de fraude (legítimo interesse, art. 7º, IX).</td></tr>
+      <tr><td data-l="Situação"><b>Contato de clínicas</b> (página Para clínicas)</td><td data-l="Dados">Nome do estabelecimento, CNPJ, celular, e-mail, cidade e tipo de estabelecimento</td><td data-l="Para quê">Falar com a clínica sobre a entrada no IMED.</td><td data-l="Base legal">Seu consentimento, ao enviar o formulário (art. 7º, I).</td></tr>
+      <tr><td data-l="Situação"><b>Fale com o IMED</b></td><td data-l="Dados">Assunto, nome, e-mail ou celular para a resposta, a mensagem e, se você informar, o protocolo do pedido. Com a conta aberta, a mensagem fica ligada à conta e ao e-mail dela</td><td data-l="Para quê">Responder à sua mensagem, inclusive pedidos sobre seus dados, e confirmar que quem pede é o dono dos dados. Cada mensagem recebe um número de protocolo. Não escreva dados de saúde na mensagem.</td><td data-l="Base legal">Atender ao seu pedido (art. 7º, V) e cumprir a LGPD (art. 7º, II).</td></tr>
+      <tr><td data-l="Situação"><b>Aviso “Algo errado aqui?”</b> (página de cada local)</td><td data-l="Dados">O tipo de problema (telefone, local fechado, endereço, exame ou outro), o texto curto que você escrever (opcional) e, com a conta aberta, a conta</td><td data-l="Para quê">Conferir e corrigir os dados do local. Não pedimos nome nem contato.</td><td data-l="Base legal">Legítimo interesse em manter os dados corretos para todos (art. 7º, IX).</td></tr>
+      <tr><td data-l="Situação"><b>Localização</b></td><td data-l="Dados">Coordenadas do seu aparelho, só quando você permite no navegador. Antes de sair do aparelho, elas são arredondadas: fica só a região aproximada, sem o ponto exato onde você está. Isso não limita a distância da busca, que cobre a região que você escolher.</td><td data-l="Para quê">Buscar e ordenar por distância os locais perto de você. As coordenadas arredondadas vão para o servidor de busca do IMED, que descobre a sua cidade e busca os estabelecimentos do cadastro oficial. Elas não são gravadas no banco, nem nos registros do servidor, nem no seu aparelho.</td><td data-l="Base legal">Seu consentimento, dado na permissão do navegador (art. 7º, I).</td></tr>
+      <tr><td data-l="Situação"><b>Busca por CEP, cidade ou endereço</b></td><td data-l="Dados">O texto que você digita</td><td data-l="Para quê">Encontrar o ponto no mapa. O texto não é guardado.</td><td data-l="Base legal">Fazer a busca que você pediu (art. 7º, V).</td></tr>
+      <tr><td data-l="Situação"><b>Contador de visitas</b> (do próprio IMED)</td><td data-l="Dados">Nenhum dado pessoal: só a página aberta (sem o resto do endereço) e o dia. Nas buscas, o exame, o tipo de local e a cidade buscados, cada um somado à parte; nos pedidos, só o exame. Veja <a href="#cookies">Cookies e contador de visitas</a></td><td data-l="Para quê">Saber quantas pessoas usam o site e o que mais procuram, para melhorar o serviço e saber em quais cidades buscar parceiros.</td><td data-l="Base legal">Não usa dado pessoal: são números somados por dia, que não identificam ninguém. Quem liga “Não rastrear” ou o Controle Global de Privacidade no navegador não é contado.</td></tr>
     </tbody>
   </table>
+  <p style="margin-top:14px">Não vendemos seus dados e não os compartilhamos com anunciantes. Dado de saúde, como o exame que você quer fazer, nunca é vendido nem usado para propaganda: ele serve só para o seu pedido ou para o seu atendimento.</p>
 
-  <h2>Base legal</h2>
-  <p>Tratamos os dados dos formulários com base no seu <b>consentimento</b>, dado ao enviar cada formulário. No pedido de agendamento, o exame desejado é um dado de saúde: por isso o consentimento é pedido de forma específica e destacada, só para encaminhar o pedido e falar com você sobre ele (LGPD, art. 11). A localização só é usada depois que você a permite no navegador. Você pode revogar o consentimento quando quiser, sem custo.</p>
-
-  <h2>Onde os dados ficam e quem acessa</h2>
+  <h2 id="teleconsulta">Teleconsulta</h2>
+  <p>Na teleconsulta tratamos os seus dados de identificação e de contato (como nome, data de nascimento e celular), o motivo da consulta, as mensagens trocadas no chat, os exames pedidos e o registro que o médico faz do atendimento (o prontuário). Quando a consulta é para outra pessoa, como um filho, também tratamos o nome de quem pede e o parentesco.</p>
   <ul>
-    <li>Os formulários são guardados em um banco de dados do Supabase, em servidores na região de São Paulo.</li>
-    <li>O banco só aceita novos envios pelo site. Ler os dados é permitido apenas para a equipe administradora do IMED.</li>
-    <li>Não vendemos nem compartilhamos seus dados com anunciantes.</li>
-    <li>Os pedidos de agendamento só podem ser lidos pela equipe administradora do IMED e, quando o local é parceiro, pela própria clínica escolhida, que entra numa área fechada com o e-mail dela. Quem fez o pedido com a conta aberta também vê os próprios pedidos.</li>
-    <li>Convênios, horários e preços dos parceiros são informados pelas próprias clínicas. Os dados dos demais estabelecimentos vêm do cadastro oficial (CNES).</li>
-    <li>O mapa e a busca usam serviços de terceiros: imagens do mapa do OpenStreetMap, estabelecimentos do OpenStreetMap (Overpass) ou do Google Maps Platform, e endereços do ViaCEP, BrasilAPI e Photon. Links como “Como chegar” abrem o Google Maps. Esses serviços têm políticas de privacidade próprias.</li>
-    <li>Os estabelecimentos marcados como “Cadastro oficial” vêm do CNES (Cadastro Nacional de Estabelecimentos de Saúde), uma base pública do Ministério da Saúde, usada pelo seu portal de dados abertos. A lista de municípios vem do IBGE. Essas consultas não levam nenhum dado seu.</li>
+    <li>O vídeo vai direto entre o seu aparelho e o do médico. <b>A consulta não é gravada.</b></li>
+    <li>Quem vê o prontuário: o médico que fez o atendimento e a equipe do IMED.</li>
+    <li>O prontuário é um documento médico: a lei manda guardá-lo por pelo menos 20 anos a partir do último registro (Lei nº 13.787/2018, art. 6º, e Resolução CFM nº 1.821/2007). Por isso ele não pode ser apagado a pedido antes desse prazo.</li>
+  </ul>
+  <p>As regras completas estão no <a href="termo-teleconsulta.html">termo da teleconsulta</a>, que você aceita antes de entrar na fila. Teleconsulta não é para emergência: nesse caso, ligue <a href="tel:192">192</a> (SAMU).</p>
+
+  <h2 id="onde">Onde os dados ficam e quem acessa</h2>
+  <ul>
+    <li>Pedidos, contas, avaliações, cadastros e teleconsultas ficam no banco de dados do IMED, no serviço Supabase, em servidores no Brasil (região de São Paulo).</li>
+    <li>Os pedidos de agendamento só podem ser lidos pela equipe do IMED e, quando o local é parceiro, pela própria clínica escolhida, que entra numa área fechada com o e-mail dela. Quem fez o pedido com a conta aberta também vê os próprios pedidos.</li>
+    <li>Quando o local ainda não é parceiro, a equipe do IMED passa ao local só o necessário para combinar o atendimento: seu nome, seu contato e o exame pedido.</li>
+    <li>Para achar o endereço de um CEP, o servidor do IMED consulta o ViaCEP e a BrasilAPI, que recebem só o CEP digitado.</li>
     <li>As chaves secretas dos serviços de mapas ficam só no servidor, nunca no site.</li>
+    <li>Os estabelecimentos marcados como “Cadastro oficial” vêm do CNES, base pública do Ministério da Saúde, e a lista de municípios vem do IBGE. Essas consultas não levam nenhum dado seu.</li>
   </ul>
 
-  <h2>Por quanto tempo</h2>
-  <p>Guardamos os dados da lista de espera até o lançamento do app na sua cidade ou até você pedir a exclusão. Os cadastros de parceiros ficam guardados enquanto a conversa sobre a parceria estiver ativa, ou até você pedir a exclusão. Os pedidos de agendamento ficam guardados enquanto o atendimento estiver em andamento e por até 6 meses depois, para suporte, ou até você pedir a exclusão.</p>
+  <h2 id="fora">Serviços fora do Brasil</h2>
+  <p>Alguns serviços que o site usa ficam fora do Brasil. Eles recebem só o necessário para funcionar, nunca o seu pedido, a sua conta ou a sua teleconsulta:</p>
+  <ul>
+    <li><b>Google Fonts</b> (fontes de letra do site): ao abrir uma página, o seu navegador busca as fontes no Google, que recebe o endereço de internet (IP) do aparelho.</li>
+    <li><b>OpenStreetMap</b> (imagens do mapa e mapa público): recebe o IP do aparelho e a área do mapa que você está vendo ou buscando.</li>
+    <li><b>Photon</b>, da Komoot (Alemanha), e, quando ligado no servidor, o <b>Google Maps Platform</b>: o servidor do IMED manda o texto que você digitou ou as coordenadas arredondadas, para achar o ponto no mapa e os locais da região.</li>
+    <li><b>Google Maps</b>, só quando você toca em “Como chegar”: abre o endereço do local no Google Maps.</li>
+    <li><b>Envio do link de entrada</b> da conta: o seu e-mail passa pelo serviço de envio de e-mails usado pelo Supabase, que pode ficar fora do Brasil.</li>
+  </ul>
+  <p>Essas transferências servem só para prestar o serviço que você pediu, como permite a LGPD (art. 33). Cada serviço tem a própria política de privacidade.</p>
 
-  <h2>Seus direitos</h2>
+  <h2 id="tempo">Por quanto tempo guardamos</h2>
+  <ul>
+    <li><b>Pedidos de agendamento:</b> enquanto o pedido estiver em andamento e, depois, pelo tempo necessário para suporte, para a avaliação do atendimento e para responder a dúvidas ou reclamações sobre ele. Você pode pedir a exclusão antes, pelo <a href="contato.html">Fale com o IMED</a>.</li>
+    <li><b>Conta:</b> enquanto ela existir. Se você pedir o encerramento, apagamos o e-mail e desligamos os pedidos da conta.</li>
+    <li><b>Avaliações:</b> ficam publicadas enquanto o local estiver no IMED ou até você pedir para retirar.</li>
+    <li><b>Lista de espera:</b> até você pedir para sair.</li>
+    <li><b>Mensagens do Fale com o IMED:</b> pelo tempo necessário para responder e para comprovar o atendimento do pedido, inclusive os pedidos sobre seus dados.</li>
+    <li><b>Avisos “Algo errado aqui?”:</b> até a conferência terminar e, depois, pelo tempo necessário para registrar a correção.</li>
+    <li><b>Cadastro de clínicas e contatos de clínicas:</b> enquanto a análise ou a parceria estiverem ativas e, depois, pelo tempo necessário para comprovar a conferência feita.</li>
+    <li><b>Teleconsulta:</b> o prontuário e os dados da consulta, por pelo menos 20 anos a partir do último registro, como manda a lei (veja <a href="#teleconsulta">Teleconsulta</a>).</li>
+    <li><b>Localização e texto da busca:</b> não são guardados.</li>
+    <li><b>Contador de visitas:</b> só números somados por dia, sem dado pessoal. Ficam guardados para comparar o uso do site ao longo do tempo.</li>
+  </ul>
+
+  <h2 id="seguranca">Segurança e incidentes</h2>
+  <p>O banco só aceita dos visitantes o envio de pedidos e formulários: ler os dados é permitido só para a equipe do IMED e, nos pedidos, para a clínica escolhida e para quem fez o pedido. O código de cada pedido fica só no seu aparelho; o banco guarda apenas uma versão embaralhada (hash) dele.</p>
+  <p>Se acontecer um incidente de segurança que possa trazer risco ou dano relevante a você, como um acesso indevido aos dados, avisamos você e a Autoridade Nacional de Proteção de Dados (ANPD), como manda a LGPD (art. 48), dizendo o que aconteceu, quais dados foram afetados e o que estamos fazendo para resolver.</p>
+
+  <h2 id="direitos">Seus direitos</h2>
   <p>Pela LGPD, você pode, a qualquer momento:</p>
   <ul>
     <li>confirmar se tratamos seus dados e pedir acesso a eles;</li>
     <li>corrigir dados incompletos ou desatualizados;</li>
-    <li>pedir a exclusão dos dados e revogar o consentimento;</li>
+    <li>pedir a exclusão dos dados e revogar o consentimento, sem custo (menos o que a lei manda guardar, como o prontuário);</li>
     <li>pedir informações sobre com quem compartilhamos os dados.</li>
   </ul>
-  <p>É só escrever para <a href="mailto:contato@imed.com.br">contato@imed.com.br</a>. Respondemos em até 15 dias. Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD).</p>
+  <p>Uma cópia do que o IMED mostra para você está em <a href="conta.html#dados">Minha conta, Meus dados</a> (botão “Baixar meus dados”). Para corrigir ou apagar, é só escrever pelo <a href="contato.html">Fale com o IMED</a>, escolhendo o assunto “Meus dados”: o pedido recebe um número de protocolo na hora. Respondemos dentro dos prazos da LGPD. Você também pode reclamar à Autoridade Nacional de Proteção de Dados (ANPD).</p>
 
-  <h2>Cookies</h2>
-  <p>Não usamos cookies de rastreamento nem de anúncios. As fontes do site são carregadas do Google Fonts.</p>
+  <h2 id="cookies">Cookies, contador de visitas e dados no seu aparelho</h2>
+  <ul>
+    <li>O site do IMED não usa cookies, nem de rastreamento nem de anúncios, e não tem rastreadores de anúncio.</li>
+    <li><b>Contador de visitas próprio.</b> Contamos visitas por página e buscas, sem cookies e sem identificar ninguém: são só números somados por dia. Cada página aberta soma 1 no total daquela página no dia, guardada sem o resto do endereço (o que vem depois de “?” ou “#”). Nas buscas, somamos à parte o exame, o tipo de local e a cidade buscados. Nos pedidos e nas teleconsultas, somamos só quantos foram feitos (e o exame do pedido), nunca quem fez.</li>
+    <li>O contador não guarda o endereço de internet (IP), o aparelho, o navegador, a conta nem nenhum código que identifique você, e não grava nada no seu aparelho: não dá para saber quem visitou nem juntar as visitas de uma mesma pessoa. Como em qualquer acesso pela internet, o servidor do banco recebe o IP do aparelho para poder responder, mas o contador não o grava. Os números ficam no banco do IMED, no Brasil, e só a equipe do IMED vê.</li>
+    <li>Se o seu navegador estiver com “Não rastrear” (Do Not Track) ou com o Controle Global de Privacidade (GPC) ligado, a sua visita não é contada.</li>
+    <li>Algumas informações ficam só no seu navegador: o bairro escolhido no mapa, o resumo dos pedidos que você enviou (sem localização) com o código de cada pedido, a sessão da conta quando você entra e o código da teleconsulta. Elas servem para mostrar “Meus pedidos”, consultar a situação e avaliar o atendimento sem precisar de conta. Você pode apagar os pedidos em “Minha conta”.</li>
+  </ul>
 
   <h2>Mudanças nesta política</h2>
   <p>Se esta política mudar, a nova versão será publicada nesta página com a data de atualização.</p>
-
-  <h2>Responsável</h2>
-  <p>IMED — responsável técnico médico: Dr. Rafael Pereira Barreto Silva, CRM-SP 266930. Veja <a href="sobre.html">Quem somos</a> e os <a href="termos.html">termos de uso</a>.</p>
 </main>
 
-<footer><div class="wrap">
-  <a class="logo" href="index.html"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
-  <span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span>
-</div></footer>
+<!-- rodape -->
+<footer class="rodape">
+  <div class="rd-in">
+    <div class="rd-sobre">
+      <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
+      <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
+      <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+    </div>
+    <nav class="rd-nav" aria-label="Rodapé">
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g0">Pacientes</p>
+        <ul aria-labelledby="rd-g0">
+          <li><a href="perto.html">Perto de mim</a></li>
+          <li><a href="cidades/">Clínicas por cidade</a></li>
+          <li><a href="exames/">Guias de exames</a></li>
+          <li><a href="teleconsulta.html">Teleconsulta</a></li>
+          <li><a href="./#agenda">Meus pedidos</a></li>
+          <li><a href="conta.html">Minha conta</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g1">IMED</p>
+        <ul aria-labelledby="rd-g1">
+          <li><a href="sobre.html">Quem somos</a></li>
+          <li><a href="como-funciona.html">Como funciona</a></li>
+          <li><a href="termos.html">Termos de uso</a></li>
+          <li><a href="privacidade.html">Privacidade</a></li>
+          <li><a href="acessibilidade.html" class="rd-a11y"><i class="fa-solid fa-universal-access" aria-hidden="true"></i>Acessibilidade</a></li>
+          <li><a href="contato.html">Fale com o IMED</a></li>
+        </ul>
+      </div>
+      <div class="rd-col">
+        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <ul aria-labelledby="rd-g2">
+          <li><a href="parceiros.html">Para clínicas</a></li>
+          <li><a href="reivindicar.html">Assumir o cadastro</a></li>
+          <li><a href="painel.html">Área da clínica</a></li>
+        </ul>
+      </div>
+    </nav>
+  </div>
+  <div class="rd-base">
+    <p>Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.</p>
+    <p>© 2026 IMED</p>
+  </div>
+</footer>
+<!-- /rodape -->
 <script>if('serviceWorker' in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('sw.js',{updateViaCache:'none'}).catch(()=>{}));</script>
+<script src="assets/js/config.js" defer></script>
+<script src="assets/js/visitas.js" defer></script>
 </body>
 </html>
