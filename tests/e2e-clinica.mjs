@@ -14,7 +14,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SHOTS = process.env.SHOTS || '';
 const SUPA = 'https://pyoqiecupxhdzigjudyd.supabase.co';
-const PORT = 8768;
+const PORT = Number(process.env.E2E_PORT) || 8768; // E2E_PORT: outra porta para rodar em paralelo
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 
 const server = http.createServer(async (req, res) => {

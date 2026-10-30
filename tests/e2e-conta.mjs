@@ -29,8 +29,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404).end('não encontrado');
   }
 });
-await new Promise((r) => server.listen(8769, '127.0.0.1', r));
-const BASE = 'http://127.0.0.1:8769/';
+const PORT = Number(process.env.E2E_PORT) || 8769; // E2E_PORT: outra porta para rodar em paralelo
+await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+const BASE = `http://127.0.0.1:${PORT}/`;
 
 // ---------- dados simulados ----------
 const ID = {

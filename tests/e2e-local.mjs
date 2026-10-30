@@ -30,8 +30,9 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(404).end('não encontrado');
   }
 });
-await new Promise((r) => server.listen(8771, '127.0.0.1', r));
-const BASE = 'http://127.0.0.1:8771/';
+const PORT = Number(process.env.E2E_PORT) || 8771; // E2E_PORT: outra porta para rodar em paralelo
+await new Promise((r) => server.listen(PORT, '127.0.0.1', r));
+const BASE = `http://127.0.0.1:${PORT}/`;
 
 /* ======================= dados simulados ======================= */
 // PostgREST devolve geography como EWKB em hexadecimal (o caso real em produção, sem Accept: application/geo+json).
