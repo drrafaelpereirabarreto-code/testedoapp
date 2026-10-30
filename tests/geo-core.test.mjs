@@ -453,3 +453,115 @@ test('página de cada local: referências, consultas e conversão das linhas do 
   assert.equal(G.localJsonLd(cl, 'u').address.streetAddress, 'Av. Paulista, 1000, Bela Vista');
   assert.ok(!('geo' in G.localJsonLd(noGeo, 'u')));
 });
+
+test('área inteira: distâncias até 50 km e contagem no formato do Brasil', () => {
+  assert.deepEqual(G.RADII, [1000, 2000, 5000, 10000, 20000, 50000]);
+  assert.equal(G.DEFAULT_FILTERS.radius, 5000, '5 km continua sendo o padrão');
+  assert.equal(G.formatCount(3158), '3.158');
+  assert.equal(G.formatCount(3000), '3.000');
+  assert.equal(G.formatCount(999), '999');
+  assert.equal(G.formatCount(0), '0');
+});
+
+test('área inteira: filtros do banco, chave e parâmetros das funções', () => {
+  const o = { lat: -23.561, lng: -46.657 };
+  const f = (x) => ({ ...G.DEFAULT_FILTERS, ...x });
+  assert.deepEqual(G.areaArgs(o, f({})), { p_lat: -23.561, p_lng: -46.657, p_radius_m: 5000 }, 'sem filtro, sem p_kind/p_exam/p_sus');
+  assert.deepEqual(G.areaArgs(o, f({ kind: 'hospital', exam: 'rm', sus: true, radius: 50000 })),
+    { p_lat: -23.561, p_lng: -46.657, p_radius_m: 50000, p_kind: 'hospital', p_exam: 'rm', p_sus: true });
+  assert.ok(!('p_sus' in G.areaArgs(o, f({ sus: false }))), 'SUS desligado não vira p_sus=false');
+  assert.deepEqual(G.areaArgs(o, f({ kind: 'toString', exam: '__proto__' })), { p_lat: -23.561, p_lng: -46.657, p_radius_m: 5000 }, 'valores desconhecidos são ignorados');
+  assert.equal(G.hasAreaFilter(f({})), false);
+  assert.equal(G.hasAreaFilter(f({ specialty: 'Cardiologia', price: 'ate100', insurance: 'Amil', onlyImed: true })), false, 'esses filtros ficam no navegador');
+  assert.equal(G.hasAreaFilter(f({ sus: true })), true);
+  assert.equal(G.areaKey(f({})), '5000|||0');
+  assert.equal(G.areaKey(f({ kind: 'imagem', sus: true, radius: 2000 })), '2000|imagem||1');
+  assert.notEqual(G.areaKey(f({ exam: 'rm' })), G.areaKey(f({ exam: 'tc' })));
+  assert.equal(G.areaKey(f({ specialty: 'Cardiologia', sort: 'name' })), G.areaKey(f({})), 'especialidade e ordem não mudam a consulta');
+  assert.equal(G.onlyPartnerFilter(f({})), false);
+  assert.equal(G.onlyPartnerFilter(f({ price: 'ate100' })), true);
+  assert.equal(G.onlyPartnerFilter(f({ insurance: 'Amil' })), true);
+  assert.equal(G.onlyPartnerFilter(f({ onlyImed: true })), true);
+});
+
+test('área inteira: total vindo do banco e pontos do mapa', () => {
+  assert.equal(G.rowsTotal([{ cnes: '1', total: 3158 }, { cnes: '2', total: 3158 }]), 3158);
+  assert.equal(G.rowsTotal([{ cnes: '1', total: '42' }]), 42);
+  assert.equal(G.rowsTotal([]), null, 'sem linhas, total desconhecido');
+  assert.equal(G.rowsTotal([{ cnes: '1' }]), null, 'sem a coluna, total desconhecido');
+  assert.equal(G.rowsTotal(null), null);
+  const { points, total } = G.normalizePoints([
+    { cnes: '2077485', kind: 'hospital', lat: -23.5598, lng: -46.6602, total: 4 },
+    { cnes: '2077485', kind: 'hospital', lat: -23.5598, lng: -46.6602, total: 4 },
+    { cnes: '6543210', kind: 'desconhecido', lat: '-23.5655', lng: '-46.652', total: 4 },
+    { cnes: '12', kind: 'clinica', lat: -23.5, lng: -46.6, total: 4 },
+    { cnes: '7654321', kind: 'clinica', lat: null, lng: -46.6, total: 4 },
+  ]);
+  assert.equal(total, 4, 'o total é o do banco, mesmo com linhas descartadas');
+  assert.deepEqual(points, [
+    { cnes: '2077485', kind: 'hospital', lat: -23.5598, lng: -46.6602 },
+    { cnes: '6543210', kind: 'clinica', lat: -23.5655, lng: -46.652 },
+  ], 'sem repetir, sem código inválido e sem posição vazia');
+  assert.deepEqual(G.normalizePoints('erro'), { points: [], total: null });
+  assert.equal(G.POINT_FIELDS, 'cnes,kind,lat,lng,total');
+});
+
+test('área inteira: detalhe de um ponto do mapa sem pedir a localização', () => {
+  const path = G.pointDetailPath('2077485');
+  assert.match(path, /^establishments\?select=.+&cnes=eq\.2077485$/);
+  const cols = new URLSearchParams(path.split('?')[1]).get('select').split(',');
+  assert.ok(!cols.includes('location'), 'a posição já veio no ponto');
+  assert.ok(cols.includes('municipalities(name') && cols.includes('sus'));
+  assert.equal(G.pointDetailPath('20774&cnes=eq.1'), null, 'só código CNES válido');
+  const p = G.pointToPlace({
+    cnes: '2077485', name: 'Hospital Santa Exemplo', kind: 'hospital', address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César',
+    cep: '01409001', phone: '(11) 3141-1000', shift: null, open_24h: true, sus: true, services: ['rm'], specialties: [], cnes_updated_at: '2026-09-15',
+    location_source: 'cnes', municipalities: { name: 'São Paulo', uf: 'SP', cnes_code: 355030 },
+  }, { cnes: '2077485', kind: 'hospital', lat: -23.5598, lng: -46.6602 }, PAULISTA);
+  assert.equal(p.id, 'cnes:2077485');
+  assert.equal(p.source, 'cnes');
+  assert.equal(p.address, 'Rua Peixoto Gomide, 625 · Cerqueira César · São Paulo - SP');
+  assert.equal(p.cep, '01409-001');
+  assert.deepEqual([p.lat, p.lng], [-23.5598, -46.6602]);
+  assert.equal(p.distance_m, Math.round(G.haversine(PAULISTA, { lat: -23.5598, lng: -46.6602 })));
+  assert.equal(p.maps_url, 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
+  assert.deepEqual(p.hours, ['Aberto 24 horas']);
+  assert.equal(p.sus, true);
+  assert.equal(p.prices, null, 'sem preço inventado');
+  const bare = G.pointToPlace({ name: 'Sem Município', kind: 'clinica', municipalities: null }, { cnes: '1234567', lat: -23.5, lng: -46.6 }, PAULISTA);
+  assert.equal(bare.id, 'cnes:1234567');
+  assert.equal(bare.maps_url, null);
+});
+
+test('área inteira: distância do banco (elipsoide), para quem está na borda do raio não sumir da lista', () => {
+  const o = { lat: -23.561, lng: -46.657 };
+  // ~4.997 m ao norte pelo banco; a conta na esfera daria ~5.017 m (fora dos 5 km).
+  const edge = { cnes: '7000001', name: 'Laboratório da Borda', kind: 'laboratorio', lat: o.lat + 0.04512, lng: o.lng, services: [], specialties: [] };
+  assert.ok(G.haversine(o, edge) > 5000, 'na esfera passaria de 5 km');
+  const c = G.normalizeCnes({ ...edge, distance_m: 4997 }, o);
+  assert.equal(c.distance_m, 4997, 'usa a distância que veio do banco');
+  assert.equal(G.filterPlaces([c], { ...G.DEFAULT_FILTERS }).length, 1, 'continua dentro dos 5 km, como o banco contou');
+  assert.equal(G.normalizeCnes({ ...edge, distance_m: '4997' }, o).distance_m, 4997, 'número em texto também vale');
+  for (const d of [undefined, null, '', ' ', 'abc', -1, NaN, true]) {
+    assert.equal(G.normalizeCnes({ ...edge, distance_m: d }, o).distance_m, Math.round(G.haversine(o, edge)), `sem distância válida (${String(d)}), calcula`);
+  }
+  const imed = G.normalizeImedRow({ ...imedRow, distance_m: 4999 }, o);
+  assert.equal(imed.distance_m, 4999, 'parceiro também usa a distância do banco');
+  assert.equal(G.normalizeImedRow({ ...imedRow, distance_m: undefined }, PAULISTA).distance_m, Math.round(G.haversine(PAULISTA, imedRow)));
+  assert.equal(G.rowDistance({ lat: o.lat, lng: o.lng, distance_m: 0 }, o), 0, 'zero é distância válida');
+});
+
+test('área inteira: páginas de 50 e texto do botão "Ver mais"', () => {
+  // Os 250 que vieram com a busca: as primeiras páginas não precisam ir ao banco.
+  assert.deepEqual(G.pagerState({ view: 50, loaded: 250, served: 250, exhausted: false }, 3158), { visible: 50, next: 50, more: true, fetch: false });
+  // Acabaram os já baixados: a próxima página vem do banco.
+  assert.deepEqual(G.pagerState({ view: 250, loaded: 250, served: 250, exhausted: false }, 3158), { visible: 250, next: 50, more: true, fetch: true });
+  // Últimos da área.
+  assert.deepEqual(G.pagerState({ view: 3150, loaded: 3150, served: 3150, exhausted: false }, 3158), { visible: 3150, next: 8, more: true, fetch: true });
+  assert.equal(G.pagerState({ view: 3200, loaded: 3158, served: 3158, exhausted: false }, 3158).more, false, 'tudo na tela');
+  assert.equal(G.pagerState({ view: 50, loaded: 40, served: 40, exhausted: true }, null).more, false, 'o banco não tem mais');
+  assert.deepEqual(G.pagerState({ view: 250, loaded: 250, served: 250, exhausted: false }, null), { visible: 250, next: 50, more: true, fetch: true }, 'sem total, tenta mais uma página');
+  assert.deepEqual(G.pagerState({ view: 50, loaded: 60, served: 60, exhausted: true }, 60), { visible: 50, next: 10, more: true, fetch: false });
+  assert.equal(G.moreLabel(50, 3158), 'Ver mais 50 (de 3.158)');
+  assert.equal(G.moreLabel(8, null), 'Ver mais 8');
+});

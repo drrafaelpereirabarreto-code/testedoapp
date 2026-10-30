@@ -21,7 +21,8 @@ export const KINDS = {
   hospital: { n: 'Hospital', icon: 'fa-hospital' },
 };
 
-export const RADII = [1000, 2000, 5000, 10000, 20000];
+// Distâncias da busca (metros). O banco aceita até 50 km; o padrão é 5 km (DEFAULT_FILTERS).
+export const RADII = [1000, 2000, 5000, 10000, 20000, 50000];
 
 // Faixas de preço em centavos: [mínimo, máximo]. Só valem para preços informados pelas clínicas.
 export const PRICE_RANGES = {
@@ -222,15 +223,25 @@ export function normalizeGoogle(raw, origin) {
 
 const formatCep = (cep) => (/^\d{8}$/.test(cep ?? '') ? `${cep.slice(0, 5)}-${cep.slice(5)}` : null);
 
+// Distância que veio do banco (PostGIS, no elipsoide: a mesma conta que decide quem entra no raio, no total
+// e nas páginas). Sem ela, a conta na esfera. Recalcular sempre na esfera dava até ~0,4% a mais (5.000 m
+// viravam ~5.020 m) e tirava da lista quem estava na borda do raio, embora o banco o contasse.
+export function rowDistance(r, origin) {
+  const d = r?.distance_m;
+  const n = typeof d === 'number' || (typeof d === 'string' && d.trim() !== '') ? Number(d) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : Math.round(haversine(origin, r));
+}
+
 // Estabelecimento real do CNES (cadastro oficial do Ministério da Saúde), como vem da função
 // nearby_establishments do banco. O turno vem do CNES; não há horário exato nem preço.
+// A distância é a do banco (a partir da mesma origem da busca), quando vem.
 export function normalizeCnes(r, origin) {
   const hours = r.open_24h ? ['Aberto 24 horas'] : r.shift ? [r.shift] : null;
   const services = r.services ?? [];
   return {
     id: `cnes:${r.cnes}`, clinic_id: null, source: 'cnes', name: r.name, kind: KINDS[r.kind] ? r.kind : 'clinica',
     address: [r.address_line, r.neighborhood, r.city && r.uf ? `${r.city} - ${r.uf}` : r.city].filter(Boolean).join(' · ') || null,
-    cep: formatCep(r.cep), lat: r.lat, lng: r.lng, distance_m: Math.round(haversine(origin, r)),
+    cep: formatCep(r.cep), lat: r.lat, lng: r.lng, distance_m: rowDistance(r, origin),
     phone: r.phone ?? null, whatsapp: null, email: null, website: null,
     maps_url: r.city_code ? `https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/${r.city_code}${r.cnes}` : null,
     description: null, services, services_source: services.length ? 'mapa' : null, specialties: r.specialties ?? [],
@@ -240,7 +251,7 @@ export function normalizeCnes(r, origin) {
 }
 
 // Clínica cadastrada no IMED, como vem da função nearby_clinics do banco.
-// Preço e horário só aparecem quando a clínica informou; nada é estimado.
+// Preço e horário só aparecem quando a clínica informou; nada é estimado. Distância: a do banco, quando vem.
 export function normalizeImedRow(r, origin) {
   const prices = {};
   for (const e of r.exams ?? []) prices[e.code] = e.price_cents ?? null;
@@ -250,7 +261,7 @@ export function normalizeImedRow(r, origin) {
   return {
     id: `imed:${r.id}`, clinic_id: r.id, source: 'imed', name: r.name, kind: KINDS[r.kind] ? r.kind : 'clinica',
     address: `${street} · ${r.city} - ${r.state}`, cep: r.cep ?? null, lat: r.lat, lng: r.lng,
-    distance_m: Math.round(haversine(origin, r)),
+    distance_m: rowDistance(r, origin),
     phone: r.phone ?? null, whatsapp: r.whatsapp ?? null, email: r.email ?? null, website: safeUrl(r.website),
     maps_url: null, description: r.description ?? null,
     services: Object.keys(prices), services_source: 'clinica', specialties: r.specialties ?? [],
@@ -383,6 +394,100 @@ export function formatPrice(cents) {
     style: 'currency', currency: 'BRL', minimumFractionDigits: cents % 100 ? 2 : 0, maximumFractionDigits: 2,
   }).format(cents / 100);
 }
+
+/* ======================= área inteira da busca (mapa com pontos e lista em páginas) ======================= */
+// Número inteiro no formato do Brasil: 3158 → "3.158".
+const COUNT_FMT = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
+export const formatCount = (n) => COUNT_FMT.format(n);
+
+// Filtros que o banco aplica na área inteira (raio, tipo, exame e SUS). Os outros (preço, convênio,
+// especialidade, "Parceiros verificados") valem só no navegador.
+export function areaFilters(f) {
+  return {
+    radius: Number(f?.radius) > 0 ? Math.round(Number(f.radius)) : DEFAULT_FILTERS.radius,
+    kind: Object.hasOwn(KINDS, f?.kind ?? '') ? f.kind : '',
+    exam: Object.hasOwn(EXAMS, f?.exam ?? '') ? f.exam : '',
+    sus: f?.sus === true,
+  };
+}
+export function hasAreaFilter(f) {
+  const a = areaFilters(f);
+  return !!(a.kind || a.exam || a.sus);
+}
+// Chave da consulta da área: muda quando raio, tipo, exame ou SUS mudam.
+export function areaKey(f) {
+  const a = areaFilters(f);
+  return `${a.radius}|${a.kind}|${a.exam}|${a.sus ? 1 : 0}`;
+}
+
+// Filtros que tiram do resultado todo o cadastro oficial: preço e convênio só existem para parceiros.
+export const onlyPartnerFilter = (f) => !!(f?.onlyImed || f?.price || f?.insurance);
+
+// Parâmetros das funções nearby_establishments e establishment_points: origem, raio e, quando escolhidos,
+// tipo, exame e SUS. "Atende SUS" desligado não manda nada (p_sus=false traria só quem NÃO atende).
+export function areaArgs(origin, f) {
+  const a = areaFilters(f);
+  return {
+    p_lat: origin.lat, p_lng: origin.lng, p_radius_m: a.radius,
+    ...(a.kind ? { p_kind: a.kind } : {}),
+    ...(a.exam ? { p_exam: a.exam } : {}),
+    ...(a.sus ? { p_sus: true } : {}),
+  };
+}
+
+// Total da área (com os filtros) que o banco repete em cada linha, na coluna "total". Sem ele: null.
+export function rowsTotal(rows) {
+  const v = Array.isArray(rows) ? rows[0]?.total : null;
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+// Pontos da área para o mapa (establishment_points). Pedimos só as colunas necessárias, para gastar
+// pouco do plano de dados do celular; o detalhe vem ao tocar no ponto.
+export const POINT_FIELDS = 'cnes,kind,lat,lng,total';
+export function normalizePoints(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const seen = new Set();
+  const points = [];
+  for (const r of list) {
+    const cnes = String(r?.cnes ?? '');
+    const lat = Number(r?.lat), lng = Number(r?.lng);
+    if (!isCnesCode(cnes) || seen.has(cnes)) continue;
+    if (r?.lat == null || r?.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) continue;
+    seen.add(cnes);
+    points.push({ cnes, kind: Object.hasOwn(KINDS, r.kind ?? '') ? r.kind : 'clinica', lat, lng });
+  }
+  return { points, total: rowsTotal(list) };
+}
+
+// Detalhe de um ponto do mapa: a linha da tabela establishments, sem a coluna de localização
+// (a posição já veio com o ponto).
+export const POINT_DETAIL_SELECT = 'cnes,name,kind,cnes_type,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,municipalities(name,uf,cnes_code)';
+export const pointDetailPath = (cnes) => (isCnesCode(cnes) ? `establishments?select=${POINT_DETAIL_SELECT}&cnes=eq.${cnes}` : null);
+
+// Linha do detalhe + ponto do mapa → local no mesmo formato da lista, com a distância a partir da origem.
+export function pointToPlace(row, pt, origin) {
+  const m = row?.municipalities ?? {};
+  return normalizeCnes({
+    ...row, cnes: row?.cnes ?? pt.cnes, city: m.name ?? null, uf: m.uf ?? null, city_code: m.cnes_code ?? null, lat: pt.lat, lng: pt.lng,
+  }, origin);
+}
+
+// Paginação da lista do cadastro oficial. view: quantas linhas aparecem; loaded: linhas já baixadas (sem
+// repetir); served: linhas que o banco já mandou (a próxima página começa aí); exhausted: o banco não tem
+// mais; total: total da área (null se ainda não se sabe). Devolve quantas aparecem e quantas vêm no
+// próximo "Ver mais" (0 = não há mais).
+export function pagerState({ view, loaded, served, exhausted }, total = null, page = 50) {
+  const visible = Math.min(view, loaded);
+  const ready = Math.max(0, loaded - visible);
+  const remote = exhausted ? 0 : total != null ? Math.max(0, total - served) : page;
+  const next = Math.min(page, ready + remote);
+  return { visible, next, more: next > 0, fetch: ready < next };
+}
+
+// Texto do botão: "Ver mais 50 (de 3.158)". Sem o total conhecido, só "Ver mais 50".
+export const moreLabel = (next, total = null) => `Ver mais ${next}${total != null ? ` (de ${formatCount(total)})` : ''}`;
 
 export const onlyDigits = (v) => String(v ?? '').replace(/\D/g, '');
 export const isValidPhone = (digits) => /^[1-9]{2}(9\d{8}|[2-8]\d{7})$/.test(digits);

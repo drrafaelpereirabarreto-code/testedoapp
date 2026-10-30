@@ -134,6 +134,15 @@ img{display:block;max-width:100%}
 .pt-more{display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:16px;background:#fff;border:1px dashed #cfe0e6;color:var(--muted);font-size:13.5px}
 .pt-note{padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.5}
 .pt-note i{color:var(--primary);margin-right:4px}
+/* "Ver mais" no fim da lista */
+.pt-pager{display:grid;justify-items:center;gap:8px;padding:2px 0 4px;text-align:center}
+.pt-pager .btn{width:100%;max-width:380px;white-space:normal;border-color:#cfe0e6;background:#fff}
+.pt-pager .btn:hover{background:var(--primary-s)}
+.pt-pager .btn i{color:var(--primary)}
+.pt-pager .btn:disabled,.pt-pager .btn[aria-disabled="true"]{opacity:.75;cursor:wait}
+.pt-pager-info{font-size:13px;color:var(--muted);font-weight:600}
+.pt-pager-msg{width:100%;padding:10px 12px;border-radius:12px;background:var(--coral-s);color:#9b3a22;font-size:13.5px;line-height:1.45}
+.pt-pager-busy{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:13px 16px;border-radius:16px;background:#fff;border:1px dashed #cfe0e6;color:var(--muted);font-size:13.5px}
 
 /* legenda dos selos, faixa de preço e notas */
 .pt-legend{margin:2px 18px 0;font-size:13px;color:var(--muted)}
@@ -188,6 +197,8 @@ img{display:block;max-width:100%}
 .st ul{list-style:none;display:grid;gap:8px;text-align:left;margin:16px auto 0;max-width:340px;font-size:14px;color:var(--text)}
 .st li{display:flex;gap:10px;align-items:flex-start;line-height:1.45}
 .st li i{color:var(--green);margin-top:3px}
+.st .st-area{display:flex;gap:10px;align-items:flex-start;text-align:left;max-width:340px;margin:16px auto 0;padding:11px 13px;border-radius:14px;background:var(--primary-s);color:var(--primary-d);font-size:14px;font-weight:600;line-height:1.45}
+.st .st-area i{color:var(--primary);margin-top:3px}
 .st .pulse{position:relative}
 .st .pulse::after{content:"";position:absolute;inset:0;border-radius:20px;box-shadow:0 0 0 0 rgba(14,124,156,.45);animation:ring 1.6s infinite}
 @keyframes ring{80%,100%{box-shadow:0 0 0 18px rgba(14,124,156,0)}}
@@ -214,10 +225,26 @@ img{display:block;max-width:100%}
 .mk-imed svg{stroke:var(--gold);stroke-width:3}
 .mk-imed::after{content:"";position:absolute;top:-2px;right:-3px;width:11px;height:11px;border-radius:50%;background:var(--gold);border:2px solid #fff}
 .mk.on,.mk-wrap:hover .mk,.mk-wrap:focus-visible .mk{transform:scale(1.25)}
+/* mapa afastado (área inteira): pinos do cadastro oficial menores, para não virarem um borrão no centro */
+.pt-map.z-far .mk:not(.mk-imed){transform:scale(.66);filter:drop-shadow(0 2px 2px rgba(5,22,30,.28))}
+.pt-map.z-far .mk.on:not(.mk-imed),.pt-map.z-far .mk-wrap:hover .mk:not(.mk-imed),.pt-map.z-far .mk-wrap:focus-visible .mk:not(.mk-imed){transform:scale(1)}
 .me{position:relative;display:block;width:20px;height:20px;border-radius:50%;background:var(--coral);border:3px solid #fff;box-shadow:0 2px 8px rgba(5,22,30,.35);animation:me 2s infinite}
 .me.pin{background:var(--ink)}
 @keyframes me{0%{box-shadow:0 0 0 0 rgba(255,107,74,.5),0 2px 8px rgba(5,22,30,.35)}80%,100%{box-shadow:0 0 0 16px rgba(255,107,74,0),0 2px 8px rgba(5,22,30,.35)}}
 .leaflet-tooltip.me-tip{font-weight:700;font-size:12px;color:var(--ink);border-radius:10px;border:0;box-shadow:var(--sh1);padding:5px 9px}
+/* legenda dos pontos da área (cores por tipo, as mesmas dos ícones) */
+.dot{display:inline-block;flex-shrink:0;width:10px;height:10px;border-radius:50%;background:var(--kc);border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(15,31,40,.18)}
+.pt-mapkey{position:absolute;left:12px;bottom:26px;z-index:500;display:grid;gap:5px;max-width:170px;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.95);box-shadow:var(--sh1);font-size:12.5px;line-height:1.3;color:var(--ink)}
+.pt-mapkey[hidden]{display:none!important}
+.pt-mapkey b{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:.01em}
+.pt-mapkey span{display:flex;align-items:center;gap:7px;font-weight:600}
+.pt-mapkey small{font-size:11.5px;color:var(--muted);font-weight:600}
+.pt-mapkey.err{max-width:220px;color:#9b3a22;background:rgba(255,240,236,.97)}
+.pt-mapkey.err span{display:block;font-weight:600}
+.pt-mapkey button{justify-self:start;font-weight:700;text-decoration:underline;color:var(--coral-d)}
+.bd-dots{gap:3px}
+.bd-dots .dot{width:8px;height:8px;border-width:1px}
+.bd-dots .dot:last-of-type{margin-right:3px}
 
 /* ============ painel (detalhes e agendamento) ============ */
 .sh-ov{position:fixed;inset:0;z-index:2000;background:rgba(5,22,30,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
@@ -313,7 +340,9 @@ fieldset.fld{border:0}
   body.show-map{overflow:hidden}
   .pt-toggle{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:35;display:flex;align-items:center;gap:9px;padding:13px 20px;border-radius:999px;background:var(--ink);color:#fff;font-weight:700;font-size:14.5px;box-shadow:0 14px 34px rgba(5,22,30,.4)}
   .pt-toggle.hide{display:none}
-  .pt-mapload{bottom:90px}
+  .pt-mapload{bottom:auto;top:68px}
+  .pt-mapkey{left:10px;bottom:calc(18px + env(safe-area-inset-bottom));max-width:112px;padding:8px 10px;font-size:12px}
+  .pt-mapkey.err{max-width:150px}
 }
 @media (max-width:420px){.pt-hero{padding:22px 16px 18px}.pt-hero h1{font-size:24px}.pt-go{padding:12px 14px}.pt-list{padding:8px 12px 24px}.pc{grid-template-columns:40px 1fr 12px;gap:12px;padding:14px}.pc-ic{width:40px;height:40px;font-size:16px;border-radius:12px}}
 /* aviso de privacidade (assets/js/aviso.js): no computador fica sobre o mapa, sem cobrir a lista */
