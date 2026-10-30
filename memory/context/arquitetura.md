@@ -39,6 +39,8 @@
   migração), `admin_cobranca_listar/salvar/status` e as tabelas `private.billing_charges` e `private.billing_charge_log`
   (histórico só de situação, valor, vencimento e pagamento). Tudo confere `is_imed_admin`. O site não recebe pagamento:
   a equipe registra as cobranças feitas por fora.
+- Painel do médico (`20261030191354_painel_medico`): `tele_painel_medico()` (só médico aprovado; 7 números, nenhum dado
+  de paciente) e `admin_gestao` com a chave `agora` (aguardando, espera mais longa, em atendimento, médicos disponíveis).
 - Confiança/visitas (`..._confianca`, `..._visitas`): `cancel_request`, `send_contact`, avisos de erro de locais,
   conferência de clínica, `cnes_last_update(p_city)`, `track` (contador agregado em `private.*_daily`), `admin_stats`.
 - pg_cron: `imed-fila-importacao` (a cada minuto, 2 cidades) e `imed-atualizacao-mensal`. A fila tem 316 cidades

@@ -2,6 +2,9 @@
 // A página em si é pública (GitHub Pages), mas não mostra nada sem a conta da equipe: os números vêm das funções do
 // banco public.admin_gestao e public.admin_cobranca_*, que conferem no servidor se a conta é de administrador (sem
 // isso o banco recusa com 42501). Sem login: quadro de entrar. Conta que não é da equipe: aviso e nenhuma busca de dados.
+// No topo, o bloco "Agora": a fila da teleconsulta neste momento (chave "agora" de admin_gestao), que não depende do
+// período e atualiza junto com o resto da página (e sozinho quando a pessoa volta para a aba depois de 2 min ou mais);
+// banco ainda sem essa chave: o bloco não aparece.
 // Regras puras, gráficos em SVG, fluxograma, planilha e validação: gestao-core.js (testados em tests/gestao.test.mjs).
 // Nada aqui vai para o localStorage além da sessão de login (auth.js); os números ficam só na memória da página.
 import { auth, $, $$, esc, note, loading, toast, finishLogin, renderAuth, friendlyError, EXPIRED } from './clinica.js';
@@ -9,7 +12,9 @@ import * as G from './gestao-core.js';
 
 // gen muda a cada saída da conta (ou entrada vencida): resposta que chega depois disso é ignorada.
 const novaCob = (seq = 0) => ({ rows: [], filter: '', seq, loaded: false, missing: false, open: null, refocus: null, cheia: false, limite: G.LIMITE_LISTA });
-const S = { days: 30, data: null, seq: 0, gen: 0, charts: new Map(), cob: novaCob() };
+// recebidoEm: Date.now() de quando os números chegaram (só para medir há quanto tempo; a hora mostrada é a do banco).
+// fala: a frase do bloco "Agora" da última vez (null: o bloco ainda não apareceu desde que a página abriu).
+const S = { days: 30, data: null, seq: 0, gen: 0, charts: new Map(), cob: novaCob(), recebidoEm: 0, fala: null, falaTimer: 0 };
 const app = () => $('#app');
 // Banco ainda sem a função (migração não aplicada): o PostgREST responde 404 (PGRST202).
 const noFn = (err) => err?.status === 404 || err?.data?.code === 'PGRST202' || err?.data?.code === '42883';
@@ -28,6 +33,8 @@ function renderAccount() {
 function reset() {
   S.seq += 1; S.gen += 1; S.data = null; S.charts = new Map();
   S.cob = novaCob(S.cob.seq + 1);
+  S.fala = null;
+  calaAgora();
   app().innerHTML = '';
   hideTip();
 }
@@ -71,11 +78,12 @@ function notAdmin() {
 }
 
 /* ======================= estrutura do painel ======================= */
-const SECOES = [['sec-resumo', 'Resumo'], ['sec-atend', 'Atendimentos'], ['sec-fluxo', 'Fluxo do paciente'], ['sec-result', 'Resultados'],
+const SECOES = [['sec-resumo', 'Resumo do período'], ['sec-atend', 'Atendimentos'], ['sec-fluxo', 'Fluxo do paciente'], ['sec-result', 'Resultados'],
   ['sec-medicos', 'Médicos'], ['sec-clinicas', 'Clínicas'], ['sec-cobranca', 'Faturamento e cobrança']];
 
 function renderShell() {
   app().innerHTML = `<nav class="gs-toc" aria-label="Partes do painel">${SECOES.map(([id, n]) => `<a href="#${id}">${esc(n)}</a>`).join('')}</nav>
+    ${agoraShellHtml()}
     <section class="cl-card gs-ctl" aria-label="Período dos números">
       <fieldset class="gs-period"><legend>Período</legend>
         <div class="gs-seg">${G.PERIODOS.map(([v, n]) => `<label><input type="radio" name="gsDias" value="${v}"${v === S.days ? ' checked' : ''}><span>${esc(n)}</span></label>`).join('')}</div>
@@ -107,7 +115,7 @@ async function loadGestao() {
   const seq = ++S.seq;
   const box = $('#gsData');
   if (!box) return;
-  const busy = [box, $('#cobResumo')].filter(Boolean);
+  const busy = [box, $('#cobResumo'), $('#sec-agora')].filter(Boolean);
   // Trocou o período ou atualizou: os números de antes ficam (mais claros) até os novos chegarem.
   if (S.data) busy.forEach((el) => el.classList.add('gs-busy'));
   box.setAttribute('aria-busy', 'true');
@@ -116,6 +124,7 @@ async function loadGestao() {
     const raw = await auth.rpc('admin_gestao', { p_days: S.days });
     if (seq !== S.seq || !box.isConnected) return;
     S.data = G.normalizeGestao(raw, S.days);
+    S.recebidoEm = Date.now();
     renderData();
     done();
   } catch (err) {
@@ -125,10 +134,11 @@ async function loadGestao() {
     S.data = null;
     S.charts = new Map();
     $('#cobResumo').innerHTML = '';
+    renderAgora(null); // sem os números de agora (nada de mostrar os de antes como se fossem de agora)
     setText($('#gsPeriodo'), '');
     setText($('#gsHora'), '');
     box.innerHTML = noFn(err)
-      ? section('sec-resumo', 'Resumo', 'fa-list-check', note('O painel de gestão ainda não está ligado no banco. Os números aparecem aqui depois que a atualização do banco for aplicada.', 'warn'))
+      ? section('sec-resumo', 'Resumo do período', 'fa-list-check', note('O painel de gestão ainda não está ligado no banco. Os números aparecem aqui depois que a atualização do banco for aplicada.', 'warn'))
       : card(`${note(esc(friendlyError(err, 'Não foi possível carregar os números agora. Tente de novo em instantes.')), 'err')}${retryBtn('retryGestao')}`);
     const retry = $('#retryGestao');
     if (retry) retry.onclick = () => loadGestao();
@@ -142,14 +152,19 @@ const periodText = (d) => (d.de && d.ate ? `Números de ${G.fullDay(d.de)} a ${G
 function renderData() {
   const d = S.data;
   const abertas = tabelasAbertas();
+  const foco = guardaFoco();
+  const rolagem = guardaRolagem();
   S.charts = new Map();
+  renderAgora(d);
   $('#gsData').innerHTML = [secResumo(d), secAtend(d), secFluxo(d), secResult(d), secMedicos(d), secClinicas(d)].join('');
   $('#cobResumo').innerHTML = cobResumoHtml(d);
   reabrirTabelas(abertas);
+  voltaFoco(foco);
   // O período é lido pelo leitor de tela quando muda; a hora não (sem a hora do banco, não aparece: nada do relógio daqui).
   setText($('#gsPeriodo'), periodText(d));
   setText($('#gsHora'), d.gerado_em ? `Atualizado às ${G.fmtHora(d.gerado_em)}.` : '');
   drawCharts(true);
+  voltaRolagem(rolagem);
   // Com a página maior pode aparecer a barra de rolagem (a largura diminui): confere de novo no próximo quadro.
   requestAnimationFrame(() => drawCharts());
 }
@@ -160,6 +175,45 @@ const tabelasAbertas = () => new Set($$('details[open]', app()).map((x) => x.clo
 function reabrirTabelas(abertas) {
   if (!abertas.size) return;
   for (const x of $$('#gsData details, #cobResumo details')) if (abertas.has(x.closest('[data-fig]')?.dataset.fig)) x.open = true;
+}
+// O foco do teclado (e do leitor de tela) também fica onde estava: os números chegam de novo inclusive sem a pessoa
+// pedir (volta para a aba), e o "Ver em tabela" ou o link em que ela estava é feito de novo. Acha o mesmo lugar pelo
+// gráfico, médico ou seção, pelo endereço do link e pela ordem entre os iguais.
+const FOCAVEIS = 'a[href], button, summary, select, input, [tabindex="0"]';
+const assinatura = (el) => [el.tagName, el.closest('[data-fig]')?.dataset.fig, el.closest('[data-medico]')?.dataset.medico, el.closest('section[id]')?.id, el.getAttribute('href'), el.id].map((x) => x || '').join('|');
+function guardaFoco() {
+  const el = document.activeElement;
+  const box = el?.closest?.('#gsData, #cobResumo');
+  if (!box) return null;
+  const sig = assinatura(el);
+  return { box: box.id, sig, i: $$(FOCAVEIS, box).filter((x) => assinatura(x) === sig).indexOf(el) };
+}
+function voltaFoco(f) {
+  const box = f && f.i >= 0 ? document.getElementById(f.box) : null;
+  const el = box && $$(FOCAVEIS, box).filter((x) => assinatura(x) === f.sig)[f.i];
+  if (el && document.activeElement !== el) el.focus({ preventScroll: true });
+}
+// E a página não pula: a parte que estava no alto da tela (o gráfico, a seção ou a lista das cobranças) fica no mesmo
+// lugar. Os gráficos são feitos de novo e ficam vazios por um instante (o desenho vem logo depois, na largura certa); com
+// isso a rolagem do navegador, sozinha, perde o lugar e pula.
+const ANCORAS = '#app [data-fig], #app section[id], #cobLista, #cobForm';
+function guardaRolagem() {
+  if (scrollY <= 0) return null;
+  const chave = (el) => (el.dataset.fig ? `[data-fig="${el.dataset.fig}"]` : `#${el.id}`);
+  let dentro = null; // a parte mais de dentro que passa pelo alto da tela
+  for (const el of $$(ANCORAS)) {
+    const r = el.getBoundingClientRect();
+    if (!r.height) continue;
+    if (r.top > 0) return dentro || { sel: chave(el), top: r.top }; // nenhuma passa pelo alto: a primeira logo abaixo
+    if (r.bottom > 0 && (!dentro || r.height < dentro.h)) dentro = { sel: chave(el), top: r.top, h: r.height };
+  }
+  return dentro;
+}
+function voltaRolagem(a) {
+  const el = a && $(a.sel);
+  if (!el) return;
+  const d = el.getBoundingClientRect().top - a.top;
+  if (Math.abs(d) > 1) scrollBy(0, d);
 }
 
 /* ---------- peças ---------- */
@@ -183,11 +237,82 @@ function fig({ id, title, sub = '', legend = '', build, table }) {
     </figure>`;
 }
 
+/* ---------- 0. agora (a teleconsulta neste momento) ---------- */
+// Bloco fixo, feito uma vez (renderShell), antes do período: só o conteúdo muda. Os números vêm da chave "agora" de
+// admin_gestao, na mesma chamada do resto da página (atualizam junto: troca de período, "Atualizar números", depois de
+// mexer numa cobrança) e não dependem do período. Banco ainda sem a chave, ou erro ao buscar: o bloco fica escondido.
+// Envelhecer sem aviso, não: a hora do bloco diz há quanto tempo os números chegaram (e a data, se já for outro dia), e
+// ao voltar para a aba ou para a janela com números de 2 min ou mais, a página busca de novo (voltouParaPagina).
+function agoraShellHtml() {
+  return `<section class="cl-card gs-agora" id="sec-agora" aria-labelledby="sec-agora-h" hidden>
+      <div class="gs-agora-hd">
+        <h2 id="sec-agora-h"><i class="fa-solid fa-clock" aria-hidden="true"></i>Agora na teleconsulta</h2>
+        <p class="gs-agora-hora" id="gsAgoraHora"></p>
+      </div>
+      <p class="cl-help gs-agora-help">Números deste momento: não mudam com o período escolhido logo abaixo. Quando você volta para esta aba depois de 2 minutos ou mais, eles são buscados de novo; para ver na hora, use “Atualizar números”.</p>
+      <div class="gs-kpis gs-agora-kpis" id="gsAgoraKpis"></div>
+      <div id="gsAgoraAlerta"></div>
+    </section>`;
+}
+function renderAgora(d) {
+  const sec = $('#sec-agora');
+  if (!sec) return;
+  const a = d?.agora || null;
+  if (!a) { calaAgora(); if (!sec.hidden) sec.hidden = true; return; }
+  $('#gsAgoraKpis').innerHTML = G.agoraItens(a).map((x) => kpi(x.label, x.value, x.sub, { warn: x.warn, id: x.id })).join('');
+  $('#gsAgoraAlerta').innerHTML = G.agoraSemMedico(a)
+    ? '<p class="cl-note warn gs-agora-alerta"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Há paciente esperando e nenhum médico disponível agora.</span></p>'
+    : '';
+  // A hora é a do banco (sem ela, sem hora: nada do relógio daqui); não vai na frase (mudaria a cada atualização).
+  setText($('#gsAgoraHora'), G.agoraHora(d.gerado_em, Date.now() - S.recebidoEm));
+  falaAgora(G.agoraTexto(a));
+  if (sec.hidden) sec.hidden = false;
+}
+// Leitor de tela: os números do bloco não são "ao vivo". Uma frase curta vai para uma região educada fora do bloco
+// (#gsAgoraFala, junto do #flash) só quando os números mudam com a página aberta: ao abrir a página, ou quando o bloco
+// aparece pela primeira vez, nada é lido (a pessoa lê o bloco ao chegar nele), e os mesmos números de novo também não.
+// A frase sai da região depois de 7 s: quem percorre a página não ouve os números duas vezes.
+const FALA_MS = 7000;
+function falaAgora(texto) {
+  if (texto === S.fala) return;
+  const primeira = S.fala === null;
+  S.fala = texto;
+  const el = $('#gsAgoraFala');
+  if (primeira || !el) return;
+  clearTimeout(S.falaTimer);
+  el.textContent = texto;
+  S.falaTimer = setTimeout(() => { el.textContent = ''; }, FALA_MS);
+}
+// Bloco escondido (erro ou banco sem a chave) ou saída da conta: nada de frase velha na região.
+function calaAgora() {
+  clearTimeout(S.falaTimer);
+  const el = $('#gsAgoraFala');
+  if (el && el.textContent) el.textContent = '';
+}
+// A hora do bloco: o "há quanto tempo" muda sozinho com a aba à vista (a cada 30 s, sem ler nada: o texto não é "ao
+// vivo").
+function horaAgora() {
+  const sec = $('#sec-agora');
+  if (!sec || sec.hidden || !S.data?.agora) return;
+  setText($('#gsAgoraHora'), G.agoraHora(S.data.gerado_em, Date.now() - S.recebidoEm));
+}
+// Voltou para a aba (ou para a janela) e os números de agora têm 2 min ou mais: busca de novo, como "Atualizar
+// números" (o foco e as tabelas abertas ficam onde estavam). Só os números: a lista das cobranças fica como está (pode
+// ter um quadro de pagamento aberto, com o que a pessoa já escolheu). A aba parada, à vista ou não, não busca nada.
+function voltouParaPagina() {
+  if (document.hidden) return;
+  horaAgora();
+  const box = $('#gsData');
+  if (!S.data?.agora || !box || box.hasAttribute('aria-busy')) return;
+  const idade = Date.now() - S.recebidoEm;
+  if (idade >= G.AGORA_VELHO_MIN * 60000 || idade < 0) loadGestao();
+}
+
 /* ---------- 1. resumo ---------- */
 function secResumo(d) {
   const p = d.pacientes;
   const c = d.cobranca;
-  return section('sec-resumo', 'Resumo', 'fa-list-check', `
+  return section('sec-resumo', 'Resumo do período', 'fa-list-check', `
     <div class="gs-kpis" id="gsKpis">
       ${kpi('Pacientes atendidos', G.fmtInt(p.atendidos), 'teleconsultas realizadas e pedidos concluídos', { id: 'atendidos' })}
       ${kpi('Pedidos de agendamento', G.fmtInt(p.pedidos.total), 'feitos no período', { id: 'pedidos' })}
@@ -754,6 +879,9 @@ function wireCobForm() {
 /* ======================= início ======================= */
 async function init() {
   initTips();
+  document.addEventListener('visibilitychange', voltouParaPagina);
+  addEventListener('focus', voltouParaPagina);
+  setInterval(() => { if (!document.hidden) horaAgora(); }, 30000);
   const flash = await finishLogin();
   if (flash) $('#flash').innerHTML = note(esc(flash.text), flash.kind);
   renderAccount();

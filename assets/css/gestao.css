@@ -28,6 +28,22 @@
 .gs-seg input:focus-visible+span{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
 .gs-when{flex-basis:100%;font-size:13.5px;color:var(--muted)}
 
+/* ---------- agora: a fila da teleconsulta neste momento (não depende do período) ---------- */
+.gs-agora{border-color:#BFE0EA;background:linear-gradient(180deg,#F1F9FB,#fff 72%)}
+.gs-agora-hd{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px}
+.gs-agora-hd>h2{font-size:20px;display:flex;align-items:center;gap:10px;min-width:0}
+.gs-agora-hd>h2 i{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--primary-s);color:var(--primary);font-size:15px;flex-shrink:0}
+.gs-agora-hora{padding:5px 12px;border-radius:999px;background:#fff;border:1px solid #BFE0EA;font-size:13px;font-weight:700;color:#0A4E63;font-variant-numeric:tabular-nums}
+.gs-agora-hora:empty{display:none}
+.gs-agora-help{margin:10px 0 12px}
+.gs-agora .gs-agora-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}
+.gs-agora .gs-kpi-v{font-variant-numeric:tabular-nums}
+.gs-agora-alerta{display:flex;gap:8px;align-items:flex-start;margin-top:12px}
+.gs-agora-alerta i{margin-top:3px;flex-shrink:0}
+/* Quatro lado a lado só quando o valor mais comprido ("menos de 1 min", "1 h 59 min") cabe numa linha (medido: a
+   partir de ~1050 px de tela); antes disso, dois por linha. */
+@media (max-width:1080px){.gs-agora .gs-agora-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
 /* ---------- seções ---------- */
 .gs-sec>h2{font-size:20px;display:flex;align-items:center;gap:10px}
 .gs-sec>h2 i{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:11px;background:var(--primary-s);color:var(--primary);font-size:15px;flex-shrink:0}
@@ -197,7 +213,7 @@
   .gs-kpi{padding:10px 12px}
   .gs-kpi-v{font-size:20px}
   .gs-fig{padding:12px 10px}
-  .gs-sec>h2{font-size:18px}
+  .gs-sec>h2,.gs-agora-hd>h2{font-size:18px}
   .gs-seg{width:100%}
   .gs-seg label{flex:1 1 0}
   .gs-seg span{padding:0 8px}

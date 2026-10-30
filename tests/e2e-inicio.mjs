@@ -781,10 +781,11 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   assert.ok(items.every((i) => i[2] < 60), 'rótulos numa linha só');
   // Página mais curta: antes destas mudanças media 7.295 px (390x844, 4 cidades, modo leve). Os alvos de toque
   // de 44 px (links do rodapé, perguntas frequentes e botões, para quem tem dedo trêmulo ou vista cansada)
-  // somam uns 200 px: o limite passou de 6.800 para 7.200 px, ainda abaixo do que era antes.
+  // somam uns 200 px: o limite passou de 6.800 para 7.200 px. Em 30/10 o rodapé ganhou "Área do médico" (mais uma
+  // linha): o limite agora é a altura de antes de todas essas mudanças, que a página não pode passar.
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   console.log(`  altura da página no celular: ${height} px (antes: 7295 px)`);
-  assert.ok(height < 7200, `página mais curta no celular (${height} px)`);
+  assert.ok(height < 7295, `página mais curta no celular do que antes (${height} px)`);
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#cities')).overflowX), 'auto', 'cidades em carrossel');
   if (SHOTS) { await page.screenshot({ path: join(SHOTS, 'inicio-celular-inteira.png'), fullPage: true }); }
   await page.click('.bnav [data-go="agenda"]');
