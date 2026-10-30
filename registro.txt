@@ -1,0 +1,21 @@
+[22:56:43] == vertical: 360×640 @3x
+[22:56:44]   cena 1: inicio
+[22:56:49]   cena 2: mapa-reais
+[22:57:07]   cena 3: busca-exame
+[22:57:12]   cena 4: resultados
+[22:57:28]   cena 5: detalhe
+[22:57:35]   cena 6: local
+[22:57:41]   cena 7: responsavel
+[22:57:48]   cena 8: final
+[22:57:52]   1363 quadros em 68.4 s; montando /home/runner/work/_temp/video/imed-vertical.mp4
+[22:58:20] == horizontal: 1280×720 @1.5x
+[22:58:21]   cena 1: inicio
+[22:58:26]   cena 2: mapa-reais
+[22:58:36]   cena 3: busca-exame
+[22:58:40]   cena 4: resultados
+[22:58:49]   cena 5: detalhe
+[22:58:56]   cena 6: local
+[22:59:02]   cena 7: responsavel
+[22:59:09]   cena 8: final
+[22:59:13]   566 quadros em 52.7 s; montando /home/runner/work/_temp/video/imed-horizontal.mp4
+[22:59:30] resumo: [{"formato":"vertical","arquivo":"/home/runner/work/_temp/video/imed-vertical.mp4","quadros":1363,"segundos":68.4,"falhas":[]},{"formato":"horizontal","arquivo":"/home/runner/work/_temp/video/imed-horizontal.mp4","quadros":566,"segundos":52.7,"falhas":[]}]
