@@ -1480,7 +1480,9 @@ function openDetails(id) {
   }
 
   let cta = '';
-  const page = G.localUrl(p);
+  // Página completa de quem não é parceiro: leva o exame da busca (o pedido e as perguntas já vêm com ele).
+  const full = G.localUrl(p);
+  const page = full && p.source !== 'imed' && S.f.exam ? `${full}&exame=${encodeURIComponent(S.f.exam)}` : full;
   if (hasSchedule(p)) {
     cta = `<a class="btn btn-coral" href="${esc(agendaUrl(p))}" data-book-slots><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Ver horários e agendar</a>`;
   } else if (p.source === 'imed' && p.accepts_online_booking) {
@@ -1514,6 +1516,7 @@ function openDetails(id) {
       <p>${esc(p.address || 'Endereço não informado no mapa')}${p.cep ? ` · CEP ${esc(p.cep)}` : ''}</p></div></div>
     <div class="dt-acts">${acts.join('')}</div>
     ${page ? `<p class="dt-full"><a class="link" href="${esc(page)}"><i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>Ver página completa</a></p>` : ''}
+    ${p.source === 'imed' ? '' : G.callQuestionsHTML(p, S.f.exam)}
     ${p.description ? `<div class="dt-sec"><h4><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Sobre</h4><p>${esc(p.description)}</p></div>` : ''}
     <div class="dt-sec"><h4><i class="fa-solid fa-notes-medical" aria-hidden="true"></i>Serviços</h4>${servicesHTML(p)}</div>
     ${p.specialties.length ? `<div class="dt-sec"><h4><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Especialidades</h4><div class="dt-chips">${p.specialties.map((s) => `<span class="svc">${esc(s)}</span>`).join('')}</div></div>` : ''}
@@ -1772,6 +1775,7 @@ function bind() {
   const ov = $('#ov');
   ov.addEventListener('click', (e) => {
     if (e.target === ov || e.target.closest('[data-close]')) return closeSheet();
+    if (e.target.closest('[data-act="copy-questions"]')) return G.copyCallQuestions(e.target.closest('.cq'));
     const b = e.target.closest('[data-book]');
     if (b) return openBooking(b.dataset.book);
     const pt = e.target.closest('[data-point]');
@@ -1782,7 +1786,7 @@ function bind() {
     if (e.key === 'Escape') return closeSheet();
     if (e.key === 'Tab') {
       // O que recebe o Tab na janela: de um grupo de opções (rádio), só a marcada ou a primeira.
-      const all = $$('a[href],button:not([disabled]),input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]', $('#sheet'))
+      const all = $$('a[href],button:not([disabled]),input:not([type=hidden]):not([disabled]),select:not([disabled]),textarea:not([disabled]),details>summary:first-of-type,[tabindex]', $('#sheet'))
         .filter((x) => x.tabIndex >= 0 && x.offsetParent !== null);
       const f = all.filter((x) => x.type !== 'radio' || !x.name || x === (all.filter((y) => y.type === 'radio' && y.name === x.name).find((y) => y.checked) ?? all.find((y) => y.type === 'radio' && y.name === x.name)));
       // Foco fora da janela (por exemplo, depois de um clique no fundo): o Tab volta para dentro dela.

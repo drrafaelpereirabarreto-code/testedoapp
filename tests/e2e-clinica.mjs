@@ -620,6 +620,158 @@ await scenario('painel com clínica: pedidos, situação, dados e exames com pre
   await context.close();
 });
 
+// Trava contra preço absurdo (L11): acima de um limite largo por exame, o painel pergunta na própria página antes de
+// salvar. O limite nunca aparece (não é preço de referência) e a janela do navegador (window.confirm) não é usada:
+// qualquer diálogo entra em "errors" (newPage).
+const examesDb = (exams) => ({ members: [{ clinic_id: C1, role: 'owner' }], clinics: [CLINIC], exams });
+const linhas = (page, sel) => page.$$eval(sel, (els) => els.map((el) => el.textContent.replace(/\s+/g, ' ').trim()));
+const abrirExames = async (page) => {
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('#tab-exames');
+  await page.click('#tab-exames');
+  await page.waitForSelector('#examForm');
+};
+
+await scenario('exames e preços: valor muito acima do comum pede "Confira o valor" na página; sem confirmar, não salva', async () => {
+  const { page, log, errors, context } = await newPage(browser, { logged: true, db: examesDb([{ clinic_id: C1, exam_code: 'rm', price_cents: 45000 }, { clinic_id: C1, exam_code: 'rx', price_cents: null }]) });
+  const salvos = () => calls(log, '/rpc/set_my_clinic_exams');
+  await abrirExames(page);
+  assert.ok(await page.isHidden('#exCheck'), 'sem pergunta ao abrir');
+  // 30000 sem vírgula vira R$ 30.000,00 (quem queria R$ 300,00 esqueceu a vírgula)
+  await page.fill('#pr-rx', '30000');
+  await page.click('#exSave');
+  await page.waitForSelector('#exCheck:not([hidden]) [role="group"]');
+  assert.deepEqual(await linhas(page, '#exCheckQ p'), ['Confira o valor: R$ 30.000,00 para Raio-X está certo?']);
+  assert.equal(await page.textContent('#exCheckQ b'), 'R$\u00a030.000,00', 'o valor em destaque, com o R$ junto do número');
+  assert.equal(salvos().length, 0, 'sem confirmar, nada vai para o banco');
+  assert.ok(await page.evaluate(() => document.activeElement.getAttribute('role') === 'group' && !!document.activeElement.closest('#exCheck')), 'o foco vai para a pergunta');
+  assert.equal(await page.getAttribute('#exCheck [role="group"]', 'aria-labelledby'), 'exCheckQ');
+  assert.equal(await page.textContent('#pr-rxErr'), 'Confira se este valor está certo.', 'o campo também avisa (aria-describedby)');
+  assert.equal(await page.getAttribute('#pr-rx', 'aria-invalid'), null, 'não é erro: só pede para conferir');
+  assert.equal(await page.$eval('#pr-rxErr', (el) => getComputedStyle(el).color), 'rgb(122, 74, 0)', 'o aviso do campo em âmbar, como a caixa (o vermelho é só para erro)');
+  assert.equal(await page.textContent('#exCheckOk'), 'Sim, salvar este valor');
+  const box = await page.textContent('#exCheck');
+  assert.doesNotMatch(box, /5\.000|20\.000|limite|refer[eê]ncia|m[eé]dia|normal|acima de/i, 'o limite nunca aparece (não vira preço de referência)');
+  await shot(page, '20-painel-exames-conferir-valor');
+  // Enter no campo (envia o formulário de novo): pergunta outra vez, sem salvar. A caixa já estava aberta: o que
+  // mostra que o Enter perguntou de novo é o foco, que sai do campo e volta para a pergunta.
+  await page.focus('#pr-rx');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.activeElement?.matches('#exCheck:not([hidden]) [role="group"]'));
+  assert.equal(salvos().length, 0);
+  // "Não, corrigir": volta para o campo com o valor selecionado; mudar o valor tira a pergunta
+  await page.click('#exCheckFix');
+  assert.deepEqual(await page.evaluate(() => { const a = document.activeElement; return [a.id, a.selectionStart, a.selectionEnd]; }), ['pr-rx', 0, 5]);
+  await page.keyboard.type('300');
+  assert.ok(await page.isHidden('#exCheck'), 'mudou o valor: a pergunta sai');
+  assert.equal(await page.textContent('#pr-rxErr'), '');
+  await page.click('#exSave');
+  await page.waitForSelector('#exMsg .cl-note.ok');
+  assert.ok(await page.isHidden('#exCheck'), 'valor comum: salva direto');
+  assert.deepEqual(salvos()[0].body, { p_clinic: C1, p_exams: [{ code: 'rx', price_cents: 30000 }, { code: 'rm', price_cents: 45000 }] });
+  // Exame caro de verdade: confirmado, é salvo (nunca recusado)
+  await page.fill('#pr-rx', '30.000,00');
+  await page.click('#exSave');
+  await page.waitForSelector('#exCheck:not([hidden]) [role="group"]');
+  assert.equal(salvos().length, 1);
+  assert.equal(await page.textContent('#exMsg'), '', 'a mensagem de salvo anterior sai');
+  await page.click('#exCheckOk');
+  await page.waitForFunction(() => document.querySelector('#exMsg .cl-note.ok'));
+  assert.equal(salvos().length, 2);
+  assert.deepEqual(salvos()[1].body.p_exams, [{ code: 'rx', price_cents: 3000000 }, { code: 'rm', price_cents: 45000 }]);
+  assert.ok(await page.isHidden('#exCheck'));
+  assert.equal(await page.inputValue('#pr-rx'), '30000,00');
+  assert.equal(await page.textContent('#pr-rxErr'), '');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'exSave', 'o foco volta para o botão de salvar');
+  // O "Sim" vale para aquele valor nesta página: salvar de novo não pergunta outra vez...
+  await page.click('#exSave');
+  await page.waitForSelector('#exMsg .cl-note.ok');
+  assert.equal(salvos().length, 3);
+  assert.ok(await page.isHidden('#exCheck'));
+  // ...mas outro valor alto pergunta de novo
+  await page.fill('#pr-rx', '40000');
+  await page.click('#exSave');
+  await page.waitForSelector('#exCheck:not([hidden]) [role="group"]');
+  assert.deepEqual(await linhas(page, '#exCheckQ p'), ['Confira o valor: R$ 40.000,00 para Raio-X está certo?']);
+  assert.equal(salvos().length, 3);
+  assert.deepEqual(errors, [], 'nenhuma janela do navegador (window.confirm) nem erro');
+  await context.close();
+});
+
+await scenario('exames e preços: dois valores para conferir, valor no limite não pergunta, desmarcar tira a pergunta; celular sem rolagem lateral', async () => {
+  const { page, log, errors, context } = await newPage(browser, { mobile: true, logged: true, db: examesDb([{ clinic_id: C1, exam_code: 'rm', price_cents: 45000 }]) });
+  const salvos = () => calls(log, '/rpc/set_my_clinic_exams');
+  await abrirExames(page);
+  // Os limites: largos, um para cada exame (Raio-X R$ 5.000, ressonância R$ 20.000); só passar deles pergunta.
+  const lim = await page.evaluate(async () => {
+    const m = await import('./assets/js/painel.js');
+    return { L: m.PRICE_CHECK_CENTS, t: [['rx', 500000], ['rx', 500001], ['rm', 2000000], ['rm', 2000001], ['lab', null], ['tc', 1000000], ['tc', 1000001]].map(([c, v]) => m.priceNeedsCheck(c, v)) };
+  });
+  assert.deepEqual(Object.keys(lim.L).sort(), ['dens', 'ecg', 'eco', 'lab', 'mamo', 'rm', 'rx', 'tc', 'usg'], 'um limite para cada exame do painel');
+  assert.equal(lim.L.rx, 500000);
+  assert.equal(lim.L.rm, 2000000);
+  for (const [k, v] of Object.entries(lim.L)) assert.ok(v >= 500000 && v < 10000000, `${k}: limite largo (de R$ 5.000 a menos de R$ 100.000)`);
+  assert.deepEqual(lim.t, [false, true, false, true, false, false, true]);
+  // Exatamente no limite: salva direto
+  await page.check('#ex-rx');
+  await page.fill('#pr-rx', '5.000');
+  await page.fill('#pr-rm', '20000');
+  await page.click('#exSave');
+  await page.waitForSelector('#exMsg .cl-note.ok');
+  assert.ok(await page.isHidden('#exCheck'));
+  assert.deepEqual(salvos()[0].body.p_exams, [{ code: 'rx', price_cents: 500000 }, { code: 'rm', price_cents: 2000000 }]);
+  // Dois valores acima: uma pergunta para cada, na ordem da lista, e um "Sim" para os dois
+  await page.fill('#pr-rx', '5000,01');
+  await page.fill('#pr-rm', '25000');
+  await page.click('#exSave');
+  await page.waitForSelector('#exCheck:not([hidden]) [role="group"]');
+  assert.deepEqual(await linhas(page, '#exCheckQ p'), ['Confira o valor: R$ 5.000,01 para Raio-X está certo?', 'Confira o valor: R$ 25.000,00 para Ressonância está certo?']);
+  assert.equal(await page.textContent('#exCheckOk'), 'Sim, salvar estes valores');
+  assert.match(await page.textContent('#exCheckWhy'), /Se os valores estiverem certos, confirme para salvar\./);
+  assert.equal(await page.textContent('#pr-rmErr'), 'Confira se este valor está certo.');
+  assert.equal(salvos().length, 1);
+  await noOverflow(page);
+  await shot(page, '21-celular-exames-conferir-dois-valores');
+  // Celular estreito (360px): a pergunta e os dois botões cabem na tela, sem rolagem lateral
+  await page.setViewportSize({ width: 360, height: 780 });
+  await noOverflow(page);
+  for (const b of ['#exCheckOk', '#exCheckFix']) {
+    const r = await page.locator(b).boundingBox();
+    assert.ok(r && r.x >= 0 && r.x + r.width <= 360, `${b} inteiro na tela de 360px (${r && `${r.x}…${r.x + r.width}`})`);
+  }
+  await shot(page, '22-celular-360-exames-conferir');
+  // "Não, corrigir" leva ao primeiro valor da lista
+  await page.click('#exCheckFix');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'pr-rx');
+  // Desmarcar o exame também tira a pergunta; ao salvar, só a ressonância é perguntada
+  await page.uncheck('#ex-rx');
+  assert.ok(await page.isHidden('#exCheck'));
+  assert.equal(await page.textContent('#pr-rmErr'), '', 'o aviso do campo sai junto');
+  await page.click('#exSave');
+  await page.waitForSelector('#exCheck:not([hidden]) [role="group"]');
+  assert.deepEqual(await linhas(page, '#exCheckQ p'), ['Confira o valor: R$ 25.000,00 para Ressonância está certo?']);
+  assert.equal(salvos().length, 1);
+  await page.click('#exCheckOk');
+  await page.waitForFunction(() => document.querySelector('#exMsg .cl-note.ok') && !document.querySelector('#exSave').disabled);
+  assert.equal(salvos().length, 2);
+  assert.deepEqual(salvos()[1].body.p_exams, [{ code: 'rm', price_cents: 2500000 }]);
+  // Preço inválido num exame e valor alto no outro: o erro vem antes, em vermelho, e a pergunta não aparece
+  await page.check('#ex-rx');
+  await page.fill('#pr-rx', '0,50');
+  await page.fill('#pr-rm', '30000');
+  await page.click('#exSave');
+  await page.waitForFunction(() => document.activeElement?.id === 'pr-rx');
+  assert.match(await page.textContent('#pr-rxErr'), /^Preço inválido/);
+  assert.equal(await page.getAttribute('#pr-rx', 'aria-invalid'), 'true');
+  assert.equal(await page.$eval('#pr-rxErr', (el) => getComputedStyle(el).color), 'rgb(178, 54, 26)', 'o erro continua em vermelho');
+  assert.ok(await page.isHidden('#exCheck'), 'com erro, a pergunta não aparece');
+  assert.equal(await page.textContent('#pr-rmErr'), '');
+  assert.equal(salvos().length, 2);
+  await noOverflow(page);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('equipe do IMED: aprova e recusa pedidos de cadastro e cuida dos pedidos ao IMED', async () => {
   const { page, log, errors, context, db } = await newPage(browser, { logged: true, email: 'equipe@imed.com.br', db: { admin: true, claims: CLAIMS, requests: [...REQUESTS, ...IMED_REQUESTS] } });
   await page.goto(`${BASE}painel.html`);

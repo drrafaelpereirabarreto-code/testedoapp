@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-lgpd-depois>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -25,6 +25,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="IMED">
 <link rel="preconnect" href="https://pyoqiecupxhdzigjudyd.supabase.co" crossorigin>
+<link rel="modulepreload" href="assets/js/inicio-perto.js">
+<link rel="modulepreload" href="assets/js/inicio-core.js">
 <link rel="preload" href="assets/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
 <style data-fontes="Sora:500;600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:500 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:500 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
@@ -39,6 +41,8 @@
   --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
   --sh3:0 40px 100px rgba(5,22,30,.35);
   --ease:cubic-bezier(.2,.8,.2,1);
+  /* ilustração do mapa (SVG, sem foto): fundo do topo 3D e da coluna do mapa enquanto não há mapa */
+  --ilustra:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.6' cy='.45' r='.6'%3E%3Cstop offset='0' stop-color='%23124a5c'/%3E%3Cstop offset='1' stop-color='%23124a5c' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='800' height='600' fill='url(%23g)'/%3E%3Cg transform='rotate(-16 400 300)' stroke='%237FF0E4' fill='none'%3E%3Cg stroke-opacity='.13' stroke-width='10'%3E%3Cpath d='M-200 60H1000M-200 170H1000M-200 280H1000M-200 390H1000M-200 500H1000M-200 610H1000M20 -200V800M150 -200V800M280 -200V800M410 -200V800M540 -200V800M670 -200V800M800 -200V800'/%3E%3C/g%3E%3Cpath d='M-200 335H1000M475 -200V800' stroke-opacity='.28' stroke-width='18'/%3E%3C/g%3E%3Cg fill='%2305161e' fill-opacity='.35'%3E%3Crect x='300' y='180' width='90' height='70' rx='8'/%3E%3Crect x='520' y='360' width='80' height='60' rx='8'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='470' cy='300' r='26' fill='%23FF6B4A' fill-opacity='.22'/%3E%3Ccircle cx='470' cy='300' r='10' fill='%23FF6B4A' stroke='%23fff' stroke-width='3'/%3E%3Ccircle cx='600' cy='210' r='8' fill='%23E8512F' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='360' cy='380' r='8' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='650' cy='420' r='8' fill='%236C4BD8' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='280' cy='230' r='8' fill='%231E9E5A' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='540' cy='120' r='7' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E");
   /* fontes com reserva: enquanto a do Google não chega (ou se falhar), usa a do aparelho, nunca Times */
   --fh:'Sora','Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --fb:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
@@ -95,7 +99,7 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .partner-link:hover{background:rgba(127,127,127,.1)}
 @media (max-width:860px){
   .top-row{height:auto;flex-wrap:wrap;gap:8px 10px;padding:10px 0}
-  .logo{order:1}.addr{order:2;flex:1;justify-content:center;max-width:none}.top .icon-btn{order:3}
+  .logo{order:1}.addr{order:2;flex:1;justify-content:center;max-width:none;min-width:0}.top .icon-btn{order:3}
   .tabs,.partner-link{display:none}
 }
 /* ================= HERO 3D ================= */
@@ -158,21 +162,21 @@ body.lite .h3d-pause{display:none}
 .scroll-cue::after{content:"";position:absolute;left:50%;top:8px;width:4px;height:8px;border-radius:2px;background:#fff;transform:translateX(-50%);animation:cue 1.8s infinite}
 @keyframes cue{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,14px)}}
 /* fundo leve (ilustração em SVG, sem foto): aparece enquanto o 3D carrega e fica no lugar dele em aparelho simples */
-.hero-3d::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.9;transition:opacity 1.4s var(--ease);
-  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.6' cy='.45' r='.6'%3E%3Cstop offset='0' stop-color='%23124a5c'/%3E%3Cstop offset='1' stop-color='%23124a5c' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='800' height='600' fill='url(%23g)'/%3E%3Cg transform='rotate(-16 400 300)' stroke='%237FF0E4' fill='none'%3E%3Cg stroke-opacity='.13' stroke-width='10'%3E%3Cpath d='M-200 60H1000M-200 170H1000M-200 280H1000M-200 390H1000M-200 500H1000M-200 610H1000M20 -200V800M150 -200V800M280 -200V800M410 -200V800M540 -200V800M670 -200V800M800 -200V800'/%3E%3C/g%3E%3Cpath d='M-200 335H1000M475 -200V800' stroke-opacity='.28' stroke-width='18'/%3E%3C/g%3E%3Cg fill='%2305161e' fill-opacity='.35'%3E%3Crect x='300' y='180' width='90' height='70' rx='8'/%3E%3Crect x='520' y='360' width='80' height='60' rx='8'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='470' cy='300' r='26' fill='%23FF6B4A' fill-opacity='.22'/%3E%3Ccircle cx='470' cy='300' r='10' fill='%23FF6B4A' stroke='%23fff' stroke-width='3'/%3E%3Ccircle cx='600' cy='210' r='8' fill='%23E8512F' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='360' cy='380' r='8' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='650' cy='420' r='8' fill='%236C4BD8' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='280' cy='230' r='8' fill='%231E9E5A' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='540' cy='120' r='7' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E") center/cover no-repeat}
+.hero-3d::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.9;transition:opacity 1.4s var(--ease);background:var(--ilustra) center/cover no-repeat}
 .hero-3d.h3d-ready::before{opacity:0}
 .h3d-lite{position:relative;z-index:3;display:none}
 body.lite .h3d-lite{display:block}
 body.lite .hero-hint{display:none}
 .h3d-lite{position:absolute;right:max(28px,calc((100vw - 1240px)/2 + 20px));top:50%;transform:translateY(-50%);width:min(380px,max(280px,calc(100% - 690px)));padding:18px;border-radius:22px;background:rgba(7,32,43,.72);border:1px solid rgba(127,240,228,.22);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.3)}
-.h3d-lite h2{color:#fff;font-size:16px;letter-spacing:-.01em;margin-bottom:10px}
+.h3d-lite h2{color:#fff;font-size:16px;letter-spacing:-.01em;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body[data-origem="espera"] .h3d-me{visibility:hidden}
 .h3d-lite h2 i{color:var(--coral);margin-right:6px}
 .h3d-lite ol{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
 .h3d-lite li a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.06);min-width:0}
 .h3d-lite li a:hover{background:rgba(255,255,255,.12)}
 .h3d-lite .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
 .h3d-lite b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.h3d-lite small{display:block;color:rgba(255,255,255,.72);font-size:12px}
+.h3d-lite small{display:block;color:rgba(255,255,255,.72);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .h3d-lite .more{display:inline-flex;gap:6px;align-items:center;margin-top:10px;color:var(--aqua2);font-weight:600;font-size:14px}
 .h3d-lite p{color:rgba(255,255,255,.78);font-size:14px;line-height:1.5}
 .h3d-lite li.ph>span{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.06)}
@@ -228,53 +232,24 @@ body.lite .hero-hint{display:none}
 .cat.on{background:#fff;border-color:var(--primary);box-shadow:0 0 0 4px rgba(14,124,156,.14),var(--sh1)}
 .cat.on::after{content:"\f00c";font:900 11px "Font Awesome 6 Free";position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--primary);color:#fff}
 @media (max-width:1100px){.cats{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:4px 2px 12px;margin:0 -20px;padding-left:20px;padding-right:20px}.cats::-webkit-scrollbar{display:none}.cat{flex:0 0 128px;scroll-snap-align:start}}
-/* clínicas reais no mapa (cadastro oficial CNES) */
-/* minmax(0, …): um nome comprido (sem quebra, com reticências) não alarga a coluna além da tela. */
-.rm{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px;align-items:stretch}
+/* clínicas reais no mapa (cadastro oficial CNES): peças do mapa usadas pela tela "Clínicas perto de você" */
 .rm-map{position:relative;min-height:440px;border-radius:26px;overflow:hidden;background:#dde8ec;border:1px solid var(--line);isolation:isolate}
 .rm-wait{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:10px;color:var(--muted);font-size:14px;text-align:center;padding:20px}
-.rm-side{display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:26px;background:linear-gradient(180deg,#F7FBFC,#fff);border:1px solid var(--line)}
-.rm-where{font-size:14px;color:var(--muted)}
-.rm-ex{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:14px;background:var(--gold-s,#FFF6E3);color:#6B4300;font-size:13.5px;line-height:1.5}
-.rm-ex>i{color:#B7791F;margin-top:3px}
-.rm-ex b{color:#5A3900}
-.rm-ex .link{font-size:13.5px;text-decoration:underline}
-.rm-ex[hidden]{display:none}
 .hero-src{margin-top:8px;font-size:12.5px;color:rgba(255,255,255,.72)}
 .hero-src[hidden]{display:none}
 /* Enquanto a contagem e a data chegam do banco, o lugar da linha fica guardado (2 linhas no celular). */
 .hero-src.wait[hidden]{display:block;visibility:hidden;min-height:1.2em}
 @media (max-width:600px){.hero-src.wait[hidden]{min-height:2.4em}}
-.pl-city{margin:14px 0 4px}
-.pl-city select{width:100%;margin-top:6px;padding:12px 14px;border:1px solid #d5e1e7;border-radius:12px;font-size:16px;background:#fff;color:var(--ink)}
-.pl-city select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.15)}
-.pl-msg{font-size:13px;color:var(--muted);margin-top:6px}
-.pl-msg:empty{display:none}
-.pl-ex{margin:0 0 12px}
-.rm-where b{color:var(--ink)}
-.rm-where i{color:var(--coral);margin-right:4px}
-.rm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-.rm-stat{padding:10px 6px;border-radius:14px;background:#fff;border:1px solid var(--line);text-align:center}
+.rm-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.rm-stat{padding:8px 4px;border-radius:14px;background:#fff;border:1px solid var(--line);text-align:center;min-width:0}
 .rm-stat b{display:block;font:800 20px var(--fh);color:var(--ink)}
-.rm-stat span{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.rm-stat span{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 5px;font-size:11.5px;color:var(--muted)}
 .rm-stat i{width:8px;height:8px;border-radius:50%}
-.rm-list{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
-.rm-list li{padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:14px;color:var(--muted)}
-.rm-list li:has(>a){padding:0}
-.rm-list li>a{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;transition:background .2s}
-.rm-list li>a:hover{background:var(--bg2)}
-.rm-list .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px #fff,0 0 0 4px rgba(15,31,40,.08)}
-.rm-list b{display:block;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rm-list small{color:var(--muted);font-size:12.5px}
-.rm-list .d{margin-left:auto;font-weight:700;color:var(--ink);font-size:13px;white-space:nowrap}
-.rm-side .btn{align-self:flex-start}
 .rm-src{font-size:12px;color:var(--muted);line-height:1.5}
 .rm-spin{width:22px;height:22px;border-radius:50%;border:3px solid rgba(14,124,156,.2);border-top-color:var(--primary);animation:rmspin .8s linear infinite}
 @keyframes rmspin{to{transform:rotate(360deg)}}
 .rm-pop b{display:block;color:var(--ink);font-size:13.5px;margin-bottom:2px}
 .rm-pop div{color:var(--muted);font-size:12.5px;line-height:1.45}
-@media (max-width:900px){.rm{grid-template-columns:minmax(0,1fr)}.rm-map{min-height:340px}}
-@media (max-width:520px){.rm-stats{grid-template-columns:repeat(2,1fr)}.rm-side{padding:16px}}
 .install-hero{align-self:flex-start;display:flex;align-items:center;gap:12px;margin-top:16px;padding:8px 16px 8px 8px;border-radius:16px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;text-align:left;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
 .install-hero .ic img{width:40px;height:40px;border-radius:11px}
 .install-hero b{display:block;font-size:14px}
@@ -292,9 +267,210 @@ body.lite .hero-hint{display:none}
 .near-cta .ic{position:relative;width:48px;height:48px;border-radius:15px;display:grid;place-items:center;flex-shrink:0;background:linear-gradient(145deg,#7FF0E4,#2EE6D6 45%,#13A9C4);color:var(--navy);font-size:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
 .near-cta .ic::after{content:"";position:absolute;inset:0;border-radius:15px;animation:ping 2s infinite}
 .near-cta b{display:block;font-family:var(--fh);font-size:17px;letter-spacing:-.015em}
-.near-cta small{display:block;color:rgba(255,255,255,.76);font-size:13px;margin-top:2px}
+.near-cta small{display:block;color:rgba(255,255,255,.76);font-size:13px;line-height:1.4;margin-top:2px}
+.near-cta>span:not(.ic){min-width:0}
 .near-cta>i{margin-left:8px;color:var(--aqua2)}
-@media (max-width:520px){.near-cta{align-self:stretch;padding-right:16px}.near-cta b{font-size:16px}}
+@media (min-width:521px){.near-cta small{max-width:360px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+/* Celular: o texto pequeno (o local mais perto) tem 2 linhas guardadas: o botão não muda de altura quando ele chega. */
+@media (max-width:520px){.near-cta{align-self:stretch;padding-right:16px}.near-cta b{font-size:16px}.near-cta small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-height:2.8em}}
+/* ================= CLÍNICAS PERTO DE VOCÊ (#reais) =================
+   Primeira seção do <main>, sem .rv (o transform do .rv quebraria o mapa em tela cheia, que é position:fixed).
+   Computador (900 px ou mais): lista e mapa lado a lado, o mapa preso ao rolar. Celular: lista primeiro e o mapa em
+   tela cheia, como uma janela, com um toque. minmax(0, …) e reticências: nada passa da tela de 360 px. */
+.pv{margin:40px 0 64px}
+.pv-card{background:#fff;border:1px solid var(--line);border-radius:28px;box-shadow:var(--sh1);padding:24px}
+.pv-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 16px;margin-bottom:18px}
+.pv-head h2{font-size:clamp(24px,2.6vw,34px);margin-top:8px;letter-spacing:-.03em}
+.pv-head p{color:var(--muted);margin-top:6px;max-width:640px;font-size:15px;line-height:1.55}
+.pv-busca{display:inline-flex;align-items:center;gap:6px;min-height:44px;white-space:nowrap}
+.pv-cidade{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;justify-items:start;margin-bottom:14px}
+.pv-rot{font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.pv-citybtn{display:flex;align-items:center;gap:12px;width:100%;max-width:560px;min-height:52px;padding:8px 16px;border-radius:16px;background:var(--bg2);border:1px solid #cfdde4;text-align:left;color:var(--ink);transition:border-color .2s,box-shadow .2s}
+.pv-citybtn:hover{border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.12)}
+.pv-citybtn>i:first-child{color:var(--coral-d);font-size:18px}
+.pv-citybtn>i:last-child{font-size:12px;color:var(--muted)}
+.pv-cityname{flex:1;min-width:0;font:700 20px/1.25 var(--fh);letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-trocar{flex-shrink:0;font-size:14px;font-weight:700;color:var(--primary-d)}
+/* Uma linha guardada: a frase "Distâncias medidas…" chega com a localização sem empurrar a lista. */
+.pv-linha{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;font-size:14px;color:var(--muted);line-height:1.5;min-height:21px}
+.pv-geobtn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border-radius:12px;background:var(--primary-s);color:var(--primary-d);font-weight:700;font-size:14px;text-align:left}
+.pv-geobtn:hover{background:#d5edf3}
+.pv-ajuda,.cid-ajuda{font-size:14px;line-height:1.55;color:var(--ink);background:var(--bg2);border-radius:14px;padding:12px 14px;max-width:640px}
+.pv-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:2px 0 18px}
+.pv-tabs button{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:9px 16px;border-radius:999px;border:1px solid #cfdde4;background:#fff;font-weight:700;font-size:14px;color:var(--ink);transition:background .2s,border-color .2s}
+.pv-tabs button:hover{border-color:var(--primary)}
+.pv-tabs button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+.pv-tabs .pv-dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 0 2px #fff}
+/* Celular de 360 px: as 5 abas em 2 linhas e a frase das distâncias numa linha só (o lugar dela já está guardado). */
+@media (max-width:380px){.pv-tabs{gap:6px}.pv-tabs button{padding:9px 12px;gap:6px}.pv-linha{font-size:13px;min-height:20px}}
+/* Sem lista (pedido, localização desligada...): as abas ficam no lugar, desabilitadas (nada pula quando a lista chega). */
+.pv-tabs button:disabled{opacity:.5;cursor:not-allowed}
+.pv-tabs button:disabled:hover{border-color:#cfdde4}
+.pv-corpo{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:20px;align-items:start}
+.pv-lista{min-width:0;display:flex;flex-direction:column;gap:12px}
+/* O resumo quebra dentro da coluna dele (o "Ver no mapa" fica sempre à direita, na mesma linha): a altura da linha
+   não muda quando a lista chega. */
+.pv-sumrow{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px 12px}
+.pv:is([data-estado="lista"],[data-estado="carregando"],[data-estado="aguardando"],[data-estado="buscando"]) .pv-sumrow{min-height:22px}
+/* Pedido aberto ou procurando a posição: o cartão fica por cima das linhas de espera, com o lugar da lista já
+   guardado (quando ela chega, nada pula). */
+.pv:is([data-estado="aguardando"],[data-estado="buscando"]) .pv-lista{position:relative}
+.pv:is([data-estado="aguardando"],[data-estado="buscando"]) .pv-estado{position:absolute;top:0;left:0;right:0;z-index:2}
+.pv:is([data-estado="aguardando"],[data-estado="buscando"]) .pv-ecard{box-shadow:var(--sh2);background:#fff}
+/* Perto da pessoa, o "Ver mais na busca completa" tem sempre o mesmo texto: o lugar dele fica guardado enquanto a
+   lista carrega. */
+.pv:not([data-modo="cidade"]):is([data-estado="carregando"],[data-estado="aguardando"],[data-estado="buscando"]) #pvAll[hidden]{display:inline-flex!important;visibility:hidden}
+.pv-sum{font-weight:700;color:var(--ink);font-size:15px;line-height:1.45}
+/* Nos estados sem lista, o resumo só fala (leitor de tela): o cartão já mostra o texto. */
+.pv:not([data-estado="lista"]) .pv-sum{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pv-mapbtn{display:none;align-items:center;gap:8px;min-height:44px;padding:9px 16px;border-radius:12px;background:var(--primary-s);color:var(--primary-d);font-weight:700;font-size:14px}
+.pv-list{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.pv-list li>a,.pv-list .pv-item,.pv-ph{display:flex;align-items:center;gap:12px;padding:12px;border-radius:16px;border:1px solid var(--line);background:#fff;min-width:0;transition:border-color .2s,box-shadow .2s}
+.pv-list li>a:hover,.pv-list li>a.on{border-color:var(--primary);box-shadow:0 0 0 3px rgba(14,124,156,.14)}
+.pv-n{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;flex-shrink:0;color:#fff;font:800 14px var(--fh);box-shadow:0 0 0 2px #fff,0 0 0 3px rgba(15,31,40,.08)}
+.pv-txt{flex:1;min-width:0}
+.pv-txt b{display:block;color:var(--ink);font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-txt small{display:block;color:var(--muted);font-size:13px;line-height:1.35;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-selos{display:flex;flex-wrap:wrap;gap:4px 6px;margin-top:6px}
+.pv-selos span{font-size:12px;font-weight:700;line-height:1.3;padding:2px 8px;border-radius:999px;background:var(--green-s);color:#0B5A31}
+.pv-d{flex-shrink:0;text-align:right;color:var(--ink);font-size:14px;white-space:nowrap}
+.pv-km{font-weight:800}
+.pv-d small{display:block;color:var(--muted);font-size:12px;font-weight:600;margin-top:2px}
+/* Linhas de espera do tamanho das de verdade (nada pula quando a lista chega). */
+.pv-list li.ph .pv-n{background:#e3ecf0;box-shadow:none}
+.pv-list li.ph .pv-txt i{display:block;height:13px;margin:4px 0;border-radius:6px;background:linear-gradient(90deg,#edf3f6 0%,#f7fafb 50%,#edf3f6 100%) 0 0/200% 100%;animation:pvbrilho 1.4s linear infinite}
+.pv-list li.ph .pv-txt i+i{width:60%;height:11px}
+@keyframes pvbrilho{to{background-position:-200% 0}}
+.pv-more{align-self:flex-start;display:none}
+.pv-tipos{align-self:flex-start}
+.pv-all{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-weight:700;color:var(--primary-d);font-size:15px;text-decoration:underline;text-underline-offset:3px}
+.pv-links a{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-weight:600;color:var(--primary-d);font-size:15px}
+.pv-links i{color:var(--coral-d)}
+/* hidden vale mesmo nas peças com display próprio (botões, cartões, mensagens). */
+.pv [hidden],.cid-body [hidden],.geo-aviso [hidden]{display:none!important}
+/* Cartão dos estados sem lista. */
+.pv-estado{display:grid;gap:16px}
+.pv-ecard{display:grid;gap:10px;justify-items:start;padding:20px;border-radius:20px;background:var(--bg2);border:1px solid var(--line)}
+.pv-ecard h3{font-size:19px;letter-spacing:-.015em}
+.pv-ecard p{color:var(--text);font-size:15px;line-height:1.55}
+.pv-ecard .pv-nao{color:#6B4300;background:#FFF6E3;border-radius:12px;padding:10px 12px;font-size:14px}
+.pv-ebts{display:flex;flex-wrap:wrap;gap:10px;margin-top:4px}
+.pv-ebts .btn{padding:12px 18px;font-size:15px}
+.pv-ebts .btn[aria-disabled="true"]{opacity:.75;cursor:progress}
+.pv-ecard .btn-ghost{background:#fff;border:1px solid #cfdde4}
+.pv-atalhos h3{font-family:var(--fb);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.pv-agrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pv-at{display:flex;flex-direction:column;justify-content:center;min-height:48px;min-width:0;padding:9px 12px;border-radius:14px;border:1px solid var(--line);background:#fff;text-align:left;transition:border-color .2s}
+.pv-at:hover{border-color:var(--primary)}
+.pv-at b{display:block;color:var(--ink);font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pv-at small{color:var(--muted);font-size:12.5px}
+.pv-at:disabled,.pv-at[aria-disabled="true"]{opacity:.55;cursor:progress}
+.pv-emsg{font-size:14px;font-weight:600;color:var(--ink)}
+.pv-emsg:empty{display:none}
+.pv-comolib{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 2px;color:var(--primary-d);font-weight:700;font-size:15px;text-decoration:underline;text-underline-offset:3px}
+.pv-comolib i{text-decoration:none}
+/* Coluna do mapa (computador): presa ao rolar, com a legenda embaixo. */
+.pv-mapa{position:sticky;top:96px;height:clamp(460px,70vh,640px);display:flex;flex-direction:column;border-radius:22px;overflow:hidden;border:1px solid var(--line);background:#fff}
+.pv-mapbar{display:none}
+.pv-mapwrap{position:relative;flex:1;min-height:0}
+.pv-mapa .rm-map{position:absolute;inset:0;min-height:0;border:0;border-radius:0}
+.pv-mapmsg{position:absolute;inset:0;z-index:2;display:grid;place-items:center;align-content:center;gap:12px;padding:24px;text-align:center}
+.pv-mapmsg[hidden]{display:none}
+.pv-mapmsg p{max-width:340px;padding:12px 16px;border-radius:14px;background:rgba(5,22,30,.82);color:#fff;font-weight:600;font-size:15px;line-height:1.5}
+.pv-mapmsg .pv-mwait{display:flex;align-items:center;gap:10px}
+.pv-mapa.sem-mapa .pv-mapwrap{background:var(--ilustra) center/cover no-repeat,linear-gradient(180deg,#05161e,#072230)}
+.pv-mapa.sem-mapa .rm-map{visibility:hidden}
+.pv-stats{padding:10px;border-top:1px solid var(--line);background:#fff}
+.pv-stats:empty{display:none}
+.pv-leg{display:flex;flex-wrap:wrap;align-items:center;gap:2px 12px;font-size:12px;font-weight:700;color:var(--muted);margin:0 0 6px 2px}
+.pv-leg-voce{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.pv-leg-voce i{width:12px;height:12px;border-radius:50%;background:#C8442A;border:2px solid #fff;box-shadow:0 0 0 2px rgba(255,107,74,.45);flex-shrink:0}
+/* Pinos numerados do mapa, iguais aos da lista. */
+.pv-pin-w{background:none;border:0}
+.pv-pin{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;color:#fff;font:800 13px var(--fh);border:2px solid #fff;box-shadow:0 4px 12px rgba(5,22,30,.35);transition:transform .2s var(--ease)}
+.pv-pin.on{transform:scale(1.35);box-shadow:0 0 0 4px rgba(255,107,74,.55),0 6px 16px rgba(5,22,30,.4)}
+/* Ponto de partida ("Você (aproximado)" ou o centro da cidade): por cima dos pinos, com um anel claro. */
+.pv-voce-w{background:none;border:0}
+.pv-voce{display:block;width:22px;height:22px;border-radius:50%;background:#C8442A;border:3px solid #fff;box-shadow:0 0 0 6px rgba(255,107,74,.35),0 4px 12px rgba(5,22,30,.45)}
+#realMap:focus-visible,.pv-mapa .leaflet-control a:focus-visible,.pv-mapa .leaflet-popup a:focus-visible{outline-offset:-4px}
+/* Mapa em tela cheia aberto: o .sheet-top (z-index 4) sobe acima do cabeçalho (50), do menu de baixo (45) e do
+   aviso de privacidade (55), senão o mapa ficaria atrás deles; o fundo não rola. */
+body.mapa-cheio{overflow:hidden}
+body.mapa-cheio .sheet-top{z-index:75}
+@media (min-width:900px){.pv-list li.pv-extra{display:block}}
+@media (max-width:899px){
+  .pv{margin:24px 0 40px}
+  .pv-card{margin:0 -20px;padding:16px;border:0;border-radius:0;box-shadow:none}
+  .pv-head{flex-wrap:wrap;align-items:flex-start}
+  .pv-head p{font-size:14.5px}
+  .pv-cityname{font-size:18px}
+  .pv-corpo{grid-template-columns:minmax(0,1fr)}
+  .pv-mapbtn{display:inline-flex}
+  .pv:is([data-estado="lista"],[data-estado="carregando"],[data-estado="aguardando"],[data-estado="buscando"]) .pv-sumrow{min-height:44px}
+  .pv-more{display:inline-flex}
+  .pv-list li.pv-extra{display:none}
+  .pv-list.todos li.pv-extra{display:block}
+  .pv-ebts{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+  .pv-ebts .btn{white-space:normal;text-align:center}
+  .pv-mapa{display:none}
+  .pv-mapa.cheio{display:flex;position:fixed;inset:0;z-index:5;height:auto;border:0;border-radius:0;top:0}
+  .pv-mapa.cheio .pv-mapbar{display:flex;align-items:center;gap:10px;padding:10px 12px calc(10px);padding-top:calc(10px + env(safe-area-inset-top));border-bottom:1px solid var(--line);background:#fff;min-width:0}
+  .pv-mapbar h3{flex:1;min-width:0;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pv-mapclose{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border-radius:12px;background:var(--bg2);color:var(--ink);font-weight:700;font-size:14px;flex-shrink:0}
+  .pv-mapa.cheio .pv-stats{padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+}
+@media (prefers-reduced-motion:reduce){.pv-list li.ph .pv-txt i{animation:none}.pv-pin{transition:none}}
+/* Aviso do pedido de localização: cartão branco fixo logo abaixo do cabeçalho (legível sobre o 3D escuro e sobre
+   a parte branca). Some quando a pessoa responde, escolhe a cidade ou fecha o aviso. */
+.geo-aviso{position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:49;width:min(560px,calc(100% - 32px));display:flex;align-items:flex-start;gap:12px;padding:14px 10px 14px 16px;border-radius:18px;background:#fff;color:var(--ink);border:1px solid var(--line);box-shadow:0 24px 60px rgba(5,22,30,.38)}
+.geo-aviso[hidden]{display:none}
+.geo-aviso>i{color:var(--coral-d);font-size:18px;margin-top:3px}
+.geo-txt{flex:1;min-width:0;display:grid;gap:8px}
+.geo-txt p{font-size:14.5px;line-height:1.5;color:var(--ink)}
+.geo-txt .geo-mais{color:#6B4300;background:#FFF6E3;border-radius:10px;padding:8px 10px;font-size:14px}
+.geo-bts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px}
+.geo-bts .btn{padding:10px 16px;font-size:14px;min-height:44px}
+.geo-bts .link{display:inline-flex;align-items:center;min-height:44px;text-decoration:underline;text-underline-offset:3px;color:var(--primary-d)}
+.geo-x{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;flex-shrink:0;color:var(--ink);font-size:16px;margin:-6px 0 0}
+.geo-x:hover{background:var(--bg2)}
+@media (max-width:860px){.geo-aviso{top:72px;left:12px;right:12px;width:auto;transform:none}}
+@media (max-width:400px){.geo-aviso{padding:10px 6px 10px 12px;gap:6px}.geo-aviso>i{display:none}.geo-txt{gap:6px}.geo-txt p{font-size:14px;line-height:1.45}.geo-bts{gap:0 12px}.geo-bts .btn{padding:9px 14px}}
+/* Seletor de cidade (janela #sheet com .cid): no computador, janela central de 540 px; no celular, tela cheia. */
+.cid-body{display:grid;gap:14px}
+.cid-geo{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:10px 14px;border-radius:14px;border:1px solid #9fd0de;background:var(--primary-s);color:var(--primary-d);text-align:left}
+.cid-geo>i{font-size:18px}
+.cid-geo b{display:block;font-size:15px}
+.cid-geo small{display:block;font-size:13px;color:var(--ink);margin-top:1px}
+.cid-geo:disabled{opacity:.6;cursor:not-allowed}
+.cid-campo{display:grid;gap:6px}
+.cid-campo label{font-weight:700;color:var(--ink);font-size:15px}
+.cid-campo input{width:100%;min-height:48px;padding:12px 14px;border:1px solid #7A8F99;border-radius:12px;font-size:16px;background:#fff;color:var(--ink)}
+.cid-campo input:disabled{background:var(--bg2)}
+.cid-dica{font-size:13px;color:var(--muted)}
+.cid-hint{font-size:14px;font-weight:600;color:var(--ink);min-height:1.3em}
+.cid-lista{list-style:none;display:grid;gap:2px;max-height:min(46vh,380px);overflow:auto;padding:4px;border:1px solid var(--line);border-radius:14px;overscroll-behavior:contain}
+.cid-lista[hidden]{display:none}
+.cid-lista li{display:flex;flex-direction:column;justify-content:center;min-height:48px;padding:8px 12px;border-radius:10px;cursor:pointer;min-width:0}
+.cid-lista li b{color:var(--ink);font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cid-lista li small{color:var(--muted);font-size:12.5px}
+.cid-lista li:hover{background:var(--bg2)}
+.cid-lista li[aria-selected="true"]{background:var(--primary-s);box-shadow:inset 0 0 0 2px var(--primary)}
+.cid-idle{display:grid;gap:14px}
+.cid-idle[hidden]{display:none}
+.cid-grupo h4{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.cid-grade{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.cid-op{display:flex;flex-direction:column;justify-content:center;min-height:48px;min-width:0;padding:9px 12px;border-radius:12px;border:1px solid var(--line);background:#fff;text-align:left;transition:border-color .2s}
+.cid-op:hover{border-color:var(--primary)}
+.cid-op b{display:block;color:var(--ink);font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cid-op small{color:var(--muted);font-size:12.5px}
+.cid-reg{flex-direction:row;align-items:center;gap:10px;width:100%;border-color:#9fd0de;background:var(--primary-s)}
+.cid-reg i{color:var(--coral-d)}
+.cid-erro{display:grid;gap:10px;justify-items:start;color:var(--ink);font-size:14.5px}
+.cid-load{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px}
+.cid-foot{display:flex;flex-wrap:wrap;gap:0 18px;padding-top:6px;border-top:1px solid var(--line)}
+.cid-foot a{display:inline-flex;align-items:center;min-height:44px;color:var(--primary-d);font-weight:700;font-size:14.5px;text-decoration:underline;text-underline-offset:3px}
+@media (max-width:860px){.sheet.cid{height:100vh;height:100dvh;max-height:none;max-width:none;border-radius:0}.sheet.cid .sh-head{padding-top:calc(14px + env(safe-area-inset-top))}}
+@media (prefers-reduced-motion:reduce){.sheet.cid{transition:none}}
 /* lista de espera */
 .wl{position:relative;overflow:hidden;border-radius:40px;padding:60px 56px;color:#fff;display:grid;grid-template-columns:1.25fr .75fr;gap:30px;align-items:center;background:radial-gradient(600px 400px at 85% 20%,rgba(46,230,214,.2),transparent 60%),radial-gradient(500px 400px at 100% 100%,rgba(255,107,74,.2),transparent 60%),linear-gradient(135deg,#0A5C76 0%,#08475C 52%,#082a37 100%)}
 .wl h2{color:#fff;font-size:clamp(28px,3.2vw,44px);letter-spacing:-.035em;margin:12px 0 12px}
@@ -360,9 +536,11 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 .bnav a.near{color:var(--primary-d)}
 .bnav a.near i{color:var(--coral)}
 @media (max-width:860px){.bnav{display:grid}html{scroll-padding-bottom:calc(84px + env(safe-area-inset-bottom))}}
-.ov{position:fixed;inset:0;z-index:60;background:rgba(5,22,30,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
-.ov.open{opacity:1;pointer-events:auto}
-.sheet{background:#fff;width:100%;max-width:760px;max-height:92vh;border-radius:28px 28px 0 0;overflow:auto;transform:translateY(40px);transition:transform .35s var(--ease);position:relative;overscroll-behavior:contain}
+/* Fechada, a janela sai do Tab e do leitor de tela (visibility: hidden depois do esmaecer). */
+.ov{position:fixed;inset:0;z-index:60;background:rgba(5,22,30,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;visibility:hidden;transition:opacity .25s,visibility 0s linear .25s}
+.ov.open{opacity:1;pointer-events:auto;visibility:visible;transition:opacity .25s}
+/* scroll-padding: o campo que recebe o foco não fica atrás do cabeçalho fixo da janela. */
+.sheet{background:#fff;width:100%;max-width:760px;max-height:92vh;border-radius:28px 28px 0 0;overflow:auto;transform:translateY(40px);transition:transform .35s var(--ease);position:relative;overscroll-behavior:contain;scroll-padding-top:84px}
 .ov.open .sheet{transform:none}
 .sheet.sm{max-width:540px}
 @media (min-width:861px){.ov{align-items:center}.sheet{border-radius:28px;max-height:90vh}}
@@ -402,11 +580,8 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 .cat .ic-lab{width:96px;height:96px;display:grid;place-items:center;font-size:40px;color:#6C4BD8;filter:drop-shadow(0 12px 14px rgba(15,31,40,.10))}
 .cat small i{font-size:10px;margin-left:3px}
 
-/* lista das clínicas reais (maior) */
-.rm-list{max-height:none}
+/* balão do mapa: link da página do local */
 .rm-pop a{display:inline-block;margin-top:6px;color:var(--primary);font-weight:700;font-size:13px}
-.rm-more{display:flex;gap:10px;flex-wrap:wrap}
-.rm-more .btn{padding:12px 18px;font-size:14px}
 
 /* como funciona (honesto, sem números) */
 .how{position:relative;overflow:hidden;border-radius:40px;color:#fff;padding:64px 56px;background:radial-gradient(800px 500px at 20% 30%,rgba(46,230,214,.18),transparent 60%),radial-gradient(700px 500px at 90% 100%,rgba(255,107,74,.16),transparent 60%),linear-gradient(160deg,#071f2a,#05161e)}
@@ -423,16 +598,6 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 .how-more{margin-top:18px;font-size:14.5px}
 .how-more a{color:var(--aqua2);font-weight:600;text-decoration:underline;text-underline-offset:3px}
 @media (max-width:900px){.how{padding:44px 22px;border-radius:30px}.how-steps{grid-template-columns:1fr}}
-
-/* cidades */
-.cities{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
-.city{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;border:1px solid var(--line);background:#fff;transition:box-shadow .3s,border-color .3s,transform .3s var(--ease)}
-.city:hover{box-shadow:var(--sh1);border-color:transparent;transform:translateY(-2px)}
-.city i{color:var(--coral)}
-.city b{display:block;color:var(--ink);font-size:15px}
-.city small{color:var(--muted);font-size:12.5px}
-.city .uf{margin-left:auto;font:700 12px var(--fb);color:var(--primary-d);background:var(--primary-s);padding:3px 8px;border-radius:8px}
-.cities-empty{color:var(--muted);font-size:15px}
 
 /* aviso de emergência (fixo e discreto) */
 .sos{display:flex;align-items:flex-start;gap:8px;margin-top:18px;font-size:13.5px;line-height:1.45;color:rgba(255,255,255,.8)}
@@ -463,7 +628,7 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 
 /* para clínicas */
 .partner .p-in{min-width:0;max-width:min(620px,100%)}
-@media (max-width:520px){.p-cta .btn,.how-cta .btn,.rm-more .btn{white-space:normal;text-align:center;flex:1 1 100%}}
+@media (max-width:520px){.p-cta .btn,.how-cta .btn{white-space:normal;text-align:center;flex:1 1 100%}}
 .p-perks{display:flex;gap:10px 22px;flex-wrap:wrap;margin-top:22px;font-size:14px;color:rgba(255,255,255,.85)}
 
 /* agendados */
@@ -507,8 +672,6 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
   .sec{margin:40px 0}
   .sec-h{margin-bottom:16px}
   .sec-h p{font-size:14.5px}
-  .rm-map{min-height:280px}
-  .rm-list li:nth-child(n+6){display:none}
   .how{padding:30px 18px;border-radius:26px}
   .how::before{display:none}
   .how h2{font-size:24px;margin:8px 0 6px}
@@ -520,9 +683,6 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
   .how-steps .n{width:34px;height:34px;border-radius:11px;font-size:15px;margin:0;grid-row:span 2}
   .how-steps b{font-size:16px}
   .how-steps p{font-size:13.5px;margin-top:3px;line-height:1.5}
-  .cities{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -20px;padding:2px 20px 8px;gap:10px}
-  .cities::-webkit-scrollbar{display:none}
-  .city{flex:0 0 210px;scroll-snap-align:start}
   .wl{padding:30px 20px}
   .wl-ic{display:none}
   .wl p{font-size:15.5px}
@@ -546,6 +706,8 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
   .h3d-lite .more,.sec-h .link{min-height:44px}
   summary{min-height:44px;align-items:center}
   #realMap .leaflet-bar a{width:44px;height:44px;line-height:44px;font-size:20px}
+  #realMap a.leaflet-popup-close-button{width:44px;height:44px;font:20px/44px Tahoma,Verdana,sans-serif}
+  #realMap .leaflet-popup-content{margin-right:40px}
   .sh-head .x{width:44px;height:44px}
 }
 </style>
@@ -565,12 +727,25 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
     </nav>
     <button class="addr" id="addrBtn" type="button">
       <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
-      <span style="min-width:0"><small id="addrSmall">Exemplo</small><b id="addrTxt">Av. Paulista (São Paulo)</b><span class="sr">: trocar o ponto de partida do mapa</span></span>
+      <span style="min-width:0"><small id="addrSmall">Onde você está?</small><b id="addrTxt">Escolher cidade</b><span class="sr">: trocar a cidade</span></span>
       <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
     </button>
     <a class="partner-link" href="reivindicar.html">Para clínicas</a>
   </div>
 </header>
+
+<!-- Aviso do pedido de localização (aparece ao abrir, junto da pergunta do navegador). O leitor de tela ouve o
+     #geoStatus, separado: um status que nasce escondido pode não ser anunciado. -->
+<div class="geo-aviso" id="geoAviso" role="region" aria-label="Pedido de localização" hidden>
+  <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+  <div class="geo-txt">
+    <p>Para mostrar as clínicas mais perto, o IMED pede a sua localização. Usamos só a região aproximada, sem o ponto exato, e não gravamos.</p>
+    <div class="geo-bts"><button class="btn btn-primary" type="button" data-city-open>Prefiro escolher a cidade</button><a class="link" href="privacidade.html#localizacao">Saiba mais</a></div>
+    <p class="geo-mais" id="geoAvisoMais" hidden>Não apareceu a pergunta? Toque no ícone de localização ao lado do endereço do site ou escolha a cidade.</p>
+  </div>
+  <button class="geo-x" id="geoAvisoX" type="button" aria-label="Fechar aviso"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+</div>
+<p class="sr" id="geoStatus" role="status"></p>
 
 <!-- ======================= INÍCIO ======================= -->
 <div data-view="inicio">
@@ -583,11 +758,11 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
         <p class="lead">Veja no mapa clínicas, laboratórios e hospitais reais perto de você e peça seu agendamento. O IMED confirma com a clínica e avisa você.</p>
         <form class="hsearch" id="heroForm" autocomplete="off" role="search" action="perto.html">
           <div class="hs-field"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="heroQ" placeholder="Qual exame você precisa?" aria-label="Qual exame você precisa?" aria-autocomplete="list" aria-controls="heroSug" aria-expanded="false" role="combobox"></div>
-          <button type="button" class="hs-loc" id="heroLoc"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span id="heroAddr">Exemplo: Av. Paulista</span><span class="sr">: trocar o ponto de partida do mapa</span></button>
+          <button type="button" class="hs-loc" id="heroLoc"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span id="heroAddr">Escolher cidade</span><span class="sr">: trocar a cidade</span></button>
           <button class="hs-go" type="submit">Buscar</button>
           <div class="hs-sug" id="heroSug" role="listbox" aria-label="Exames" tabindex="-1" hidden></div>
         </form>
-        <a class="near-cta" href="perto.html?usar=localizacao" id="nearCta">
+        <a class="near-cta" href="#reais" id="nearCta">
           <span class="ic" aria-hidden="true"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i></span>
           <span><b>Encontrar clínicas perto de mim</b><small>Clínicas, laboratórios e hospitais reais, no mapa</small></span>
           <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
@@ -597,7 +772,7 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
         <button class="install-hero install-auto hide" type="button" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt="" width="40" height="40" loading="lazy"></span><span><b>Instale o app IMED</b><small>Abre em tela cheia, como um aplicativo</small></span><i class="fa-solid fa-download" aria-hidden="true"></i></button>
       </div>
     </div>
-    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite"></div><p class="sr" role="status" id="heroLiteStatus"></p></div>
+    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite"></div><p class="sr" id="heroLiteStatus"></p></div>
     <div class="hero-hint"><i class="fa-solid fa-computer-mouse" aria-hidden="true"></i> Arraste para girar · clique num local</div>
     <button class="h3d-pause" id="heroPause" type="button" hidden><i class="fa-solid fa-pause" aria-hidden="true"></i><span>Pausar animação</span></button>
     <span class="scroll-cue" aria-hidden="true"></span>
@@ -605,24 +780,52 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 
   <div class="sheet-top">
     <main class="wrap" id="conteudo" tabindex="-1">
-      <section class="sec rv" style="margin-top:40px" aria-labelledby="catsTitle">
-        <div class="sec-h"><div><span class="kicker">Exames</span><h2 id="catsTitle">O que você precisa?</h2><p>Escolha o exame e veja no mapa os lugares perto de você.</p></div><a class="link" href="exames/">Guias dos exames <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
-        <div class="cats" id="cats"></div>
-      </section>
-
-      <section class="sec rv" id="reais" aria-labelledby="reaisTitle">
-        <div class="sec-h"><div><span class="kicker">Cadastro oficial · Ministério da Saúde</span><h2 id="reaisTitle">Clínicas reais perto de você</h2><p>Clínicas, laboratórios, centros de diagnóstico e hospitais ativos no CNES, com endereço e contato, e as clínicas parceiras do IMED.</p></div><a class="link" href="perto.html?usar=localizacao">Ver todas <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
-        <div class="rm">
-          <div class="rm-map" id="realMap" role="region" aria-label="Mapa com clínicas reais"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span>Carregando o mapa…</div></div>
-          <div class="rm-side">
-            <p class="rm-ex" id="realExample"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span><b>Exemplo: Av. Paulista (São Paulo).</b> <button class="link" id="realChoose" type="button">Escolha sua cidade</button> ou use sua localização para ver os locais perto de você.</span></p>
-            <p class="rm-where"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Em até 2 km <b id="realWhere">da Av. Paulista</b> · <button class="link" id="realPlace" type="button">trocar</button></p>
-            <div class="rm-stats" id="realStats"></div>
-            <ol class="rm-list" id="realList"></ol>
-            <div class="rm-more"><a class="btn btn-coral" href="perto.html?usar=localizacao"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>Ver todas perto de mim</a><a class="btn btn-ghost" href="cidades/">Por cidade</a></div>
-            <p class="rm-src">Endereços do CNES, base pública do Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS. Valores e horários são confirmados com o local.</p>
+      <section class="pv" id="reais" aria-labelledby="reaisTitle" data-estado="carregando">
+        <div class="pv-card">
+          <div class="pv-head">
+            <div><span class="kicker">Cadastro oficial · Ministério da Saúde</span><h2 id="reaisTitle" tabindex="-1">Clínicas perto de você</h2><p>Clínicas, laboratórios, centros de imagem e hospitais do cadastro oficial (CNES) e as clínicas parceiras do IMED, do mais perto para o mais longe.</p></div>
+            <a class="link pv-busca" href="perto.html">Busca completa <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+          </div>
+          <div class="pv-cidade">
+            <span class="pv-rot" id="cityRot">Onde você está?</span>
+            <button class="pv-citybtn" id="cityBtn" type="button"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span class="pv-cityname" id="cityName">Escolher cidade</span><span class="pv-trocar" id="cityTrocar" hidden>Trocar<span class="sr">: trocar a cidade</span></span><i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
+            <div class="pv-linha"><p id="cityLine" hidden></p><button class="pv-geobtn" id="useGeoBtn" type="button" aria-controls="pvGeoHelp" hidden><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span>Usar minha localização</span></button></div>
+            <p class="pv-ajuda" id="pvGeoHelp" hidden>Para liberar: no computador, clique no ícone ao lado do endereço do site (cadeado ou ajustes) e permita a Localização. No Android, toque nesse ícone &gt; Permissões &gt; Localização. No iPhone, toque em aA ao lado do endereço &gt; Ajustes do Site &gt; Localização &gt; Permitir. Depois, toque em Usar minha localização.</p>
+          </div>
+          <div class="pv-tabs" id="pvTabs" role="group" aria-label="Tipo de local">
+            <button type="button" data-tipo="" aria-pressed="true">Todos</button>
+            <button type="button" data-tipo="imagem" aria-pressed="false"><i class="pv-dot" style="background:#0E7C9C" aria-hidden="true"></i>Imagem</button>
+            <button type="button" data-tipo="laboratorio" aria-pressed="false"><i class="pv-dot" style="background:#6C4BD8" aria-hidden="true"></i>Laboratórios</button>
+            <button type="button" data-tipo="clinica" aria-pressed="false"><i class="pv-dot" style="background:#137A44" aria-hidden="true"></i>Clínicas</button>
+            <button type="button" data-tipo="hospital" aria-pressed="false"><i class="pv-dot" style="background:#BF3B20" aria-hidden="true"></i>Hospitais</button>
+          </div>
+          <div class="pv-corpo">
+            <div class="pv-lista">
+              <div class="pv-estado" id="pvEstado" hidden></div>
+              <div class="pv-sumrow"><p class="pv-sum" id="pvSum" role="status"></p><button class="pv-mapbtn" id="mapOpen" type="button" hidden><i class="fa-solid fa-map" aria-hidden="true"></i>Ver no mapa</button></div>
+              <button class="btn btn-ghost pv-tipos" id="pvTipos" type="button" hidden>Ver todos os tipos</button>
+              <ol class="pv-list" id="realList" aria-busy="true"><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph pv-extra" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph pv-extra" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph pv-extra" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li><li class="ph pv-extra" aria-hidden="true"><span class="pv-ph"><span class="pv-n"></span><span class="pv-txt"><i></i><i></i></span></span></li></ol>
+              <button class="btn btn-ghost pv-more" id="pvMore" type="button" hidden>Mostrar mais 4</button>
+              <a class="pv-all" id="pvAll" href="perto.html?usar=localizacao" hidden><span>Ver mais na busca completa, com filtros</span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>
+              <p class="pv-links"><a href="cidades/"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Todas as cidades</a></p>
+              <p class="rm-src">Endereços do CNES, base pública do Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS. Valores e horários são confirmados com o local.</p>
+            </div>
+            <div class="pv-mapa sem-mapa sem-origem" id="pvMapa">
+              <div class="pv-mapbar"><button class="pv-mapclose" id="mapClose" type="button"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>Voltar para a lista</button><h3 id="mapTitle">Mapa</h3></div>
+              <div class="pv-mapwrap">
+                <div class="rm-map" id="realMap" role="region" aria-label="Mapa dos locais" aria-describedby="realMapDesc"></div>
+                <div class="pv-mapmsg" id="pvMapMsg" hidden></div>
+              </div>
+              <p class="sr" id="realMapDesc">Mapa com os locais do cadastro oficial perto do ponto escolhido. Os números são os mesmos da lista; pelo teclado ou leitor de tela, use a lista.</p>
+              <div class="pv-stats" id="realStats"></div>
+            </div>
           </div>
         </div>
+      </section>
+
+      <section class="sec rv" aria-labelledby="catsTitle">
+        <div class="sec-h"><div><span class="kicker">Exames</span><h2 id="catsTitle">O que você precisa?</h2><p>Escolha o exame e veja no mapa os lugares perto de você.</p></div><a class="link" href="exames/">Guias dos exames <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
+        <div class="cats" id="cats"></div>
       </section>
 
       <section class="sec rv" aria-labelledby="howTitle">
@@ -635,14 +838,9 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
             <li><span class="n">2</span><b>Veja os dados oficiais</b><p>Endereço, telefone e serviços vêm do CNES, do Ministério da Saúde. Preço só aparece quando a própria clínica informou.</p></li>
             <li><span class="n">3</span><b>Agende</b><p>Escolha um horário livre quando a clínica parceira tem agenda no IMED. Nos outros locais, diga o dia e o período: o IMED fala com o local e confirma com você. Acompanhe em Meus pedidos.</p></li>
           </ol>
-          <div class="how-cta"><a class="btn btn-coral" href="perto.html?usar=localizacao">Começar pela minha localização <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="cidades/">Escolher uma cidade</a></div>
+          <div class="how-cta"><a class="btn btn-coral" href="perto.html?usar=localizacao">Começar pela minha localização <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><button class="btn btn-glass" type="button" data-city-open>Escolher uma cidade</button></div>
           <p class="how-more"><a href="como-funciona.html">Como ordenamos os resultados, o que o selo garante e como funcionam as avaliações <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></p>
         </div>
-      </section>
-
-      <section class="sec rv" id="cidades" aria-labelledby="cidadesTitle">
-        <div class="sec-h"><div><span class="kicker">Clínicas por cidade</span><h2 id="cidadesTitle">Cidades com o cadastro oficial no IMED</h2><p>Veja os estabelecimentos de saúde de cada cidade, por tipo.</p></div><a class="link" href="cidades/">Todas as cidades <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a></div>
-        <div class="cities" id="cities"><p class="cities-empty">Veja a lista completa em <a class="link" href="cidades/">Clínicas por cidade</a>.</p></div>
       </section>
 
       <section class="sec rv" id="lista" aria-labelledby="teleTitle">
@@ -693,7 +891,7 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
           <details><summary>O IMED cobra alguma coisa?</summary><p>Não. O IMED é gratuito para você. Se houver cobrança pelo exame ou pela consulta, o pagamento é feito direto no local. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp: se alguém pedir em nome do IMED, não pague e avise pelo <a class="link" href="contato.html">Fale com o IMED</a>.</p></details>
           <details><summary>Como funciona o pedido de agendamento?</summary><p>Na página do local, você escolhe o exame. Se a clínica parceira tem agenda no IMED, você escolhe um horário livre e ele já fica confirmado. Nos outros locais, você diz o dia e o período que prefere: o IMED fala com o local e entra em contato com você para confirmar. Você acompanha a situação em <a class="link" href="#agenda" data-go="agenda">Meus pedidos</a>.</p></details>
           <details><summary>O IMED mostra preços?</summary><p>Só das clínicas parceiras que informaram o preço no painel do IMED. Quando não há preço informado, mostramos “sob consulta”: o valor é confirmado com a clínica. O IMED não estima nem inventa preços.</p></details>
-          <details><summary>O que o IMED faz com a minha localização e os meus dados?</summary><p>A localização só é usada com sua permissão, para buscar lugares perto de você. Ela sai do aparelho de forma aproximada, sem o ponto exato onde você está, e não guardamos sua posição. Isso não diminui a busca: você vê os locais da região inteira e escolhe a distância. Os dados do pedido vão só para o IMED e para o local escolhido e ficam em servidor no Brasil. O IMED não tem anúncios nem rastreadores de anúncio. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p></details>
+          <details><summary>O que o IMED faz com a minha localização e os meus dados?</summary><p>Ao abrir o IMED, o navegador pergunta se você permite usar a localização, para mostrar os locais perto de você. Ela sai do aparelho de forma aproximada, sem o ponto exato onde você está, e não guardamos sua posição. Se preferir, escolha a cidade: você vê os locais perto do centro dela. A localização aproximada não diminui a busca: você vê os locais da região inteira e escolhe a distância. Os dados do pedido vão só para o IMED e para o local escolhido e ficam em servidor no Brasil. O IMED não tem anúncios nem rastreadores de anúncio. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p></details>
           <div id="faqMore" hidden>
           <details><summary>Em que ordem aparecem os resultados?</summary><p>Do mais perto para o mais longe. Ninguém paga para aparecer primeiro, e selo não se vende. Veja <a class="link" href="como-funciona.html#ordem">Como funciona</a>.</p></details>
           <details><summary>As avaliações são de verdade?</summary><p>Sim. Só pode avaliar quem fez um pedido pelo IMED e teve o atendimento concluído, uma vez por pedido. Sem avaliações, não mostramos nota. Veja <a class="link" href="como-funciona.html#avaliacoes">como funcionam as avaliações</a>.</p></details>

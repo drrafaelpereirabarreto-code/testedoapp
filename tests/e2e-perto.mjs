@@ -90,9 +90,10 @@ const CNES_ROWS = [
 ];
 
 // data: estabelecimentos do banco simulado. Sem data, o banco tem os mesmos que a última busca devolveu.
-async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, points, ratings, reviews, scheduled = [], rest, data } = {}) {
+// viewport: outro tamanho de tela (o celular é 390×844).
+async function newPage(browser, { geo = true, mobile = false, viewport, fn, rpc, overpass, insert, cnesRpc, points, ratings, reviews, scheduled = [], rest, data } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
+    viewport: viewport ?? (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block',
     ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
@@ -1658,6 +1659,157 @@ await scenario('cidade sendo importada: a contagem parcial não aparece como tot
   assert.doesNotMatch(await page.textContent('#list'), /Mostrando \d+ de/);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+/* ======================= "Antes de ir: o que perguntar ao ligar" (quem não é parceiro) ======================= */
+const COPY_OK = () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } });
+// Nenhuma forma de copiar funciona: a área de transferência nega e o jeito antigo (execCommand) também falha.
+const COPY_DENY = () => {
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('negado', 'NotAllowedError')) } });
+  document.execCommand = () => false;
+};
+const sheetQuestions = (page) => page.$$eval('#sheet .cq-list li', (els) => els.map((e) => e.textContent));
+const FOOT = 'Só perguntas: as respostas vêm do próprio local. Sobre o preparo, siga também a orientação do seu médico.';
+
+await scenario('antes de ir: o que perguntar ao ligar na ficha do cadastro oficial, com o exame da busca, e nada no parceiro', async () => {
+  const { page, errors, context } = await newPage(browser, { fn: fullFn });
+  await context.addInitScript(COPY_OK);
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+  await ready(page);
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await page.waitForSelector('.sh-ov.open');
+  const box = page.locator('#sheet details.cq');
+  assert.equal(await box.count(), 1);
+  assert.equal(await box.getAttribute('open'), null, 'fechada até o toque');
+  assert.equal(await page.locator('#sheet .cq-list').isVisible(), false);
+  assert.equal(await page.locator('#sheet .dt-acts a:has-text("Ligar")').count(), 1, 'Ligar só nas ações da ficha');
+  assert.equal(await page.locator('#sheet .cq a[href^="tel:"]').count(), 0);
+  assert.equal(await page.getAttribute('#sheet .dt-full a', 'href'), 'local.html?cnes=2077485&exame=rm', 'a página completa abre com o exame da busca');
+  await page.click('#sheet .cq summary');
+  assert.equal(await box.getAttribute('open'), '');
+  const qs = await sheetQuestions(page);
+  assert.equal(qs[0], 'Vocês fazem ressonância magnética?', 'sempre primeiro: o serviço do cadastro oficial vem do nome do local');
+  assert.ok(qs.includes('Precisa agendar ou é por ordem de chegada?'));
+  assert.ok(qs.includes('Precisa de jejum ou de outro preparo para a ressonância magnética?'));
+  assert.ok(qs.includes('Quanto custa a ressonância magnética no particular?'));
+  assert.ok(qs.includes('Que documentos preciso levar? Precisa do pedido médico?'));
+  assert.ok(!qs.some((q) => /SUS/.test(q)), 'o cadastro oficial diz que não atende SUS: sem a pergunta');
+  assert.ok(!/R\$/.test(await page.textContent('#sheet .cq')), 'só perguntas, sem preço');
+  assert.equal(await page.textContent('#sheet .cq .src'), `${FOOT} Se preferir, peça ao IMED para agendar por você.`, 'sem o SUS, o pedido ao IMED como sempre');
+  await page.click('#sheet [data-act="copy-questions"]');
+  await page.waitForFunction(() => document.querySelector('#sheet .cq-msg')?.textContent);
+  assert.equal(await page.textContent('#sheet .cq-msg'), 'Perguntas copiadas. É só colar onde quiser.');
+  assert.match(await page.evaluate(() => window.__copied), /^Hospital Santa Exemplo · \(11\) 3141-1000\nO que perguntar ao ligar:\n1\. Vocês fazem ressonância magnética\?\n2\. /);
+  assert.ok(await page.isVisible('.sh-ov.open'), 'copiar não fecha a ficha');
+  await shot(page, '34-perguntas-ao-ligar');
+  // Teclado: Enter no título fecha a caixa, e o Tab continua dentro da ficha.
+  await page.focus('#sheet .cq summary');
+  await page.keyboard.press('Enter');
+  assert.equal(await box.getAttribute('open'), null);
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press('Tab');
+    assert.ok(await page.evaluate(() => !!document.activeElement?.closest('#sheet')), 'o foco fica na ficha');
+  }
+  await page.keyboard.press('Escape');
+  // Parceiro: preço e agenda vêm da clínica; sem roteiro, e a página completa continua igual.
+  await page.click('.pc:has-text("Imagem Paulista Verificada")');
+  await page.waitForSelector('.sh-ov.open');
+  assert.equal(await page.locator('#sheet .cq').count(), 0);
+  assert.equal(await page.getAttribute('#sheet .dt-full a', 'href'), `local.html?id=${PARTNER_ID}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('antes de ir: laboratório que atende SUS pergunta o SUS, o jejum e o prazo; o local do mapa público também tem o roteiro', async () => {
+  const { page, errors, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.click('.pc:has-text("Laboratório Análise Paulista")');
+  await page.waitForSelector('.sh-ov.open');
+  await page.click('#sheet .cq summary');
+  const qs = await sheetQuestions(page);
+  assert.equal(qs[0], 'Vocês fazem todos os exames do meu pedido médico?', 'sem exame na busca: vale o tipo do local');
+  assert.ok(qs.includes('Atendem pelo SUS? Precisa de encaminhamento do posto de saúde?'), 'o cadastro oficial diz que atende SUS');
+  assert.ok(qs.includes('Precisa de jejum? De quantas horas?'));
+  assert.ok(qs.includes('Em quantos dias sai o resultado?'));
+  assert.ok(qs.includes('Fazem coleta em casa?'));
+  // Na ficha, o aviso do SUS do pedido só aparece no formulário: a própria caixa avisa que o IMED não marca pelo SUS.
+  assert.equal(await page.textContent('#sheet .cq .src'),
+    `${FOOT} Se preferir, peça ao IMED para agendar por você (particular ou convênio). Pelo SUS, o agendamento começa no posto de saúde (UBS).`);
+  assert.equal(await page.getAttribute('#sheet .dt-full a', 'href'), 'local.html?cnes=6543210', 'sem exame na busca, o endereço de sempre');
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  // Local do mapa público (OpenStreetMap): também não é parceiro. Clínica do IMED (demonstração): sem roteiro.
+  const osm = await newPage(browser);
+  await osm.page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await osm.page.click('.pc:has-text("Laboratório Vida")');
+  await osm.page.waitForSelector('.sh-ov.open');
+  assert.equal(await osm.page.locator('#sheet .cq').count(), 1);
+  await osm.page.click('#sheet .cq summary');
+  const oq = await sheetQuestions(osm.page);
+  assert.ok(oq.includes('Fazem coleta em casa?'));
+  assert.ok(!oq.some((q) => /SUS/.test(q)), 'sem o dado do SUS, sem a pergunta');
+  await osm.page.keyboard.press('Escape');
+  await osm.page.click('.pc.imed >> nth=0');
+  await osm.page.waitForSelector('.sh-ov.open');
+  assert.equal(await osm.page.locator('#sheet .cq').count(), 0);
+  assert.deepEqual(osm.errors, []);
+  await osm.context.close();
+});
+
+await scenario('celular (390px): perguntas ao ligar abertas na ficha, sem rolagem lateral e com alvos de toque grandes', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await page.waitForSelector('.sh-ov.open');
+  const h = await page.$eval('#sheet .cq summary', (el) => el.getBoundingClientRect().height);
+  assert.ok(h >= 44, `título da caixa com ${h}px de altura`);
+  await page.click('#sheet .cq summary');
+  await page.locator('#sheet [data-act="copy-questions"]').scrollIntoViewIfNeeded();
+  const b = await page.$eval('#sheet [data-act="copy-questions"]', (el) => el.getBoundingClientRect().height);
+  assert.ok(b >= 44, `"Copiar as perguntas" com ${b}px de altura`);
+  const ov = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - window.innerWidth, document.querySelector('#sheet').scrollWidth - document.querySelector('#sheet').clientWidth));
+  assert.ok(ov <= 0, `sem rolagem lateral (${ov}px)`);
+  await shot(page, '35-celular-perguntas');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular (360 e 390px): sem copiar sozinho, o aviso e o texto selecionado ficam na tela da ficha, acima do botão fixo', async () => {
+  for (const viewport of [{ width: 360, height: 740 }, { width: 390, height: 844 }]) {
+    const w = viewport.width;
+    const { page, errors, context } = await newPage(browser, { mobile: true, viewport, fn: fullFn });
+    await context.addInitScript(COPY_DENY);
+    await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+    await ready(page);
+    await page.click('.pc:has-text("Hospital Santa Exemplo")');
+    await page.waitForSelector('.sh-ov.open');
+    await page.click('#sheet .cq summary');
+    await page.click('#sheet [data-act="copy-questions"]');
+    await page.waitForSelector('#sheet .cq-txt:not([hidden])');
+    const m = await page.evaluate(() => {
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const t = document.querySelector('#sheet .cq-txt');
+      return { head: r('#sheet .sh-head').bottom, foot: r('#sheet .sh-foot').top, msg: r('#sheet .cq-msg'), txt: r('#sheet .cq-txt'), focused: document.activeElement === t, sel: [t.selectionStart, t.selectionEnd, t.value.length] };
+    });
+    assert.ok(m.msg.top >= m.head && m.msg.bottom <= m.foot,
+      `${w}px: o aviso aparece inteiro entre o título e o botão fixo (${Math.round(m.msg.top)} a ${Math.round(m.msg.bottom)} px; título até ${Math.round(m.head)} px, botão a partir de ${Math.round(m.foot)} px)`);
+    assert.ok(m.txt.top > m.msg.bottom && m.txt.top <= m.foot - 60, `${w}px: o quadro começa logo abaixo do aviso, na tela (${Math.round(m.txt.top)} px)`);
+    assert.ok(m.focused && m.sel[0] === 0 && m.sel[1] === m.sel[2], `${w}px: o texto todo fica selecionado`);
+    assert.match(await page.textContent('#sheet .cq-msg'), /^Não foi possível copiar sozinho\. As perguntas estão selecionadas no quadro abaixo/);
+    const ov = await page.evaluate(() => Math.max(document.documentElement.scrollWidth - window.innerWidth, document.querySelector('#sheet').scrollWidth - document.querySelector('#sheet').clientWidth));
+    assert.ok(ov <= 0, `${w}px: sem rolagem lateral (${ov}px)`);
+    await shot(page, `36-celular-${w}-sem-copiar`);
+    // O Tab continua dentro da ficha com o quadro à mostra.
+    for (let i = 0; i < 3; i += 1) {
+      await page.keyboard.press('Tab');
+      assert.ok(await page.evaluate(() => !!document.activeElement?.closest('#sheet')), `${w}px: o foco fica na ficha`);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await browser.close();

@@ -1,6 +1,11 @@
 // Página inicial do IMED. Só mostra o que vem do banco (Supabase) ou do cadastro oficial (CNES):
 // nada de preço, nota, horário ou número inventado. Sem dado, a página mostra um texto neutro.
-// Carregado depois de config.js, db.js e data.js (EXAMS e PLACES).
+// Carregado depois de config.js, db.js e data.js (EXAMS e PLACES.paulista, o exemplo da Av. Paulista).
+// A tela "Clínicas perto de você" (#reais), com o pedido de localização ao abrir e o seletor de cidade, fica em
+// inicio-perto.js; as regras e os textos dela, em inicio-core.js. Daqui ela recebe as chamadas ao banco, a janela
+// (#ov/#sheet), o Leaflet e as cidades; e avisa quando a origem muda (o 3D, a lista leve e a fonte acompanham).
+import { iniciarPerto } from './inicio-perto.js';
+import { deCidade, textoLeve, textoDistancia, ehAproximado, TIPOS } from './inicio-core.js';
 
 const C = window.IMED_CONFIG || {};
 const $ = (s) => document.querySelector(s);
@@ -13,7 +18,9 @@ const ico = (k) => `assets/img/ico-${k}.webp`;
 // Ícone na medida: o navegador escolhe a versão de 96 px ou a de 300 px pelo tamanho na tela.
 const icoSet = (k, px) => `src="${ico(k)}" srcset="assets/img/ico-${k}-96.webp 96w, ${ico(k)} 300w" sizes="${px}px" width="${px}" height="${px}"`;
 const fmtInt = (n) => Number(n).toLocaleString('pt-BR');
-const fmtDist = (m) => (m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + ' m' : (m / 1000).toFixed(1).replace('.', ',') + ' km');
+// Distância de um local, igual à da lista da tela "Clínicas perto de você" (e da busca completa): "420 m", "1,2 km",
+// "12 km", com "~" quando a posição veio do endereço (não do cadastro).
+const distRow = (r) => textoDistancia(r.distance_m, ehAproximado(r));
 const round3 = (v) => Math.round(v * 1000) / 1000;
 
 const store = {
@@ -24,31 +31,32 @@ const store = {
 // Favoritos de clínicas fictícias da versão antiga: ninguém mais lê essa chave.
 try { localStorage.removeItem('imed_fav'); } catch { /* sem armazenamento */ }
 
-// Ponto de partida do mapa: a localização do aparelho (here, só nesta visita), uma cidade com o cadastro oficial
-// (city: centro achado pela geocodificação da busca, guardado no aparelho) ou um bairro de São Paulo (place).
-// Até a pessoa escolher, é só um exemplo, e a página diz isso: "Exemplo: Av. Paulista (São Paulo)".
-const validCity = (c) => !!(c && typeof c === 'object' && c.name && /^[A-Z]{2}$/.test(c.uf || '') && Number.isFinite(c.lat) && Number.isFinite(c.lng));
-const savedPlace = store.get('place', null), savedCity = store.get('cidade', null);
-const S = { view: 'inicio', place: PLACES[savedPlace] ? savedPlace : 'paulista', city: validCity(savedCity) ? savedCity : null, here: null, hl: null };
-S.chosen = !!(S.city || PLACES[savedPlace]);
-const origin = () => S.here || S.city || PLACES[S.place];
-// Cidades que levam "do" (do Rio de Janeiro); as outras, "de". Mesma regra de confianca.js (deCidade).
-const DO_CIDADE = new Set(['Rio de Janeiro', 'Rio Grande', 'Recife', 'Crato', 'Guarujá']);
-const deCidade = (n) => `${DO_CIDADE.has(n) ? 'do' : 'de'} ${n}`;
-// n: nome; s: nome curto; de: com a preposição ("da Av. Paulista"); me: rótulo do ponto no mapa 3D.
+const S = { view: 'inicio', hl: null };
+// Ponto de partida do topo (3D, lista leve e fonte), o mesmo da tela "Clínicas perto de você":
+// a localização do aparelho (só nesta visita, arredondada), a cidade escolhida ou, sem nenhuma das duas, o exemplo
+// da Av. Paulista, marcado como exemplo. Enquanto o pedido de localização espera resposta (até 8 s), o 3D mostra só
+// a cidade, sem rótulos, e a lista leve mostra linhas de espera.
+let PERTO = null;
+function topo() {
+  const t = PERTO ? PERTO.topo() : { modo: null };
+  return t.modo === 'exemplo' ? { ...t, lat: PLACES.paulista.lat, lng: PLACES.paulista.lng } : t;
+}
+const origin = () => { const t = topo(); return t.modo ? t : PLACES.paulista; };
+// de: com a preposição ("da Av. Paulista"); me: rótulo do ponto no mapa 3D.
 function where() {
-  if (S.here) return { n: 'Minha localização', s: 'Minha localização', de: 'da sua localização', me: 'Você está aqui' };
-  if (S.city) return { n: `${S.city.name} - ${S.city.uf}`, s: S.city.name, de: `do centro ${deCidade(S.city.name)}`, me: `Centro ${deCidade(S.city.name)}` };
-  const p = PLACES[S.place];
-  if (!S.chosen) return { n: 'Av. Paulista (São Paulo)', s: 'Exemplo: Av. Paulista', de: p.de, me: 'Exemplo: Av. Paulista', example: true };
-  return { n: p.n, s: p.s, de: p.de, me: p.s };
+  const t = topo();
+  if (t.modo === 'perto') return { de: 'da sua localização', me: 'Você está aqui' };
+  if (t.modo === 'cidade') return { de: `do centro ${deCidade(t.cidade.name)}`, me: `Centro ${deCidade(t.cidade.name)}` };
+  return { de: PLACES.paulista.de, me: 'Exemplo: Av. Paulista' };
 }
 
+// Cores iguais às das abas e da lista (inicio-core.TIPOS): escuras o bastante para as letras brancas dos rótulos
+// do 3D (contraste de pelo menos 4,5:1).
 const KINDS = {
-  imagem: { n: 'Diagnóstico por imagem', plural: 'Imagem', color: '#0E7C9C', h: 2.3 },
-  laboratorio: { n: 'Laboratório', plural: 'Laboratórios', color: '#6C4BD8', h: 1.8 },
-  clinica: { n: 'Clínica', plural: 'Clínicas', color: '#1E9E5A', h: 1.5 },
-  hospital: { n: 'Hospital', plural: 'Hospitais', color: '#E8512F', h: 2.9 },
+  imagem: { n: 'Diagnóstico por imagem', plural: 'Imagem', color: TIPOS.imagem.cor, h: 2.3 },
+  laboratorio: { n: 'Laboratório', plural: 'Laboratórios', color: TIPOS.laboratorio.cor, h: 1.8 },
+  clinica: { n: 'Clínica', plural: 'Clínicas', color: TIPOS.clinica.cor, h: 1.5 },
+  hospital: { n: 'Hospital', plural: 'Hospitais', color: TIPOS.hospital.cor, h: 2.9 },
 };
 const kindOf = (k) => KINDS[k] || KINDS.clinica;
 // Página de cada local: parceiro pelo id, estabelecimento do CNES pelo código de 7 dígitos.
@@ -58,13 +66,22 @@ function localUrl(r, hash = '') {
   return '';
 }
 
-function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800); }
+// Aviso curto no alto da tela. falar: false deixa o aviso só na tela (o leitor de tela já ouve a mesma coisa por
+// outro lugar, como o resumo da lista).
+function toast(m, { falar = true } = {}) {
+  const t = $('#toast');
+  if (falar) { t.removeAttribute('aria-hidden'); t.setAttribute('aria-live', 'polite'); } else { t.setAttribute('aria-hidden', 'true'); t.setAttribute('aria-live', 'off'); }
+  t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800);
+}
 
-// Chamada a uma função do banco com a chave pública (anon).
-async function rpc(fn, args = {}) {
+// Chamada a uma função do banco com a chave pública (anon). signal: cancela a chamada (a origem mudou);
+// o limite de 15 s continua.
+async function rpc(fn, args = {}, { signal } = {}) {
   if (!C.supabaseUrl || !C.supabaseAnonKey) throw new Error('config ausente');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
+  const parar = () => ctrl.abort();
+  if (signal) { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', parar, { once: true }); }
   try {
     const res = await fetch(`${C.supabaseUrl}/rest/v1/rpc/${fn}`, {
       method: 'POST', signal: ctrl.signal,
@@ -73,7 +90,7 @@ async function rpc(fn, args = {}) {
     });
     if (!res.ok) throw new Error('http ' + res.status);
     return await res.json();
-  } finally { clearTimeout(timer); }
+  } finally { clearTimeout(timer); signal?.removeEventListener?.('abort', parar); }
 }
 
 /* ======================= NAVEGAÇÃO ======================= */
@@ -145,57 +162,84 @@ $('#heroForm').addEventListener('submit', (e) => {
   const hit = v && Object.entries(EXAMS).find(([, x]) => norm(x.n + ' ' + x.full).includes(v));
   location.href = hit ? examUrl(hit[0]) : 'perto.html?usar=localizacao';
 });
-$('#heroLoc').onclick = () => openPlace();
+// O lugar do topo (#heroLoc) e o do cabeçalho (#addrBtn) mostram a origem e abrem o seletor de cidade.
+$('#heroLoc').onclick = () => PERTO?.abrirSeletor();
+$('#addrBtn').onclick = () => PERTO?.abrirSeletor();
 
-// Pílula do topo com números reais das cidades importadas do CNES.
-let citiesP = null;
-const loadCities = () => (citiesP ||= rpc('imported_cities').then((rows) => (Array.isArray(rows) ? rows : [])));
+// Cidades com o cadastro oficial (imported_cities): uma chamada por página, só na memória (não vai para o aparelho).
+// Atende a pílula, o seletor de cidade e os atalhos. deNovo: zera a promessa ("Tentar de novo" do seletor).
+let citiesP = null, pillDone = false;
+function loadCities(deNovo = false) {
+  if (deNovo) citiesP = null;
+  if (!citiesP) {
+    citiesP = rpc('imported_cities').then((rows) => (Array.isArray(rows) ? rows : []));
+    citiesP.then((rows) => { if (!pillDone) { pillDone = true; renderPill(rows); } }, () => {});
+  }
+  return citiesP;
+}
 const freeSrc = () => $('#heroSrc')?.classList.remove('wait');
+// Pílula do topo com números reais das cidades importadas do CNES.
 function renderPill(rows) {
   const valid = rows.filter((r) => Number(r.total) > 0);
   if (!valid.length) return freeSrc();
   const total = valid.reduce((s, r) => s + Number(r.total), 0);
   const onde = valid.length === 1 ? `em ${valid[0].name}` : `em ${fmtInt(valid.length)} cidades`;
   $('#livePill').textContent = `${fmtInt(total)} estabelecimentos oficiais ${onde}`;
+  srcStarted = true;
   loadSourceDate();
 }
-// "Fonte: CNES/Ministério da Saúde, dados de <cidade> atualizados em <data>": data real dos dados da cidade do mapa
-// (cnes_last_update com o código IBGE). Na localização do aparelho (cidade desconhecida), a data da cidade
-// atualizada há mais tempo, que vale para todas. Sem a data, fica só a fonte. Nunca uma data mais nova que os dados.
+// "Fonte: CNES/Ministério da Saúde, dados de <cidade> atualizados em <data>": data real dos dados da cidade em uso
+// (cnes_last_update com o código IBGE). Na localização do aparelho, a cidade da região (quando ela é afirmada);
+// sem ela, a data da cidade atualizada há mais tempo, que vale para todas. Sem a data, fica só a fonte. Nunca uma
+// data mais nova que os dados.
 const MONTH_LONG = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' });
+// Data curta (30/10/2026): para a linha caber no espaço guardado quando o nome da cidade é comprido.
+const DATE_SHORT = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', day: '2-digit', month: '2-digit', year: 'numeric' });
 const SAO_PAULO = { ibge: 3550308, name: 'São Paulo' };
-// Cidade dos locais mostrados: a escolhida, São Paulo (exemplo e bairros) ou nenhuma (localização do aparelho).
-const shownCity = () => (S.here ? null : S.city ? (Number.isInteger(Number(S.city.ibge)) && Number(S.city.ibge) > 0 ? { ibge: Number(S.city.ibge), name: S.city.name } : null) : SAO_PAULO);
-let srcSeq = 0, srcStarted = false;
+const ibgeOk = (v) => Number.isInteger(Number(v)) && Number(v) > 999999;
+// Cidade dos locais mostrados: a escolhida, a região da pessoa, São Paulo (exemplo) ou nenhuma (localização sem
+// região afirmada). undefined: ainda não se sabe (esperando o pedido ou a 1ª lista).
+function shownCity() {
+  const t = topo();
+  if (t.modo === 'cidade') return ibgeOk(t.cidade.ibge) ? { ibge: Number(t.cidade.ibge), name: t.cidade.name } : null;
+  if (t.modo === 'perto') {
+    if (!t.regiaoFeita) return undefined;
+    return t.regiao && ibgeOk(t.regiao.ibge) ? { ibge: Number(t.regiao.ibge), name: t.regiao.name } : null;
+  }
+  if (t.modo === 'exemplo') return SAO_PAULO;
+  return undefined;
+}
+let srcSeq = 0, srcStarted = false, srcKey = null;
 async function loadSourceDate() {
-  const el = $('#heroSrc'); if (!el) return;
-  srcStarted = true;
-  const seq = ++srcSeq;
+  const el = $('#heroSrc'); if (!el || !srcStarted) return;
   const city = shownCity();
-  let when = '';
+  if (city === undefined) return; // a origem ainda não chegou
+  const key = city ? String(city.ibge) : 'todas';
+  if (key === srcKey) return;
+  srcKey = key;
+  const seq = ++srcSeq;
+  let when = '', whenShort = '';
   try {
     const d = await rpc('cnes_last_update', city ? { p_city: city.ibge } : {});
-    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) when = MONTH_LONG.format(new Date(`${d}T12:00:00Z`));
+    if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      const at = new Date(`${d}T12:00:00Z`);
+      when = MONTH_LONG.format(at); whenShort = DATE_SHORT.format(at);
+    }
   } catch { /* sem data: só a fonte */ }
-  if (seq !== srcSeq) return; // a pessoa trocou o ponto de partida enquanto buscava
-  el.textContent = `Fonte: CNES/Ministério da Saúde${when ? (city ? `, dados ${deCidade(city.name)} atualizados em ${when}` : `, atualizado em ${when}`) : ''}`;
+  if (seq !== srcSeq) return; // a origem mudou enquanto buscava
+  const text = (w) => `Fonte: CNES/Ministério da Saúde${w ? (city ? `, dados ${deCidade(city.name)} atualizados em ${w}` : `, atualizado em ${w}`) : ''}`;
+  // O espaço da linha já está guardado (1 linha no computador, 2 no celular): com um nome comprido (Nossa Senhora
+  // do Socorro, por exemplo), a data curta faz a linha caber nele, sem empurrar o resto do topo.
+  const room = el.getBoundingClientRect().height;
+  el.textContent = text(when);
   el.hidden = false;
+  if (when && room > 0 && el.getBoundingClientRect().height > room + 1) el.textContent = text(whenShort);
   freeSrc();
 }
 
 /* ======================= O QUE VOCÊ PRECISA ======================= */
 function renderCats() {
   $('#cats').innerHTML = Object.entries(EXAMS).map(([k, e]) => `<a class="cat" href="${examUrl(k)}">${k === 'lab' ? '<span class="ic-lab" aria-hidden="true"><i class="fa-solid fa-flask"></i></span>' : `<img ${icoSet(k, 96)} alt="" loading="lazy">`}<b>${esc(e.n)}</b><small>Ver perto de você<i class="fa-solid fa-arrow-right" aria-hidden="true"></i></small></a>`).join('');
-}
-
-/* ======================= CIDADES ======================= */
-// Mesma regra de scripts/gerar-cidades.mjs (slugify), que cria as pastas cidades/<uf>/<slug>/.
-const citySlug = (name) => norm(name).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-const cityUrl = (r) => `cidades/${String(r.uf).toLowerCase()}/${citySlug(r.name)}/`;
-function renderCities(rows) {
-  const list = rows.filter((r) => r.name && r.uf && Number(r.total) > 0).sort((a, b) => Number(b.total) - Number(a.total)).slice(0, 24);
-  if (!list.length) return;
-  $('#cities').innerHTML = list.map((r) => `<a class="city" href="${esc(cityUrl(r))}"><i class="fa-solid fa-location-dot" aria-hidden="true"></i><span><b>${esc(r.name)}</b><small>${fmtInt(r.total)} estabelecimentos</small></span><span class="uf">${esc(r.uf)}</span></a>`).join('');
 }
 
 /* ======================= JANELAS (sheets) ======================= */
@@ -210,22 +254,49 @@ function tabbables(root) {
   });
 }
 const ov = $('#ov'), sheet = $('#sheet');
-let lastFocus = null;
-function openSheet(html, cls = '', label = 'Detalhes') {
-  lastFocus = document.activeElement;
+let lastFocus = null, lastInScreen = false, onClose = null;
+// Foco à vista (WCAG 2.4.11): sem rolar quando o elemento já aparece inteiro entre o cabeçalho e o menu de baixo;
+// senão, rola só o necessário (o scroll-padding da página deixa o espaço do cabeçalho e dos avisos fixos).
+function onScreen(e) {
+  if (!e || !e.getClientRects().length) return false;
+  if (e.closest('.top')) return true; // no cabeçalho fixo: sempre à vista
+  const r = e.getBoundingClientRect(), top = $('.top')?.getBoundingClientRect().bottom || 0;
+  const nav = $('.bnav'), bottom = nav && getComputedStyle(nav).display !== 'none' ? nav.getBoundingClientRect().top : innerHeight;
+  return r.top >= top && r.bottom <= bottom;
+}
+function focusVisible(e) {
+  if (!e) return;
+  e.focus({ preventScroll: true });
+  if (!onScreen(e)) e.scrollIntoView({ block: 'nearest' });
+}
+// foco: onde pôr o foco ao abrir (o seletor de cidade põe no campo da cidade); sem ele, no X. aoFechar: chamado
+// uma vez quando a janela fecha (por qualquer caminho: X, Esc, toque fora, escolha ou o "voltar" do celular).
+function openSheet(html, cls = '', label = 'Detalhes', { foco = null, aoFechar = null } = {}) {
+  if (ov.classList.contains('open') && onClose) { const f = onClose; onClose = null; f(); }
+  else if (!ov.classList.contains('open')) { lastFocus = document.activeElement; lastInScreen = !!lastFocus?.closest?.('#reais'); }
+  onClose = aoFechar;
   sheet.className = 'sheet ' + cls; sheet.innerHTML = html; sheet.setAttribute('aria-label', label);
   ov.classList.add('open'); ov.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden'; sheet.scrollTop = 0;
-  const f = sheet.querySelector('[data-close]'); if (f) f.focus();
+  const f = (foco && sheet.querySelector(foco)) || sheet.querySelector('[data-close]'); if (f) f.focus();
 }
 function closeSheet() {
   if (!ov.classList.contains('open')) return;
   ov.classList.remove('open'); ov.setAttribute('aria-hidden', 'true'); document.body.style.overflow = ''; S.hl = null;
-  // O foco volta para onde estava. Se aquele botão sumiu (o "Escolha sua cidade" do aviso de exemplo some quando a
-  // pessoa escolhe), vai para o "trocar" do mesmo mapa, para o leitor de tela não perder o lugar.
-  let back = lastFocus && document.contains(lastFocus) && lastFocus.getClientRects().length ? lastFocus : null;
-  if (!back && lastFocus?.closest?.('#reais')) back = $('#realPlace');
-  if (!back && lastFocus) back = $('#addrBtn');
-  if (back && back.getClientRects().length) back.focus({ preventScroll: true });
+  // O foco volta para quem abriu. Se ele sumiu (um botão do cartão da tela "Clínicas perto de você" some quando a
+  // lista chega), vai para o botão da cidade da mesma tela, rolando só o necessário para ele ficar à vista. Se quem
+  // abriu não era da tela (o "Prefiro escolher a cidade" do aviso) ou nunca teve o foco (no iPhone, tocar num botão
+  // não dá foco a ele: fica o <body>), vai para o botão da cidade se ele estiver na tela, ou para o do cabeçalho,
+  // sempre à vista (sem a página pular). Nunca fica dentro da janela fechada (o teclado do iPhone ficaria aberto,
+  // digitando num campo invisível).
+  const valid = (e) => !!e && e !== document.body && document.contains(e) && !sheet.contains(e) && e.getClientRects().length > 0;
+  const back = valid(lastFocus) ? lastFocus
+    : lastInScreen && valid($('#cityBtn')) ? $('#cityBtn')
+      : [$('#cityBtn'), $('#addrBtn')].find((e) => valid(e) && onScreen(e)) || [$('#addrBtn'), $('#cityBtn')].find(valid) || null;
+  if (back) focusVisible(back);
+  if (sheet.contains(document.activeElement)) document.activeElement.blur();
+  lastFocus = null; lastInScreen = false;
+  const f = onClose; onClose = null;
+  if (f) f();
 }
 ov.addEventListener('click', (e) => { if (e.target === ov || e.target.closest('[data-close]')) closeSheet(); });
 document.addEventListener('keydown', (e) => {
@@ -242,65 +313,6 @@ document.addEventListener('keydown', (e) => {
 });
 const head = (t) => `<div class="sh-head"><h3>${t}</h3><button class="x" type="button" data-close aria-label="Fechar"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>`;
 
-function setPlaceLabels() {
-  const w = where();
-  $('#addrSmall').textContent = w.example ? 'Exemplo' : 'Ponto de partida';
-  $('#addrTxt').textContent = w.n;
-  $('#heroAddr').textContent = w.s;
-  $('#realWhere').textContent = w.de;
-  $('#realExample').hidden = !w.example;
-}
-function placeChanged() {
-  setPlaceLabels();
-  if (srcStarted) loadSourceDate(); // a data da fonte é a da cidade do mapa
-  heroList = []; heroLoaded = false; if (window.HERO) window.HERO.setOrigin();
-  if (heroLite) renderHeroLite();
-  if (heroWanted) loadHeroPlaces();
-  if (realStarted) renderRealMap();
-}
-function openPlace(focusCity = false) {
-  const bairro = S.chosen && !S.here && !S.city;
-  openSheet(head('Ponto de partida do mapa') + `<div class="sh-body">
-    ${S.chosen || S.here ? '' : '<p class="note pl-ex">Até você escolher, o mapa mostra um exemplo: a Av. Paulista, em São Paulo.</p>'}
-    <a class="upload" href="perto.html?usar=localizacao"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span><b>Buscar perto de mim</b><br>Abre a busca completa, com filtros e pedido de agendamento.</span></a>
-    <button class="upload" id="geo" type="button"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span><b>Usar minha localização aqui</b><br>Mostra nesta página os locais perto de onde você está.</span></button>
-    <div class="pl-city"><label class="lbl" for="citySel">Escolha sua cidade</label>
-      <select id="citySel" disabled><option value="">Carregando as cidades…</option></select>
-      <p class="pl-msg" id="cityMsg" role="status" aria-live="polite"></p></div>
-    <fieldset style="border:0"><legend class="lbl">Ou um bairro de São Paulo</legend>
-    ${Object.entries(PLACES).map(([k, p]) => `<button type="button" class="opt" data-pl="${k}" aria-pressed="${bairro && S.place === k}"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${esc(p.n)}<small>São Paulo, SP</small></button>`).join('')}
-    </fieldset>
-  </div>`, 'sm', 'Ponto de partida do mapa');
-  // Cada bairro é um botão: com o teclado, Tab passa por eles e Enter escolhe (as setas não trocam o mapa sem querer).
-  sheet.querySelectorAll('[data-pl]').forEach((b) => { b.onclick = () => { S.here = null; S.city = null; S.place = b.dataset.pl; S.chosen = true; store.set('place', S.place); store.set('cidade', null); placeChanged(); closeSheet(); }; });
-  fillCities(focusCity);
-  $('#geo').onclick = () => {
-    if (!navigator.geolocation) return toast('Seu navegador não permite localização');
-    toast('Buscando sua localização…');
-    navigator.geolocation.getCurrentPosition((p) => {
-      // Só a região (~110 m): a posição exata não sai do aparelho.
-      S.here = { lat: round3(p.coords.latitude), lng: round3(p.coords.longitude) };
-      S.chosen = true;
-      placeChanged(); closeSheet(); toast('Mapa atualizado');
-    }, () => toast('Não foi possível obter a localização'), { timeout: 10000 });
-  };
-}
-$('#addrBtn').onclick = () => openPlace();
-
-// Cidades com o cadastro oficial no IMED (imported_cities), em ordem alfabética, para escolher o ponto de partida.
-function fillCities(focus) {
-  const sel = $('#citySel'); if (!sel) return;
-  loadCities().then((rows) => {
-    if (!sel.isConnected) return;
-    const list = rows.filter((r) => r.name && /^[A-Z]{2}$/.test(r.uf || '') && Number(r.total) > 0)
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.uf.localeCompare(b.uf));
-    if (!list.length) { sel.closest('.pl-city').hidden = true; return; }
-    sel.innerHTML = '<option value="">Escolha a cidade</option>' + list.map((r) => `<option value="${esc(r.ibge)}"${S.city && String(S.city.ibge) === String(r.ibge) ? ' selected' : ''}>${esc(r.name)} - ${esc(r.uf)}</option>`).join('');
-    sel.disabled = false;
-    sel.onchange = () => { const r = list.find((x) => String(x.ibge) === sel.value); if (r) chooseCity(r); };
-    if (focus) sel.focus();
-  }).catch(() => { if (sel.isConnected) sel.closest('.pl-city').hidden = true; });
-}
 // Centro da cidade pela mesma geocodificação da busca (Edge Function clinicas-proximas, action geocode).
 async function geocode(q) {
   const ctrl = new AbortController();
@@ -316,36 +328,19 @@ async function geocode(q) {
     return g;
   } finally { clearTimeout(timer); }
 }
-async function chooseCity(r) {
-  const sel = $('#citySel'), msg = $('#cityMsg');
-  sel.disabled = true;
-  msg.textContent = `Procurando o centro ${deCidade(r.name)}…`;
-  try {
-    const g = await geocode(`${r.name}, ${r.uf}`);
-    S.city = { ibge: Number(r.ibge), name: String(r.name), uf: String(r.uf), lat: round3(g.lat), lng: round3(g.lng) };
-    S.here = null; S.chosen = true;
-    store.set('cidade', S.city); store.set('place', null);
-    window.IMED_TRACK?.('busca_cidade', `${S.city.uf}/${S.city.name}`); // contador próprio: só a cidade escolhida
-    placeChanged(); closeSheet(); toast(`Mapa a partir do centro ${deCidade(r.name)}`);
-  } catch {
-    if (!sel.isConnected) return;
-    sel.disabled = false;
-    msg.textContent = 'Não foi possível achar o centro desta cidade agora. Tente de novo ou use a busca.';
-  }
-}
 
-/* ======================= CLÍNICAS REAIS (CNES) ======================= */
-let realMap = null, realLayer = null, realSeq = 0, realStarted = false;
-const REAL_RADIUS = 2000, REAL_POINTS = 3000;
+// Leaflet (o mapa da tela "Clínicas perto de você"): só quando o mapa vai aparecer.
 function loadLeaflet() {
   if (window.L) return Promise.resolve();
   if (loadLeaflet.p) return loadLeaflet.p;
   const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = 'assets/vendor/leaflet/leaflet.css'; document.head.appendChild(css);
-  return (loadLeaflet.p = new Promise((ok, fail) => { const sc = document.createElement('script'); sc.src = 'assets/vendor/leaflet/leaflet.js'; sc.onload = ok; sc.onerror = fail; document.head.appendChild(sc); }));
+  loadLeaflet.p = new Promise((ok, fail) => { const sc = document.createElement('script'); sc.src = 'assets/vendor/leaflet/leaflet.js'; sc.onload = ok; sc.onerror = fail; document.head.appendChild(sc); });
+  loadLeaflet.p.catch(() => { loadLeaflet.p = null; css.remove(); }); // "Tentar de novo" baixa outra vez
+  return loadLeaflet.p;
 }
-// Locais perto da origem: estabelecimentos do CNES + parceiros publicados do IMED.
+// Locais perto da origem para o 3D e a lista leve: estabelecimentos do CNES + parceiros publicados do IMED.
 // nearby_establishments deixa de fora quem já virou parceiro, por isso as duas chamadas.
-// Se a dos parceiros falhar, mostra só o CNES; se a do CNES falhar, é erro (sem mapa).
+// Se a dos parceiros falhar, mostra só o CNES; se a do CNES falhar, é erro.
 async function nearbyAll(o, radius, limit) {
   const at = { p_lat: round3(o.lat), p_lng: round3(o.lng), p_radius_m: radius };
   const [est, par] = await Promise.all([
@@ -357,88 +352,6 @@ async function nearbyAll(o, radius, limit) {
   const cnes = (Array.isArray(est) ? est : []).filter(ok).map((r) => ({ ...r, key: 'cnes:' + r.cnes, partner: false }));
   return { rows: [...partners, ...cnes].sort((a, b) => a.distance_m - b.distance_m), full: cnes.length >= limit };
 }
-// Mapa de clínicas reais, com três chamadas no mesmo ponto:
-// - establishment_points: um ponto leve para cada estabelecimento do CNES na área toda (mapa e contagem);
-// - nearby_establishments: os 8 mais próximos, com endereço e contato (a lista);
-// - nearby_clinics: os parceiros publicados do IMED (as duas do CNES deixam de fora quem já virou parceiro).
-// Se a dos parceiros falhar, mostra só o CNES; se uma do CNES falhar, é erro (sem mapa).
-async function areaPlaces(o) {
-  const at = { p_lat: round3(o.lat), p_lng: round3(o.lng), p_radius_m: REAL_RADIUS };
-  const [pts, est, par] = await Promise.all([
-    rpc('establishment_points?select=cnes,name,kind,lat,lng,distance_m,total', { ...at, p_limit: REAL_POINTS }),
-    rpc('nearby_establishments', { ...at, p_limit: 8 }),
-    rpc('nearby_clinics', { ...at, p_include_demo: false, p_limit: 100 }).catch(() => []),
-  ]);
-  const arr = (v) => (Array.isArray(v) ? v : []);
-  const ok = (r) => r && r.name && Number.isFinite(r.lat) && Number.isFinite(r.lng);
-  const partners = arr(par).filter(ok).map((r) => ({ ...r, uf: r.uf || r.state, key: 'imed:' + r.id, partner: true }));
-  const near = arr(est).filter(ok).map((r) => ({ ...r, key: 'cnes:' + r.cnes, partner: false }));
-  // Os mais próximos já vêm com endereço e telefone: o balão do mapa usa esses dados.
-  const full = new Map(near.map((r) => [r.cnes, r]));
-  const points = arr(pts).filter(ok).map((r) => full.get(r.cnes) || { ...r, key: 'cnes:' + r.cnes, partner: false });
-  return {
-    partners, points,
-    list: [...partners, ...near].sort((a, b) => a.distance_m - b.distance_m).slice(0, 8),
-    more: Number(arr(pts)[0]?.total) > arr(pts).length, // a área tem mais pontos do que o limite
-  };
-}
-function realPopup(r) {
-  const k = kindOf(r.kind);
-  const pop = document.createElement('div'); pop.className = 'rm-pop';
-  const add = (tag, text) => { if (!text) return; const el = document.createElement(tag); el.textContent = text; pop.appendChild(el); };
-  add('b', r.name); add('div', (r.partner ? 'Parceiro do IMED · ' : '') + k.n + ' · ' + fmtDist(r.distance_m)); add('div', [r.address_line, r.neighborhood].filter(Boolean).join(' · ')); add('div', r.phone); add('div', r.open_24h ? 'Aberto 24 horas' : r.shift);
-  const url = localUrl(r);
-  if (url) { const a = document.createElement('a'); a.href = url; a.textContent = 'Ver página do local'; pop.appendChild(a); }
-  return pop;
-}
-async function renderRealMap() {
-  const box = $('#realMap'); if (!box) return;
-  const seq = ++realSeq, o = origin();
-  setPlaceLabels();
-  try {
-    await loadLeaflet();
-    // Coordenadas arredondadas (~110 m): o banco só precisa da região.
-    const { partners, points, list, more } = await areaPlaces(o);
-    if (seq !== realSeq) return;
-    if (!realMap) {
-      // Canvas: em bairro movimentado são mais de mil pontos, e um elemento por ponto pesaria no celular.
-      box.innerHTML = ''; realMap = L.map(box, { scrollWheelZoom: false, preferCanvas: true, zoomSnap: 0.5 });
-      L.tileLayer(C.map.tiles, { maxZoom: C.map.maxZoom, attribution: C.map.attribution }).addTo(realMap);
-      realLayer = L.layerGroup().addTo(realMap);
-    }
-    realLayer.clearLayers();
-    // O círculo de 2 km e o mapa enquadrado nele: aparece a área toda, não só os mais próximos.
-    L.circle([o.lat, o.lng], { radius: REAL_RADIUS, color: '#0E7C9C', weight: 1.5, opacity: 0.7, dashArray: '6 6', fill: false, interactive: false }).addTo(realLayer);
-    points.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 4.5, color: '#fff', weight: 1, fillColor: kindOf(r.kind).color, fillOpacity: 0.9 }).bindPopup(() => realPopup(r)).addTo(realLayer));
-    partners.forEach((r) => L.circleMarker([r.lat, r.lng], { radius: 8, color: '#FF6B4A', weight: 3, fillColor: kindOf(r.kind).color, fillOpacity: 0.95 }).bindPopup(() => realPopup(r)).addTo(realLayer));
-    L.circleMarker([o.lat, o.lng], { radius: 9, color: '#fff', weight: 3, fillColor: '#FF6B4A', fillOpacity: 1 }).bindTooltip(S.here ? 'Você (aproximado)' : where().n).addTo(realLayer);
-    realMap.fitBounds(L.latLng(o.lat, o.lng).toBounds(REAL_RADIUS * 2), { padding: [10, 10] });
-    const count = (kk) => partners.filter((r) => r.kind === kk).length + points.filter((r) => r.kind === kk).length;
-    $('#realStats').innerHTML = Object.entries(KINDS).map(([kk, k]) => `<div class="rm-stat"><b>${fmtInt(count(kk))}${more ? '+' : ''}</b><span><i style="background:${k.color}"></i>${k.plural}</span></div>`).join('');
-    $('#realList').innerHTML = list.length
-      ? list.map((r) => {
-        const k = kindOf(r.kind), url = localUrl(r);
-        const inner = `<span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)}${r.neighborhood ? ' · ' + esc(r.neighborhood) : ''}</small></span><span class="d">${fmtDist(r.distance_m)}</span>`;
-        return `<li>${url ? `<a href="${esc(url)}">${inner}</a>` : inner}</li>`;
-      }).join('')
-      : '<li>Ainda não temos o cadastro oficial desta região. Toque em <b style="display:inline">Ver todas perto de mim</b> para buscar.</li>';
-  } catch {
-    if (seq !== realSeq) return;
-    // O aviso substitui o mapa: o próximo "Tentar de novo" cria outro.
-    if (realMap) { realMap.remove(); realMap = null; realLayer = null; }
-    box.innerHTML = '<div class="rm-wait">Não foi possível carregar o mapa agora.<button class="btn btn-ghost" type="button" id="realRetry">Tentar de novo</button></div>';
-    $('#realRetry').onclick = renderRealMap;
-  }
-}
-(function () {
-  const sec = $('#reais'); if (!sec) return;
-  $('#realPlace').onclick = () => openPlace();
-  $('#realChoose').onclick = () => openPlace(true);
-  const start = () => { if (realStarted) return; realStarted = true; renderRealMap(); };
-  if (!('IntersectionObserver' in window)) return start();
-  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); start(); } }, { rootMargin: '300px' });
-  io.observe(sec);
-})();
 
 /* ======================= MAPA 3D ======================= */
 // Estabelecimentos reais do CNES perto da origem. Enquanto carrega (ou se falhar), o 3D mostra só a cidade.
@@ -462,6 +375,7 @@ function pickVaried(rows, max = 14) {
 }
 async function loadHeroPlaces() {
   heroWanted = true;
+  if (!topo().modo) return; // esperando a resposta do pedido de localização: o 3D mostra só a cidade
   const seq = ++heroSeq, o = origin();
   try {
     const { rows } = await nearbyAll(o, 3000, 80);
@@ -481,29 +395,52 @@ async function loadHeroPlaces() {
     if (seq === heroSeq) { heroLoaded = true; if (heroLite) renderHeroLite(); }
   }
 }
-// O leitor de tela ouve só este resumo (role=status), não a lista inteira a cada troca.
+// Resumo escondido da lista leve (lido junto com ela). Não é um status falado: o leitor de tela já ouve o resumo da
+// lista da tela "Clínicas perto de você" (#pvSum), sem repetir a mesma frase.
 function liteStatus(text) { const s = $('#heroLiteStatus'); if (s && s.textContent !== text) s.textContent = text; }
 // Modo leve (aparelho simples, economia de dados ou "reduzir movimento"): sem 3D, só a ilustração
-// de fundo e a lista dos mesmos locais reais perto do ponto escolhido.
+// de fundo e a lista dos mesmos locais reais perto do ponto escolhido. Título em 1 linha (inicio-core.textoLeve):
+// "Perto de você" (esperando a resposta do pedido), "Perto da sua localização", "Perto do centro de Campinas" ou
+// "Exemplo: perto da Av. Paulista".
 function renderHeroLite() {
   const box = $('#heroLite'); if (!box) return;
-  const list = heroList.slice(0, innerWidth < 700 ? 4 : 5);
-  const de = where().de;
-  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto ${esc(de)}</h2>`;
+  const t = topo();
+  const list = t.modo ? heroList.slice(0, innerWidth < 700 ? 4 : 5) : [];
+  const leve = textoLeve({ modo: t.modo, cidade: t.cidade, n: list.length });
+  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${esc(leve.titulo)}</h2>`;
+  // Só redesenha quando muda (um link focado na lista não perde o foco a cada aviso da tela de baixo).
+  const put = (html) => { if (box._html !== html) { box.innerHTML = html; box._html = html; } };
   if (!list.length) {
-    // Carregando: linhas de espera do mesmo tamanho das linhas de verdade, para a caixa não pular quando
-    // os locais chegarem. O leitor de tela ouve "Carregando…" pelo resumo (liteStatus).
+    // Esperando a origem ou carregando: linhas de espera do mesmo tamanho das linhas de verdade, para a caixa não
+    // pular quando os locais chegarem. O leitor de tela ouve só o resumo (liteStatus).
+    const failed = !!t.modo && heroLoaded;
     const wait = `<ol aria-hidden="true">${'<li class="ph"><span><span class="dot"></span><span style="min-width:0;flex:1"><b>&nbsp;</b><small>&nbsp;</small></span></span></li>'.repeat(innerWidth < 700 ? 4 : 5)}</ol>`;
-    box.innerHTML = title + (heroLoaded ? '<p>Veja clínicas, laboratórios e hospitais perto de você na busca.</p>' : wait)
-      + '<a class="more" href="perto.html?usar=localizacao">Buscar perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
-    liteStatus(heroLoaded ? 'A lista de locais não está disponível agora. Use a busca perto de você.' : `Carregando os locais perto ${de}…`);
+    put(title + (failed ? '<p>Veja clínicas, laboratórios e hospitais perto de você na busca.</p>' : wait)
+      + '<a class="more" href="perto.html?usar=localizacao">Buscar perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>');
+    liteStatus(failed ? 'A lista de locais não está disponível agora. Use a busca perto de você.' : (leve.status || 'Carregando os locais…'));
     return;
   }
-  liteStatus(`${list.length} ${list.length === 1 ? 'local' : 'locais'} perto ${de}`);
-  box.innerHTML = title + '<ol>' + list.map((c) => {
+  liteStatus(leve.status);
+  put(title + '<ol>' + list.map((c) => {
     const r = c.row, k = kindOf(r.kind), url = localUrl(r) || 'perto.html';
-    return `<li><a href="${esc(url)}"><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)}</small></span></a></li>`;
-  }).join('') + '</ol><a class="more" href="perto.html?usar=localizacao">Ver todos perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
+    return `<li><a href="${esc(url)}"><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${esc(distRow(r))}</small></span></a></li>`;
+  }).join('') + '</ol><a class="more" href="perto.html?usar=localizacao">Ver todos perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>');
+}
+// A origem da tela "Clínicas perto de você" mudou (ou a espera do pedido acabou): o 3D, a lista leve e a fonte
+// acompanham. Só busca os locais do 3D de novo quando o ponto muda de verdade.
+let heroKey = '';
+function origemMudou() {
+  const t = topo();
+  document.body.dataset.origem = t.modo || 'espera';
+  const key = t.modo ? `${t.modo}|${t.lat}|${t.lng}` : 'espera';
+  if (key !== heroKey) {
+    heroKey = key;
+    heroList = []; heroLoaded = false; heroSeq += 1;
+    if (window.HERO) window.HERO.setOrigin();
+    if (heroWanted) loadHeroPlaces();
+  }
+  if (heroLite) renderHeroLite();
+  loadSourceDate();
 }
 function openPlaceDetail(id) {
   const c = heroList.find((x) => x.id === id); if (!c) return;
@@ -515,7 +452,7 @@ function openPlaceDetail(id) {
   const exams = r.partner && Array.isArray(r.exams) ? [...new Set(r.exams.map((e) => e && EXAMS[e.code]?.n).filter(Boolean))] : [];
   const page = localUrl(r);
   openSheet(head(esc(r.name)) + `<div class="sh-body">
-    <span class="place-kind"><span style="background:${k.color}"></span>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)} ${esc(where().de)}</span>
+    <span class="place-kind"><span style="background:${k.color}"></span>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${esc(distRow(r))} ${esc(where().de)}</span>
     <div class="place-info">
       ${addr ? `<div><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${esc(addr)}</div>` : ''}
       ${tel.length >= 10 ? `<div><i class="fa-solid fa-phone" aria-hidden="true"></i><a href="tel:+55${tel}">${esc(r.phone)}</a></div>` : ''}
@@ -537,7 +474,7 @@ const API = {
   highlighted: () => S.hl,
   meLabel: () => where().me,
   onPick: (id) => openPlaceDetail(id),
-  meta: (c) => `${c.row.partner ? 'Parceiro · ' : ''}${kindOf(c.kind).n} · ${fmtDist(c.row.distance_m)}`,
+  meta: (c) => `${c.row.partner ? 'Parceiro · ' : ''}${kindOf(c.kind).n} · ${distRow(c.row)}`,
 };
 // Aparelho simples, economia de dados ou "reduzir movimento": não baixa o 3D (three.js tem ~650 KB).
 function liteReason() {
@@ -553,8 +490,10 @@ function liteReason() {
   return '';
 }
 const LITE = liteReason();
-// Economia de dados ligada ou internet 2G: a pessoa quer gastar pouca internet.
-const SAVE_DATA = LITE === 'economia' || LITE === 'rede';
+// Economia de dados ligada ou internet 2G: a pessoa quer gastar pouca internet (sem o service worker e sem o mapa
+// sozinho). Lido direto da conexão: com "reduzir movimento" também ligado, o modo leve vem do movimento e o
+// LITE não diz 'economia'.
+const SAVE_DATA = (() => { const con = navigator.connection || {}; return !!con.saveData || /(^|-)2g$/.test(con.effectiveType || ''); })();
 function goLite(why) {
   heroLite = true;
   document.body.classList.add('lite');
@@ -809,7 +748,19 @@ async function loadTele() {
   box.classList.toggle('on', n > 0);
   // A função devolve até 50 médicos: com 50, pode haver mais.
   box.querySelector('span').textContent = n > 0 ? `Médicos atendendo agora: ${n >= 50 ? '50 ou mais' : n}` : 'Nenhum médico atendendo agora';
-  $('#teleWait').hidden = n > 0;
+  const wait = $('#teleWait'), showed = wait.hidden && n === 0;
+  // A lista de espera aparece acima do que tem o foco (o "É médico?", por exemplo): o foco continua no mesmo lugar
+  // da tela (WCAG 2.4.11), sem a página pular. Só quando o foco estava na tela: se a pessoa rolou para longe dele,
+  // nada muda.
+  const a = document.activeElement;
+  const below = showed && a && a !== document.body && (wait.compareDocumentPosition(a) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const before = below ? a.getBoundingClientRect() : null;
+  const seen = !!before && before.bottom > 0 && before.top < innerHeight;
+  wait.hidden = n > 0;
+  if (seen) {
+    const moved = a.getBoundingClientRect().top - before.top;
+    if (Math.abs(moved) > 1) window.scrollBy(0, moved);
+  }
 }
 (function () {
   const sec = $('#lista'); if (!sec) return;
@@ -874,6 +825,8 @@ function route() {
   if (h === '#perto') { location.replace('perto.html?usar=localizacao'); return; }
   if (h === '#perfil') { location.replace('conta.html'); return; }
   if ((m = h.match(/^#exame-(\w+)$/)) && EXAMS[m[1]]) { location.replace(examUrl(m[1])); return; }
+  // #cidade e #cidades abrem o seletor de cidade (sem pedido automático de localização).
+  if (h === '#cidade' || h === '#cidades') { setHash(''); PERTO?.abrirSeletor(); return; }
   if (h === '#lojas' || h === '#pedido' || /^#clinica-/.test(h)) { setHash(''); setTimeout(() => $('#reais').scrollIntoView(), 60); }
 }
 addEventListener('hashchange', route);
@@ -912,7 +865,15 @@ const rvIO = new IntersectionObserver((es) => es.forEach((e) => { if (e.isInters
 document.querySelectorAll('.rv').forEach((el) => rvIO.observe(el));
 
 /* ======================= INÍCIO ======================= */
-setPlaceLabels(); renderCats(); headerState();
-loadCities().then((rows) => { renderPill(rows); renderCities(rows); }).catch(() => { freeSrc(); /* sem número: texto neutro */ });
+// A tela "Clínicas perto de você": lê a cidade guardada e a permissão, decide se pede a localização ao abrir e
+// avisa quando a origem muda (origemMudou).
+PERTO = iniciarPerto({
+  rpc, geocode, toast, openSheet, closeSheet, head, loadLeaflet, loadCities, focar: focusVisible,
+  mapa: C.map || {}, economia: SAVE_DATA, reduzir: reduceMotion,
+  aoMudarOrigem: origemMudou,
+});
+document.body.dataset.origem = 'espera';
+renderCats(); headerState();
+loadCities().catch(() => { freeSrc(); /* sem número: texto neutro */ });
 startHero();
 route();

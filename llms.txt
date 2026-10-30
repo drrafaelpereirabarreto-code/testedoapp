@@ -1,0 +1,50 @@
+# IMED
+
+> Site brasileiro de saúde que mostra clínicas, laboratórios, centros de diagnóstico por imagem e hospitais reais, com os dados do cadastro oficial do Ministério da Saúde (CNES), e encaminha pedidos de agendamento. Não é plano de saúde nem cartão de desconto, é um serviço privado sem vínculo com o governo ou o SUS e não é serviço de urgência.
+
+Médico responsável: Dr. Rafael Pereira Barreto Silva, CRM-SP 266930. Em emergência, ligue 192 (SAMU) ou vá ao pronto-socorro mais próximo.
+
+Números atualizados em 30 de outubro de 2026: 73.092 estabelecimentos de saúde em 318 cidades, do cadastro oficial (CNES) importado no IMED.
+
+Regras que o IMED segue:
+
+- Nome, tipo, endereço, telefone, turno de atendimento e atendimento pelo SUS vêm do CNES, base pública do Ministério da Saúde, e podem estar desatualizados: confirme com o local.
+- O CNES não lista os exames de cada local. Nos locais que ainda não são parceiros, os serviços mostrados são deduzidos pelo nome do estabelecimento: confirme com o local.
+- Onde o cadastro oficial ainda não foi carregado, a busca pode mostrar locais do OpenStreetMap ou do Google Maps, com a fonte indicada.
+- Preços, exames, convênios e horários de clínicas parceiras são informados pela própria clínica, que responde por eles. Sem o dado, a informação não aparece ou aparece como "sob consulta".
+- O IMED nunca inventa preço, nota, horário ou depoimento.
+- A lista vem em ordem de distância. Ninguém paga para aparecer primeiro, e o selo "Parceiro verificado" não se vende.
+- Só avalia quem fez um pedido pelo IMED e teve o atendimento concluído. Sem avaliações, não há nota.
+- Um pedido só vale como agendamento quando aparece como "Confirmado". O pedido é para atendimento particular ou por convênio: unidades públicas do SUS não agendam pelo IMED (para marcar pelo SUS, procure a Unidade Básica de Saúde, a UBS).
+- Para o paciente, buscar, pedir e cancelar o pedido pelo IMED não têm custo. Se houver cobrança pelo exame ou pela consulta, o pagamento é feito direto no local. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp.
+- A localização do aparelho só é usada quando a pessoa permite, é arredondada antes de sair do aparelho e não é gravada.
+- Os guias de exames são orientação geral: o preparo pode mudar conforme o local e o caso. Siga a orientação do seu médico e confirme com o local.
+
+## Páginas principais
+
+- [Início](https://drrafaelpereirabarreto-code.github.io/testedoapp/): clínicas, laboratórios e hospitais reais perto de você, no mapa
+- [Perto de mim](https://drrafaelpereirabarreto-code.github.io/testedoapp/perto.html): mapa e lista em ordem de distância, com filtros de tipo, exame, distância, SUS e convênio
+- [Clínicas por cidade](https://drrafaelpereirabarreto-code.github.io/testedoapp/cidades/): as 318 cidades, com o número de locais por tipo e perguntas frequentes
+- [Guias de exames](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/): para que serve, como é feito, como se preparar e o que levar
+- [Como funciona](https://drrafaelpereirabarreto-code.github.io/testedoapp/como-funciona.html): ordem dos resultados, selos, avaliações, de onde vêm os dados, pedido de agendamento e custo
+- [Quem somos](https://drrafaelpereirabarreto-code.github.io/testedoapp/sobre.html): o que o IMED faz, o médico responsável e de onde vêm as informações
+- [Termos de uso](https://drrafaelpereirabarreto-code.github.io/testedoapp/termos.html): regras para pacientes e clínicas (pedidos, cancelamento e avaliações)
+- [Política de privacidade](https://drrafaelpereirabarreto-code.github.io/testedoapp/privacidade.html): como o IMED trata os dados pessoais e os direitos pela LGPD
+- [Acessibilidade](https://drrafaelpereirabarreto-code.github.io/testedoapp/acessibilidade.html)
+- [Fale com o IMED](https://drrafaelpereirabarreto-code.github.io/testedoapp/contato.html): dúvidas, cancelamento de pedido e pedidos sobre dados pessoais, com número de protocolo
+
+## Para clínicas
+
+- [Para clínicas](https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html): o local provavelmente já aparece pelo CNES; assumir o cadastro não tem custo
+- [Assumir o cadastro](https://drrafaelpereirabarreto-code.github.io/testedoapp/reivindicar.html)
+
+## Optional
+
+- [Guia: Densitometria óssea](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/densitometria-ossea.html)
+- [Guia: Ecocardiograma](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/ecocardiograma.html)
+- [Guia: Eletrocardiograma (ECG)](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/eletrocardiograma.html)
+- [Guia: Mamografia](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/mamografia.html)
+- [Guia: Raio-X (radiografia)](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/raio-x.html)
+- [Guia: Ressonância magnética](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/ressonancia-magnetica.html)
+- [Guia: Tomografia computadorizada](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/tomografia.html)
+- [Guia: Ultrassom (ultrassonografia)](https://drrafaelpereirabarreto-code.github.io/testedoapp/exames/ultrassom.html)

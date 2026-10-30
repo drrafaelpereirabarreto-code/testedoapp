@@ -30,7 +30,8 @@ const STATUS_ERR = {
   slot_taken: 'Este horário já foi reservado por outro paciente depois do cancelamento. Combine outro horário com a pessoa, num novo pedido.',
 };
 
-const state = { admin: false, clinics: [], memberIds: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null };
+// priceOk: valores acima do limite largo do exame que a pessoa já conferiu nesta página ("clínica:exame" → centavos).
+const state = { admin: false, clinics: [], memberIds: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null, priceOk: {} };
 const app = () => $('#app');
 const clinic = () => state.clinics.find((c) => c.id === state.clinicId) || null;
 const uuidOk = (v) => /^[0-9a-f-]{36}$/i.test(String(v));
@@ -78,14 +79,14 @@ function renderAccount() {
   renderAuth($('#authBox'), {
     back: () => `${location.origin}${location.pathname}`,
     intro: 'Entre com o <b>mesmo e-mail usado no pedido de cadastro</b> da clínica. Enviamos um link de entrada; não precisa de senha.',
-    onSignOut: () => { state.clinics = []; state.lists = {}; state.agenda = null; app().innerHTML = ''; renderAccount(); toast('Você saiu da sua conta.'); },
+    onSignOut: () => { state.clinics = []; state.lists = {}; state.agenda = null; state.priceOk = {}; app().innerHTML = ''; renderAccount(); toast('Você saiu da sua conta.'); },
   });
 }
 
 // A renovação da entrada falhou e auth.js apagou a sessão: volta para o quadro de entrada.
 function lost() {
   if (auth.user()) return false;
-  state.clinics = []; state.lists = {}; state.admin = false; state.agenda = null;
+  state.clinics = []; state.lists = {}; state.admin = false; state.agenda = null; state.priceOk = {};
   app().innerHTML = '';
   $('#flash').innerHTML = note(esc(EXPIRED), 'warn');
   renderAccount();
@@ -1030,6 +1031,7 @@ async function tabExams(p) {
       </li>`;
     }).join('')}</ul>
     <div class="cl-actions"><button class="btn btn-coral" type="submit" id="exSave">Salvar exames e preços</button></div>
+    <div id="exCheck" hidden style="margin-top:12px"></div>
     <div id="exMsg" aria-live="polite"></div>
   </form>`;
   EXAM_CODES.forEach((code) => {
@@ -1040,9 +1042,22 @@ async function tabExams(p) {
       if (e.target.checked) inp.focus();
     };
   });
+  // Mudou um preço ou um exame depois do "Confira o valor": a pergunta sai e o próximo "Salvar" confere de novo.
+  $('#examForm').addEventListener('input', hidePriceCheck);
   $('#examForm').onsubmit = (e) => saveExams(e, key);
 }
 
+// Limite largo de cada exame, em centavos, só para pegar erro de digitação (um zero a mais ou a vírgula esquecida:
+// 45000 no lugar de 450,00). Nunca aparece para o paciente nem na pergunta e não é preço de referência: acima dele,
+// o painel só pede para conferir o valor na própria página antes de salvar. Um exame caro e verdadeiro é salvo
+// depois da confirmação, nunca recusado (a recusa continua só fora de R$ 1 a R$ 100.000).
+export const PRICE_CHECK_CENTS = { rx: 500000, usg: 500000, tc: 1000000, rm: 2000000, mamo: 500000, dens: 500000, ecg: 500000, eco: 500000, lab: 500000 };
+export const priceNeedsCheck = (code, cents) => Number.isFinite(cents) && cents > (PRICE_CHECK_CENTS[code] ?? Infinity);
+const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtBRL = (cents) => BRL.format(cents / 100);
+const priceCheckHtml = (x) => `Confira o valor: <b>${esc(fmtBRL(x.price_cents))}</b> para ${esc(EXAMS[x.code]?.n || x.code)} está certo?`;
+
+// check: os exames marcados com preço acima do limite largo (pedem confirmação antes de salvar).
 export function collectExams(get) {
   const list = [];
   const errs = {};
@@ -1053,13 +1068,45 @@ export function collectExams(get) {
     if (cents !== null && (Number.isNaN(cents) || cents < 100 || cents > 10000000)) { errs[code] = 'Preço inválido. Use um valor entre R$ 1 e R$ 100.000, como 250 ou 250,00.'; continue; }
     list.push({ code, price_cents: cents });
   }
-  return { list, errs };
+  return { list, errs, check: list.filter((x) => priceNeedsCheck(x.code, x.price_cents)) };
+}
+
+// Pergunta na própria página (sem janela do navegador): "Confira o valor: R$ 30.000,00 para Raio-X está certo?".
+// Sem o "Sim", nada é salvo. O "Sim" vale só para aquele valor, nesta página aberta.
+function showPriceCheck(items, key) {
+  const box = $('#exCheck');
+  const many = items.length > 1;
+  box.innerHTML = `<div class="cl-note warn" role="group" aria-labelledby="exCheckQ" aria-describedby="exCheckWhy" tabindex="-1">
+      <div id="exCheckQ" style="display:grid;gap:6px">${items.map((x) => `<p><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> ${priceCheckHtml(x)}</p>`).join('')}</div>
+      <p id="exCheckWhy" style="margin-top:6px">Um zero a mais ou a vírgula esquecida mudam muito o preço que o paciente vê. ${many ? 'Se os valores estiverem certos, confirme para salvar.' : 'Se o valor estiver certo, confirme para salvar.'}</p>
+      <div class="cl-actions" style="margin-top:12px">
+        <button class="btn btn-coral btn-sm" type="button" id="exCheckOk">${many ? 'Sim, salvar estes valores' : 'Sim, salvar este valor'}</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="exCheckFix">Não, corrigir</button>
+      </div>
+    </div>`;
+  box.hidden = false;
+  // data-check: é aviso para conferir, não erro (em âmbar, como a caixa: estilo no painel.html); hidePriceCheck tira.
+  items.forEach((x) => { const s = $(`#pr-${x.code}Err`); s.textContent = 'Confira se este valor está certo.'; s.dataset.check = ''; });
+  $('#exCheckOk').onclick = () => {
+    const c = clinic();
+    items.forEach((x) => { state.priceOk[`${c.id}:${x.code}`] = x.price_cents; });
+    saveExams(null, key);
+  };
+  $('#exCheckFix').onclick = () => { const inp = $(`#pr-${items[0].code}`); inp.focus(); inp.select(); };
+  $('[role="group"]', box).focus();
+}
+
+function hidePriceCheck() {
+  const box = $('#exCheck');
+  if (box && !box.hidden) { box.hidden = true; box.innerHTML = ''; }
+  $$('#examForm [data-check]').forEach((s) => { s.textContent = ''; s.removeAttribute('data-check'); });
 }
 
 async function saveExams(e, key) {
-  e.preventDefault();
+  e?.preventDefault();
   const c = clinic();
-  const { list, errs } = collectExams((code) => ({ on: $(`#ex-${code}`).checked, price: $(`#pr-${code}`).value }));
+  hidePriceCheck();
+  const { list, errs, check } = collectExams((code) => ({ on: $(`#ex-${code}`).checked, price: $(`#pr-${code}`).value }));
   let first = null;
   for (const code of EXAM_CODES) {
     const inp = $(`#pr-${code}`);
@@ -1068,6 +1115,9 @@ async function saveExams(e, key) {
   }
   $('#exMsg').innerHTML = '';
   if (first) { first.focus(); return; }
+  // Valor acima do limite largo do exame e ainda não conferido: pergunta antes; sem confirmar, não salva.
+  const pending = check.filter((x) => state.priceOk[`${c.id}:${x.code}`] !== x.price_cents);
+  if (pending.length) { showPriceCheck(pending, key); return; }
   const btn = $('#exSave');
   btn.disabled = true;
   btn.textContent = 'Salvando…';
