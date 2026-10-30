@@ -167,7 +167,7 @@ body.lite .hero-hint{display:none}
 .h3d-lite{position:absolute;right:max(28px,calc((100vw - 1240px)/2 + 20px));top:50%;transform:translateY(-50%);width:min(380px,max(280px,calc(100% - 690px)));padding:18px;border-radius:22px;background:rgba(7,32,43,.72);border:1px solid rgba(127,240,228,.22);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.3)}
 .h3d-lite h2{color:#fff;font-size:16px;letter-spacing:-.01em;margin-bottom:10px}
 .h3d-lite h2 i{color:var(--coral);margin-right:6px}
-.h3d-lite ol{list-style:none;display:grid;gap:6px}
+.h3d-lite ol{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:6px}
 .h3d-lite li a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.06);min-width:0}
 .h3d-lite li a:hover{background:rgba(255,255,255,.12)}
 .h3d-lite .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
@@ -449,6 +449,10 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
 .tele-warn i{color:#FFB199;margin-top:3px}
 .tele-warn a{color:#fff;font-weight:700;text-decoration:underline}
 #teleWait>p:first-child{margin-top:20px;font-size:15.5px}
+/* teleconsulta: link discreto para médicos (para-medicos.html) */
+.wl .tele-doc{margin-top:12px;font-size:14.5px}
+.tele-doc a{display:inline-flex;align-items:center;gap:8px;min-height:44px;color:#fff;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.tele-doc i{color:var(--aqua2)}
 /* teleconsulta: selo e lista de espera */
 .soon{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:999px;background:rgba(0,0,0,.2);border:1px solid rgba(255,255,255,.35);color:#fff}
 .wl-points{list-style:none;display:grid;gap:8px;margin-top:18px;color:rgba(255,255,255,.85);font-size:15px}
@@ -662,6 +666,7 @@ details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;m
               <p class="wl-msg" id="wlMsg" role="status"></p>
               <p class="wl-legal">Seu e-mail fica só com o IMED, sem spam. Ao enviar, você concorda com a <a href="privacidade.html">política de privacidade</a>.</p>
             </div>
+            <p class="tele-doc"><a href="para-medicos.html"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>É médico? Atenda pelo IMED</a></p>
           </div>
           <div class="wl-ic" aria-hidden="true"><span><i class="fa-solid fa-video" aria-hidden="true"></i></span></div>
         </div>

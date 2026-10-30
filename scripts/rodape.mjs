@@ -14,7 +14,7 @@ export const CRM = 'CRM-SP 266930';
 export const FONTE = 'Dados de endereço: CNES/Ministério da Saúde. O IMED é um serviço privado, sem vínculo com o governo ou o SUS.';
 
 // Links do rodapé: [texto, caminho a partir da raiz, ícone opcional]. '' = página inicial.
-// Ordem dos grupos: no celular, Pacientes e IMED lado a lado e Clínicas embaixo, em duas colunas.
+// Ordem dos grupos: no celular, Pacientes e IMED lado a lado e Clínicas e médicos embaixo, em duas colunas.
 export const GRUPOS = [
   ['Pacientes', [
     ['Perto de mim', 'perto.html'],
@@ -33,10 +33,11 @@ export const GRUPOS = [
     ['Acessibilidade', 'acessibilidade.html', 'fa-universal-access'],
     ['Fale com o IMED', 'contato.html'],
   ]],
-  ['Clínicas', [
+  ['Clínicas e médicos', [
     ['Para clínicas', 'parceiros.html'],
     ['Assumir o cadastro', 'reivindicar.html'],
     ['Área da clínica', 'painel.html'],
+    ['Para médicos', 'para-medicos.html'],
   ]],
 ];
 
