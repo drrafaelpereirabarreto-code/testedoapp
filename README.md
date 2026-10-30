@@ -144,10 +144,10 @@ delete from public.clinics where is_demo;
 
 ```bash
 supabase functions deploy clinicas-proximas --project-ref pyoqiecupxhdzigjudyd
-supabase functions deploy importar-clinicas --project-ref pyoqiecupxhdzigjudyd
+supabase functions deploy importar-clinicas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
 ```
 
-`importar-clinicas` só aceita chamadas com a chave `service_role` (é a própria `clinicas-proximas` que chama).
+`importar-clinicas` confere a chamada por conta própria: aceita a chave `service_role` (usada pela `clinicas-proximas`) ou o token interno da fila (cabeçalho `x-imed-token`, guardado em `private.app_tokens`).
 
 - Banco: aplique as novas migrações de `supabase/migrations`, por exemplo com `supabase db push`.
 

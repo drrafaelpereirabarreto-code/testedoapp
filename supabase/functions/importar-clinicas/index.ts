@@ -11,6 +11,8 @@
 // Ações (POST, JSON, Authorization: Bearer <chave de serviço>):
 //   garantir   { pontos: [{ lat, lng }] }  situação do município de cada ponto (e começa a importação)
 //   localizar  { ibge }                   localiza pelo endereço mais um lote de estabelecimentos
+//   importar   { fila, uf, cidade }        importa uma cidade da fila de pré-carga (chamada pelo pg_cron do
+//                                          banco, com o token interno no cabeçalho x-imed-token)
 
 import { addressQuery, CNES_TYPES, cityFromReverse, mapCnesRows, nameKey, pickAddressResult, type CnesRow } from './lib.ts';
 
@@ -175,12 +177,39 @@ async function ensure(points: { lat: number; lng: number }[]): Promise<(CityStat
   return out;
 }
 
+// Cidade da fila de pré-carga: começa a importação e devolve o resultado para a fila.
+async function importQueued(id: number, uf: string, cidade: string) {
+  await ensureUf(uf);
+  const rows = await db(`municipalities?select=ibge,cnes_code,name,name_key,uf&uf=eq.${uf}&name_key=eq.${encodeURIComponent(nameKey(cidade))}`) as Municipality[];
+  const m = rows[0];
+  if (!m) {
+    await rpc('import_queue_mark', { p_id: id, p_city: null, p_status: 'error', p_error: 'município não encontrado no IBGE' });
+    return 'not_found';
+  }
+  const status = await rpc('start_establishment_import', { p_city: m.ibge }) as string;
+  const next = status === 'done' ? 'done' : status === 'busy' ? 'pending' : status === 'error' ? 'error' : 'sent';
+  await rpc('import_queue_mark', { p_id: id, p_city: m.ibge, p_status: next });
+  if (status === 'started') background(runImport(m));
+  return status;
+}
+
+let tokenOk = '';
+async function authorized(req: Request): Promise<boolean> {
+  if (SERVICE_KEY && req.headers.get('authorization') === `Bearer ${SERVICE_KEY}`) return true;
+  const tok = req.headers.get('x-imed-token') ?? '';
+  if (!/^[0-9a-f]{64}$/.test(tok)) return false;
+  if (tok === tokenOk) return true;
+  const ok = await rpc('check_internal_token', { p_name: 'importer', p_token: tok }).catch(() => false);
+  if (ok === true) tokenOk = tok;
+  return ok === true;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
-  if (!SERVICE_KEY || req.headers.get('authorization') !== `Bearer ${SERVICE_KEY}`) return json({ ok: false, error: 'forbidden' }, 403);
+  if (!await authorized(req)) return json({ ok: false, error: 'forbidden' }, 403);
   let body: Record<string, unknown>;
   try {
     body = await req.json();
@@ -193,6 +222,11 @@ Deno.serve(async (req: Request) => {
         .map((p: { lat?: unknown; lng?: unknown }) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))
         .filter((p: { lat: number; lng: number }) => Number.isFinite(p.lat) && Number.isFinite(p.lng) && Math.abs(p.lat) <= 90 && Math.abs(p.lng) <= 180);
       return json({ ok: true, cidades: await ensure(pts) });
+    }
+    if (body.action === 'importar') {
+      const uf = String(body.uf ?? '').toUpperCase();
+      if (!/^[A-Z]{2}$/.test(uf) || typeof body.cidade !== 'string' || !Number.isInteger(body.fila)) return json({ ok: false, error: 'invalid' }, 400);
+      return json({ ok: true, status: await importQueued(body.fila as number, uf, body.cidade) });
     }
     if (body.action === 'localizar') {
       const rows = await db(`municipalities?select=ibge,cnes_code,name,name_key,uf&ibge=eq.${Number(body.ibge)}`) as Municipality[];
