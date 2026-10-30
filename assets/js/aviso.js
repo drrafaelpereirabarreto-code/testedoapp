@@ -23,6 +23,13 @@
     try { localStorage.setItem('imed_lgpd', '1'); } catch (e) {}
     d.remove(); removeEventListener('resize', pad); root.style.removeProperty('scroll-padding-bottom');
   };
-  var add = function () { document.body.appendChild(d); pad(); addEventListener('resize', pad); };
-  if (document.body) add(); else addEventListener('DOMContentLoaded', add);
+  var shown = false;
+  var add = function () { if (shown) return; shown = true; document.body.appendChild(d); pad(); addEventListener('resize', pad); };
+  var show = function () { if (document.body) add(); else addEventListener('DOMContentLoaded', add); };
+  // Página que pede a localização ao abrir (a inicial, com data-lgpd-depois no <html>): o aviso espera a resposta
+  // do pedido, para não cobrir a tela junto com a pergunta do navegador. A página chama IMED_LGPD.mostrar(); se ela
+  // não chamar (erro no script), o aviso aparece sozinho em 15 s.
+  window.IMED_LGPD = { mostrar: show };
+  if (document.documentElement.hasAttribute('data-lgpd-depois')) setTimeout(show, 15000);
+  else show();
 })();
