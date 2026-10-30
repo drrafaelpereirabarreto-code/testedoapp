@@ -29,6 +29,26 @@
 <link rel="stylesheet" href="assets/css/perto.css">
 <link rel="stylesheet" href="assets/css/tele.css">
 <link rel="stylesheet" href="assets/css/rodape.css">
+<style>
+/* Perguntas frequentes antes do pedido (#faqCard) e o cartão "É médico?" (#mdJoin: só no início, depois de tudo o
+   que é do paciente). Alvos de toque com 44 px ou mais; a seta de abrir e fechar é só desenho (sem texto, para o
+   leitor de tela ler só a pergunta). */
+.tl-faq{margin-top:12px;border-top:1px solid var(--line)}
+.tl-faq details{border-bottom:1px solid var(--line)}
+.tl-faq summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:10px 2px;cursor:pointer;list-style:none;font-weight:700;font-size:15.5px;line-height:1.4;color:var(--ink)}
+.tl-faq summary::-webkit-details-marker{display:none}
+.tl-faq summary::after{content:"";flex-shrink:0;width:9px;height:9px;margin:0 8px 4px;border-right:2.5px solid var(--primary);border-bottom:2.5px solid var(--primary);transform:rotate(45deg);transition:transform .2s}
+.tl-faq details[open]>summary::after{margin:4px 8px 0;transform:rotate(-135deg)}
+.tl-faq-a{padding:0 2px 14px}
+.tl-faq-a p{font-size:15px;line-height:1.6;color:var(--text)}
+.tl-faq-a p+p{margin-top:8px}
+.tl-join{background:transparent;border:1px dashed #B5CBD4;box-shadow:none}
+.tl-join h2{display:flex;align-items:center;gap:10px;font-size:17px;line-height:1.35}
+.tl-join h2 i{display:grid;place-items:center;flex-shrink:0;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);font-size:16px}
+.tl-join .tl-muted{margin-top:8px}
+.tl-join .btn-ghost{background:#fff}
+@media (prefers-reduced-motion:reduce){.tl-faq summary::after{transition:none}}
+</style>
 </head>
 <body class="tl-page">
 <a class="skip" href="#main">Pular para o conteúdo</a>
@@ -97,6 +117,45 @@
           <li><b>Exames, documentos e orientações</b> ficam nesta página: o PDF assinado pelo médico (receita simples, atestado, pedido de exames) e os locais perto de você para fazer os exames.</li>
         </ol>
         <p class="tl-free"><i class="fa-solid fa-shield-heart" aria-hidden="true"></i><span>O IMED não cobra nada pelo site nesta fase e nunca pede Pix, senha ou código por telefone ou WhatsApp.</span></p>
+      </section>
+
+      <!-- Perguntas frequentes (antes do pedido): os textos são os do termo (seções 2 e 7) e os de assets/js/tele-docs.js
+           (BLOCK_TEXT). Mudou lá, mude aqui: tests/e2e-teleconsulta-faq.mjs confere que continuam iguais. -->
+      <section class="tl-card" id="faqCard" aria-labelledby="faqTitle">
+        <h2 id="faqTitle">Perguntas frequentes</h2>
+        <p class="tl-muted">Antes de pedir: para que serve a teleconsulta e o que não sai por ela.</p>
+        <div class="tl-faq">
+          <details>
+            <summary>Para que serve a teleconsulta?</summary>
+            <div class="tl-faq-a">
+              <p>Para conversar por vídeo com um médico sobre um problema de saúde que não é de emergência. Se o médico achar necessário, ele pode emitir pelo IMED: pedido de exames, receita simples (de remédio que não fica retido na farmácia), atestado, declaração de comparecimento, encaminhamento, relatório médico e orientações.</p>
+              <p>Só vale o arquivo PDF com a assinatura digital do médico, no padrão ICP-Brasil.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Quando não usar a teleconsulta?</summary>
+            <div class="tl-faq-a">
+              <p><b>Em emergência:</b> ligue <a class="link" href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro.</p>
+              <p><b>Quando precisa de exame físico:</b> pela tela, o médico não consegue fazer o exame físico completo. Por isso ele pode pedir exames, indicar consulta presencial ou encerrar a teleconsulta se achar que ela não é segura para o seu caso.</p>
+              <p>A teleconsulta não substitui o acompanhamento presencial, principalmente em doenças crônicas.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Que receitas não saem pela teleconsulta do IMED?</summary>
+            <div class="tl-faq-a">
+              <p>Receita de antibiótico, de canetas GLP-1 (como semaglutida e tirzepatida), de remédio controlado e as receitas azul e amarela não saem pelo IMED: o médico faz em outra plataforma oficial ou em papel e combina com você como vai entregar.</p>
+              <p>Por quê? A Anvisa está passando a versão eletrônica dessas receitas para o sistema dela (SNCR), e a farmácia pode recusar a que não sair de uma plataforma ligada a ele. O IMED não é ligado ao SNCR.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Vou receber atestado?</summary>
+            <div class="tl-faq-a">
+              <p>Só se o médico achar necessário, depois de avaliar você. O atestado nunca sai com data anterior à consulta: o afastamento não pode começar antes dela.</p>
+              <p>O CID (código da doença) só entra no atestado ou no relatório se você pedir e autorizar. Atestado ocupacional (ASO) não pode ser feito por teleconsulta.</p>
+            </div>
+          </details>
+        </div>
+        <p class="tl-small">Mais detalhes no <a class="link" href="termo-teleconsulta.html#documentos" target="_blank" rel="noopener">termo da teleconsulta<span class="sr"> (abre em outra aba)</span></a>.</p>
       </section>
 
       <section class="tl-card" id="formCard" aria-labelledby="formTitle">
@@ -313,6 +372,16 @@
     </section>
 
     <p class="tl-legal">Médicos com cadastro aprovado pela equipe do IMED. Você pode conferir o CRM na <a class="link" href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do CFM<span class="sr"> (abre em outra aba)</span></a>. Leia o <a class="link" href="termo-teleconsulta.html">termo da teleconsulta</a> e a <a class="link" href="privacidade.html#teleconsulta">política de privacidade</a>.</p>
+
+    <!-- ===================== É MÉDICO? (só no início, depois de tudo o que é do paciente) ===================== -->
+    <section class="tl-card tl-join" id="mdJoin" aria-labelledby="mdJoinTitle" hidden>
+      <h2 id="mdJoinTitle"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>É médico? Cadastre-se para atender pelo IMED</h2>
+      <p class="tl-muted">Médico com CRM ativo se cadastra pelo site. Depois que a equipe do IMED confere o CRM e a identidade, você atende por vídeo os pacientes da fila, na área do médico.</p>
+      <div class="tl-row">
+        <a class="btn btn-ghost" href="para-medicos.html">Como funciona<span class="sr"> para o médico</span></a>
+        <a class="btn btn-ghost" href="medico.html">Fazer meu cadastro</a>
+      </div>
+    </section>
   </div>
 </main>
 

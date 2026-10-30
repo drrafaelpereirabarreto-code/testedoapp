@@ -38,6 +38,7 @@ export const GRUPOS = [
     ['Assumir o cadastro', 'reivindicar.html'],
     ['Área da clínica', 'painel.html'],
     ['Para médicos', 'para-medicos.html'],
+    ['Área do médico', 'medico.html'],
   ]],
 ];
 

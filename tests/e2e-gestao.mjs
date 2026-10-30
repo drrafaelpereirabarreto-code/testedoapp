@@ -3,14 +3,19 @@
 // com as regras do contrato (só admin; 42501 'forbidden'; dado inválido 22023 com mensagem curta em português).
 // Cenários: sem login (quadro de entrar, nada do banco); conta que não é da equipe (aviso e nenhuma busca de dados);
 // equipe com dados (números, gráficos com resumo para leitor de tela e tabela, funis, resultados, fluxograma da entrada
-// de médicos com os números, médicos aguardando, clínicas, faturamento); período 7/30/90/365 (12 meses: colunas por
+// de médicos com os números, médicos aguardando, clínicas, faturamento); bloco "Agora" (a fila da teleconsulta neste
+// momento, chave "agora" de admin_gestao: no topo, antes do período; não muda com o período; atualiza junto com a
+// página; o leitor de tela só ouve a frase quando os números mudam; nenhum dado de paciente; sem médico disponível em
+// destaque; erro do banco esconde o bloco); banco ainda sem a chave "agora" (o bloco não aparece, nada quebra; aparece
+// quando a migração chega); período 7/30/90/365 (12 meses: colunas por
 // semana, tabelas abertas continuam abertas); banco ainda sem as funções (aviso, sem quebrar); cobrança (criar, prévia
 // do valor, erro de validação, erro do banco, marcar como paga hoje e noutro dia, cancelar e voltar para pendente com
 // confirmação, Enter de novo não desfaz, filtro, lista cheia e planilha CSV); a conta deixa de ser da equipe com a
 // página aberta (42501); banco novo (tudo zero); link "Painel de gestão" no painel.html só para a equipe; entrada
-// vencida; celular 390 px sem rolagem lateral (também em 12 meses); nenhum erro no console. Com o axe-core por perto
-// (AXE_PATH ou node_modules), audita a página da equipe no computador e no celular, com as tabelas abertas e os quadros
-// de pagamento e de voltar para pendente (falha com violação grave).
+// vencida; celular 390 px sem rolagem lateral (também em 12 meses) e celular 360 px (o bloco "Agora" e a página toda,
+// medidos contra a largura configurada); nenhum erro no console. Com o axe-core por perto
+// (AXE_PATH ou node_modules), audita a página da equipe no computador e no celular, com as tabelas abertas, o bloco
+// "Agora" com o aviso de nenhum médico e os quadros de pagamento e de voltar para pendente (falha com violação grave).
 // Rodar com: node tests/e2e-gestao.mjs   (precisa do pacote "playwright" instalado)
 // Opcional: SHOTS=pasta salva capturas de tela (para mostrar o teste); E2E_PORT muda a porta (padrão 4761);
 //           ONLY="trecho" roda só os cenários com esse texto no nome; AXE_PATH=<pasta>/node_modules/axe-core.
@@ -89,6 +94,10 @@ const AGUARDANDO = [
 
 // Números do período (o resto vem das regras do contrato). A série soma os totais, como no banco.
 const PAT = { pedidos: [0, 1, 0, 2, 1, 0, 1], tele_pedidas: [1, 0, 0, 1, 0, 1, 0], tele_encerradas: [1, 0, 0, 0, 0, 1, 0], documentos: [0, 2, 0, 0, 1, 0, 0] };
+// A teleconsulta agora (chave "agora" de admin_gestao, migração 20261030190000_painel_medico): igual em qualquer
+// período; os médicos disponíveis são o mesmo número de medicos.disponiveis_agora.
+const AGORA = { aguardando: 1, espera_mais_longa_min: 7, em_atendimento: 0, medicos_disponiveis: 1 };
+const AGORA_IDS = ['agora-aguardando', 'agora-espera', 'agora-atendimento', 'agora-medicos'];
 function resumoCobranca(charges, days) {
   const from = addDays(HOJE, 1 - days);
   const pagas = charges.filter((c) => c.status === 'pago' && daySP(c.pago_em) >= from && daySP(c.pago_em) <= HOJE);
@@ -105,7 +114,7 @@ function resumoCobranca(charges, days) {
     })),
   };
 }
-function gestao(days, charges) {
+function gestao(days, charges, agora = AGORA) {
   const de = addDays(HOJE, 1 - days);
   const serie = Array.from({ length: days }, (_, i) => ({
     dia: addDays(de, i), visitas: i === days - 4 ? 1000 : 120 + ((i * 53) % 97),
@@ -128,10 +137,11 @@ function gestao(days, charges) {
       avaliacoes: { total: 3, media: 4.7 },
     },
     funil: { visitas: tot('visitas'), abriram_busca: 1200, abriram_local: 480, pedidos: ped, confirmados: confirmado + concluido, concluidos: concluido, abriram_tele: 300, tele_fila: tp, tele_atendidas: te, tele_encerradas: te, tele_com_documento: Math.min(te, 5) },
-    medicos: { inscritos_periodo: days >= 30 ? 4 : 1, pendente: 2, aprovado: 5, recusado: 1, suspenso: 0, disponiveis_agora: 1, aprovacao_media_horas: 30.5, aguardando: AGUARDANDO },
+    medicos: { inscritos_periodo: days >= 30 ? 4 : 1, pendente: 2, aprovado: 5, recusado: 1, suspenso: 0, disponiveis_agora: agora?.medicos_disponiveis ?? 1, aprovacao_media_horas: 30.5, aguardando: AGUARDANDO },
     clinicas: { parceiras: 7, com_agenda: 3, com_preco: 5, interessadas: days >= 30 ? 11 : 2, reivindicacoes: { pendente: 2, aprovado: 7, recusado: 1 } },
     outros: { lista_espera: 40, contatos: 6, avisos_de_erro: 2 },
     cobranca: resumoCobranca(charges, days),
+    agora: clone(agora),
   };
 }
 // Banco novo: tudo zero, médias sem número (null), ninguém aguardando, nenhuma cobrança (12 meses zerados).
@@ -153,6 +163,7 @@ function gestaoZero(days) {
     clinicas: { ...z(['parceiras', 'com_agenda', 'com_preco', 'interessadas']), reivindicacoes: z(['pendente', 'aprovado', 'recusado']) },
     outros: z(['lista_espera', 'contatos', 'avisos_de_erro']),
     cobranca: resumoCobranca([], days),
+    agora: { aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 0 },
   };
 }
 
@@ -167,16 +178,16 @@ const STATUS = ['pendente', 'pago', 'cancelado'];
 const FORMAS = ['pix', 'cartao', 'boleto', 'dinheiro', 'transferencia', 'outro'];
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`)) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
 
-async function newPage(browser, { mobile = false, logged = false, email = 'equipe@imed.com.br', expired = false, db: dbOpts = {}, bypassCSP = false } = {}) {
+async function newPage(browser, { mobile = false, width = 390, logged = false, email = 'equipe@imed.com.br', expired = false, db: dbOpts = {}, bypassCSP = false } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    viewport: mobile ? { width, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', acceptDownloads: true, bypassCSP,
   });
   await context.clock.setFixedTime(new Date(NOW));
   const nowS = Math.floor(Date.parse(NOW) / 1000);
   const db = {
     admin: true, charges: clone(CHARGES), gestaoMissing: false, cobMissing: false, gestaoError: null, gestaoDelay: 0, cobError: null, saveError: null,
-    failRefresh: false, members: [], clinics: [], calls: [], zero: false,
+    failRefresh: false, members: [], clinics: [], calls: [], zero: false, agora: clone(AGORA),
     ...dbOpts,
   };
   const log = [];
@@ -212,7 +223,7 @@ async function newPage(browser, { mobile = false, logged = false, email = 'equip
         if (!isAdmin) return onlyAdmin();
         if (db.gestaoError) return json(route, db.gestaoError.body, db.gestaoError.status);
         const days = Math.min(366, Math.max(1, Number(body?.p_days) || 30));
-        const g = db.zero ? gestaoZero(days) : gestao(days, db.charges);
+        const g = db.zero ? gestaoZero(days) : gestao(days, db.charges, db.agora);
         return json(route, db.patchGestao ? db.patchGestao(g) : g);
       }
       case 'rpc/admin_cobranca_listar': {
