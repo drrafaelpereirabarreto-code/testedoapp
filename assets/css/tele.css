@@ -211,6 +211,107 @@ fieldset.fld.bad .tl-none{box-shadow:0 0 0 2px rgba(232,81,47,.5)}
 .tl-hist .btn{white-space:normal}
 .tl-legal{color:var(--muted);font-size:13px;line-height:1.55;padding:4px 2px}
 
+/* ======================= área do médico: topo da Plataforma de atendimento ======================= */
+/* Logo do IMED + "Plataforma de atendimento" + menu (Painel, Fila, Consultas, Documentos, Meu cadastro) + "Site do
+   IMED". Tela larga (1040 px ou mais): tudo na linha do topo. Mais estreita: o menu abre pelo botão "Menu", numa caixa
+   embaixo do topo. Sem item no menu (.solo, antes de entrar): só "Site do IMED", direto no topo. Celular de 360 px
+   sem rolagem lateral; alvos de 44 px. */
+.md-top-in{gap:14px}
+.md-brand{display:flex;align-items:center;flex:0 1 auto;min-width:0;min-height:34px;padding-left:14px;border-left:1px solid rgba(255,255,255,.24);font:700 15px/1.2 'Sora','Inter',sans-serif;letter-spacing:-.01em;color:#fff}
+.md-menubtn{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto;min-height:44px;padding:8px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.24);color:#fff;font-weight:700;font-size:14px}
+.md-menubtn:hover{background:rgba(255,255,255,.08)}
+.md-menubtn i{font-size:12px;transition:transform .2s}
+.md-top.open .md-menubtn{background:rgba(255,255,255,.1)}
+.md-top.open .md-menubtn i{transform:rotate(180deg)}
+.md-nav{display:none}
+.md-navlist{list-style:none}
+.md-nav a{display:flex;align-items:center;gap:8px;min-height:44px;padding:8px 12px;border-radius:12px;color:rgba(255,255,255,.84);font-weight:600;font-size:14px;line-height:1.25}
+.md-nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+.md-nav .md-site{border:1px solid rgba(255,255,255,.24);color:#fff}
+.md-site i{font-size:13px}
+.md-top.open .md-nav{display:block;position:absolute;left:0;right:0;top:100%;padding:8px 16px 16px;background:var(--navy);border-top:1px solid rgba(255,255,255,.08);box-shadow:0 24px 44px rgba(5,22,30,.38);max-height:calc(100vh - var(--top));max-height:calc(100dvh - var(--top));overflow-y:auto;overscroll-behavior:contain}
+.md-top.open .md-navlist{display:grid;gap:2px}
+.md-top.open .md-site{justify-content:center;margin-top:10px}
+.md-top.solo .md-menubtn{display:none}
+.md-top.solo .md-nav{display:flex;flex-shrink:0;margin-left:auto}
+@media (min-width:1040px){
+  .md-menubtn{display:none}
+  .md-nav,.md-top.open .md-nav{display:flex;align-items:center;gap:12px;flex:1 1 auto;min-width:0;position:static;padding:0;background:none;border:0;box-shadow:none;max-height:none;overflow:visible}
+  .md-navlist,.md-top.open .md-navlist{display:flex;gap:2px}
+  .md-nav a{white-space:nowrap}
+  .md-nav .md-site,.md-top.open .md-site{margin:0 0 0 auto}
+}
+@media (max-width:480px){
+  .md-top-in{gap:10px;padding:0 12px}
+  .md-brand{font-size:13px;padding-left:10px;max-width:8.6em}
+  .md-menubtn{padding:8px 12px}
+  .md-top.solo .md-site{padding:8px 10px;font-size:13.5px}
+  .md-top.solo .md-site i{display:none}
+}
+/* telas bem estreitas (até 340 px): "Site do IMED" vira só a casinha (o nome continua para o leitor de tela) */
+@media (max-width:340px){
+  .md-top-in{gap:8px}
+  .md-brand{padding-left:8px}
+  .md-menubtn{padding:8px 10px}
+  .md-top.solo .md-site{justify-content:center;min-width:44px;padding:8px}
+  .md-top.solo .md-site i{display:inline-block;font-size:16px}
+  .md-top.solo .md-site-t{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+}
+@media (prefers-reduced-motion:reduce){.md-menubtn i{transition:none}}
+
+/* ======================= painel "Agora na plataforma" ======================= */
+/* Celular e tela média (até 759 px): quem espera numa linha inteira e os outros quatro números dois a dois (o número
+   em cima, o que ele é embaixo, um ícone pequeno no canto). Com o médico disponível (classe "on", posta por
+   medico.js), o celular (até 599 px) mostra o painel resumido: só quem espera e "Ver a fila", para a fila ficar perto
+   do topo (os outros números voltam ao desligar e aparecem sempre de 600 px para cima). De 760 px: quem espera numa
+   linha e os outros quatro em quadros lado a lado (mais estreito, "atendimentos" não cabe na linha); de 980 px: cinco
+   quadros lado a lado. O primeiro (quem espera) tem cor própria. "Atualizado às" e "Só
+   números…" ficam numa linha pequena junto do título. Os números não são "ao vivo" para o leitor de tela (#nowLive
+   avisa só a mudança de quem espera). */
+.md-now-h{display:flex;flex-wrap:wrap;gap:2px 16px;align-items:baseline;justify-content:space-between}
+.md-now-meta{min-width:0;font-size:12.5px;line-height:1.45;color:var(--muted)}
+.md-now-at.warn{color:#7a5200;font-weight:600}
+.md-nums{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.md-num{position:relative;display:grid;grid-template-columns:minmax(0,1fr);align-content:start;row-gap:2px;padding:10px 12px;border-radius:16px;background:var(--bg2);border:1px solid var(--line);min-width:0}
+.md-num>i{position:absolute;top:10px;right:10px;display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:#fff;color:var(--primary);font-size:13px}
+.md-nt{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.md-nv{font:800 24px/1.15 'Sora','Inter',sans-serif;letter-spacing:-.02em;color:var(--ink)}
+.md-nl{font-size:13.5px;font-weight:600;line-height:1.35;color:var(--text);overflow-wrap:anywhere}
+.md-nx{font-size:13px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere}
+.md-nx:empty{display:none}
+.md-nx .link{display:inline-flex;align-items:center;min-height:44px}
+/* quem espera: a linha inteira, com o ícone ao lado e o número e o que ele é numa frase só ("3 pacientes aguardando
+   atendimento"), o texto quebra embaixo */
+.md-num-main{grid-column:1 / -1;grid-template-columns:38px minmax(0,1fr);column-gap:12px;align-items:center;padding:10px 14px;background:var(--primary-s);border-color:#c4e3ed}
+.md-num-main>i{position:static;grid-row:1 / span 2;width:38px;height:38px;border-radius:12px;font-size:16px}
+.md-num-main .md-nt{display:block;line-height:1.35}
+.md-num-main .md-nv{margin-right:6px;font-size:32px;line-height:1;color:var(--primary-d)}
+.md-num-main .md-nl{font-size:14px}
+.md-num-main .md-nx{grid-column:2;color:var(--primary-d);font-weight:600}
+.md-now-acts .btn{min-height:44px;white-space:normal}
+@media (max-width:599px){
+  .md-now.on .md-num:not(.md-num-main){display:none}
+}
+@media (min-width:760px){
+  .md-nums{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  .md-num{align-items:start;row-gap:6px;padding:14px}
+  .md-num>i{position:static;width:38px;height:38px;border-radius:12px;font-size:16px}
+  .md-nv{font-size:26px}
+  .md-nl{font-size:14px}
+  /* quem espera: a linha inteira, com ícone, número e texto lado a lado */
+  .md-num-main{grid-template-columns:44px minmax(0,1fr);column-gap:14px;align-items:center}
+  .md-num-main>i{width:44px;height:44px}
+  .md-num-main .md-nv{margin-right:8px}
+}
+@media (min-width:980px){
+  .md-nums{grid-template-columns:minmax(0,1.3fr) repeat(4,minmax(0,1fr))}
+  .md-num-main{grid-column:auto;grid-template-columns:minmax(0,1fr);align-items:start;column-gap:0}
+  .md-num-main>i{grid-row:auto;width:38px;height:38px}
+  .md-num-main .md-nt{display:flex}
+  .md-num-main .md-nv{margin-right:0;line-height:1.15}
+  .md-num-main .md-nx{grid-column:auto}
+}
+
 /* ======================= área do médico ======================= */
 .md-wrap{display:grid;gap:16px}
 .md-who{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:10px}
@@ -228,8 +329,8 @@ fieldset.fld.bad .tl-none{box-shadow:0 0 0 2px rgba(232,81,47,.5)}
 .md-me+p{margin-top:10px}
 .md-note{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--gold-s);color:#5c3d00;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
 
-/* link "Como funciona para o médico" no topo escuro */
-.md .tl-hero .md-howto{margin-top:4px}
+/* links "Como funciona para o médico" e "Termo da teleconsulta" no topo escuro */
+.md .tl-hero .md-howto{display:flex;flex-wrap:wrap;gap:0 22px;margin-top:4px}
 .md .tl-hero .md-howto a{display:inline-flex;align-items:center;gap:8px;min-height:44px;color:var(--aqua2);font-weight:700;text-decoration:underline;text-underline-offset:3px}
 .md .tl-hero :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
 

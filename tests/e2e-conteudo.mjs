@@ -271,7 +271,10 @@ await scenario('Privacidade: responsável, base legal, serviços fora do Brasil,
   assert.match(t, /não ligamos o aviso à sua conta/);
   assert.match(t, /conta páginas abertas, não pessoas/);
   assert.ok(!/quantas pessoas usam o site/.test(t));
-  assert.match(t, /a cidade ou o bairro escolhido no mapa/);
+  // O que fica no aparelho: a cidade escolhida, as recentes, as recusas do pedido de localização e o aviso da aba.
+  assert.match(t, /a cidade escolhida e as 3 últimas cidades escolhidas \(nome, estado e o centro da cidade\), quantas vezes o pedido de localização não foi aceito \(até 2, para não perguntar sem parar\) e, até fechar a aba, um aviso de que a localização já foi pedida \(sem a posição\)/);
+  // Localização (o aviso da página inicial leva a esta linha): o pedido ao abrir, uma vez por aba, nunca depois de 2 recusas.
+  assert.match(await page.textContent('tr#localizacao'), /Na página inicial, o pedido aparece assim que você abre o site, no máximo uma vez por aba, e não aparece mais sozinho depois de duas recusas\. Se você não permitir, escolha a cidade\./);
   assert.match(t, /a equipe médica do IMED, e cada acesso da equipe do IMED fica anotado/);
   assert.match(t, /o mês e o ano da avaliação/);
   // Pedido para outra pessoa maior de idade: o consentimento é dela, por meio de quem pede.

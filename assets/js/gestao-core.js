@@ -2,6 +2,8 @@
 // - formatação: R$ (Intl pt-BR), números, porcentagens, datas e horas no fuso de São Paulo;
 // - a resposta de public.admin_gestao arrumada para mostrar (o que o banco não consegue calcular fica null e a tela
 //   mostra "—"; zero continua zero: nada é inventado);
+// - "Agora": a fila da teleconsulta neste momento (chave "agora" de admin_gestao), com os 4 números do bloco, a hora
+//   deles (e há quanto tempo chegaram) e a frase curta para o leitor de tela;
 // - gráficos em SVG feitos à mão, sem biblioteca: linhas (a série por dia), colunas (por dia; somadas por semana no
 //   período longo) e colunas agrupadas (faturamento por mês) e barras horizontais (funil e situações). Cada um sai com
 //   role="img" e um resumo em aria-label; a página põe ao lado uma tabela com os mesmos números ("Ver em tabela");
@@ -233,7 +235,87 @@ export function normalizeGestao(raw, dias = 30) {
         .map((x) => ({ mes: x.mes, faturado_cents: num(x.faturado_cents), a_receber_cents: num(x.a_receber_cents) }))
         .sort((a, b) => a.mes.localeCompare(b.mes)),
     },
+    agora: normalizeAgora(r.agora),
   };
+}
+
+/* ======================= agora: a teleconsulta neste momento ======================= */
+// Chave "agora" de admin_gestao (migração 20261030191354_painel_medico; a mesma conta do painel do médico): pacientes
+// na fila agora, há quantos minutos espera o primeiro da fila, consultas em atendimento e médicos disponíveis. Não
+// depende do período escolhido. Só estas 4 contagens passam daqui para a tela (LGPD, só o necessário: nada de nome,
+// idade ou motivo de paciente, mesmo que a resposta trouxesse mais alguma coisa).
+// Banco ainda sem a migração (sem a chave), chave fora do formato ou sem nenhum número: null (a página não mostra o
+// bloco e o resto do painel segue igual).
+export const AGORA_KEYS = ['aguardando', 'espera_mais_longa_min', 'em_atendimento', 'medicos_disponiveis'];
+export function normalizeAgora(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const a = pick(v, AGORA_KEYS);
+  if (AGORA_KEYS.every((k) => a[k] === null)) return null;
+  // Ninguém na fila: não há espera (o banco manda null; um número aqui não seria a espera de ninguém).
+  if (a.aguardando === 0) a.espera_mais_longa_min = null;
+  return a;
+}
+// Médico disponível = aprovado com o "Disponível para atender" ligado na área do médico (a mesma regra de
+// tele_doctors_online). Ter a página aberta não basta, e aceitar um paciente não desliga o "Disponível": o número pode
+// incluir médico ocupado numa consulta.
+// Destaque: há paciente esperando e nenhum médico disponível (ninguém atende até um médico ligar o "Disponível"). Com
+// médicos disponíveis não há destaque, mesmo que talvez estejam todos em consulta (o banco não diz quem está livre).
+export const agoraSemMedico = (a) => isNum(a?.aguardando) && a.aguardando > 0 && a.medicos_disponiveis === 0;
+// Número e unidade juntos: se precisar quebrar a linha, "1 h 59 min" vira "1 h" e "59 min" (nunca "1 h 59" e "min").
+const juntaUnidade = (s) => s.replace(/(\d) (h|min)\b/g, '$1\u00a0$2');
+// Os 4 números do bloco, na ordem da tela (sem número: "—"; zero é zero). warn: em destaque. A explicação embaixo do
+// número fica no singular quando ele é 1 ("1 / paciente na fila", nunca "1 / pacientes na fila").
+export function agoraItens(a) {
+  const x = obj(a);
+  const sp = (n, um, varios) => (n === 1 ? um : varios);
+  return [
+    { id: 'agora-aguardando', label: 'Aguardando atendimento', value: fmtInt(x.aguardando), sub: `${sp(x.aguardando, 'paciente', 'pacientes')} na fila, esperando um médico aceitar`, warn: agoraSemMedico(x) },
+    { id: 'agora-espera', label: 'Espera mais longa', value: juntaUnidade(fmtMin(x.espera_mais_longa_min)), sub: x.aguardando === 0 ? 'ninguém na fila agora' : 'do primeiro paciente da fila', warn: false },
+    { id: 'agora-atendimento', label: 'Em atendimento', value: fmtInt(x.em_atendimento), sub: sp(x.em_atendimento, 'consulta aceita por um médico ou em andamento', 'consultas aceitas por um médico ou em andamento'), warn: false },
+    { id: 'agora-medicos', label: 'Médicos disponíveis', value: fmtInt(x.medicos_disponiveis), sub: sp(x.medicos_disponiveis, 'aprovado com o “Disponível” ligado (pode estar em consulta)', 'aprovados com o “Disponível” ligado (pode incluir quem está em consulta)'), warn: false },
+  ];
+}
+// Hora dos números de "agora" (no alto do bloco): a do banco (gerado_em), nunca a do relógio daqui. idadeMs: há quanto
+// tempo a página recebeu os números, medido aqui pela diferença entre dois Date.now() (relógio do aparelho adiantado
+// ou atrasado não muda a conta). "Atualizado às 12:00"; com 2 min ou mais: "Atualizado às 12:00 (há 5 min)"; se já é
+// outro dia em São Paulo, com a data: "Atualizado em 29/10 às 23:50 (há 3 h)". Sem a hora do banco: "".
+export const AGORA_VELHO_MIN = 2;
+export function agoraHora(geradoEm, idadeMs = 0) {
+  const t = Date.parse(geradoEm);
+  if (!geradoEm || Number.isNaN(t)) return '';
+  const idade = isNum(idadeMs) && idadeMs > 0 ? idadeMs : 0;
+  const dia = todaySP(t);
+  const hora = HORA_SP.format(new Date(t));
+  const base = todaySP(t + idade) === dia ? `Atualizado às ${hora}` : `Atualizado em ${shortDay(dia)} às ${hora}`;
+  return idade >= AGORA_VELHO_MIN * 60000 ? `${base} (${sinceText(geradoEm, t + idade)})` : base;
+}
+// Minutos por extenso, para o leitor de tela: "menos de 1 minuto", "12 minutos", "1 hora e 5 minutos", "2 horas".
+export function fmtMinFala(m) {
+  if (!isNum(m) || m < 0) return '';
+  if (m < 1) return 'menos de 1 minuto';
+  const t = Math.round(m);
+  const min = (n) => `${n} ${n === 1 ? 'minuto' : 'minutos'}`;
+  if (t < 60) return min(t);
+  const h = Math.floor(t / 60);
+  const r = t % 60;
+  return `${h} ${h === 1 ? 'hora' : 'horas'}${r ? ` e ${min(r)}` : ''}`;
+}
+// Frase curta do bloco para o leitor de tela (a página põe numa região aria-live educada, fora do bloco, só quando os
+// números mudam com a página aberta):
+// "Agora: 3 pacientes aguardando atendimento (o primeiro espera há 12 minutos), 1 consulta em atendimento e nenhum
+// médico disponível." Sem número: "sem o número de …" (nada inventado). Sem o bloco: "".
+export function agoraTexto(a) {
+  if (!a || typeof a !== 'object') return '';
+  const n = a.aguardando;
+  const esp = fmtMinFala(a.espera_mais_longa_min);
+  const fila = !isNum(n) ? `sem o número de pacientes aguardando${esp ? ` (o primeiro da fila espera há ${esp})` : ''}`
+    : n === 0 ? 'nenhum paciente aguardando atendimento'
+      : `${plural(n, 'paciente aguardando', 'pacientes aguardando')} atendimento${esp ? ` (${n === 1 ? 'espera' : 'o primeiro espera'} há ${esp})` : ''}`;
+  const em = a.em_atendimento;
+  const atend = !isNum(em) ? 'sem o número de consultas em atendimento' : em === 0 ? 'nenhuma consulta em atendimento' : `${plural(em, 'consulta', 'consultas')} em atendimento`;
+  const md = a.medicos_disponiveis;
+  const med = !isNum(md) ? 'sem o número de médicos disponíveis' : md === 0 ? 'nenhum médico disponível' : plural(md, 'médico disponível', 'médicos disponíveis');
+  return `Agora: ${lista([fila, atend, med])}.`;
 }
 
 // Soma de uma coluna da série (null se nenhum dia tiver o número).
@@ -522,7 +604,7 @@ export function fluxoMedicosHtml(m) {
     ${box('gs-fb2 gs-fx-no', 'fa-user-xmark', md.recusado, 'Recusado', 'não passaram na conferência', 'Ramo da conferência:')}
     ${box('gs-fs3 gs-fx-ok', 'fa-user-check', md.aprovado, 'Aprovado', tempo)}
     ${box('gs-fb3 gs-fx-warn', 'fa-ban', md.suspenso, 'Suspenso', 'aprovados e depois suspensos', 'Ramo do aprovado:')}
-    ${box('gs-fs4', 'fa-user-doctor', md.disponiveis_agora, 'Disponível para atender', isNum(md.disponiveis_agora) ? 'aprovados com a página de atendimento aberta agora' : 'sem esse número no banco')}
+    ${box('gs-fs4', 'fa-user-doctor', md.disponiveis_agora, 'Disponível para atender', isNum(md.disponiveis_agora) ? 'aprovados com o “Disponível” ligado agora (pode incluir quem está em consulta)' : 'sem esse número no banco')}
   </ol>`;
 }
 

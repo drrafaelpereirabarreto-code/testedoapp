@@ -49,7 +49,8 @@ class PgErr extends Error { constructor(message, details = null) { super(message
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const GUARDIANS = ['Mãe', 'Pai', 'Responsável legal (tutor ou guardião)'];
 const DOCTOR_FNS = new Set(['tele_doctor_me', 'tele_doctor_register', 'tele_set_available', 'tele_queue', 'tele_accept', 'tele_dismiss', 'tele_mark_started', 'tele_offer',
-  'tele_doctor_status', 'tele_set_exams', 'tele_end', 'tele_doctor_send', 'tele_doctor_messages', 'tele_history', 'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor']);
+  'tele_doctor_status', 'tele_set_exams', 'tele_end', 'tele_doctor_send', 'tele_doctor_messages', 'tele_history', 'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor',
+  'tele_painel_medico']);
 const todaySP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 function age(birth) {
   const [by, bm, bd] = birth.split('-').map(Number);
@@ -62,7 +63,7 @@ const ACTIVE = ['waiting', 'accepted', 'in_call'];
 
 function makeDb() {
   const db = { doctors: new Map(), consults: new Map(), messages: [], seq: 0, admins: new Set(['u-admin']), readers: new Set(['u-admin']), calls: [], waitlist: [], otp: [],
-    checks: [], changes: [], accessLog: [], t: 0 };
+    checks: [], changes: [], accessLog: [], t: 0, painel: false }; // painel: o banco já tem tele_painel_medico (senão, 404)
   db.addDoctor = (d) => { const row = { id: randomUUID(), rqe: null, specialty: null, phone: null, status: 'approved', review_note: null, reviewed_at: null, reviewed_by: null, checked_at: iso(Date.now() - DAY), available_until: null, created_at: iso(Date.now() - DAY), updated_at: iso(), ...d }; db.doctors.set(row.id, row); return row; };
   db.addConsult = (c) => {
     const row = { id: randomUUID(), status: 'waiting', patient_birthdate: '1980-01-01', patient_phone: '11987654321', for_other: false, requester_name: null, relationship: null,
@@ -242,6 +243,25 @@ const RPC = {
     return [...own, ...wait].slice(0, 100).map((c) => ({ id: c.id, status: c.status, patient_name: c.patient_name, age_years: age(c.patient_birthdate), reason: c.reason, for_other: c.for_other,
       relationship: c.relationship, wait_minutes: Math.floor((Date.now() - Date.parse(c.created_at)) / 60000), created_at: c.created_at, accepted_at: c.accepted_at, seen_seconds: secondsSince(c.patient_seen_at) }));
   },
+  // Painel "Agora na plataforma" (contrato de supabase/migrations/20261030191354_painel_medico.sql): só contagens, com as
+  // regras da fila. Só existe quando db.painel (nos outros cenários o banco "ainda não tem" a função: 404).
+  tele_painel_medico(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    const all = [...db.consults.values()];
+    const waiting = all.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3);
+    const oldest = waiting.length ? Math.min(...waiting.map((c) => Date.parse(c.created_at))) : null;
+    const ini = Date.parse(`${todaySP()}T00:00:00-03:00`);
+    return {
+      aguardando: waiting.length,
+      espera_mais_longa_min: oldest == null ? null : Math.max(0, Math.floor((now - oldest) / 60000)),
+      em_atendimento: all.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status)).length,
+      atendidos_hoje: all.filter((c) => c.doctor_id === d.id && c.status === 'ended' && c.started_at && Date.parse(c.ended_at) >= ini && Date.parse(c.ended_at) < ini + DAY).length,
+      documentos_para_assinar: 0, // os documentos ficam em tests/e2e-tele-docs.mjs
+      medicos_disponiveis: onlineCount(db),
+      atualizado_em: iso(now),
+    };
+  },
   tele_accept(db, a, uid) {
     const d = me(db, uid, true);
     if ([...db.consults.values()].some((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status))) throw new PgErr('consulta_ativa');
@@ -413,7 +433,7 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 /* ======================= páginas ======================= */
 // gum: câmera e microfone negados ('NotAllowedError') ou ocupados ({ name: 'NotReadableError', times: 2 }: falha nas 2
 // primeiras vezes e depois funciona). window.__gum conta os pedidos de câmera.
-async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 60000, rtcFail = false, failRpc = null, gum = null } = {}) {
+async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 60000, rtcFail = false, failRpc = null, gum = null, painelMs = undefined } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
@@ -447,7 +467,7 @@ async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 
   // Configuração do site com a teleconsulta só pela máquina (sem STUN), plano B e resumo mais rápidos.
   await context.route(`${BASE}assets/js/config.js`, async (route) => {
     const src = await readFile(join(ROOT, 'assets/js/config.js'), 'utf8');
-    return route.fulfill({ status: 200, contentType: 'text/javascript', body: `${src}\nwindow.IMED_CONFIG.tele = ${JSON.stringify({ iceServers: [], planBMs, gatherMs: 1500, slowMs })};\n` });
+    return route.fulfill({ status: 200, contentType: 'text/javascript', body: `${src}\nwindow.IMED_CONFIG.tele = ${JSON.stringify({ iceServers: [], planBMs, gatherMs: 1500, slowMs, painelMs })};\n` });
   });
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
@@ -466,6 +486,8 @@ async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 
     const args = JSON.parse(req.postData() || '{}');
     const uid = USERS[auth]?.id || null;
     db.calls.push({ fn, args, uid, at: Date.now() });
+    // Banco ainda sem a função do painel (como o PostgREST responde): a área do médico segue sem o painel, sem erro.
+    if (fn === 'tele_painel_medico' && !db.painel) return json(route, { code: 'PGRST202', details: null, hint: null, message: 'Could not find the function public.tele_painel_medico without parameters in the schema cache' }, 404);
     if (failRpc && failRpc(fn, args)) return json(route, { code: 'XX000', message: 'falha simulada' }, 500);
     if (DOCTOR_FNS.has(fn) && !uid) return json(route, { code: '42501', message: `permission denied for function ${fn}` }, 401);
     try {
@@ -1644,6 +1666,66 @@ await scenario('leitor de tela: fila sem "ao vivo" e sem refazer à toa; mensage
   assert.ok(r.st <= 1, `estado da chamada não é reescrito a cada consulta (${r.st} escritas)`);
   assert.deepEqual(pat.errors, []);
   await pat.context.close();
+});
+
+await scenario('painel "Agora na plataforma" com a fila de verdade: o número sobe sem dado do paciente (a chegada é avisada uma vez só, pela fila), some na consulta e volta com "atendimentos hoje"', async () => {
+  const db = makeDb();
+  db.painel = true; // o banco já tem tele_painel_medico
+  db.addDoctor({ user_id: 'u-doc', full_name: 'Carla Mendes', crm: '123456', crm_uf: 'SP' });
+  const doc = await newPage(browser, db, { painelMs: 800 });
+  const num = (k) => doc.page.$eval(`[data-num="${k}"] .md-nv`, (b) => b.textContent.trim());
+  const waitNum = (k, v) => doc.page.waitForFunction(([k2, v2]) => {
+    const p = document.querySelector('#painel');
+    return !p.closest('[hidden]') && p.querySelector(`[data-num="${k2}"] .md-nv`).textContent.trim() === v2;
+  }, [k, String(v)], { timeout: 15000 });
+  await doctorOnDuty(doc.page);
+  // Disponível: o banco conta a Carla entre os médicos atendendo; ninguém na fila ainda. "Contando você." só com os
+  // números pedidos depois de ela ficar disponível (o pedido que já estava no caminho pode chegar antes, sem a frase).
+  await waitNum('medicos_disponiveis', 1);
+  assert.equal(await num('aguardando'), '0');
+  await doc.page.waitForFunction(() => document.querySelector('#nowMe').textContent === 'Contando você.');
+  assert.equal((await text(doc.page, '#nowBtn')).trim(), 'Ver a fila');
+  // Paciente entra na fila: o painel conta, sem nome, idade, celular nem motivo; a fila (médico disponível) mostra o pedido.
+  const pat = await patientInQueue(browser, db, { planBMs: 60000, name: 'Paciente Do Painel', phone: '21988887777' });
+  await waitNum('aguardando', 1);
+  assert.equal((await text(doc.page, '#nowWait')).trim(), 'O primeiro da fila espera há menos de 1 min.');
+  assert.doesNotMatch(await text(doc.page, '#painel'), /Paciente Do Painel|garganta|\d+ anos|98888/);
+  await doc.page.waitForSelector('#queue [data-accept]');
+  assert.match(await text(doc.page, '#queue'), /Paciente Do Painel/);
+  // Leitor de tela: com a fila na tela, quem avisa a chegada é ela ("Novo paciente na fila"); o painel não repete.
+  await doc.page.waitForFunction(() => /^Novo paciente na fila: Paciente Do Painel/.test(document.querySelector('#queueLive').textContent));
+  assert.equal(await doc.page.textContent('#nowLive'), '', 'o painel não avisa a mesma chegada de novo');
+  await doc.page.evaluate(() => window.scrollTo(0, 0));
+  await shot(doc.page, 'tele-30-painel-com-paciente-na-fila');
+  // Atende: o painel some e não é pedido enquanto a consulta está aberta; no menu, "Consultas" leva à consulta e
+  // "Documentos" aos documentos dela.
+  await doc.page.click('#queue [data-accept]');
+  await visible(doc.page, '#consult');
+  assert.equal(await doc.page.isHidden('#painel'), true);
+  const during = db.called('tele_painel_medico').length;
+  assert.deepEqual(await doc.page.$$eval('#mdMenu [data-go]', (as) => as.filter((a) => !a.closest('[hidden]')).map((a) => [a.textContent.trim(), a.getAttribute('href')])),
+    [['Consultas', '#consult'], ['Documentos', '#cDocs']]);
+  await doc.page.click('#mdMenu [data-go="documentos"]');
+  await doc.page.waitForFunction(() => document.activeElement?.id === 'cDocsTitle');
+  await doc.page.waitForTimeout(2500);
+  assert.equal(db.called('tele_painel_medico').length, during, 'na consulta, o painel não é pedido');
+  // Começa (anotado: continuou por telefone ou mensagem) e encerra: o painel volta, com 1 atendido hoje.
+  await doc.page.click('#cPhoneNote');
+  const c = [...db.consults.values()][0];
+  await waitFor(() => !!c.started_at, 10000, 'atendimento começou');
+  await doc.page.click('#cEnd');
+  await doc.page.click('#cEndYes');
+  await visible(doc.page, '#dutyCard');
+  await waitNum('atendidos_hoje', 1);
+  assert.equal(await num('aguardando'), '0');
+  assert.equal(await num('em_atendimento'), '0');
+  assert.equal(c.status, 'ended');
+  await doc.page.evaluate(() => window.scrollTo(0, 0));
+  await shot(doc.page, 'tele-31-painel-depois-da-consulta');
+  assert.deepEqual(doc.errors, []);
+  assert.deepEqual(pat.errors, []);
+  await pat.context.close();
+  await doc.context.close();
 });
 
 await scenario('teste de câmera: dois toques não deixam a câmera ligada', async () => {
