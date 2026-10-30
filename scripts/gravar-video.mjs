@@ -211,7 +211,10 @@ async function roteiro(page, tela, cena) {
     await rolar(page, { dy: -100000, ms: 1300 });
     await pausa(400);
     await L('Procure pelo exame que você precisa');
-    await tocar(page, '#heroQ');
+    // Foco pelo teclado, com o círculo do toque: o clique do Playwright espera a página parar de se mexer, e a
+    // cidade 3D desenhada sem placa de vídeo (no servidor do GitHub) não deixa (a gravação de 30/10 falhou assim).
+    await marcarToque(page, '#heroQ');
+    await page.locator('#heroQ').focus();
     await page.locator('#heroQ').pressSequentially('ressonância', { delay: 115 });
     await page.locator('#heroSug .sug').first().waitFor({ timeout: 5000 });
     await pausa(1300);
