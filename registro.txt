@@ -1,0 +1,13 @@
+[15:07:37] == vertical: 360×640 @3x
+[15:07:37]   cena 1: inicio
+[15:07:43]   cena 2: mapa-reais
+[15:07:54]   cena 3: busca-exame
+[15:08:00]   cena 4: resultados
+[15:08:16]   cena 5: detalhe
+[15:08:22]   cena 6: local
+[15:08:29]   cena 7: responsavel
+[15:08:36]   cena 8: final
+[15:08:41]   1344 quadros em 63.2 s; montando /home/runner/work/_temp/video/imed-vertical.mp4
+[15:09:05] == horizontal: 1280×720 @1.5x
+[15:09:05] !! horizontal: cdpSession.send: Protocol error (Page.startScreencast): Not attached to an active page
+[15:09:05] resumo: [{"formato":"vertical","arquivo":"/home/runner/work/_temp/video/imed-vertical.mp4","quadros":1344,"segundos":63.2,"falhas":[]}]
