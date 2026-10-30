@@ -8,3 +8,8 @@
 6. Service worker corrigido para a versão nova sempre aparecer.
 7. Comparação com concorrentes (Doctoralia, BoaConsulta, Dr. Consulta, apps de laboratório, Conexa/Docway) → 14 melhorias aprovadas.
 8. Fila de pré-carga de 143 cidades + banco do marketplace (avaliações, reivindicação, painel, convênios, páginas por cidade).
+9. Página de cada local (`local.html`), agenda com horário para parceiros, "Quem somos" e "Termos" (30/10).
+10. Noite de 30/10: busca mostra a área inteira (mapa no raio todo, pontos de todos os locais, contagem real, Ver mais,
+    filtros no banco, até 50 km); mapa da página inicial com todos os locais em 2 km; segurança do banco aplicada;
+    testes automáticos no GitHub; fila ampliada para 316 cidades (73 mil locais). Em andamento: teleconsulta por vídeo,
+    documentos médicos (receita, atestado etc.), confiança/credibilidade, contador de visitas, acessibilidade e velocidade.

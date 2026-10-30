@@ -40,9 +40,10 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
   área da clínica/admin (`painel.html`), páginas por cidade (`cidades/`, gerar com `scripts/gerar-cidades.mjs`),
   teleconsulta "em breve". Fila de importação (143 cidades) rodando sozinha.
 - Testes: `node --test tests/*.test.mjs` e `node tests/e2e-{perto,inicio,clinica,conta}.mjs` (todos passando).
-- Também no ar: página de cada local (`local.html`), agenda com horário (aba Agenda no painel; reserva já confirmada), "Quem somos" e "Termos", 143 cidades. O Dr. Rafael é admin (`admin_emails`) e aprova cadastros no `painel.html`.
-- **Próximo:** vídeo de divulgação (gravar a tela do site → AI Producer by OpusClip); quando a fila terminar,
-  exportar `imported_cities()` para `scripts/cidades.json` e rodar o gerador de novo.
+- Também no ar: página de cada local (`local.html`), agenda com horário (aba Agenda no painel; reserva já confirmada), "Quem somos" e "Termos". O Dr. Rafael é admin (`admin_emails`) e aprova cadastros no `painel.html`.
+- Noite de 30/10 (no ar): busca na área inteira (mapa no raio todo, pontos de todos os locais, contagem real, Ver mais, até 50 km); mapa da página inicial com todos os locais em 2 km; segurança do banco (migração `20261030074604_seguranca`); testes automáticos no GitHub (`.github/workflows/testes.yml`); fila com 316 cidades importadas (`scripts/cidades.json` com 318).
+- **Em andamento (agentes):** teleconsulta por vídeo (`teleconsulta.html`, `medico.html`); depois os documentos médicos (receita, atestado, encaminhamento…); confiança (rodapé com médico responsável, faxina do inventado, páginas de regras), contador de visitas, acessibilidade e velocidade. Gerar de novo as páginas das cidades junto com o rodapé novo.
+- **Próximo:** vídeo de divulgação (gravar a tela → AI Producer by OpusClip); nova análise dos concorrentes.
 
 ## Pendências que dependem do Dr. Rafael
 - Razão social e CNPJ do IMED → `sobre.html` (hoje "em atualização"). Termos de uso: pedir revisão de um advogado.
@@ -50,5 +51,7 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
 - Número de WhatsApp do IMED → `whatsapp` em `assets/js/config.js`.
 - Conectar **Resend** (e-mail) → SMTP no Supabase Auth; e Auth → URL Configuration com o endereço do site.
 - Aprovar quando o Supabase pedir confirmação de SQL (o tempo esgota se ninguém responde).
+- Segurança: manter "Confirm email" ligado; entrar no `painel.html` pelo link do e-mail (cria a conta de admin) e depois rodar `select * from private.vincular_admin();`; 2FA no Supabase e no GitHub; backup (plano Pro, custo).
+- Teleconsulta: inscrição da empresa no CRM antes de atender; certificado digital ICP-Brasil para assinar documentos.
 
 → Detalhes técnicos: `memory/context/arquitetura.md` · Histórico: `memory/projects/`
