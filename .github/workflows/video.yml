@@ -1,0 +1,102 @@
+# Vídeo de divulgação do IMED, gravado com o site no ar (Actions → "Vídeo de divulgação" → Run workflow).
+#
+# Grava aqui no GitHub porque o mapa (OpenStreetMap) e o banco abrem daqui; o roteiro está em scripts/gravar-video.mjs.
+# Só navega e rola as páginas: não envia pedido e não conta visita.
+# O resultado vai para um ramo próprio, "video/execucao-<número>", com os .mp4, as capturas de cada cena e o registro
+# (o site publicado, que sai da main, não muda). Também fica no artifact "video-imed", no fim da página da execução.
+name: Vídeo de divulgação
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Endereço do site (troque quando tiver o domínio próprio)
+        default: https://drrafaelpereirabarreto-code.github.io/testedoapp/
+      formatos:
+        description: vertical (celular), horizontal (computador) ou os dois, separados por vírgula
+        default: vertical,horizontal
+
+# Escrita só para criar o ramo do vídeo.
+permissions:
+  contents: write
+
+concurrency:
+  group: video
+  cancel-in-progress: true
+
+env:
+  PLAYWRIGHT_VERSION: '1.63.0'
+
+jobs:
+  gravar:
+    name: Gravar o vídeo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar o Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      - name: Instalar o Playwright
+        run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+
+      - name: Recuperar o navegador do cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Instalar o Chromium, o ffmpeg e as fontes
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-inter fonts-noto-color-emoji \
+            || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ffmpeg fonts-inter fonts-noto-color-emoji; }
+
+      - name: Gravar
+        env:
+          URL_SITE: ${{ inputs.url }}
+          FORMATOS: ${{ inputs.formatos }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/video"
+          node scripts/gravar-video.mjs --url="$URL_SITE" --formatos="$FORMATOS" --saida="$RUNNER_TEMP/video" 2>&1 | tee "$RUNNER_TEMP/video/registro.txt"
+
+      - name: Guardar o vídeo (artifact)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: video-imed
+          path: ${{ runner.temp }}/video
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Mesmo se um dos formatos falhar, publica o que deu certo, o registro e as capturas (para achar o erro).
+      - name: Publicar o vídeo num ramo próprio
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/video"
+          ramo="video/execucao-${GITHUB_RUN_NUMBER}"
+          rm -rf quadros-*
+          git init -q -b "$ramo"
+          git add -A .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Vídeo de divulgação (execução ${GITHUB_RUN_NUMBER})"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$ramo"
+          {
+            echo "### Vídeo pronto"
+            echo
+            echo "Ramo: \`$ramo\`"
+            echo
+            ls -la *.mp4 2>/dev/null | awk '{ printf "- %s (%.1f MB)\n", $9, $5 / 1048576 }'
+          } >> "$GITHUB_STEP_SUMMARY"
