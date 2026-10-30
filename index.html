@@ -207,6 +207,34 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
 .cat.on::after{content:"\f00c";font:900 11px "Font Awesome 6 Free";position:absolute;top:10px;right:10px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:var(--primary);color:#fff}
 @media (max-width:1100px){.cats{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding:4px 2px 12px;margin:0 -20px;padding-left:20px;padding-right:20px}.cats::-webkit-scrollbar{display:none}.cat{flex:0 0 128px;scroll-snap-align:start}}
 
+/* clínicas reais no mapa (cadastro oficial CNES) */
+.rm{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;align-items:stretch}
+.rm-map{position:relative;min-height:440px;border-radius:26px;overflow:hidden;background:#dde8ec;border:1px solid var(--line);isolation:isolate}
+.rm-wait{position:absolute;inset:0;display:grid;place-items:center;align-content:center;gap:10px;color:var(--muted);font-size:14px;text-align:center;padding:20px}
+.rm-side{display:flex;flex-direction:column;gap:14px;padding:22px;border-radius:26px;background:linear-gradient(180deg,#F7FBFC,#fff);border:1px solid var(--line)}
+.rm-where{font-size:14px;color:var(--muted)}
+.rm-where b{color:var(--ink)}
+.rm-where i{color:var(--coral);margin-right:4px}
+.rm-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.rm-stat{padding:10px 6px;border-radius:14px;background:#fff;border:1px solid var(--line);text-align:center}
+.rm-stat b{display:block;font:800 20px Sora;color:var(--ink)}
+.rm-stat span{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--muted)}
+.rm-stat i{width:8px;height:8px;border-radius:50%}
+.rm-list{list-style:none;display:grid;gap:8px}
+.rm-list li{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:14px;color:var(--muted)}
+.rm-list .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px #fff,0 0 0 4px rgba(15,31,40,.08)}
+.rm-list b{display:block;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rm-list small{color:var(--muted);font-size:12.5px}
+.rm-list .d{margin-left:auto;font-weight:700;color:var(--ink);font-size:13px;white-space:nowrap}
+.rm-side .btn{align-self:flex-start}
+.rm-src{font-size:12px;color:var(--muted);line-height:1.5}
+.rm-spin{width:22px;height:22px;border-radius:50%;border:3px solid rgba(14,124,156,.2);border-top-color:var(--primary);animation:rmspin .8s linear infinite}
+@keyframes rmspin{to{transform:rotate(360deg)}}
+.rm-pop b{display:block;color:var(--ink);font-size:13.5px;margin-bottom:2px}
+.rm-pop div{color:var(--muted);font-size:12.5px;line-height:1.45}
+@media (max-width:900px){.rm{grid-template-columns:1fr}.rm-map{min-height:340px}}
+@media (max-width:520px){.rm-stats{grid-template-columns:repeat(2,1fr)}.rm-side{padding:16px}}
+
 /* banners com foto */
 .banners{display:grid;grid-auto-flow:column;grid-auto-columns:calc((100% - 48px)/4);gap:16px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;padding-bottom:6px}
 .banners::-webkit-scrollbar{display:none}
@@ -701,6 +729,20 @@ footer .logo{--hc:#fff;margin-bottom:12px}
         <div class="cats" id="cats"></div>
       </section>
 
+      <section class="sec rv" id="reais" aria-labelledby="reaisTitle">
+        <div class="sec-h"><div><span class="kicker">Cadastro oficial · Ministério da Saúde</span><h2 id="reaisTitle">Clínicas reais perto de você</h2><p>Clínicas, laboratórios, centros de diagnóstico e hospitais ativos no CNES, com endereço e contato.</p></div><a class="link" href="perto.html?usar=localizacao">Ver todas perto de mim <i class="fa-solid fa-arrow-right"></i></a></div>
+        <div class="rm">
+          <div class="rm-map" id="realMap" role="region" aria-label="Mapa com clínicas reais"><div class="rm-wait"><span class="rm-spin" aria-hidden="true"></span>Carregando o mapa…</div></div>
+          <div class="rm-side">
+            <p class="rm-where"><i class="fa-solid fa-location-dot"></i>Em até 2 km de <b id="realWhere">Av. Paulista, Bela Vista</b> · <button class="link" id="realPlace" type="button">trocar</button></p>
+            <div class="rm-stats" id="realStats"></div>
+            <ol class="rm-list" id="realList"></ol>
+            <a class="btn btn-coral" href="perto.html?usar=localizacao"><i class="fa-solid fa-location-crosshairs"></i>Encontrar perto de mim</a>
+            <p class="rm-src">Fonte: CNES/DataSUS. Estes estabelecimentos ainda não são parceiros do IMED: horários e valores são confirmados com eles.</p>
+          </div>
+        </div>
+      </section>
+
       <section class="sec rv">
         <div class="banners">
           <button class="banner" data-act="pedido" style="--ov:linear-gradient(180deg,rgba(14,124,156,.05) 0%,rgba(10,92,118,.88) 70%)"><img src="assets/img/paciente-sm.webp" alt="" loading="lazy"><span class="b-in"><span class="b-k">Novo</span><h3>Tem um pedido médico?</h3><p>Marque os exames e veja quem faz tudo, com o total de cada clínica.</p><span class="pill">Montar meu pedido <i class="fa-solid fa-arrow-right"></i></span></span></button>
@@ -1172,7 +1214,7 @@ function setPlaceLabels(){
   const n=S.here?'Minha localização':PLACES[S.place].n, s=S.here?'Minha localização':PLACES[S.place].s;
   $('#addrTxt').textContent=n;$('#heroAddr').textContent=s;
 }
-function placeChanged(){setPlaceLabels();renderAll();if(window.HERO)HERO.setOrigin()}
+function placeChanged(){setPlaceLabels();renderAll();if(window.HERO)HERO.setOrigin();if(realStarted)renderRealMap()}
 function openPlace(){
   openSheet(head('Onde você está?')+`<div class="sh-body">
     <a class="upload" href="perto.html?usar=localizacao"><i class="fa-solid fa-map-location-dot"></i><span><b>Ver clínicas reais perto de mim</b><br>Clínicas, laboratórios e centros de diagnóstico no mapa, com contato.</span></a>
@@ -1422,6 +1464,58 @@ function fillDynamicCopy(){
   const rmP=CLINICS.filter(c=>c.f.rm!=null).map(c=>price(c,'rm'));$('#saveB').textContent='até -'+Math.round((1-Math.min(...rmP)/Math.max(...rmP))*100)+'%';$('#saveS').textContent='comparando ressonâncias';
   const d=CLINICS.find(c=>c.id==='dcp');$('#pf2').innerHTML=`${brl(price(d,'rm')*(1-d.pix/100))} no Pix<small>Ressonância · -${d.pix}%</small>`;
 }
+
+/* ======================= CLÍNICAS REAIS (cadastro oficial CNES) ======================= */
+const REAL_KINDS = {imagem:['Imagem','#0E7C9C','Diagnóstico por imagem'], laboratorio:['Laboratórios','#6C4BD8','Laboratório'], clinica:['Clínicas','#1E9E5A','Clínica'], hospital:['Hospitais','#E8512F','Hospital']};
+const fmtDist = m=>m<1000?Math.max(10,Math.round(m/10)*10)+' m':(m/1000).toFixed(1).replace('.',',')+' km';
+let realMap=null,realLayer=null,realSeq=0,realStarted=false;
+function loadLeaflet(){
+  if(window.L)return Promise.resolve();
+  if(loadLeaflet.p)return loadLeaflet.p;
+  const css=document.createElement('link');css.rel='stylesheet';css.href='assets/vendor/leaflet/leaflet.css';document.head.appendChild(css);
+  return loadLeaflet.p=new Promise((ok,fail)=>{const sc=document.createElement('script');sc.src='assets/vendor/leaflet/leaflet.js';sc.onload=ok;sc.onerror=fail;document.head.appendChild(sc)});
+}
+async function renderRealMap(){
+  const box=$('#realMap');if(!box)return;
+  const seq=++realSeq,o=origin();
+  $('#realWhere').textContent=S.here?'sua localização':PLACES[S.place].n;
+  try{
+    await loadLeaflet();
+    const C=window.IMED_CONFIG;
+    // Coordenadas arredondadas (~110 m): o banco só precisa da região.
+    const res=await fetch(C.supabaseUrl+'/rest/v1/rpc/nearby_establishments',{method:'POST',headers:{apikey:C.supabaseAnonKey,Authorization:'Bearer '+C.supabaseAnonKey,'Content-Type':'application/json'},body:JSON.stringify({p_lat:+o.lat.toFixed(3),p_lng:+o.lng.toFixed(3),p_radius_m:2000,p_limit:150})});
+    if(!res.ok)throw new Error('http '+res.status);
+    const rows=await res.json();
+    if(seq!==realSeq)return;
+    if(!realMap){box.innerHTML='';realMap=L.map(box,{scrollWheelZoom:false});L.tileLayer(C.map.tiles,{maxZoom:C.map.maxZoom,attribution:C.map.attribution}).addTo(realMap);realLayer=L.layerGroup().addTo(realMap)}
+    realLayer.clearLayers();
+    L.circleMarker([o.lat,o.lng],{radius:9,color:'#fff',weight:3,fillColor:'#FF6B4A',fillOpacity:1}).bindTooltip(S.here?'Você (aproximado)':PLACES[S.place].n).addTo(realLayer);
+    rows.forEach(r=>{
+      const k=REAL_KINDS[r.kind]||REAL_KINDS.clinica;
+      const pop=document.createElement('div');pop.className='rm-pop';
+      const add=(tag,text)=>{if(!text)return;const el=document.createElement(tag);el.textContent=text;pop.appendChild(el)};
+      add('b',r.name);add('div',k[2]+' · '+fmtDist(r.distance_m));add('div',[r.address_line,r.neighborhood].filter(Boolean).join(' · '));add('div',r.phone);add('div',r.open_24h?'Aberto 24 horas':r.shift);
+      L.circleMarker([r.lat,r.lng],{radius:6.5,color:'#fff',weight:1.5,fillColor:k[1],fillOpacity:.95}).bindPopup(pop).addTo(realLayer);
+    });
+    realMap.setView([o.lat,o.lng],14);
+    const many=rows.length>=150;
+    $('#realStats').innerHTML=Object.entries(REAL_KINDS).map(([kk,[label,color]])=>`<div class="rm-stat"><b>${rows.filter(r=>r.kind===kk).length}${many?'+':''}</b><span><i style="background:${color}"></i>${label}</span></div>`).join('');
+    $('#realList').innerHTML=rows.length?rows.slice(0,5).map(r=>{const k=REAL_KINDS[r.kind]||REAL_KINDS.clinica;return `<li><span class="dot" style="background:${k[1]}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${esc(k[2])}${r.neighborhood?' · '+esc(r.neighborhood):''}</small></span><span class="d">${fmtDist(r.distance_m)}</span></li>`}).join('')
+      :'<li>Ainda não temos o cadastro oficial desta região. Toque em <b style="display:inline">Encontrar perto de mim</b> para carregar.</li>';
+  }catch(err){
+    if(seq!==realSeq)return;
+    box.innerHTML='<div class="rm-wait">Não foi possível carregar o mapa agora.<button class="btn btn-ghost" type="button" id="realRetry">Tentar de novo</button></div>';
+    $('#realRetry').onclick=renderRealMap;
+  }
+}
+(function(){
+  const sec=$('#reais');if(!sec)return;
+  $('#realPlace').onclick=()=>openPlace();
+  const start=()=>{if(realStarted)return;realStarted=true;renderRealMap()};
+  if(!('IntersectionObserver' in window))return start();
+  const io=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){io.disconnect();start()}},{rootMargin:'300px'});
+  io.observe(sec);
+})();
 
 /* ======================= LISTA DE ESPERA ======================= */
 (function(){

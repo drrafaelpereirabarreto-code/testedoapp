@@ -48,14 +48,20 @@ const OSM = { elements: [
 
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
 
-async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert } = {}) {
+// Estabelecimentos reais do CNES, como vêm da função nearby_establishments.
+const CNES_ROWS = [
+  { cnes: '2077485', name: 'Hospital Santa Exemplo', kind: 'hospital', cnes_type: 5, address_line: 'Rua Peixoto Gomide, 625', neighborhood: 'Cerqueira César', cep: '01409001', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5598, lng: -46.6602, distance_m: 420, location_source: 'cnes', phone: '(11) 3141-1000', shift: null, open_24h: true, sus: false, services: ['rm', 'tc', 'rx'], specialties: ['Cardiologia'], cnes_updated_at: '2026-09-15' },
+  { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', cnes_type: 39, address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5655, lng: -46.6520, distance_m: 640, location_source: 'endereco', phone: '(11) 3000-2000', shift: 'Manhã e tarde', open_24h: false, sus: true, services: ['lab'], specialties: [], cnes_updated_at: '2026-08-02' },
+];
+
+async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block',
     ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
-  const log = { fn: [], overpass: [], rpc: [], insert: [] };
+  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -71,6 +77,11 @@ async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass,
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
     log.rpc.push(JSON.parse(route.request().postData() || '{}'));
     return (rpc ?? ((r) => json(r, IMED_ROWS)))(route);
+  });
+  await context.route(`${REST}rpc/nearby_establishments`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+    log.cnes.push(JSON.parse(route.request().postData() || '{}'));
+    return (cnesRpc ?? ((r) => json(r, [])))(route);
   });
   await context.route(`${REST}appointment_requests`, async (route) => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
@@ -306,6 +317,7 @@ await scenario('tudo fora do ar: estado de erro com "Tentar de novo"', async () 
     fn: (r, b) => (fail ? json(r, { ok: false, error: 'unavailable' }, 502) : defaultFn(r, b)),
     rpc: (r) => (fail ? r.fulfill({ status: 503, body: '' }) : json(r, IMED_ROWS)),
     overpass: (r) => (fail ? r.fulfill({ status: 504, body: '' }) : json(r, OSM)),
+    cnesRpc: (r) => (fail ? r.fulfill({ status: 503, body: '' }) : json(r, [])),
   });
   await page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
   await page.waitForSelector('.st h2:has-text("Não foi possível buscar agora")');
@@ -384,6 +396,83 @@ await scenario('página inicial no celular: menu com "Perto de mim" e pedido em 
   assert.match(appt, /Protocolo IMED-3F2A9C1E/);
   assert.ok(!/R\$/.test(appt), 'pedido sem preço inventado');
   await shot(page, '13-agendados');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('clínicas reais do CNES: sem OpenStreetMap, selo oficial, ficha e pedido', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: (r, b) => (b.action === 'search'
+    ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } })
+    : defaultFn(r, b)) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('.pc');
+  await page.waitForFunction(() => !document.querySelector('.pt-more'));
+  assert.equal(log.overpass.length, 0, 'com a cidade coberta pelo CNES, não precisa do OpenStreetMap');
+  const names = await page.$$eval('.pc h3', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(names, ['Hospital Santa Exemplo', 'Laboratório Análise Paulista']);
+  assert.match(await page.textContent('.pc >> nth=0'), /Cadastro oficial/);
+  assert.match(await page.textContent('.pc >> nth=0'), /24 horas/);
+  assert.match(await page.textContent('.pc >> nth=1'), /Atende SUS/);
+  assert.match(await page.textContent('.pc >> nth=1 >> .pc-dist'), /^~/, 'distância aproximada quando o local veio do endereço');
+  assert.equal(await page.locator('.leaflet-marker-icon .mk').count(), 2);
+  await shot(page, '14-cnes-resultados');
+  await page.click('.pc >> nth=0');
+  await page.waitForSelector('.sh-ov.open');
+  const sheet = await page.textContent('#sheet');
+  assert.match(sheet, /Aberto 24 horas/);
+  assert.match(sheet, /CNES/);
+  assert.equal(await page.getAttribute('#sheet a[href*="cnes.datasus.gov.br"]', 'href'), 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
+  assert.ok(!/R\$/.test(sheet), 'sem preço inventado');
+  await shot(page, '15-cnes-detalhes');
+  await page.click('[data-book]');
+  await page.selectOption('#bkExam', 'rm');
+  await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
+  await page.fill('#bkName', 'Bia Teste');
+  await page.fill('#bkPhone', '11987654321');
+  await page.check('input[name="consent"]');
+  await page.click('#bkBtn');
+  await page.waitForSelector('.ok h3');
+  const row = log.insert[0].body;
+  assert.equal(row.clinic_id, null);
+  assert.equal(row.place_source, 'cnes');
+  assert.equal(row.place_ref, 'cnes:2077485');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('cidade ainda sendo importada: aviso, mapa provisório e atualização sozinha', async () => {
+  let calls = 0;
+  const { page, log, context } = await newPage(browser, { fn: (r, b) => {
+    if (b.action !== 'search') return defaultFn(r, b);
+    calls += 1;
+    return calls === 1
+      ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: [], places: [], coverage: { status: 'loading', city: 'Campinas', uf: 'SP' } })
+      : json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'Campinas', uf: 'SP' } });
+  } });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('.bn .spin');
+  assert.match(await page.textContent('#banners'), /Campinas/);
+  assert.equal(log.overpass.length, 1, 'enquanto importa, mostra o OpenStreetMap');
+  await page.waitForSelector('.pc:has-text("Hospital Santa Exemplo")', { timeout: 15000 });
+  assert.equal(calls, 2);
+  assert.equal(await page.locator('.bn .spin').count(), 0);
+  await context.close();
+});
+
+await scenario('página inicial: mapa com as clínicas reais perto', async () => {
+  const { page, log, errors, context } = await newPage(browser, { geo: false, cnesRpc: (r) => json(r, CNES_ROWS) });
+  await page.goto(BASE);
+  await page.locator('#reais').scrollIntoViewIfNeeded();
+  await page.waitForSelector('#realList li');
+  assert.equal(log.cnes.length, 1);
+  const args = log.cnes[0];
+  assert.equal(args.p_radius_m, 2000);
+  assert.ok(String(args.p_lat).split('.')[1].length <= 3, 'coordenada arredondada');
+  const list = await page.$$eval('#realList li b', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(list, ['Hospital Santa Exemplo', 'Laboratório Análise Paulista']);
+  assert.equal(await page.locator('#realMap .leaflet-interactive').count(), 3, 'um ponto por estabelecimento + o ponto de origem');
+  assert.match(await page.textContent('#realStats'), /1\s*Hospitais/);
+  await shot(page, '16-inicio-clinicas-reais');
   assert.deepEqual(errors, []);
   await context.close();
 });

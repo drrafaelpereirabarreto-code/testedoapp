@@ -10,12 +10,13 @@ Marketplace de saúde: clínicas de imagem, laboratórios e centros de diagnóst
 | Mapa interativo | Leaflet 1.9.4 (copiado em `assets/vendor/leaflet`) com imagens do OpenStreetMap | `perto.html` |
 | Banco de dados | Supabase (PostgreSQL + PostGIS), região São Paulo | `supabase/migrations` |
 | Servidor da busca | Supabase Edge Function `clinicas-proximas` (Deno) | `supabase/functions/clinicas-proximas` |
-| Estabelecimentos do mapa | Google Places API (New), se a chave estiver no servidor; senão OpenStreetMap (Overpass) | — |
+| Clínicas reais (cadastro oficial) | CNES do Ministério da Saúde, importado por cidade pela Edge Function `importar-clinicas` | `supabase/functions/importar-clinicas` |
+| Estabelecimentos do mapa | CNES no banco; Google Places API (New), se a chave estiver no servidor; OpenStreetMap (Overpass) enquanto a cidade ainda não foi importada | — |
 | CEP, cidade e endereço | ViaCEP e BrasilAPI (CEP) + Google Geocoding ou Photon (OpenStreetMap) | — |
 
 Páginas principais:
 
-- `index.html`: página inicial com o botão **Encontrar clínicas perto de mim**, as clínicas de exemplo do protótipo, teleconsulta e agendamentos.
+- `index.html`: página inicial com o botão **Encontrar clínicas perto de mim**, o mapa **Clínicas reais perto de você** (CNES, raio de 2 km), as clínicas de exemplo do protótipo, teleconsulta e agendamentos.
 - `perto.html`: busca por localização ou por CEP, cidade ou endereço. Tem mapa, lista, filtros, detalhes e pedido de agendamento.
 - `parceiros.html`: cadastro de clínicas e médicos parceiros.
 - `exames/`: guias de preparo dos exames.
@@ -29,6 +30,24 @@ Páginas principais:
 5. O site junta as fontes e não repete no mapa uma clínica que já é parceira. Ele classifica cada estabelecimento (imagem, laboratório, clínica ou hospital) e reconhece os exames pelo nome. Os filtros são exame, tipo, especialidade, distância e faixa de preço.
 6. Preço e horário só aparecem quando vêm da fonte: a clínica parceira (banco do IMED), o OpenStreetMap ou o Google. Nada é estimado. Sem preço informado, aparece "Preço sob consulta".
 7. O pedido de agendamento grava uma linha em `appointment_requests`. A linha guarda o estabelecimento escolhido e os dados de contato, não a localização. Para clínicas parceiras, o pedido vai para a clínica. Para estabelecimentos do mapa, a equipe do IMED faz a ponte ("Pedir ao IMED para agendar").
+
+## Clínicas reais do CNES
+
+As clínicas, laboratórios, centros de diagnóstico e hospitais reais vêm do CNES (Cadastro Nacional de Estabelecimentos de Saúde), pela API de dados abertos do Ministério da Saúde (`apidadosabertos.saude.gov.br`). Não precisa de chave.
+
+1. Na busca, `clinicas-proximas` consulta `nearby_establishments` no banco e, ao mesmo tempo, chama `importar-clinicas` com a ação `garantir`. Ela descobre a cidade do ponto (geocodificação reversa no Photon) e o código IBGE (API de localidades do IBGE).
+2. Se a cidade nunca foi importada, ou se a importação tem mais de 30 dias, a importação começa em segundo plano. A busca espera no máximo 3,5 s. Enquanto isso, o site mostra o aviso "Carregando as clínicas oficiais de <cidade>", usa o OpenStreetMap e busca de novo sozinho a cada 9 s (até 4 vezes). Com raio de 3 km ou mais, as cidades vizinhas também são importadas.
+3. A importação busca os tipos 39 (diagnose e terapia), 36 (clínica especializada), 4 (policlínica), 5 e 7 (hospitais) e 62 (hospital-dia). Ela tira estabelecimentos desativados, dentistas, veterinários, estética, farmácias, óticas e serviços não médicos (fisioterapia, psicologia, nutrição etc.). Também descarta coordenadas falsas: o centro da cidade repetido, pontos fora do Brasil ou muito longe dos outros.
+4. Sem coordenada válida, o endereço é geocodificado no Photon (1 pedido por segundo, aos poucos). A distância desses aparece com `~` ("aproximada").
+5. Tabelas: `municipalities`, `establishments` (só os que têm localização são públicos) e `establishment_imports` (situação de cada cidade). Só o servidor escreve nelas.
+6. O CNES informa o turno (por exemplo "Manhã e tarde" ou "Aberto 24 horas"), não o horário exato, e não informa preço. O site mostra o turno com essa ressalva e "Preço sob consulta". O pedido de agendamento vai pela equipe do IMED (`place_source = 'cnes'`).
+
+Para forçar uma nova importação de uma cidade:
+
+```sql
+update public.establishment_imports set finished_at = now() - interval '31 days'
+where city_ibge = 3550308;  -- São Paulo
+```
 
 Sem permissão de localização, a pessoa digita CEP, cidade ou endereço. A Edge Function faz a geocodificação (ação `geocode`) e a busca segue igual.
 
@@ -125,7 +144,10 @@ delete from public.clinics where is_demo;
 
 ```bash
 supabase functions deploy clinicas-proximas --project-ref pyoqiecupxhdzigjudyd
+supabase functions deploy importar-clinicas --project-ref pyoqiecupxhdzigjudyd
 ```
+
+`importar-clinicas` só aceita chamadas com a chave `service_role` (é a própria `clinicas-proximas` que chama).
 
 - Banco: aplique as novas migrações de `supabase/migrations`, por exemplo com `supabase db push`.
 
@@ -136,7 +158,7 @@ node --test tests/*.test.mjs
 ```
 
 ```bash
-node --experimental-strip-types --test supabase/functions/clinicas-proximas/lib.test.ts
+node --experimental-strip-types --test supabase/functions/clinicas-proximas/lib.test.ts supabase/functions/importar-clinicas/lib.test.ts
 ```
 
 ```bash
@@ -144,8 +166,8 @@ node tests/e2e-perto.mjs
 ```
 
 1. Regras de busca do site: classificação, filtros, distância e validação do pedido.
-2. Lógica da Edge Function: Google Places, CEP e geocodificação.
-3. Ponta a ponta num navegador de verdade. Precisa do pacote `playwright`. Simula localização, servidor, banco e OpenStreetMap, e cobre página inicial, busca, filtros, detalhes, pedido e todos os estados de erro.
+2. Lógica das Edge Functions: Google Places, CEP, geocodificação e a leitura do CNES (classificação, coordenadas falsas, turnos, acentos).
+3. Ponta a ponta num navegador de verdade. Precisa do pacote `playwright`. Simula localização, servidor, banco e OpenStreetMap, e cobre página inicial (com o mapa de clínicas reais), clínicas do CNES, cidade sendo importada, busca, filtros, detalhes, pedido e todos os estados de erro.
 
 ## Privacidade
 

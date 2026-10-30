@@ -220,6 +220,25 @@ export function normalizeGoogle(raw, origin) {
   };
 }
 
+const formatCep = (cep) => (/^\d{8}$/.test(cep ?? '') ? `${cep.slice(0, 5)}-${cep.slice(5)}` : null);
+
+// Estabelecimento real do CNES (cadastro oficial do Ministério da Saúde), como vem da função
+// nearby_establishments do banco. O turno vem do CNES; não há horário exato nem preço.
+export function normalizeCnes(r, origin) {
+  const hours = r.open_24h ? ['Aberto 24 horas'] : r.shift ? [r.shift] : null;
+  const services = r.services ?? [];
+  return {
+    id: `cnes:${r.cnes}`, clinic_id: null, source: 'cnes', name: r.name, kind: KINDS[r.kind] ? r.kind : 'clinica',
+    address: [r.address_line, r.neighborhood, r.city && r.uf ? `${r.city} - ${r.uf}` : r.city].filter(Boolean).join(' · ') || null,
+    cep: formatCep(r.cep), lat: r.lat, lng: r.lng, distance_m: Math.round(haversine(origin, r)),
+    phone: r.phone ?? null, whatsapp: null, email: null, website: null,
+    maps_url: r.city_code ? `https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/${r.city_code}${r.cnes}` : null,
+    description: null, services, services_source: services.length ? 'mapa' : null, specialties: r.specialties ?? [],
+    hours, hours_source: hours ? 'cnes' : null, prices: null, accepts_online_booking: false, is_demo: false,
+    approx: r.location_source === 'endereco', sus: r.sus === true, updated_at: r.cnes_updated_at ?? null,
+  };
+}
+
 // Clínica cadastrada no IMED, como vem da função nearby_clinics do banco.
 // Preço e horário só aparecem quando a clínica informou; nada é estimado.
 export function normalizeImedRow(r, origin) {

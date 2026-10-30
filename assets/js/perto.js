@@ -1,7 +1,9 @@
 // Página "Clínicas perto de você".
-// Fluxo: a pessoa permite a localização (ou digita CEP, cidade ou endereço) → o site busca as clínicas
-// parceiras do IMED no banco, já ordenadas por distância, e os estabelecimentos do mapa → lista e mapa
-// com filtros → detalhes → pedido de agendamento gravado no banco.
+// Fluxo: a pessoa permite a localização (ou digita CEP, cidade ou endereço) → o site busca no banco do
+// IMED, já ordenados por distância, as clínicas parceiras e os estabelecimentos reais do cadastro oficial
+// (CNES) → lista e mapa com filtros → detalhes → pedido de agendamento gravado no banco.
+// Se a cidade ainda não está no banco, o servidor começa a importá-la do CNES e, enquanto isso, a página
+// completa a lista com o mapa público (OpenStreetMap) e busca de novo em alguns segundos.
 // Privacidade: as coordenadas são arredondadas (~110 m) assim que chegam, ficam só na memória
 // desta página e nunca são gravadas no aparelho nem no banco.
 import * as G from './geo-core.js';
@@ -25,11 +27,17 @@ const S = {
   fetchedRadius: 0,
   provider: null, // google | osm (informado pelo servidor)
   imed: [],
-  places: [],
+  cnes: [], // estabelecimentos reais do cadastro oficial (CNES), já no banco do IMED
+  places: [], // estabelecimentos do mapa (Google Places ou OpenStreetMap)
   imedState: 'idle', // idle | loading | ok | error
+  cnesState: 'idle',
   placesState: 'idle',
+  coverage: null, // { status: done | loading | unavailable, city, uf }
+  retries: 0,
+  retryTimer: 0,
   fnDown: false,
   truncated: false,
+  cnesTruncated: false,
   f: { ...G.DEFAULT_FILTERS },
   selected: null,
   demo: params.get('demo') === '1',
@@ -65,20 +73,23 @@ async function callFn(body, parent, ms = 20000) {
   }
 }
 
-// Plano B quando a função do servidor não responde: clínicas IMED direto do banco.
-async function rpcNearby(origin, radius, parent) {
+// Plano B quando a função do servidor não responde: as mesmas buscas direto no banco.
+async function rpc(fn, args, parent) {
   const t = linkedSignal(parent, 12000);
   try {
-    const res = await fetch(`${CFG.supabaseUrl}/rest/v1/rpc/nearby_clinics`, {
-      method: 'POST', headers: authHeaders(), signal: t.signal,
-      body: JSON.stringify({ p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_include_demo: S.demo, p_limit: 100 }),
-    });
+    const res = await fetch(`${CFG.supabaseUrl}/rest/v1/rpc/${fn}`, { method: 'POST', headers: authHeaders(), signal: t.signal, body: JSON.stringify(args) });
     if (!res.ok) throw new Error(`banco ${res.status}`);
     return await res.json();
   } finally {
     t.done();
   }
 }
+const rpcNearby = (origin, radius, parent) =>
+  rpc('nearby_clinics', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_include_demo: S.demo, p_limit: 100 }, parent);
+const rpcEstablishments = (origin, radius, parent) =>
+  rpc('nearby_establishments', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_limit: CNES_LIMIT }, parent);
+const CNES_LIMIT = 250;
+const RETRY_MS = 9000;
 
 async function fetchOverpass(origin, radius, parent) {
   const key = `${origin.lat},${origin.lng},${radius}`;
@@ -104,52 +115,73 @@ async function fetchOverpass(origin, radius, parent) {
 }
 
 /* ======================= busca ======================= */
-async function runSearch(origin, label, kind, precision = null) {
+// refresh = nova busca automática no mesmo ponto, enquanto a cidade é importada do CNES:
+// mantém o que já está na tela e não move o mapa.
+async function runSearch(origin, label, kind, precision = null, refresh = false) {
   S.ctrl?.abort();
+  clearTimeout(S.retryTimer);
   const ctrl = (S.ctrl = new AbortController());
   const seq = ++S.seq;
   const radius = S.f.radius;
-  Object.assign(S, {
-    phase: 'loading', origin, originLabel: label, originKind: kind, precision, fetchedRadius: radius,
-    imed: [], places: [], imedState: 'loading', placesState: 'idle', fnDown: false, truncated: false, selected: null,
-  });
-  userMoved = false;
-  hideAreaBtn();
-  drawOrigin();
-  moveMap(() => map.fitBounds(L.latLng(origin.lat, origin.lng).toBounds(radius * 2)));
-  render();
+  if (!refresh) {
+    Object.assign(S, {
+      phase: 'loading', origin, originLabel: label, originKind: kind, precision, fetchedRadius: radius,
+      imed: [], cnes: [], places: [], imedState: 'loading', cnesState: 'loading', placesState: 'idle', coverage: null,
+      retries: 0, fnDown: false, truncated: false, cnesTruncated: false, selected: null,
+    });
+    userMoved = false;
+    hideAreaBtn();
+    drawOrigin();
+    moveMap(() => map.fitBounds(L.latLng(origin.lat, origin.lng).toBounds(radius * 2)));
+    render();
+  }
 
-  // Se já sabemos que o mapa vem do OpenStreetMap, as duas buscas correm juntas.
-  let osm = S.provider === 'osm' ? loadOsm(origin, radius, ctrl.signal, seq) : null;
+  let r = null;
   try {
-    const r = await callFn({ action: 'search', lat: origin.lat, lng: origin.lng, radius_m: radius, include_demo: S.demo }, ctrl.signal);
-    if (seq !== S.seq) return;
+    r = await callFn({ action: 'search', lat: origin.lat, lng: origin.lng, radius_m: radius, include_demo: S.demo }, ctrl.signal);
+  } catch {
+    if (ctrl.signal.aborted || seq !== S.seq) return;
+  }
+  if (seq !== S.seq) return;
+  if (r) {
+    S.fnDown = false;
     S.provider = r.provider;
     S.imed = (r.imed ?? []).map((row) => G.normalizeImedRow(row, origin));
     S.imedState = r.warnings?.includes('imed_unavailable') ? 'error' : 'ok';
+    S.cnes = (r.cnes ?? []).map((row) => G.normalizeCnes(row, origin));
+    S.cnesState = r.warnings?.includes('cnes_unavailable') ? 'error' : 'ok';
+    S.cnesTruncated = (r.cnes ?? []).length >= CNES_LIMIT;
+    S.coverage = r.coverage ?? null;
     if (r.provider === 'google') {
       S.places = (r.places ?? []).map((p) => G.normalizeGoogle(p, origin)).filter(Boolean);
       S.placesState = r.warnings?.includes('places_unavailable') ? 'error' : 'ok';
     }
-  } catch (err) {
-    if (ctrl.signal.aborted || seq !== S.seq) return;
+  } else {
+    // A função do servidor não respondeu: o banco é consultado direto.
     S.fnDown = true;
-    try {
-      const rows = await rpcNearby(origin, radius, ctrl.signal);
-      if (seq !== S.seq) return;
-      S.imed = rows.map((row) => G.normalizeImedRow(row, origin));
-      S.imedState = 'ok';
-    } catch {
-      if (ctrl.signal.aborted || seq !== S.seq) return;
-      S.imedState = 'error';
-    }
+    const [imedRes, cnesRes] = await Promise.allSettled([rpcNearby(origin, radius, ctrl.signal), rpcEstablishments(origin, radius, ctrl.signal)]);
+    if (ctrl.signal.aborted || seq !== S.seq) return;
+    S.imed = imedRes.status === 'fulfilled' ? imedRes.value.map((row) => G.normalizeImedRow(row, origin)) : [];
+    S.imedState = imedRes.status === 'fulfilled' ? 'ok' : 'error';
+    S.cnes = cnesRes.status === 'fulfilled' ? cnesRes.value.map((row) => G.normalizeCnes(row, origin)) : [];
+    S.cnesState = cnesRes.status === 'fulfilled' ? 'ok' : 'error';
+    S.cnesTruncated = S.cnes.length >= CNES_LIMIT;
+    S.coverage = { status: S.cnes.length ? 'done' : 'unavailable', city: null, uf: null };
   }
+  // Com a cidade no banco, o cadastro oficial basta; sem ela, o mapa público completa a lista.
+  const google = S.provider === 'google' && !S.fnDown;
+  const needOsm = !google && S.coverage?.status !== 'done';
+  if (!google && !needOsm) { S.places = []; S.placesState = 'idle'; S.truncated = false; }
   S.phase = 'results';
-  render(true);
-  if (S.provider !== 'google' || S.fnDown) {
-    osm = osm ?? loadOsm(origin, radius, ctrl.signal, seq);
-    await osm;
+  render(!refresh || !userMoved);
+  if (S.coverage?.status === 'loading' && S.retries < 4) {
+    S.retryTimer = setTimeout(() => {
+      if (seq !== S.seq) return;
+      S.retries += 1;
+      runSearch(origin, label, kind, precision, true);
+    }, RETRY_MS);
   }
+  if (needOsm) await loadOsm(origin, radius, ctrl.signal, seq);
 }
 
 async function loadOsm(origin, radius, signal, seq) {
@@ -368,8 +400,12 @@ function setMapView(on) {
 }
 
 /* ======================= lista ======================= */
-const allPlaces = () => G.mergePlaces(S.imed, S.places);
-const placeById = (id) => S.imed.find((p) => p.id === id) ?? S.places.find((p) => p.id === id);
+// Parceiros IMED primeiro na junção: o mesmo lugar no cadastro oficial ou no mapa não aparece duas vezes.
+const allPlaces = () => G.mergePlaces(G.mergePlaces(S.imed, S.cnes), S.places);
+const placeById = (id) => [S.imed, S.cnes, S.places].map((l) => l.find((p) => p.id === id)).find(Boolean);
+const SOURCE_LABEL = { osm: 'OpenStreetMap', google: 'Google Maps' };
+const distanceText = (p) => `${p.approx ? '~' : ''}${G.formatDistance(p.distance_m)}`;
+const allFailed = () => S.imedState === 'error' && S.cnesState !== 'ok' && S.placesState === 'error';
 
 function badgesHTML(p) {
   const b = [];
@@ -377,8 +413,12 @@ function badgesHTML(p) {
     b.push('<span class="bd bd-imed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro IMED</span>');
     if (p.is_demo) b.push('<span class="bd bd-demo">Demonstração</span>');
     if (p.accepts_online_booking) b.push('<span class="bd bd-ok">Agenda pelo IMED</span>');
+  } else if (p.source === 'cnes') {
+    b.push('<span class="bd bd-cnes"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Cadastro oficial</span>');
+    if (p.hours?.[0] === 'Aberto 24 horas') b.push('<span class="bd bd-ok">24 horas</span>');
+    if (p.sus) b.push('<span class="bd bd-sus">Atende SUS</span>');
   } else {
-    b.push(`<span class="bd">${p.source === 'osm' ? 'OpenStreetMap' : 'Google Maps'}</span>`);
+    b.push(`<span class="bd">${SOURCE_LABEL[p.source] ?? 'Mapa'}</span>`);
   }
   return b.join('');
 }
@@ -403,14 +443,14 @@ function cardHTML(p) {
   const k = G.KINDS[p.kind];
   const svc = p.services.slice(0, 4).map((c) => `<span class="svc">${esc(G.EXAMS[c]?.n ?? c)}</span>`).join('')
     + (p.services.length > 4 ? `<span class="svc more">+${p.services.length - 4}</span>` : '');
-  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${G.formatDistance(p.distance_m)}. Ver detalhes">
+  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${distanceText(p)}. Ver detalhes">
     <span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span>
     <div class="pc-main">
       <div class="pc-badges">${badgesHTML(p)}</div>
       <h3>${esc(p.name)}</h3>
       <p class="pc-addr">${esc(p.address || 'Endereço não informado no mapa')}</p>
       ${svc ? `<div class="pc-svc">${svc}</div>` : ''}
-      <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${G.formatDistance(p.distance_m)}</span><span>${k.n}</span>${priceHTML(p)}</div>
+      <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${distanceText(p)}</span><span>${k.n}</span>${priceHTML(p)}${p.source === 'cnes' && p.hours ? `<span>${esc(p.hours[0])}</span>` : ''}</div>
       ${contactLinksHTML(p)}
     </div>
     <i class="fa-solid fa-chevron-right pc-go" aria-hidden="true"></i>
@@ -455,15 +495,20 @@ function bannersHTML() {
   const b = [];
   if (S.demo) b.push('<div class="bn demo"><i class="fa-solid fa-flask" aria-hidden="true"></i><span>Modo demonstração: inclui as clínicas fictícias do IMED em São Paulo, sem preço e sem horário. <a class="link" href="perto.html">Sair</a></span></div>');
   if (S.phase !== 'results') return b.join('');
-  const both = S.imedState === 'error' && S.placesState === 'error';
-  if (!both && S.imedState === 'error') b.push('<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Não conseguimos carregar as clínicas parceiras do IMED agora.<button type="button" data-act="retry">Tentar de novo</button></span></div>');
-  if (!both && S.placesState === 'error') b.push(`<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Os estabelecimentos do mapa (${S.provider === 'google' && !S.fnDown ? 'Google Maps' : 'OpenStreetMap'}) não carregaram agora. Mostrando só as clínicas do IMED.<button type="button" data-act="retry-places">Tentar de novo</button></span></div>`);
-  if (S.truncated) b.push('<div class="bn"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Região com muitos estabelecimentos: mostrando parte deles. Diminua a distância para ver todos os mais próximos.</span></div>');
+  const failed = allFailed();
+  if (S.coverage?.status === 'loading') {
+    const city = S.coverage.city ? ` de ${esc(S.coverage.city)}` : ' desta cidade';
+    b.push(`<div class="bn"><span class="spin" aria-hidden="true"></span><span>Estamos trazendo o cadastro oficial de clínicas${city} (Ministério da Saúde). Enquanto isso, mostramos o mapa público. A lista se completa sozinha em instantes.</span></div>`);
+  }
+  if (!failed && S.imedState === 'error') b.push('<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Não conseguimos carregar as clínicas parceiras do IMED agora.<button type="button" data-act="retry">Tentar de novo</button></span></div>');
+  if (!failed && S.cnesState === 'error') b.push('<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>O cadastro oficial de clínicas não respondeu agora.<button type="button" data-act="retry">Tentar de novo</button></span></div>');
+  if (!failed && S.placesState === 'error') b.push(`<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Os estabelecimentos do mapa (${S.provider === 'google' && !S.fnDown ? 'Google Maps' : 'OpenStreetMap'}) não carregaram agora.<button type="button" data-act="retry-places">Tentar de novo</button></span></div>`);
+  if (S.truncated || S.cnesTruncated) b.push('<div class="bn"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Região com muitos estabelecimentos: mostrando os mais próximos. Diminua a distância ou use os filtros para ver outros.</span></div>');
   return b.join('');
 }
 
 function countHTML(shown) {
-  if (S.phase !== 'results' || (S.imedState === 'error' && S.placesState === 'error')) return '';
+  if (S.phase !== 'results' || allFailed()) return '';
   const nImed = shown.filter((p) => p.source === 'imed').length;
   const where = S.originKind === 'gps' ? 'da sua localização (aproximada)' : `de <b>${esc(S.originLabel)}</b>`;
   return `<b>${plural(shown.length, 'resultado', 'resultados')}</b> em até ${kmLabel(S.f.radius)} ${where}${nImed ? ` · ${plural(nImed, 'parceiro', 'parceiros')} IMED` : ''}`;
@@ -504,7 +549,7 @@ function render(fit = false) {
     list.innerHTML = stateHTML('fa-location-pin-lock', t, d, again + '<button class="btn btn-ghost" type="button" data-act="type">Digitar endereço</button>', true);
   } else if (S.phase === 'loading') {
     list.innerHTML = SKELETON.repeat(5);
-  } else if (S.imedState === 'error' && S.placesState === 'error') {
+  } else if (allFailed()) {
     list.innerHTML = stateHTML('fa-plug-circle-xmark', 'Não foi possível buscar agora',
       'Os serviços de busca não responderam. Verifique sua internet e tente de novo em instantes.',
       '<button class="btn btn-primary" type="button" data-act="retry">Tentar de novo</button>', true);
@@ -512,9 +557,10 @@ function render(fit = false) {
     shown = G.sortPlaces(G.filterPlaces(all, S.f), S.f.sort, S.f.exam);
     let html = shown.length ? shown.map(cardHTML).join('') : emptyHTML(all);
     if (S.placesState === 'loading') html += '<div class="pt-more" role="status"><span class="spin" aria-hidden="true"></span>Carregando estabelecimentos do mapa…</div>';
-    if (S.f.exam && S.placesState === 'ok' && !S.f.onlyImed) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Estabelecimentos do mapa aparecem no filtro de exame quando o nome ou o cadastro indicam o exame. Confirme com o local.</p>';
+    if (S.f.exam && !S.f.onlyImed && (S.cnes.length || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
     if (!S.demo && S.imedState === 'ok' && !S.imed.length && S.placesState !== 'loading') {
-      html += '<p class="pt-note"><i class="fa-solid fa-handshake" aria-hidden="true"></i>Ainda não há clínicas parceiras do IMED nesta região. Os resultados vêm de mapas públicos. Tem uma clínica? <a class="link" href="parceiros.html">Seja parceira</a>.</p>';
+      const fonte = S.cnes.length ? 'do cadastro oficial do Ministério da Saúde (CNES)' : 'de mapas públicos';
+      html += `<p class="pt-note"><i class="fa-solid fa-handshake" aria-hidden="true"></i>Ainda não há clínicas parceiras do IMED nesta região. Os resultados vêm ${fonte}. Tem uma clínica? <a class="link" href="parceiros.html">Seja parceira</a>.</p>`;
     }
     list.innerHTML = html;
   }
@@ -548,7 +594,10 @@ function closeSheet() {
 
 function servicesHTML(p) {
   if (!p.services.length) {
-    return `<p>${p.source === 'imed' ? 'A clínica ainda não informou os exames que faz.' : 'O mapa não informa os serviços deste local. Confirme com o estabelecimento ou peça ao IMED para verificar.'}</p>`;
+    const text = p.source === 'imed' ? 'A clínica ainda não informou os exames que faz.'
+      : p.source === 'cnes' ? 'O cadastro oficial não lista os exames de cada local. Confirme com o estabelecimento ou peça ao IMED para verificar.'
+      : 'O mapa não informa os serviços deste local. Confirme com o estabelecimento ou peça ao IMED para verificar.';
+    return `<p>${text}</p>`;
   }
   const items = p.services.map((c) => {
     const ex = G.EXAMS[c];
@@ -562,13 +611,16 @@ function servicesHTML(p) {
   }).join('');
   const src = p.source === 'imed'
     ? 'Exames e preços informados pela clínica ao IMED. Sem preço informado, o valor é passado pela clínica.'
-    : 'Serviços identificados pelo nome e pelo cadastro no mapa. Confirme com o estabelecimento.';
+    : 'Serviços identificados pelo nome do estabelecimento. Confirme com ele.';
   return `<ul class="dt-svc">${items}</ul><p class="src">${src}</p>`;
 }
 
 function hoursHTML(p) {
   if (!p.hours) return '<p>Horário não informado. Confirme com o estabelecimento antes de ir.</p>';
-  const src = { clinica: 'Informado pela clínica.', osm: 'Fonte: OpenStreetMap. Pode estar desatualizado.', google: 'Fonte: Google Maps.' }[p.hours_source] ?? '';
+  const src = {
+    clinica: 'Informado pela clínica.', osm: 'Fonte: OpenStreetMap. Pode estar desatualizado.', google: 'Fonte: Google Maps.',
+    cnes: 'Turno informado ao cadastro oficial (CNES), não é o horário exato. Confirme antes de ir.',
+  }[p.hours_source] ?? '';
   return `<ul class="dt-hours">${p.hours.map((h) => `<li>${esc(h)}</li>`).join('')}</ul><p class="src">${src}</p>`;
 }
 
@@ -579,7 +631,7 @@ function contactHTML(p) {
   if (p.whatsapp) rows.push(`<li><i class="fa-brands fa-whatsapp" aria-hidden="true"></i><a href="${esc(G.whatsappHref(p.whatsapp))}" target="_blank" rel="noopener">WhatsApp</a></li>`);
   if (p.email && G.isValidEmail(p.email)) rows.push(`<li><i class="fa-solid fa-envelope" aria-hidden="true"></i><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></li>`);
   if (p.website) rows.push(`<li><i class="fa-solid fa-globe" aria-hidden="true"></i><a href="${esc(p.website)}" target="_blank" rel="noopener nofollow">${esc(new URL(p.website).hostname.replace(/^www\./, ''))}</a></li>`);
-  return rows.length ? `<ul class="dt-contact">${rows.join('')}</ul>` : '<p>O estabelecimento não informou telefone nem site no mapa. Você pode pedir ao IMED para agendar por você.</p>';
+  return rows.length ? `<ul class="dt-contact">${rows.join('')}</ul>` : '<p>O estabelecimento não informou telefone nem site. Você pode pedir ao IMED para agendar por você.</p>';
 }
 
 function openDetails(id) {
@@ -592,7 +644,10 @@ function openDetails(id) {
   if (tel) acts.push(`<a href="${esc(tel)}"><i class="fa-solid fa-phone" aria-hidden="true"></i>Ligar</a>`);
   if (p.whatsapp) acts.push(`<a class="wa" href="${esc(G.whatsappHref(p.whatsapp, 'Olá! Encontrei vocês pelo IMED e gostaria de agendar um exame.'))}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i>WhatsApp</a>`);
   if (p.website) acts.push(`<a href="${esc(p.website)}" target="_blank" rel="noopener nofollow"><i class="fa-solid fa-globe" aria-hidden="true"></i>Site</a>`);
-  if (p.maps_url) acts.push(`<a href="${esc(p.maps_url)}" target="_blank" rel="noopener"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>Ver no ${p.source === 'osm' ? 'OpenStreetMap' : 'Google Maps'}</a>`);
+  if (p.maps_url) {
+    const where = p.source === 'cnes' ? 'Ver no CNES' : `Ver no ${SOURCE_LABEL[p.source] ?? 'mapa'}`;
+    acts.push(`<a href="${esc(p.maps_url)}" target="_blank" rel="noopener"><i class="fa-solid ${p.source === 'cnes' ? 'fa-building-circle-check' : 'fa-map-location-dot'}" aria-hidden="true"></i>${where}</a>`);
+  }
 
   let cta = '';
   if (p.source === 'imed' && p.accepts_online_booking) {
@@ -607,12 +662,14 @@ function openDetails(id) {
     ? (p.is_demo
       ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios, sem preço e sem horário. Serve para testar o fluxo de ponta a ponta.</p>'
       : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Clínica parceira do IMED. Os dados são informados pela própria clínica.</p>')
-    : `<p class="note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Dados do ${p.source === 'osm' ? 'OpenStreetMap, mantidos por voluntários' : 'Google Maps'}. Este estabelecimento ainda não é parceiro do IMED: confirme preços e horários diretamente com ele.</p>`;
+    : p.source === 'cnes'
+      ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele.</p>`
+      : `<p class="note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Dados do ${p.source === 'osm' ? 'OpenStreetMap, mantidos por voluntários' : 'Google Maps'}. Este estabelecimento ainda não é parceiro do IMED: confirme preços e horários diretamente com ele.</p>`;
 
   openSheet(head(esc(p.name)) + `<div class="sh-body">
     <div class="dt-top"><span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span>
       <div style="min-width:0"><div class="pc-badges">${badgesHTML(p)}</div><h3>${esc(p.name)}</h3>
-      <p>${esc(k.n)} · <b>${G.formatDistance(p.distance_m)}</b> ${S.originKind === 'gps' ? 'de você (aproximado)' : 'do ponto da busca'}</p>
+      <p>${esc(k.n)} · <b>${distanceText(p)}</b> ${S.originKind === 'gps' ? 'de você (aproximado)' : 'do ponto da busca'}</p>
       <p>${esc(p.address || 'Endereço não informado no mapa')}${p.cep ? ` · CEP ${esc(p.cep)}` : ''}</p></div></div>
     <div class="dt-acts">${acts.join('')}</div>
     ${p.description ? `<div class="dt-sec"><h4><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Sobre</h4><p>${esc(p.description)}</p></div>` : ''}

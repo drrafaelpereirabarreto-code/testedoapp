@@ -93,6 +93,33 @@ test('clínica do banco sem inventar preço nem horário', () => {
   assert.equal(semHorario.hours_source, null);
 });
 
+test('estabelecimento do CNES com turno oficial, sem preço e com link da ficha', () => {
+  const row = {
+    cnes: '2077485', name: 'Hospital Exemplo', kind: 'hospital', cnes_type: 5, address_line: 'Rua A, 10',
+    neighborhood: 'Centro', cep: '01310100', city: 'São Paulo', uf: 'SP', city_code: '355030',
+    lat: -23.56, lng: -46.65, location_source: 'cnes', phone: '(11) 3333-4444', shift: null, open_24h: true,
+    sus: true, services: ['rx'], specialties: ['Cardiologia'], cnes_updated_at: '2026-09-01',
+  };
+  const c = G.normalizeCnes(row, PAULISTA);
+  assert.equal(c.id, 'cnes:2077485');
+  assert.equal(c.source, 'cnes');
+  assert.equal(c.address, 'Rua A, 10 · Centro · São Paulo - SP');
+  assert.equal(c.cep, '01310-100');
+  assert.deepEqual(c.hours, ['Aberto 24 horas']);
+  assert.equal(c.hours_source, 'cnes');
+  assert.equal(c.prices, null);
+  assert.equal(c.maps_url, 'https://cnes.datasus.gov.br/pages/estabelecimentos/ficha/identificacao/3550302077485');
+  assert.equal(c.sus, true);
+  assert.equal(c.approx, false);
+  const outro = G.normalizeCnes({ ...row, kind: 'xyz', open_24h: false, shift: null, cep: '123', location_source: 'endereco', city_code: null }, PAULISTA);
+  assert.equal(outro.kind, 'clinica');
+  assert.equal(outro.hours, null);
+  assert.equal(outro.cep, null);
+  assert.equal(outro.approx, true);
+  assert.equal(outro.maps_url, null);
+  assert.deepEqual(G.normalizeCnes({ ...row, open_24h: false, shift: 'Manhã e tarde' }, PAULISTA).hours, ['Manhã e tarde']);
+});
+
 test('não repete no mapa uma clínica que já é parceira IMED', () => {
   const ours = [G.normalizeImedRow(imedRow, PAULISTA)];
   const map = G.parseOverpass({ elements: [
