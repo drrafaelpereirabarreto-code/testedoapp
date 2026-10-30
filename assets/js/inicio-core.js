@@ -120,9 +120,10 @@ export function proximoRaio(raio, encontrados = 0) {
 }
 
 /* ======================= cidades ======================= */
-// Cidades que levam "do" (do Rio de Janeiro); as outras, "de". Mesma regra de confianca.js.
-const DO_CIDADE = new Set(['Rio de Janeiro', 'Rio Grande', 'Recife', 'Crato', 'Guarujá']);
-export const deCidade = (name) => `${DO_CIDADE.has(String(name)) ? 'do' : 'de'} ${name}`;
+// Cidades que levam artigo ("do Rio de Janeiro", "da Serra"); as outras, "de". Mesma regra de confianca.js.
+const ARTIGO_CIDADE = new Map([['Rio de Janeiro', 'do'], ['Rio Grande', 'do'], ['Recife', 'do'], ['Crato', 'do'], ['Guarujá', 'do'],
+  ['Cabo de Santo Agostinho', 'do'], ['Serra', 'da']]);
+export const deCidade = (name) => `${ARTIGO_CIDADE.get(String(name)) || 'de'} ${name}`;
 // Mesma regra de scripts/gerar-cidades.mjs (slugify), que cria as pastas cidades/<uf>/<slug>/.
 export const citySlug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');

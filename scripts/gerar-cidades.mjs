@@ -192,11 +192,8 @@ function countsSentence(c) {
   return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}`;
 }
 
-// "do Rio de Janeiro", "de Campinas": a regra do "do/de" de assets/js/confianca.js (a mesma da página inicial), mais
-// duas cidades que ela ainda não tem: "da Serra" (ES) e "do Cabo de Santo Agostinho" (PE). Quando confianca.js e a
-// cópia dela em assets/js/inicio-core.js ganharem as duas, ARTIGO_EXTRA pode sair (as páginas ficam iguais).
-const ARTIGO_EXTRA = new Map([['Serra', 'da'], ['Cabo de Santo Agostinho', 'do']]);
-export const deCidade = (name) => (ARTIGO_EXTRA.has(String(name)) ? `${ARTIGO_EXTRA.get(String(name))} ${name}` : deCidadeSite(name));
+// "do Rio de Janeiro", "da Serra", "de Campinas": a mesma regra de assets/js/confianca.js e da página inicial.
+export const deCidade = deCidadeSite;
 // Só a preposição: "no" (Rio de Janeiro), "na" (Serra), "em" (Campinas).
 const em = (c) => ({ do: 'no', da: 'na' })[deCidade(c.name).split(' ')[0]] ?? 'em';
 // "no Rio de Janeiro (RJ)", "na Serra (Espírito Santo)", "em Campinas (São Paulo)".

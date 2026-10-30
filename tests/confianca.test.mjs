@@ -166,6 +166,8 @@ test('datas: "Verificado em dd/mm/aaaa" e "atualizado em 30 de outubro de 2026" 
   assert.equal(T.dayLong('30/10/2026'), '');
   assert.equal(T.deCidade('Rio de Janeiro'), 'do Rio de Janeiro');
   assert.equal(T.deCidade('Belo Horizonte'), 'de Belo Horizonte');
+  assert.equal(T.deCidade('Serra'), 'da Serra');
+  assert.equal(T.deCidade('Cabo de Santo Agostinho'), 'do Cabo de Santo Agostinho');
 });
 
 test('pedido para outra pessoa: validação, menor de 18 anos e colunas novas só quando é para outra pessoa', () => {

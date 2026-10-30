@@ -249,6 +249,7 @@ export function dayLong(day) {
 }
 
 /* ======================= ponto de partida da página inicial ======================= */
-// Cidades que levam "do" (do Rio de Janeiro); as outras, "de" (de Belo Horizonte).
-const DO_CIDADE = new Set(['Rio de Janeiro', 'Rio Grande', 'Recife', 'Crato', 'Guarujá']);
-export const deCidade = (name) => `${DO_CIDADE.has(String(name)) ? 'do' : 'de'} ${name}`;
+// Cidades que levam artigo ("do Rio de Janeiro", "da Serra"); as outras, "de" (de Belo Horizonte).
+const ARTIGO_CIDADE = new Map([['Rio de Janeiro', 'do'], ['Rio Grande', 'do'], ['Recife', 'do'], ['Crato', 'do'], ['Guarujá', 'do'],
+  ['Cabo de Santo Agostinho', 'do'], ['Serra', 'da']]);
+export const deCidade = (name) => `${ARTIGO_CIDADE.get(String(name)) || 'de'} ${name}`;

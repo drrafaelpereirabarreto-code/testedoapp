@@ -473,6 +473,8 @@ test('deCidade igual ao confianca.deCidade; citySlug igual ao slugify do gerar-c
   }
   assert.equal(I.deCidade('Rio de Janeiro'), 'do Rio de Janeiro');
   assert.equal(I.deCidade('Campinas'), 'de Campinas');
+  assert.equal(I.deCidade('Serra'), 'da Serra');
+  assert.equal(I.deCidade('Cabo de Santo Agostinho'), 'do Cabo de Santo Agostinho');
   assert.equal(I.citySlug("Santa Bárbara d'Oeste"), 'santa-barbara-d-oeste');
   assert.equal(I.cityUrl({ name: 'São Paulo', uf: 'SP' }), 'cidades/sp/sao-paulo/');
 });

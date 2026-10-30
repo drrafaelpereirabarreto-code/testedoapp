@@ -419,7 +419,7 @@ test('português: "do/no Rio de Janeiro", "da/na Serra" e "do/no Cabo de Santo A
   assert.ok(cabo[0].a.startsWith(`O IMED mostra ${fmt(CABO.total)} estabelecimentos de saúde no Cabo de Santo Agostinho (Pernambuco), do cadastro oficial`), cabo[0].a);
   assert.equal(cabo[4].q, 'Os locais do Cabo de Santo Agostinho atendem pelo SUS?');
   // Fora dessas duas, a regra é a mesma de assets/js/confianca.js (a da página inicial).
-  for (const c of CITIES) if (!['Serra', 'Cabo de Santo Agostinho'].includes(c.name)) assert.equal(deCidade(c.name), deCidadeSite(c.name), c.name);
+  for (const c of CITIES) assert.equal(deCidade(c.name), deCidadeSite(c.name), c.name);
   // Nas páginas: o parágrafo do topo, "Veja também" e a descrição usam a mesma forma das perguntas.
   const out = mkdtempSync(join(tmpdir(), 'imed-pt-'));
   t.after(() => rmSync(out, { recursive: true, force: true }));
