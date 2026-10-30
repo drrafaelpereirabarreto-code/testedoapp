@@ -1,6 +1,6 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-const VERSION = 'imed-v4';
+const VERSION = 'imed-v5';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './manifest.webmanifest',
