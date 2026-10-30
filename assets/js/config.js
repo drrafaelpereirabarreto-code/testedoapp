@@ -20,3 +20,13 @@ window.IMED_CONFIG = {
   // Servidores públicos do OpenStreetMap (Overpass) usados quando o Google Places não está ativo no servidor.
   overpass: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 };
+
+// iPhone com iOS 15 (e outros navegadores antigos) não tem AbortSignal.timeout, usado nas chamadas ao banco.
+// Este arquivo carrega antes dos outros scripts em todas as páginas, então a troca vale para o site inteiro.
+if (window.AbortSignal && typeof AbortSignal.timeout !== 'function' && typeof AbortController === 'function') {
+  AbortSignal.timeout = (ms) => {
+    const c = new AbortController();
+    setTimeout(() => { try { c.abort(new DOMException('Tempo esgotado', 'TimeoutError')); } catch { c.abort(); } }, ms);
+    return c.signal;
+  };
+}
