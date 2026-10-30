@@ -1,10 +1,14 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-const VERSION = 'imed-v6';
+const VERSION = 'imed-v7';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
+  './conta.html', './reivindicar.html', './painel.html', './cidades/',
   './manifest.webmanifest',
   './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js', './assets/js/db.js', './assets/js/hero3d.js',
+  './assets/js/inicio.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js', './assets/js/painel.js',
+  './assets/js/reivindicar.js', './assets/js/cidade.js',
+  './assets/css/conta.css', './assets/css/clinica.css', './assets/css/cidade.css',
   './assets/js/geo-core.js', './assets/js/perto.js', './assets/css/perto.css',
   './assets/vendor/three.module.min.js', './assets/vendor/fa/css/all.min.css',
   './assets/vendor/leaflet/leaflet.js', './assets/vendor/leaflet/leaflet.css',

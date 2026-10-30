@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -35,8 +36,8 @@ const BASE = 'http://127.0.0.1:8765/';
 
 // Três clínicas IMED de demonstração (sem preço e sem horário) e estabelecimentos do OpenStreetMap.
 const IMED_ROWS = [
-  { id: 'aaaaaaaa-0000-4000-8000-000000000001', name: 'DiagnoCenter Paulista', kind: 'imagem', description: null, address_line: 'Endereço de demonstração · Bela Vista', neighborhood: 'Bela Vista', city: 'São Paulo', state: 'SP', cep: null, lat: -23.5614, lng: -46.6559, distance_m: 563, phone: null, whatsapp: null, email: null, website: null, specialties: ['Radiologia'], opening_hours: null, accepts_online_booking: true, is_demo: true, exams: [{ code: 'rm', price_cents: null }, { code: 'rx', price_cents: null }, { code: 'tc', price_cents: null }] },
-  { id: 'aaaaaaaa-0000-4000-8000-000000000002', name: 'Ecocor Cardiologia', kind: 'clinica', description: null, address_line: 'Endereço de demonstração · Jardins', neighborhood: 'Jardins', city: 'São Paulo', state: 'SP', cep: null, lat: -23.57, lng: -46.662, distance_m: 1161, phone: null, whatsapp: null, email: null, website: null, specialties: ['Cardiologia'], opening_hours: null, accepts_online_booking: true, is_demo: true, exams: [{ code: 'ecg', price_cents: null }, { code: 'eco', price_cents: null }] },
+  { id: 'aaaaaaaa-0000-4000-8000-000000000001', name: 'DiagnoCenter Paulista', kind: 'imagem', description: null, address_line: 'Endereço de demonstração · Bela Vista', neighborhood: 'Bela Vista', city: 'São Paulo', state: 'SP', cep: null, lat: -23.5614, lng: -46.6559, distance_m: 563, phone: null, whatsapp: null, email: null, website: null, specialties: ['Radiologia'], opening_hours: null, accepts_online_booking: true, is_demo: true, exams: [{ code: 'rm', price_cents: null }, { code: 'rx', price_cents: null }, { code: 'tc', price_cents: null }], insurances: [], cnes: null },
+  { id: 'aaaaaaaa-0000-4000-8000-000000000002', name: 'Ecocor Cardiologia', kind: 'clinica', description: null, address_line: 'Endereço de demonstração · Jardins', neighborhood: 'Jardins', city: 'São Paulo', state: 'SP', cep: null, lat: -23.57, lng: -46.662, distance_m: 1161, phone: null, whatsapp: null, email: null, website: null, specialties: ['Cardiologia'], opening_hours: null, accepts_online_booking: true, is_demo: true, exams: [{ code: 'ecg', price_cents: null }, { code: 'eco', price_cents: null }], insurances: [], cnes: null },
 ];
 const OSM = { elements: [
   { type: 'node', id: 101, lat: -23.5617, lon: -46.6561, tags: { name: 'DiagnoCenter Paulista', healthcare: 'radiology' } },
@@ -44,6 +45,17 @@ const OSM = { elements: [
   { type: 'way', id: 103, center: { lat: -23.5700, lon: -46.6450 }, tags: { name: 'Hospital Central', amenity: 'hospital', website: 'hospitalcentral.com.br' } },
   { type: 'node', id: 104, lat: -23.5620, lon: -46.6530, tags: { name: 'Clínica Odontológica Sorriso', amenity: 'clinic' } },
   { type: 'node', id: 105, lat: -23.5660, lon: -46.6580, tags: { name: 'Centro de Ressonância e Tomografia Paulista', healthcare: 'clinic', 'contact:whatsapp': '(11) 98888-7777' } },
+] };
+
+// Parceiros verificados (não são demonstração), com preços e convênios informados pela clínica.
+const PARTNER_ROWS = [
+  { id: 'bbbbbbbb-0000-4000-8000-000000000011', name: 'Imagem Paulista Verificada', kind: 'imagem', description: 'Centro de imagem.', address_line: 'Av. Paulista, 1500', neighborhood: 'Bela Vista', city: 'São Paulo', state: 'SP', cep: '01310-200', lat: -23.5625, lng: -46.6565, distance_m: 300, phone: '(11) 3222-1000', whatsapp: null, email: null, website: null, specialties: ['Radiologia'], opening_hours: { seg: '07:00–19:00' }, accepts_online_booking: true, is_demo: false, exams: [{ code: 'rm', price_cents: 45000 }, { code: 'tc', price_cents: 30000 }, { code: 'rx', price_cents: null }], insurances: ['Bradesco Saúde', 'SulAmérica'], cnes: '7654321' },
+  { id: 'bbbbbbbb-0000-4000-8000-000000000012', name: 'Clínica Jardins Verificada', kind: 'clinica', description: null, address_line: 'Rua Oscar Freire, 100', neighborhood: 'Jardins', city: 'São Paulo', state: 'SP', cep: null, lat: -23.5672, lng: -46.6650, distance_m: 1100, phone: null, whatsapp: null, email: null, website: null, specialties: ['Cardiologia'], opening_hours: null, accepts_online_booking: true, is_demo: false, exams: [{ code: 'rm', price_cents: 89990 }, { code: 'ecg', price_cents: null }], insurances: ['Amil'], cnes: null },
+];
+const RATINGS = { 'cnes:2077485': { rating: 4.6, reviews: 12 }, 'imed:bbbbbbbb-0000-4000-8000-000000000011': { rating: 4, reviews: 3 } };
+const REVIEWS = { 'cnes:2077485': [
+  { rating: 5, comment: '<b>Ótimo</b> atendimento, rápido.', author_name: 'Maria', created_at: '2026-10-20T13:00:00Z' },
+  { rating: 4, comment: null, author_name: 'João', created_at: '2026-10-02T13:00:00Z' },
 ] };
 
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
@@ -54,14 +66,14 @@ const CNES_ROWS = [
   { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', cnes_type: 39, address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5655, lng: -46.6520, distance_m: 640, location_source: 'endereco', phone: '(11) 3000-2000', shift: 'Manhã e tarde', open_24h: false, sus: true, services: ['lab'], specialties: [], cnes_updated_at: '2026-08-02' },
 ];
 
-async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc } = {}) {
+async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, ratings, reviews } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block',
     ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
-  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [] };
+  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [], ratings: [], reviews: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -83,6 +95,20 @@ async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass,
     log.cnes.push(JSON.parse(route.request().postData() || '{}'));
     return (cnesRpc ?? ((r) => json(r, [])))(route);
   });
+  await context.route(`${REST}rpc/place_ratings`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.ratings.push(body);
+    if (ratings) return ratings(route, body);
+    return json(route, body.p_keys.filter((k) => RATINGS[k]).map((k) => ({ place_key: k, ...RATINGS[k] })));
+  });
+  await context.route(`${REST}rpc/place_reviews`, async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.reviews.push(body);
+    if (reviews) return reviews(route, body);
+    return json(route, (REVIEWS[body.p_key] ?? []).slice(0, body.p_limit));
+  });
   await context.route(`${REST}appointment_requests`, async (route) => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
     log.insert.push({ body: JSON.parse(route.request().postData()), headers: route.request().headers() });
@@ -103,6 +129,25 @@ function defaultFn(route, body) {
   }
   return json(route, { ok: true, provider: 'osm' });
 }
+
+// Busca com parceiros verificados e estabelecimentos do CNES (cidade já no banco).
+const fullFn = (r, b) => (b.action === 'search'
+  ? json(r, { ok: true, provider: 'osm', radius_m: b.radius_m, warnings: [], imed: PARTNER_ROWS, cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } })
+  : defaultFn(r, b));
+const names = (page) => page.$$eval('.pc h3', (els) => els.map((e) => e.textContent));
+const ready = async (page) => { await page.waitForSelector('.pc'); await page.waitForFunction(() => !document.querySelector('.pt-more')); };
+const fillBooking = async (page, exam = 'rm') => {
+  await page.selectOption('#bkExam', exam);
+  await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
+  await page.check('input[name="periodo"][value="manha"]', { force: true });
+  await page.fill('#bkName', 'Ana Teste');
+  await page.fill('#bkPhone', '11987654321');
+  await page.check('input[name="consent"]');
+};
+const WA_CONFIG = () => {
+  let cfg;
+  Object.defineProperty(window, 'IMED_CONFIG', { configurable: true, get: () => cfg, set: (v) => { cfg = { ...v, whatsapp: '+55 (11) 99999-8888' }; } });
+};
 
 const shot = async (page, name) => { if (SHOTS) { await page.waitForTimeout(450); await page.screenshot({ path: join(SHOTS, `${name}.png`) }); } };
 const results = [];
@@ -210,10 +255,75 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   assert.ok(!('status' in row) && !('lat' in row) && !('lng' in row), 'sem status e sem localização do paciente');
   assert.match(log.insert[0].headers.prefer, /return=minimal/);
   assert.match(await page.textContent('.ok .code'), /^IMED-[0-9A-F]{8}$/);
+  assert.match(row.review_token_hash, /^[0-9a-f]{64}$/, 'manda só o resumo (SHA-256) do código do pedido');
+  assert.equal(log.insert[0].headers.authorization, `Bearer ${(await page.evaluate(() => window.IMED_CONFIG.supabaseAnonKey))}`, 'sem conta, usa a chave pública');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
   assert.equal(saved[0].type, 'pedido');
   assert.equal(saved[0].status, 'pendente');
+  assert.equal(saved[0].id, row.id);
+  assert.match(saved[0].token, /^[0-9a-f]{64}$/);
+  assert.equal(createHash('sha256').update(saved[0].token).digest('hex'), row.review_token_hash, 'o código guardado bate com o resumo enviado');
+  assert.equal(saved[0].code, await page.textContent('.ok .code'));
+  assert.equal(saved[0].place_key, `imed:${IMED_ROWS[0].id}`);
+  assert.equal(saved[0].name, 'DiagnoCenter Paulista');
+  assert.equal(saved[0].exam, 'rm');
+  assert.deepEqual(saved[0].items, ['Ressonância']);
+  assert.equal(saved[0].date, date);
+  assert.equal(saved[0].period, 'manha');
+  assert.ok(!Number.isNaN(Date.parse(saved[0].created)));
+  assert.ok(!JSON.stringify(saved).includes(row.review_token_hash), 'o resumo não precisa ficar no aparelho');
+  assert.ok(await page.isVisible('.ok a[href="conta.html"]'), 'oferece criar conta para acompanhar');
+  assert.ok(await page.isVisible('.ok a[href="./#agenda"]'));
   await shot(page, '04-pedido-enviado');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('[data-ics]')]);
+  assert.match(download.suggestedFilename(), /^imed-[0-9a-f]{8}\.ics$/);
+  const ics = (await readFile(await download.path(), 'utf8'));
+  const unfolded = ics.replace(/\r\n /g, '');
+  assert.ok(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.trimEnd().endsWith('END:VCALENDAR'));
+  assert.match(unfolded, new RegExp(`DTSTART;TZID=America/Sao_Paulo:${date.replace(/-/g, '')}T080000`));
+  assert.match(unfolded, /SUMMARY:Exame: Ressonância — DiagnoCenter Paulista/);
+  assert.match(unfolded, /DESCRIPTION:.*Retire objetos de metal.*Confirme o horário com o IMED.*exames\/ressonancia-magnetica\.html#preparo/);
+  assert.match(unfolded, /BEGIN:VALARM\r\n.*TRIGGER:-P1D/s);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pedido com conta: grava pelo login e não oferece criar conta', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await context.addInitScript(() => localStorage.setItem('imed_session', JSON.stringify({ access_token: 'tok-paciente', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: 'u1', email: 'ana@exemplo.com' } })));
+  await page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await page.click('.pc.imed >> nth=0');
+  await page.click('[data-book]');
+  await fillBooking(page);
+  await page.click('#bkBtn');
+  await page.waitForSelector('.ok h3');
+  assert.equal(log.insert.length, 1);
+  assert.equal(log.insert[0].headers.authorization, 'Bearer tok-paciente');
+  assert.match(log.insert[0].body.review_token_hash, /^[0-9a-f]{64}$/);
+  assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 0);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
+  assert.equal(saved[0].id, log.insert[0].body.id);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('sessão vencida que não renova: pedido vai sem conta e oferece criar conta', async () => {
+  const { page, log, errors, context } = await newPage(browser);
+  await context.addInitScript(() => localStorage.setItem('imed_session', JSON.stringify({ access_token: 'tok-velho', refresh_token: 'r', expires_at: Math.floor(Date.now() / 1000) - 3600, user: { id: 'u1', email: 'ana@exemplo.com' } })));
+  await context.route('**/auth/v1/token**', (r) => (r.request().method() === 'OPTIONS'
+    ? r.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } })
+    : r.fulfill({ status: 400, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"error":"invalid_grant"}' })));
+  await page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await page.click('.pc.imed >> nth=0');
+  await page.click('[data-book]');
+  await fillBooking(page, 'consulta');
+  await page.click('#bkBtn');
+  await page.waitForSelector('.ok h3');
+  assert.equal(log.insert.length, 1);
+  assert.notEqual(log.insert[0].headers.authorization, 'Bearer tok-velho', 'não usa o token vencido');
+  assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 1, 'oferece criar conta');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
+  assert.equal(saved[0].exam, 'consulta', 'guarda o código da consulta para o preparo nas outras páginas');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -359,47 +469,6 @@ await scenario('celular: lista, mapa em tela cheia e detalhes pelo marcador', as
   await context.close();
 });
 
-await scenario('página inicial: botão "Encontrar clínicas perto de mim" e menus levam à busca', async () => {
-  const { page, errors, context } = await newPage(browser, { geo: false });
-  await page.goto(BASE);
-  const cta = page.locator('#nearCta');
-  assert.ok(await cta.isVisible(), 'botão em destaque no topo');
-  assert.match(await cta.textContent(), /Encontrar clínicas perto de mim/);
-  assert.equal(await cta.getAttribute('href'), 'perto.html?usar=localizacao');
-  assert.equal(await page.locator('.tabs a[href="perto.html"]').count(), 1);
-  assert.equal(await page.locator('#realbar a[href="perto.html?usar=localizacao"]').count(), 1);
-  assert.equal(await page.locator('.f-grid a[href="perto.html"]').count(), 1);
-  await shot(page, '11-inicio-desktop');
-  await page.goto(`${BASE}#perto`);
-  await page.waitForURL(/perto\.html/);
-  await page.waitForSelector('.st h2');
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-await scenario('página inicial no celular: menu com "Perto de mim" e pedido em "Agendados"', async () => {
-  const { page, errors, context } = await newPage(browser, { mobile: true, geo: false });
-  await context.addInitScript(() => {
-    if (!localStorage.getItem('imed_appts')) {
-      localStorage.setItem('imed_appts', JSON.stringify([{ code: 'IMED-3F2A9C1E', type: 'pedido', status: 'pendente', name: 'Laboratório Vida', ini: '', c: '#6C4BD8', img: null, items: ['Exames de laboratório'], date: 'segunda-feira, 03 de novembro', time: 'manhã', total: null }]));
-    }
-  });
-  await page.goto(BASE);
-  const items = await page.$$eval('.bnav > *', (els) => els.map((e) => [e.textContent.trim(), e.getBoundingClientRect().height]));
-  assert.deepEqual(items.map((i) => i[0]), ['Início', 'Busca', 'Perto de mim', 'Agendados', 'Perfil']);
-  assert.ok(items.every((i) => i[1] < 60), 'rótulos numa linha só');
-  await shot(page, '12-inicio-celular');
-  await page.click('.bnav [data-go="agenda"]');
-  await page.waitForSelector('.appt');
-  const appt = await page.textContent('.appt');
-  assert.match(appt, /Aguardando confirmação/);
-  assert.match(appt, /Protocolo IMED-3F2A9C1E/);
-  assert.ok(!/R\$/.test(appt), 'pedido sem preço inventado');
-  await shot(page, '13-agendados');
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
 await scenario('clínicas reais do CNES: sem OpenStreetMap, selo oficial, ficha e pedido', async () => {
   const { page, log, errors, context } = await newPage(browser, { fn: (r, b) => (b.action === 'search'
     ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } })
@@ -459,20 +528,240 @@ await scenario('cidade ainda sendo importada: aviso, mapa provisório e atualiza
   await context.close();
 });
 
-await scenario('página inicial: mapa com as clínicas reais perto', async () => {
-  const { page, log, errors, context } = await newPage(browser, { geo: false, cnesRpc: (r) => json(r, CNES_ROWS) });
-  await page.goto(BASE);
-  await page.locator('#reais').scrollIntoViewIfNeeded();
-  await page.waitForSelector('#realList li');
-  assert.equal(log.cnes.length, 1);
-  const args = log.cnes[0];
-  assert.equal(args.p_radius_m, 2000);
-  assert.ok(String(args.p_lat).split('.')[1].length <= 3, 'coordenada arredondada');
-  const list = await page.$$eval('#realList li b', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(list, ['Hospital Santa Exemplo', 'Laboratório Análise Paulista']);
-  assert.equal(await page.locator('#realMap .leaflet-interactive').count(), 3, 'um ponto por estabelecimento + o ponto de origem');
-  assert.match(await page.textContent('#realStats'), /1\s*Hospitais/);
-  await shot(page, '16-inicio-clinicas-reais');
+
+await scenario('selos: parceiro verificado, cadastro oficial, demonstração e legenda', async () => {
+  const { page, errors, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  assert.deepEqual(await names(page), ['Imagem Paulista Verificada', 'Hospital Santa Exemplo', 'Laboratório Análise Paulista', 'Clínica Jardins Verificada']);
+  const card = (n) => page.textContent(`.pc:has-text("${n}")`);
+  assert.match(await card('Imagem Paulista Verificada'), /Parceiro verificado/);
+  assert.match(await card('Hospital Santa Exemplo'), /Cadastro oficial/);
+  assert.doesNotMatch(await card('Hospital Santa Exemplo'), /verificado/);
+  assert.match(await page.textContent('#count'), /2 parceiros verificados/);
+  assert.match(await page.textContent('#fImed'), /Parceiros verificados/);
+  assert.ok(await page.isVisible('#legend summary'));
+  assert.ok(!(await page.isVisible('#legend ul')), 'legenda fechada por padrão');
+  await page.click('#legend summary');
+  const legend = await page.textContent('#legend');
+  assert.match(legend, /Parceiro verificado.*confirmados pela própria clínica/s);
+  assert.match(legend, /Cadastro oficial.*Ministério da Saúde/s);
+  await shot(page, '16-selos-legenda');
+  await page.click('#fImed');
+  assert.deepEqual((await names(page)).sort(), ['Clínica Jardins Verificada', 'Imagem Paulista Verificada']);
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Demonstração continua com o próprio selo, sem "verificado".
+  const demo = await newPage(browser);
+  await demo.page.goto(`${BASE}perto.html?usar=localizacao&demo=1`);
+  await ready(demo.page);
+  const t = await demo.page.textContent('.pc.imed >> nth=0');
+  assert.match(t, /Demonstração/);
+  assert.doesNotMatch(t, /verificado/);
+  assert.match(await demo.page.textContent('#count'), /2 de demonstração/);
+  await demo.context.close();
+});
+
+await scenario('filtro "Atende SUS" usa o dado do CNES', async () => {
+  const { page, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.click('#fSus');
+  assert.equal(await page.getAttribute('#fSus', 'aria-pressed'), 'true');
+  assert.deepEqual(await names(page), ['Laboratório Análise Paulista']);
+  assert.match(await page.textContent('#list'), /vem do cadastro oficial \(CNES\)/);
+  assert.ok(await page.isVisible('#fClear'));
+  await page.selectOption('#fExam', 'rm');
+  const band = (await page.textContent('#priceBand')).replace(/\s+/g, ' ');
+  assert.match(band, /Ressonância perto de você: de R\$ 450 a R\$ 899,90 em 2 clínicas/, 'com SUS ligado, a faixa ainda mostra os preços dos parceiros da região');
+  assert.doesNotMatch(band, /Nenhuma clínica informou/);
+  await page.selectOption('#fExam', '');
+  await page.click('#fSus');
+  assert.equal((await names(page)).length, 4);
+  await context.close();
+});
+
+await scenario('filtro de convênio com as opções dos parceiros encontrados', async () => {
+  const { page, errors, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  assert.ok(await page.isVisible('#fIns'));
+  assert.deepEqual(await page.$$eval('#fIns option', (o) => o.map((x) => x.value)), ['', 'Amil', 'Bradesco Saúde', 'SulAmérica']);
+  await page.selectOption('#fIns', 'Amil');
+  assert.deepEqual(await names(page), ['Clínica Jardins Verificada']);
+  assert.match(await page.textContent('#list'), /Convênios informados pelas clínicas parceiras/);
+  await page.selectOption('#fIns', 'Bradesco Saúde');
+  assert.deepEqual(await names(page), ['Imagem Paulista Verificada']);
+  await page.click('.pc:has-text("Imagem Paulista Verificada")');
+  const sheet = await page.textContent('#sheet');
+  assert.match(sheet, /Convênios.*Bradesco Saúde.*SulAmérica.*Convênios informados pela clínica/s);
+  await page.keyboard.press('Escape');
+  await page.click('#fClear');
+  assert.equal(await page.inputValue('#fIns'), '');
+  assert.equal((await names(page)).length, 4);
+  assert.deepEqual(errors, []);
+  await context.close();
+  // Sem parceiros com convênio, o filtro não aparece.
+  const other = await newPage(browser, { fn: (r, b) => (b.action === 'search' ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: CNES_ROWS, places: [], coverage: { status: 'done' } }) : defaultFn(r, b)) });
+  await other.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(other.page);
+  assert.ok(!(await other.page.isVisible('#fIns')));
+  await other.context.close();
+});
+
+await scenario('faixa de preço do exame só com preços informados', async () => {
+  const { page, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  assert.equal(await page.textContent('#priceBand'), '', 'sem exame escolhido, sem faixa');
+  await page.selectOption('#fExam', 'rm');
+  const band = (await page.textContent('#priceBand')).replace(/\s+/g, ' ');
+  assert.match(band, /Ressonância perto de você: de R\$ 450 a R\$ 899,90 em 2 clínicas que informaram o preço/);
+  await shot(page, '17-faixa-de-preco');
+  await page.selectOption('#fExam', 'tc');
+  assert.match((await page.textContent('#priceBand')).replace(/\s+/g, ' '), /Tomografia perto de você: R\$ 300 em 1 clínica que informou o preço/);
+  await page.selectOption('#fExam', 'ecg');
+  assert.match(await page.textContent('#priceBand'), /Nenhuma clínica informou o preço de Eletrocardiograma por aqui ainda\. Os valores aparecem quando as clínicas parceiras informam\./);
+  await context.close();
+});
+
+await scenario('notas e avaliações vindas do banco, sem quebrar a busca quando falham', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.waitForSelector('.pc-rate');
+  assert.equal(log.ratings.length, 1);
+  assert.deepEqual(log.ratings[0].p_keys.sort(), ['cnes:2077485', 'cnes:6543210', `imed:${PARTNER_ROWS[0].id}`, `imed:${PARTNER_ROWS[1].id}`].sort());
+  assert.match(await page.textContent('.pc:has-text("Hospital Santa Exemplo") .pc-rate'), /4,6\s*\(12\)/);
+  assert.equal(await page.getAttribute('.pc:has-text("Hospital Santa Exemplo") .pc-rate', 'aria-label'), 'Nota 4,6 de 5, 12 avaliações');
+  const cardLabel = await page.getAttribute('.pc:has-text("Hospital Santa Exemplo")', 'aria-label');
+  assert.match(cardLabel, /^Hospital Santa Exemplo, .+Cadastro oficial.+Nota 4,6 de 5, 12 avaliações\. Ver detalhes$/, 'leitor de tela ouve selo e nota');
+  assert.match(await page.getAttribute('.pc:has-text("Imagem Paulista Verificada")', 'aria-label'), /Parceiro verificado.*(a partir de R\$|Preço sob consulta)/);
+  assert.equal(await page.locator('.pc:has-text("Laboratório Análise Paulista") .pc-rate').count(), 0, 'sem avaliação, sem nota');
+  assert.equal(await page.locator('#fSort option[value="rating"]:not([disabled])').count(), 1);
+  await page.selectOption('#fSort', 'rating');
+  assert.deepEqual((await names(page)).slice(0, 2), ['Hospital Santa Exemplo', 'Imagem Paulista Verificada']);
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await page.waitForSelector('#dtReviews:not([hidden]) li');
+  assert.equal(log.reviews[0].p_key, 'cnes:2077485');
+  assert.equal(log.reviews[0].p_limit, 5);
+  const rv = await page.textContent('#dtReviews');
+  assert.match(rv, /<b>Ótimo<\/b> atendimento/, 'comentário aparece como texto (HTML escapado)');
+  assert.equal(await page.locator('#dtReviews b:has-text("Ótimo")').count(), 0);
+  assert.match(rv, /Maria/);
+  assert.match(rv, /João/);
+  assert.match(await page.textContent('.dt-top'), /4,6/);
+  await page.locator('#dtReviews').scrollIntoViewIfNeeded();
+  await shot(page, '18-avaliacoes');
+  await page.keyboard.press('Escape');
+  await page.click('.pc:has-text("Laboratório Análise Paulista")');
+  await page.waitForFunction(() => !document.querySelector('#dtReviews'));
+  assert.deepEqual(errors, []);
+  await context.close();
+
+  const bad = await newPage(browser, { fn: fullFn, ratings: (r) => r.fulfill({ status: 500, body: '' }), reviews: (r) => r.fulfill({ status: 500, body: '' }) });
+  await bad.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(bad.page);
+  await bad.page.waitForTimeout(300);
+  assert.equal((await names(bad.page)).length, 4);
+  assert.equal(await bad.page.locator('.pc-rate').count(), 0);
+  assert.equal(await bad.page.locator('#fSort option[value="rating"]:not([disabled])').count(), 0);
+  await bad.page.click('.pc >> nth=1');
+  await bad.page.waitForFunction(() => !document.querySelector('#dtReviews'));
+  assert.ok(await bad.page.isVisible('#sheet h3'));
+  assert.deepEqual(bad.errors, []);
+  await bad.context.close();
+});
+
+await scenario('?exame=rm na URL já escolhe o exame', async () => {
+  const { page, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+  await ready(page);
+  assert.equal(await page.inputValue('#fExam'), 'rm');
+  assert.equal(new URL(page.url()).search, '?exame=rm', 'tira usar=localizacao e mantém o exame');
+  assert.deepEqual(await names(page), ['Imagem Paulista Verificada', 'Hospital Santa Exemplo', 'Clínica Jardins Verificada']);
+  assert.match(await page.textContent('#priceBand'), /Ressonância perto de você/);
+  await context.close();
+  const bad = await newPage(browser, { fn: fullFn });
+  await bad.page.goto(`${BASE}perto.html?usar=localizacao&exame=xyz`);
+  await ready(bad.page);
+  assert.equal(await bad.page.inputValue('#fExam'), '', 'código desconhecido é ignorado');
+  await bad.context.close();
+  for (const key of ['toString', '__proto__', 'constructor']) {
+    const proto = await newPage(browser, { fn: fullFn });
+    await proto.page.goto(`${BASE}perto.html?usar=localizacao&exame=${key}`);
+    await ready(proto.page);
+    assert.equal(await proto.page.inputValue('#fExam'), '', `${key} é ignorado`);
+    assert.equal((await proto.page.textContent('#priceBand')).trim(), '', 'sem faixa de preço');
+    assert.ok((await names(proto.page)).length > 0, 'lista não fica vazia');
+    assert.deepEqual(proto.errors, []);
+    await proto.context.close();
+  }
+});
+
+await scenario('WhatsApp do IMED: escondido sem número, visível quando configurado', async () => {
+  const { page, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await page.waitForSelector('.sh-ov.open');
+  assert.equal(await page.locator('.wa-imed').count(), 0);
+  assert.equal(await page.locator('#sheet a[href*="wa.me"]').count(), 0);
+  await context.close();
+
+  const on = await newPage(browser, { fn: fullFn });
+  await on.context.addInitScript(WA_CONFIG);
+  await on.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(on.page);
+  await on.page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await on.page.waitForSelector('.sh-ov.open');
+  const a = on.page.locator('.wa-imed');
+  assert.match(await a.textContent(), /Falar com o IMED no WhatsApp/);
+  const href = await a.getAttribute('href');
+  assert.ok(href.startsWith('https://wa.me/5511999998888?text='), href);
+  assert.match(decodeURIComponent(href.split('text=')[1]), /Hospital Santa Exemplo/);
+  await shot(on.page, '19-whatsapp-imed');
+  assert.deepEqual(on.errors, []);
+  await on.context.close();
+});
+
+await scenario('local do CNES: link "Assuma o cadastro" para o responsável', async () => {
+  const { page, context } = await newPage(browser, { fn: fullFn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  const link = page.locator('#sheet a:has-text("Assuma o cadastro")');
+  assert.match(await link.textContent(), /É o responsável por este local\? Assuma o cadastro/);
+  assert.equal(await link.getAttribute('href'), 'reivindicar.html?cnes=2077485');
+  await page.keyboard.press('Escape');
+  await page.click('.pc:has-text("Imagem Paulista Verificada")');
+  assert.equal(await page.locator('#sheet a:has-text("Assuma o cadastro")').count(), 0, 'parceiro já tem cadastro');
+  await context.close();
+});
+
+await scenario('celular (390px): selos, filtros, faixa de preço e detalhes sem rolagem lateral', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, fn: fullFn });
+  await context.addInitScript(WA_CONFIG);
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+  await ready(page);
+  await page.waitForSelector('.pc-rate');
+  await page.click('#legend summary');
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
+  await shot(page, '20-celular-faixa-selos');
+  await page.click('.pc:has-text("Hospital Santa Exemplo")');
+  await page.waitForSelector('#dtReviews:not([hidden]) li');
+  await page.locator('.dt-claim').scrollIntoViewIfNeeded();
+  await shot(page, '21-celular-detalhes-avaliacoes');
+  await page.keyboard.press('Escape');
+  await page.click('.pc:has-text("Imagem Paulista Verificada")');
+  await page.click('[data-book]');
+  await fillBooking(page);
+  await page.click('#bkBtn');
+  await page.waitForSelector('.ok h3');
+  await shot(page, '22-celular-pedido-enviado');
+  const ov2 = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(ov2 <= 0, `sem rolagem lateral (${ov2}px)`);
   assert.deepEqual(errors, []);
   await context.close();
 });

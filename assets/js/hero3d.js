@@ -201,7 +201,7 @@ export function initHero3D(el, api) {
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.domElement.className = 'h3d-canvas';
+  renderer.domElement.className = 'h3d-canvas'; renderer.domElement.setAttribute('aria-hidden', 'true');
   el.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -464,7 +464,8 @@ export function initHero3D(el, api) {
       const [x, z] = snap(x0, z0, used);
       spots.push([x, z]);
       const color = new THREE.Color(c.c);
-      const h = 1.1 + (c.r - 4) * 1.3 + (c.sup ? .5 : 0);
+      // altura do prédio: a página pode mandar (c.h); senão, um padrão fixo (não depende de nota)
+      const h = typeof c.h === 'number' ? c.h : 1.8;
       const group = new THREE.Group(); group.position.set(x, 0, z); scene.add(group);
 
       const fm = clinicTex.map.clone(), fe = clinicTex.emissive.clone();
@@ -496,7 +497,15 @@ export function initHero3D(el, api) {
 
       const label = document.createElement('button');
       label.className = 'h3d-label'; label.type = 'button';
-      label.innerHTML = `<span class="lg" style="background:${c.c}">${c.ini}</span><span class="tx"><b>${c.n}</b><small>${api.meta(c)}</small></span>`;
+      // escondido até aparecer na tela: fora do Tab e dos leitores de tela
+      label.tabIndex = -1; label.setAttribute('aria-hidden', 'true');
+      // nomes vêm do cadastro oficial: monta o rótulo com textContent, nunca como HTML
+      const lg = document.createElement('span'); lg.className = 'lg'; lg.style.background = c.c; lg.textContent = c.ini;
+      const tx = document.createElement('span'); tx.className = 'tx';
+      const nb = document.createElement('b'); nb.textContent = c.n;
+      const sm = document.createElement('small'); sm.textContent = api.meta(c);
+      tx.append(nb, sm); label.append(lg, tx);
+      label.setAttribute('aria-label', `${c.n}, ${api.meta(c)}`);
       label.addEventListener('click', () => api.onPick(c.id));
       labelsEl.appendChild(label);
 
@@ -517,7 +526,7 @@ export function initHero3D(el, api) {
   let labelIds = new Set();
   function pickLabels() {
     const n = W < 700 ? 2 : 4;
-    labelIds = new Set(clinicObjs.filter(o => o.c.open).sort((a, b) => a.group.position.length() - b.group.position.length()).slice(0, n).map(o => o.id));
+    labelIds = new Set(clinicObjs.filter(o => o.c.open !== false).sort((a, b) => a.group.position.length() - b.group.position.length()).slice(0, n).map(o => o.id));
   }
 
   // câmera
@@ -607,7 +616,7 @@ export function initHero3D(el, api) {
       head.set(0, .8, 0);
       o.badge.position.copy(head).add(o.pin.worldToLocal(camDir.clone()).sub(head).normalize().multiplyScalar(.31));
       o.route.material.uniforms.uTime.value = t;
-      o.route.material.uniforms.uOpacity.value = clamp01((t - o.t0 - .7) / 1.2) * ((o.c.open ? .6 : .25) + o.hover * .4);
+      o.route.material.uniforms.uOpacity.value = clamp01((t - o.t0 - .7) / 1.2) * ((o.c.open !== false ? .6 : .25) + o.hover * .4);
       o.ring.material.opacity = o.hover * .8;
       o.band.material.emissiveIntensity = .7 + o.hover * .6;
     });
@@ -637,7 +646,11 @@ export function initHero3D(el, api) {
       o.label.style.transform = `translate3d(${o.sx.toFixed(1)}px,${o.sy.toFixed(1)}px,0) translate(-50%,calc(-100% - 22px))`;
       o.label.classList.toggle('on', vis);
       o.label.classList.toggle('hot', hoverId === o.id);
-      o.label.tabIndex = vis ? 0 : -1;
+      if (o.vis !== vis) {
+        o.vis = vis;
+        o.label.tabIndex = vis ? 0 : -1;
+        if (vis) o.label.removeAttribute('aria-hidden'); else o.label.setAttribute('aria-hidden', 'true');
+      }
     });
   }
 

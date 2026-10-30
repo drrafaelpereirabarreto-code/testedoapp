@@ -216,3 +216,101 @@ test('datas no fuso de São Paulo', () => {
   assert.equal(G.spDate(0, Date.UTC(2026, 9, 29, 2, 30)), '2026-10-28', '23h30 em São Paulo ainda é dia 28');
   assert.equal(G.roundCoord(-23.5651234), -23.565);
 });
+
+test('parceiro leva convênios e código CNES; filtros de SUS e convênio', () => {
+  const imed = G.normalizeImedRow({ ...imedRow, insurances: [' Bradesco Saúde ', 'SulAmérica', 'bradesco saude', ''], cnes: '1234567' }, PAULISTA);
+  assert.deepEqual(imed.insurances, ['Bradesco Saúde', 'SulAmérica']);
+  assert.equal(imed.cnes, '1234567');
+  assert.deepEqual(G.normalizeImedRow(imedRow, PAULISTA).insurances, [], 'sem convênio informado, lista vazia');
+  const outra = G.normalizeImedRow({ ...imedRow, id: '33333333-3333-4333-8333-333333333333', name: 'Outra', insurances: ['Amil'] }, PAULISTA);
+  const base = { cnes: '1', name: 'UBS', kind: 'clinica', lat: -23.566, lng: -46.653, location_source: 'cnes', services: [], specialties: [] };
+  const sus = G.normalizeCnes({ ...base, sus: true }, PAULISTA);
+  const semSus = G.normalizeCnes({ ...base, cnes: '2', name: 'Privada', sus: false }, PAULISTA);
+  const all = [imed, outra, sus, semSus];
+  const f = (o) => G.filterPlaces(all, { ...G.DEFAULT_FILTERS, ...o }).map((p) => p.name);
+  assert.equal(G.DEFAULT_FILTERS.sus, false);
+  assert.equal(G.DEFAULT_FILTERS.insurance, '');
+  assert.deepEqual(f({ sus: true }), ['UBS'], 'parceiros não informam SUS e ficam de fora');
+  assert.deepEqual(f({ insurance: 'bradesco saúde' }), ['Centro de Imagem Perto'], 'compara sem diferenciar maiúsculas');
+  assert.deepEqual(f({ insurance: 'Amil' }), ['Outra']);
+  assert.deepEqual(f({ insurance: 'Unimed' }), []);
+  assert.deepEqual(G.insuranceOptions(all), ['Amil', 'Bradesco Saúde', 'SulAmérica']);
+  assert.equal(G.activeFilterCount({ ...G.DEFAULT_FILTERS, sus: true, insurance: 'Amil' }), 2);
+  assert.equal(G.activeFilterCount(G.DEFAULT_FILTERS), 0);
+});
+
+test('faixa de preço só com preços informados por parceiros', () => {
+  const a = G.normalizeImedRow(imedRow, PAULISTA); // rm 450, tc sem preço
+  const b = G.normalizeImedRow({ ...imedRow, id: '44444444-4444-4444-8444-444444444444', exams: [{ code: 'rm', price_cents: 89990 }] }, PAULISTA);
+  const demo = G.normalizeImedRow({ ...imedRow, id: '55555555-5555-4555-8555-555555555555', is_demo: true, exams: [{ code: 'rm', price_cents: 100 }] }, PAULISTA);
+  const cnes = G.normalizeCnes({ cnes: '9', name: 'X', kind: 'imagem', lat: -23.566, lng: -46.653, services: ['rm'], specialties: [] }, PAULISTA);
+  assert.deepEqual(G.priceRange([a, b, demo, cnes], 'rm'), { min: 45000, max: 89990, count: 2 });
+  assert.deepEqual(G.priceRange([a], 'rm'), { min: 45000, max: 45000, count: 1 });
+  assert.equal(G.priceRange([a, b, cnes], 'tc'), null, 'sem preço informado não há faixa');
+  assert.equal(G.priceRange([], 'rm'), null);
+});
+
+test('ordena por nota sem inventar avaliação', () => {
+  const list = [{ id: 'a', name: 'A', distance_m: 100 }, { id: 'b', name: 'B', distance_m: 200 }, { id: 'c', name: 'C', distance_m: 300 }, { id: 'd', name: 'D', distance_m: 50 }];
+  const ratings = new Map([['b', { rating: 4.2, reviews: 3 }], ['c', { rating: 4.8, reviews: 10 }], ['a', { rating: 4.2, reviews: 7 }]]);
+  assert.deepEqual(G.sortPlaces(list, 'rating', '', ratings).map((p) => p.id), ['c', 'a', 'b', 'd']);
+  assert.equal(G.formatRating(4.6), '4,6');
+  assert.equal(G.formatRating('5'), '5,0');
+});
+
+test('rótulos da situação do pedido', () => {
+  assert.equal(G.statusLabel('pending'), 'Aguardando contato');
+  assert.equal(G.statusLabel('pendente'), 'Aguardando contato');
+  assert.equal(G.statusLabel('contacted'), 'Em contato');
+  assert.equal(G.statusLabel('confirmed'), 'Confirmado');
+  assert.equal(G.statusLabel('cancelled'), 'Cancelado');
+  assert.equal(G.statusLabel('completed'), 'Concluído');
+  assert.equal(G.statusLabel('xyz'), '');
+});
+
+test('preparo resumido para todos os exames', () => {
+  for (const code of ['rx', 'usg', 'tc', 'rm', 'mamo', 'dens', 'ecg', 'eco', 'lab', 'consulta', 'outro']) {
+    assert.ok(typeof G.PREP[code] === 'string' && G.PREP[code].length > 10, code);
+  }
+});
+
+test('pedido com campos extras (código de avaliação)', () => {
+  const imed = G.normalizeImedRow(imedRow, PAULISTA);
+  const v = { exam: 'rm', date: '2026-11-03', period: 'tarde', name: 'Ana', phone: '11987654321', email: '', notes: '', consent: true };
+  const hash = 'a'.repeat(64);
+  assert.equal(G.bookingRow(imed, v, 'x', { review_token_hash: hash }).review_token_hash, hash);
+  assert.ok(!('review_token_hash' in G.bookingRow(imed, v, 'x')));
+});
+
+test('arquivo de agenda (.ics) válido, com fuso, lembrete e escapes', () => {
+  const now = Date.UTC(2026, 9, 30, 12, 0, 0);
+  const ics = G.icsFile({ id: 'abc-123', title: 'Exame: Ressonância — Clínica A, B; C', date: '2026-11-03', period: 'manha', description: 'Linha 1\nRetire metais; leve exames, se tiver.', url: 'https://imed.example/' }, now);
+  assert.ok(ics.endsWith('\r\n'));
+  assert.ok(!/[^\r]\n/.test(ics), 'todas as quebras são CRLF');
+  const lines = ics.split('\r\n');
+  assert.equal(lines[0], 'BEGIN:VCALENDAR');
+  assert.equal(lines.at(-2), 'END:VCALENDAR');
+  assert.ok(lines.includes('BEGIN:VEVENT') && lines.includes('END:VEVENT'));
+  assert.ok(lines.includes('VERSION:2.0'));
+  assert.ok(lines.includes('DTSTART;TZID=America/Sao_Paulo:20261103T080000'));
+  assert.ok(lines.includes('DTEND;TZID=America/Sao_Paulo:20261103T120000'));
+  assert.ok(lines.includes('BEGIN:VTIMEZONE') && lines.includes('TZID:America/Sao_Paulo'));
+  assert.ok(lines.includes('DTSTAMP:20261030T120000Z'));
+  assert.ok(lines.includes('UID:abc-123@imed'));
+  assert.ok(lines.includes('BEGIN:VALARM') && lines.includes('TRIGGER:-P1D') && lines.includes('END:VALARM'));
+  const unfolded = ics.replace(/\r\n /g, '');
+  assert.ok(unfolded.includes('SUMMARY:Exame: Ressonância — Clínica A\\, B\\; C\r\n'), 'vírgula e ponto e vírgula escapados no título');
+  assert.ok(unfolded.includes('DESCRIPTION:Linha 1\\nRetire metais\\; leve exames\\, se tiver.\r\n'), 'escapes na descrição');
+  assert.doesNotMatch(unfolded, /B; C/);
+  assert.doesNotMatch(unfolded, /metais; leve/);
+  assert.ok(lines.every((l) => new TextEncoder().encode(l).length <= 75), 'linhas dobradas em até 75 bytes');
+  const tarde = G.icsFile({ id: 'x', title: 'T', date: '2026-11-03', period: 'tarde' }, now);
+  assert.match(tarde, /DTSTART;TZID=America\/Sao_Paulo:20261103T130000\r\nDTEND;TZID=America\/Sao_Paulo:20261103T180000/);
+  const noite = G.icsFile({ id: 'x', title: 'T', date: '2026-11-03', period: 'noite' }, now);
+  assert.match(noite, /T180000\r\nDTEND;TZID=America\/Sao_Paulo:20261103T210000/);
+  const dia = G.icsFile({ id: 'x', title: 'T', date: '2026-12-31', period: 'qualquer' }, now);
+  assert.match(dia, /DTSTART;VALUE=DATE:20261231\r\nDTEND;VALUE=DATE:20270101/);
+  assert.ok(!dia.includes('VTIMEZONE'));
+  assert.match(dia, /TRIGGER:-P1D/);
+  assert.throws(() => G.icsFile({ id: 'x', title: 'T', date: '03/11/2026', period: 'manha' }));
+});

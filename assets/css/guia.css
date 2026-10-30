@@ -56,8 +56,6 @@ button{font:inherit;cursor:pointer;border:0;background:none}
 .g-main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:48px;padding-top:48px;padding-bottom:72px;align-items:start}
 @media (max-width:980px){.g-main{grid-template-columns:minmax(0,1fr);gap:28px}}
 .g-side,.g-side>*{min-width:0}
-.cl>span:nth-child(2){min-width:0}
-.cl b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .g-art section{margin-bottom:44px}
 .g-art h2{font-size:clamp(23px,2.4vw,30px);letter-spacing:-.03em;margin-bottom:16px;display:flex;align-items:center;gap:12px}
 .g-art h2 .n{display:grid;place-items:center;width:38px;height:38px;border-radius:12px;background:var(--primary-s);color:var(--primary);font-size:16px;flex-shrink:0}
@@ -87,18 +85,13 @@ details p{color:var(--muted);margin-top:10px;font-size:15.5px!important}
 @media (max-width:980px){.g-side{position:static}}
 .card{border:1px solid var(--line);border-radius:22px;padding:20px;background:#fff}
 .card h3{font-size:16px;margin-bottom:12px}
-.price-card{background:linear-gradient(145deg,#0E7C9C,#0A5C76);color:#fff;border:0;box-shadow:0 24px 50px rgba(14,124,156,.3)}
-.price-card h3{color:rgba(255,255,255,.8);font-family:'Inter';font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
-.price-card .range{font:800 32px Sora;letter-spacing:-.03em}
-.price-card small{display:block;color:rgba(255,255,255,.75);margin:6px 0 16px;line-height:1.5}
-.price-card .btn{width:100%;background:#fff;color:var(--primary-d)}
-.cl{display:flex;gap:12px;align-items:center;padding:10px;margin:0 -10px;border-radius:14px;transition:background .2s}
-.cl:hover{background:var(--bg2)}
-.cl .lg{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;color:#fff;font:800 12px Sora;flex-shrink:0}
-.cl b{display:block;color:var(--ink);font-size:14.5px}
-.cl small{color:var(--muted);font-size:12.5px}
-.cl .pr{margin-left:auto;text-align:right;font-weight:700;color:var(--ink);white-space:nowrap;font-size:14.5px}
-.cl .pr small{display:block;color:var(--green);font-weight:600}
+.where-card{background:linear-gradient(145deg,#0E7C9C,#0A5C76);color:#fff;border:0;box-shadow:0 24px 50px rgba(14,124,156,.3);display:grid;gap:10px}
+.where-card h3{color:rgba(255,255,255,.85);font-family:'Inter';font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:0}
+.where-card p{color:rgba(255,255,255,.82);font-size:14.5px;line-height:1.55;margin-bottom:4px}
+.where-card .btn{width:100%;background:#fff;color:var(--primary-d);white-space:normal;text-align:center;line-height:1.3}
+.where-card .btn-line{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
+.where-card .btn-line:hover{background:rgba(255,255,255,.12)}
+.btn:focus-visible,a:focus-visible{outline:3px solid #7FF0E4;outline-offset:2px}
 .others{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
 .others a{min-width:0;overflow-wrap:anywhere}
 .others a{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:14px;font-size:11.5px;font-weight:600;text-align:center;color:var(--ink)}

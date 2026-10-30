@@ -256,8 +256,24 @@ export function normalizeImedRow(r, origin) {
     services: Object.keys(prices), services_source: 'clinica', specialties: r.specialties ?? [],
     hours, hours_source: hours ? 'clinica' : null, prices,
     accepts_online_booking: !!r.accepts_online_booking, is_demo: !!r.is_demo,
+    insurances: cleanList(r.insurances), cnes: r.cnes ?? null,
   };
 }
+
+// Lista de textos sem vazios nem repetidos (ignorando maiúsculas e acentos), na ordem em que veio.
+function cleanList(v) {
+  const seen = new Set();
+  const out = [];
+  for (const x of Array.isArray(v) ? v : []) {
+    const s = String(x ?? '').replace(/\s+/g, ' ').trim();
+    const k = foldText(s);
+    if (!s || seen.has(k)) continue;
+    seen.add(k);
+    out.push(s);
+  }
+  return out;
+}
+const foldText = (s) => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 // Junta parceiros IMED e estabelecimentos do mapa, tirando do mapa quem já é parceiro.
 export function mergePlaces(imed, others) {
@@ -276,10 +292,20 @@ export function minPrice(p) {
   return vals.length ? Math.min(...vals) : null;
 }
 
-export const DEFAULT_FILTERS = { kind: '', exam: '', specialty: '', radius: 5000, price: '', sort: 'dist', onlyImed: false };
+export const DEFAULT_FILTERS = { kind: '', exam: '', specialty: '', radius: 5000, price: '', sort: 'dist', onlyImed: false, sus: false, insurance: '' };
 
 export function activeFilterCount(f) {
-  return ['kind', 'exam', 'specialty', 'price'].filter((k) => f[k]).length + (f.onlyImed ? 1 : 0);
+  return ['kind', 'exam', 'specialty', 'price', 'insurance'].filter((k) => f[k]).length + (f.onlyImed ? 1 : 0) + (f.sus ? 1 : 0);
+}
+
+// O convênio só vale para parceiros: quem informa os convênios aceitos é a própria clínica.
+export const acceptsInsurance = (p, name) => p.source === 'imed' && (p.insurances ?? []).some((x) => foldText(x) === foldText(name));
+
+// Convênios informados pelos parceiros encontrados, sem repetir, em ordem alfabética.
+export function insuranceOptions(list) {
+  const byKey = new Map();
+  for (const p of list) if (p.source === 'imed') for (const x of p.insurances ?? []) if (!byKey.has(foldText(x))) byKey.set(foldText(x), x);
+  return [...byKey.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }
 
 export function filterPlaces(list, f) {
@@ -290,6 +316,9 @@ export function filterPlaces(list, f) {
     if (f.kind && p.kind !== f.kind) return false;
     if (f.exam && !p.services.includes(f.exam)) return false;
     if (f.specialty && !p.specialties.includes(f.specialty)) return false;
+    // "Atende SUS" vem do cadastro oficial (CNES); quem não tem esse dado fica de fora.
+    if (f.sus && p.sus !== true) return false;
+    if (f.insurance && !acceptsInsurance(p, f.insurance)) return false;
     if (range) {
       const vals = f.exam ? [priceFor(p, f.exam)] : Object.values(p.prices ?? {});
       const ok = vals.some((v) => v != null && (range[0] == null || v >= range[0]) && (range[1] == null || v <= range[1]));
@@ -299,10 +328,20 @@ export function filterPlaces(list, f) {
   });
 }
 
-export function sortPlaces(list, sort, exam) {
+// ratings: Map de id do local → { rating, reviews } (só o que veio do banco).
+export function sortPlaces(list, sort, exam, ratings = null) {
   const arr = [...list];
   const byDist = (a, b) => a.distance_m - b.distance_m;
-  if (sort === 'name') {
+  if (sort === 'rating') {
+    const r = (p) => ratings?.get(p.id)?.rating ?? null;
+    arr.sort((a, b) => {
+      const ra = r(a), rb = r(b);
+      if (ra == null && rb == null) return byDist(a, b);
+      if (ra == null) return 1;
+      if (rb == null) return -1;
+      return rb - ra || (ratings.get(b.id).reviews - ratings.get(a.id).reviews) || byDist(a, b);
+    });
+  } else if (sort === 'name') {
     arr.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || byDist(a, b));
   } else if (sort === 'price') {
     const pr = (p) => (exam ? priceFor(p, exam) : minPrice(p));
@@ -318,6 +357,16 @@ export function sortPlaces(list, sort, exam) {
   }
   return arr;
 }
+
+// Faixa de preço de um exame entre os parceiros que informaram o valor. Sem preço informado: null.
+// Clínicas de demonstração não entram (os dados delas são fictícios).
+export function priceRange(list, exam) {
+  const vals = list.filter((p) => p.source === 'imed' && !p.is_demo).map((p) => priceFor(p, exam)).filter((v) => typeof v === 'number');
+  return vals.length ? { min: Math.min(...vals), max: Math.max(...vals), count: vals.length } : null;
+}
+
+// Nota média com vírgula e uma casa (4.6 → "4,6").
+export const formatRating = (v) => Number(v).toFixed(1).replace('.', ',');
 
 export function specialtyOptions(list) {
   return [...new Set(list.flatMap((p) => p.specialties))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -391,7 +440,8 @@ export function validateBooking(v, today = spDate(0), maxDate = spDate(BOOKING_D
   return err;
 }
 
-export function bookingRow(place, v, id) {
+// extra: campos a mais do pedido (por exemplo, review_token_hash).
+export function bookingRow(place, v, id, extra = {}) {
   const imed = place.source === 'imed';
   const notes = String(v.notes ?? '').trim();
   const email = String(v.email ?? '').trim().toLowerCase();
@@ -411,5 +461,76 @@ export function bookingRow(place, v, id) {
     patient_email: email || null,
     notes: notes ? notes.slice(0, 500) : null,
     consent: true,
+    ...extra,
   };
+}
+
+// Preparo resumido por exame, para o lembrete da agenda. O guia do exame e o local têm a orientação completa.
+export const PREP = {
+  rx: 'Use roupa confortável, sem peças de metal. Avise se houver chance de gravidez.',
+  usg: 'O preparo muda conforme a parte do corpo (por exemplo, jejum para abdome ou bexiga cheia para pelve). Confirme com o local.',
+  tc: 'Se o exame usar contraste, pode ser preciso ficar algumas horas em jejum. Avise sobre alergias, problemas nos rins ou gravidez.',
+  rm: 'Retire objetos de metal. Avise se tiver marca-passo, implantes de metal, medo de lugar fechado ou chance de gravidez.',
+  mamo: 'No dia, não passe desodorante, talco ou creme nas mamas e axilas. Leve as mamografias anteriores.',
+  dens: 'Evite suplemento de cálcio nas 24 horas antes e roupas com metal. Avise se fez exame com contraste há pouco tempo.',
+  ecg: 'Não precisa de jejum. Evite passar creme no peito no dia do exame.',
+  eco: 'Em geral não precisa de jejum nem de preparo especial. Confirme com o local.',
+  lab: 'Alguns exames pedem jejum (em geral de 8 a 12 horas). Confirme no pedido médico ou com o laboratório.',
+  consulta: 'Leve documento com foto, a carteirinha do convênio (se tiver) e exames anteriores.',
+  outro: 'Confirme com o local se há algum preparo.',
+};
+
+const STATUS_PT = {
+  pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado',
+  cancelled: 'Cancelado', completed: 'Concluído',
+};
+export const statusLabel = (status) => STATUS_PT[status] ?? '';
+
+// Faixas de horário do pedido na agenda (fuso de São Paulo). "qualquer" vira evento de dia inteiro.
+const ICS_HOURS = { manha: ['08', '12'], tarde: ['13', '18'], noite: ['18', '21'] };
+const icsEscape = (s) => String(s ?? '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r\n|\r|\n/g, '\\n');
+
+// Quebra linhas com mais de 75 bytes, como pede o formato iCalendar (RFC 5545).
+function icsFold(line) {
+  const enc = new TextEncoder();
+  if (enc.encode(line).length <= 75) return line;
+  const parts = [];
+  let cur = '', size = 0;
+  for (const ch of line) {
+    const n = enc.encode(ch).length;
+    if (size + n > (parts.length ? 74 : 75)) { parts.push(cur); cur = ''; size = 0; }
+    cur += ch; size += n;
+  }
+  parts.push(cur);
+  return parts.join('\r\n ');
+}
+
+const nextDay = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+};
+
+// Arquivo .ics com o pedido (dia inteiro ou faixa do período) e lembrete um dia antes.
+export function icsFile({ id, title, date, period, description = '', url = '' }, now = Date.now()) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? '')) throw new Error('data inválida');
+  const day = date.replace(/-/g, '');
+  const stamp = new Date(now).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const h = ICS_HOURS[period];
+  const lines = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//IMED//Pedidos de agendamento//PT-BR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+  ];
+  if (h) {
+    lines.push('BEGIN:VTIMEZONE', 'TZID:America/Sao_Paulo', 'BEGIN:STANDARD', 'DTSTART:19700101T000000',
+      'TZOFFSETFROM:-0300', 'TZOFFSETTO:-0300', 'TZNAME:-03', 'END:STANDARD', 'END:VTIMEZONE');
+  }
+  lines.push('BEGIN:VEVENT', `UID:${icsEscape(id || stamp)}@imed`, `DTSTAMP:${stamp}`);
+  if (h) lines.push(`DTSTART;TZID=America/Sao_Paulo:${day}T${h[0]}0000`, `DTEND;TZID=America/Sao_Paulo:${day}T${h[1]}0000`);
+  else lines.push(`DTSTART;VALUE=DATE:${day}`, `DTEND;VALUE=DATE:${nextDay(date).replace(/-/g, '')}`);
+  lines.push(`SUMMARY:${icsEscape(title)}`);
+  if (description) lines.push(`DESCRIPTION:${icsEscape(description)}`);
+  if (url) lines.push(`URL:${String(url).replace(/[\r\n]/g, '')}`);
+  lines.push('STATUS:TENTATIVE', 'TRANSP:OPAQUE',
+    'BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsEscape(`Amanhã: ${title}`)}`, 'TRIGGER:-P1D', 'END:VALARM',
+    'END:VEVENT', 'END:VCALENDAR');
+  return lines.map(icsFold).join('\r\n') + '\r\n';
 }

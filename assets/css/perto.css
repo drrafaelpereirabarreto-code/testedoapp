@@ -133,6 +133,37 @@ img{display:block;max-width:100%}
 .pt-note{padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.5}
 .pt-note i{color:var(--primary);margin-right:4px}
 
+/* legenda dos selos, faixa de preço e notas */
+.pt-legend{margin:2px 18px 0;font-size:13px;color:var(--muted)}
+.pt-legend summary{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-weight:600;color:var(--primary-d);list-style:none;padding:4px 0;border-radius:6px}
+.pt-legend summary::-webkit-details-marker{display:none}
+.pt-legend summary i{color:var(--primary)}
+.pt-legend[open] summary{margin-bottom:6px}
+.pt-legend ul{list-style:none;display:grid;gap:8px;padding:12px 14px;border-radius:14px;background:#fff;border:1px solid var(--line)}
+.pt-legend li{display:grid;grid-template-columns:auto;gap:4px;line-height:1.45}
+.pt-legend li .bd{justify-self:start}
+#priceBand:empty{display:none}
+#priceBand{padding:10px 16px 0}
+.pt-band{display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:14px;background:var(--green-s);color:#145F3A;font-size:13.5px;line-height:1.5;border:1px solid #CBEBD9}
+.pt-band i{color:var(--green);margin-top:3px}
+.pt-band b{color:#0F4A2D}
+.pt-band.none{background:#fff;color:var(--muted);border-color:var(--line)}
+.pt-band.none i{color:var(--muted)}
+.pc-rate,.dt-rate{display:inline-flex;align-items:center;gap:4px;font-weight:700;color:var(--ink)}
+.pc-rate i,.dt-rate i{color:var(--gold);font-size:12px}
+.pc-rate small,.dt-rate small{font-weight:500;color:var(--muted);font-size:12px}
+.dt-reviews{list-style:none;display:grid;gap:8px}
+.dt-reviews li{padding:11px 14px;border-radius:14px;background:var(--bg2)}
+.rv-top{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
+.rv-stars{color:var(--gold);letter-spacing:1px;font-size:14px}
+.rv-who{font-size:12.5px;color:var(--muted);font-weight:600}
+.dt-reviews p{margin-top:5px;color:var(--text);overflow-wrap:anywhere}
+.dt-claim{margin-top:12px;font-size:13px;text-align:center}
+.dt-claim .link{font-weight:600}
+.wa-imed i{color:var(--green)}
+.ok-acts{display:grid;gap:10px;margin-top:18px}
+.ok-acts .btn{white-space:normal}
+
 /* avisos */
 #banners{display:grid;gap:8px;padding:12px 16px 0}
 #banners:empty{display:none}

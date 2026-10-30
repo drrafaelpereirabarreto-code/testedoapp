@@ -16,9 +16,13 @@ Marketplace de saúde: clínicas de imagem, laboratórios e centros de diagnóst
 
 Páginas principais:
 
-- `index.html`: página inicial com o botão **Encontrar clínicas perto de mim**, o mapa **Clínicas reais perto de você** (CNES, raio de 2 km), as clínicas de exemplo do protótipo, teleconsulta e agendamentos.
-- `perto.html`: busca por localização ou por CEP, cidade ou endereço. Tem mapa, lista, filtros, detalhes e pedido de agendamento.
-- `parceiros.html`: cadastro de clínicas e médicos parceiros.
+- `index.html` + `assets/js/inicio.js`: página inicial só com dados reais (cidade 3D com estabelecimentos do CNES, mapa "Clínicas reais perto de você", categorias de exame, cidades, "Agendados" com a situação real dos pedidos, teleconsulta "em breve" com lista de espera).
+- `perto.html`: busca por localização ou por CEP, cidade ou endereço. Mapa, lista, selos ("Parceiro verificado" e "Cadastro oficial"), filtros (tipo, exame, especialidade, distância, preço, SUS, convênio), faixa de preço por exame, avaliações, detalhes e pedido de agendamento com "Adicionar à agenda" (.ics com o preparo). Aceita `?exame=<código>`.
+- `conta.html`: conta do paciente (login por link no e-mail), pedidos da conta e do aparelho, avaliação de pedidos concluídos.
+- `reivindicar.html`: a clínica encontra o próprio estabelecimento do CNES e pede para assumir o cadastro (aceita `?cnes=`).
+- `painel.html`: área da clínica (pedidos, situação, dados, convênios, horários, exames e preços) e, para a equipe do IMED, aprovação dos pedidos de cadastro e pedidos de locais não parceiros.
+- `cidades/`: páginas por cidade e por tipo, geradas por `scripts/gerar-cidades.mjs` (para o Google), com `sitemap.xml` e `robots.txt`.
+- `parceiros.html`: cadastro de clínicas e médicos interessados em parceria.
 - `exames/`: guias de preparo dos exames.
 
 ## Como funciona a busca "perto de mim"
@@ -60,6 +64,49 @@ Estados tratados na tela:
 - falha do mapa (aviso e só parceiros);
 - falha total (botão "Tentar de novo");
 - erro ao enviar o pedido.
+
+## Marketplace: avaliações, clínicas e conta
+
+- **Login (Supabase Auth, link mágico):** `assets/js/auth.js`. Sem biblioteca; a sessão fica no navegador.
+- **Pedido:** o navegador gera um código aleatório e manda só o SHA-256 (`review_token_hash`). Com o código, `request_status` mostra a situação e `submit_review` permite avaliar quando a clínica (ou o IMED) marca "Concluído" (`set_request_status`).
+- **Avaliações:** `reviews`, uma por pedido concluído. `place_ratings` e `place_reviews` são públicas. A equipe do IMED pode ocultar (`status = 'hidden'`).
+- **Reivindicar cadastro:** `establishment_claims` → no `painel.html`, a equipe do IMED aprova (`approve_claim`): o estabelecimento vira clínica parceira publicada e quem pediu vira dono (`clinic_members`).
+- **Painel da clínica:** `update_my_clinic` (dados, horários, convênios, especialidades) e `set_my_clinic_exams` (exames e preços).
+- **Admins:** e-mails em `admin_emails`.
+
+### Configurar uma vez (no painel do Supabase)
+
+1. **Authentication → URL Configuration:** em *Site URL* coloque o endereço do site e, em *Redirect URLs*, `https://drrafaelpereirabarreto-code.github.io/testedoapp/**` (e o domínio próprio, quando houver). Sem isso, o link do e-mail volta para `localhost`.
+2. **Authentication → SMTP Settings:** ligue um SMTP próprio (ex.: Resend). O SMTP padrão do Supabase só envia para os e-mails da equipe do projeto e tem limite por hora.
+
+### Fila de pré-carga das cidades
+
+`import_queue` tem as capitais e as maiores cidades. O pg_cron (`imed-fila-importacao`) manda 2 cidades por minuto ao importador e `imed-atualizacao-mensal` recoloca na fila as que passaram de 30 dias. Para acompanhar:
+
+```sql
+select status, count(*) from public.import_queue group by 1;
+```
+
+Para acrescentar uma cidade: `insert into public.import_queue (uf, city_name) values ('SP', 'Bragança Paulista');`
+
+### Páginas por cidade
+
+1. Exporte as cidades com `select json_agg(c) from public.imported_cities() c;` e salve em `scripts/cidades.json`.
+2. Rode:
+
+```bash
+node scripts/gerar-cidades.mjs
+```
+
+### Domínio próprio
+
+1. Compre o domínio (ex.: na Hostinger ou no registro.br).
+2. No GitHub: Settings → Pages → Custom domain. No DNS do domínio, crie os registros que o GitHub indicar (CNAME `www` para `drrafaelpereirabarreto-code.github.io` e os registros A do domínio raiz).
+3. Troque `siteUrl` em `assets/js/config.js`, rode `node scripts/gerar-cidades.mjs` e acrescente o domínio nas *Redirect URLs* do Supabase.
+
+### WhatsApp do IMED
+
+Coloque o número (só dígitos, com 55 e DDD) em `whatsapp` em `assets/js/config.js`. Vazio esconde os botões.
 
 ## Chaves e variáveis de ambiente
 
@@ -163,6 +210,9 @@ node --experimental-strip-types --test supabase/functions/clinicas-proximas/lib.
 
 ```bash
 node tests/e2e-perto.mjs
+node tests/e2e-inicio.mjs
+node tests/e2e-clinica.mjs
+node tests/e2e-conta.mjs
 ```
 
 1. Regras de busca do site: classificação, filtros, distância e validação do pedido.

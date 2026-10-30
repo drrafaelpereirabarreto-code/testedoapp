@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Assuma o cadastro da sua clínica · IMED</title>
+<meta name="description" content="Sua clínica, laboratório ou hospital já aparece no IMED pelo cadastro oficial (CNES). Assuma o cadastro, gratuitamente, para receber pedidos de agendamento e informar preços, convênios e horários.">
+<meta name="theme-color" content="#05161e">
+<meta property="og:title" content="Sua clínica já está no IMED">
+<meta property="og:description" content="Assuma o cadastro do seu estabelecimento para receber pedidos e informar preços, convênios e horários.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:image" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/assets/img/og.jpg">
+<meta property="og:url" content="https://drrafaelpereirabarreto-code.github.io/testedoapp/reivindicar.html">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/reivindicar.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="stylesheet" href="assets/css/clinica.css">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="parceiros.html" aria-current="true">Para clínicas</a>
+    </nav>
+    <a class="pt-partner" href="painel.html">Área da clínica</a>
+  </div>
+</header>
+
+<div class="cl-hero">
+  <div class="cl-hero-in">
+    <h1>Sua clínica já está no IMED</h1>
+    <p>O IMED mostra aos pacientes as clínicas, laboratórios, centros de diagnóstico e hospitais do cadastro oficial do Ministério da Saúde (CNES). Se você é responsável pelo local, pode assumir o cadastro e passar a receber pedidos de agendamento e informar preços, convênios e horários. É gratuito para começar.</p>
+    <ul class="cl-points">
+      <li><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Receba pedidos de agendamento</li>
+      <li><i class="fa-solid fa-tags" aria-hidden="true"></i>Informe preços e convênios</li>
+      <li><i class="fa-solid fa-clock" aria-hidden="true"></i>Mostre seus horários</li>
+    </ul>
+  </div>
+</div>
+
+<main class="cl" id="main" tabindex="-1">
+  <div id="flash"></div>
+
+  <section class="cl-card" aria-labelledby="s1Title">
+    <h2 id="s1Title"><span class="cl-step" aria-hidden="true">1</span>Ache o seu estabelecimento</h2>
+    <div id="placeBox"></div>
+    <form id="findForm" novalidate hidden>
+      <p class="cl-help">Escolha a cidade e digite parte do nome como aparece no cadastro oficial.</p>
+      <div class="cl-grid">
+        <div class="cl-field">
+          <label class="cl-lbl" for="cityFilter">Cidade</label>
+          <input id="cityFilter" type="search" autocomplete="off" maxlength="60" placeholder="Digite para filtrar as cidades" aria-controls="city">
+          <label class="sr" for="city">Escolha a cidade</label>
+          <select id="city" style="margin-top:8px"><option value="">Carregando cidades…</option></select>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="term">Nome do estabelecimento</label>
+          <input id="term" type="search" autocomplete="off" maxlength="60" placeholder="Ex.: Laboratório Vida">
+          <span class="cl-hint">Pelo menos 3 letras.</span>
+        </div>
+      </div>
+      <div class="cl-actions"><button class="btn btn-primary" type="submit" id="findBtn"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>Buscar</button></div>
+      <p class="cl-msg" id="findMsg" aria-live="polite"></p>
+      <ul class="cl-results" id="results" aria-label="Estabelecimentos encontrados"></ul>
+    </form>
+  </section>
+
+  <section class="cl-card" aria-labelledby="s2Title" id="s2" hidden>
+    <h2 id="s2Title"><span class="cl-step" aria-hidden="true">2</span>Entre com seu e-mail</h2>
+    <div id="authBox"></div>
+  </section>
+
+  <section class="cl-card" aria-labelledby="s3Title" id="s3" hidden>
+    <h2 id="s3Title"><span class="cl-step" aria-hidden="true">3</span>Seus dados de responsável</h2>
+    <form id="claimForm" novalidate>
+      <p class="cl-help">A equipe do IMED usa estes dados só para confirmar que você responde pelo local. Campos com * são obrigatórios.</p>
+      <div class="cl-grid">
+        <div class="cl-field full">
+          <label class="cl-lbl" for="cName">Nome completo *</label>
+          <input id="cName" type="text" autocomplete="name" maxlength="120" required aria-describedby="cNameErr">
+          <span class="cl-err" id="cNameErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cRole">Cargo *</label>
+          <select id="cRole" required aria-describedby="cRoleErr">
+            <option value="">Escolha</option>
+            <option value="proprietario">Proprietário(a)</option>
+            <option value="socio">Sócio(a)</option>
+            <option value="gestor">Gestor(a) ou administrador(a)</option>
+            <option value="responsavel_tecnico">Responsável técnico(a)</option>
+            <option value="outro">Outro</option>
+          </select>
+          <span class="cl-err" id="cRoleErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cDoc">CPF ou CNPJ *</label>
+          <input id="cDoc" type="text" inputmode="numeric" autocomplete="off" maxlength="18" required aria-describedby="cDocErr cDocHint" placeholder="000.000.000-00">
+          <span class="cl-hint" id="cDocHint">Seu CPF ou o CNPJ da empresa.</span>
+          <span class="cl-err" id="cDocErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cPhone">Celular *</label>
+          <input id="cPhone" type="tel" inputmode="tel" autocomplete="tel-national" maxlength="15" required aria-describedby="cPhoneErr" placeholder="(11) 98765-4321">
+          <span class="cl-err" id="cPhoneErr"></span>
+        </div>
+        <div class="cl-field">
+          <label class="cl-lbl" for="cCrm">CRM <small>(opcional)</small></label>
+          <input id="cCrm" type="text" autocomplete="off" maxlength="20" placeholder="Ex.: 123456-SP">
+        </div>
+        <div class="cl-field full">
+          <label class="cl-lbl" for="cMsg">Mensagem para a equipe do IMED <small>(opcional)</small></label>
+          <textarea id="cMsg" maxlength="500" aria-describedby="cMsgCount"></textarea>
+          <span class="cl-hint" id="cMsgCount">0 de 500 caracteres</span>
+        </div>
+        <div class="cl-field full">
+          <label class="cl-check"><input id="cAgree" type="checkbox" required aria-describedby="cAgreeErr"><span>Declaro que sou responsável por este estabelecimento ou tenho autorização para representá-lo, e aceito a <a class="link" href="privacidade.html" target="_blank" rel="noopener">política de privacidade</a>.</span></label>
+          <span class="cl-err" id="cAgreeErr"></span>
+        </div>
+      </div>
+      <div class="cl-actions"><button class="btn btn-coral" type="submit" id="claimBtn">Enviar pedido</button></div>
+      <div id="claimMsg" aria-live="polite"></div>
+    </form>
+  </section>
+
+  <section class="cl-card" aria-labelledby="doneTitle" id="claimDone" hidden tabindex="-1">
+    <h2 id="doneTitle" class="sr">Pedido enviado</h2>
+    <div id="claimDoneBox" aria-live="polite"></div>
+  </section>
+
+  <section class="cl-card" aria-labelledby="mineTitle" id="mine" hidden>
+    <h2 id="mineTitle">Seus pedidos de cadastro</h2>
+    <div id="mineBox"></div>
+  </section>
+</main>
+
+<p class="cl-foot">Dúvidas sobre os seus dados? Veja a <a href="privacidade.html">política de privacidade</a>. Já tem acesso? Vá para a <a href="painel.html">área da clínica</a>.</p>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script type="module" src="assets/js/reivindicar.js"></script>
+</body>
+</html>

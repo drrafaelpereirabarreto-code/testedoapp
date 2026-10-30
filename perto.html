@@ -111,14 +111,28 @@
           <option value="dist">Mais perto</option>
           <option value="name">Nome (A–Z)</option>
           <option value="price">Menor preço</option>
+          <option value="rating" hidden disabled>Melhor avaliados</option>
         </select>
       </label>
-      <button class="fchip fbtn" id="fImed" type="button" aria-pressed="false"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiros IMED</button>
+      <label class="fchip hide" id="fInsWrap"><span class="sr">Convênio (informado pelas clínicas parceiras)</span>
+        <select id="fIns"><option value="">Convênio</option></select>
+      </label>
+      <button class="fchip fbtn" id="fSus" type="button" aria-pressed="false"><i class="fa-solid fa-hand-holding-medical" aria-hidden="true"></i>Atende SUS</button>
+      <button class="fchip fbtn" id="fImed" type="button" aria-pressed="false"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiros verificados</button>
       <button class="fclear" id="fClear" type="button" hidden>Limpar filtros</button>
     </div>
 
     <div id="banners"></div>
     <p class="pt-count" id="count" aria-live="polite"></p>
+    <details class="pt-legend" id="legend" hidden>
+      <summary><i class="fa-solid fa-circle-question" aria-hidden="true"></i>O que são os selos?</summary>
+      <ul>
+        <li><span class="bd bd-imed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado</span><span>Clínica parceira do IMED. Preços, exames e agenda são informados e confirmados pela própria clínica.</span></li>
+        <li><span class="bd bd-cnes"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Cadastro oficial</span><span>Estabelecimento real do cadastro do Ministério da Saúde (CNES). Ainda não é parceiro: confirme preço e horário com o local.</span></li>
+        <li><span class="bd bd-demo">Demonstração</span><span>Clínica fictícia, só para testar o site.</span></li>
+      </ul>
+    </details>
+    <div id="priceBand"></div>
     <div class="pt-list" id="list" tabindex="-1"></div>
   </section>
 

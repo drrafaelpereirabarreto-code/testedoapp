@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://pyoqiecupxhdzigjudyd.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Área da clínica · IMED</title>
+<meta name="description" content="Área da clínica no IMED: veja os pedidos de agendamento dos pacientes, atualize dados, horários, convênios, exames e preços.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#05161e">
+<link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/painel.html">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IMED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
+<link rel="stylesheet" href="assets/css/clinica.css">
+</head>
+<body>
+<a class="skip" href="#main">Pular para o conteúdo</a>
+
+<header class="pt-top">
+  <div class="pt-top-in">
+    <a class="logo" href="./" aria-label="IMED, página inicial"><span class="logo-mk"><i class="fa-solid fa-plus"></i></span>IMED</a>
+    <nav class="pt-nav" aria-label="Seções">
+      <a href="./">Início</a>
+      <a href="perto.html">Perto de mim</a>
+      <a href="parceiros.html" aria-current="true">Para clínicas</a>
+    </nav>
+    <a class="pt-partner" href="reivindicar.html">Assumir cadastro</a>
+  </div>
+</header>
+
+<div class="cl-hero">
+  <div class="cl-hero-in">
+    <h1>Área da clínica</h1>
+    <p>Veja os pedidos de agendamento dos pacientes e mantenha os dados, horários, convênios, exames e preços da sua clínica sempre certos.</p>
+  </div>
+</div>
+
+<main class="cl" id="main" tabindex="-1">
+  <div id="flash"></div>
+  <section class="cl-card" aria-labelledby="authTitle" id="authCard">
+    <h2 id="authTitle">Sua conta</h2>
+    <div id="authBox"></div>
+  </section>
+  <div id="app"></div>
+</main>
+
+<p class="cl-foot">Os dados dos pacientes são pessoais: use-os só para responder ao pedido. Veja a <a href="privacidade.html">política de privacidade</a>.</p>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/js/aviso.js" defer></script>
+<script src="assets/js/config.js"></script>
+<script type="module" src="assets/js/painel.js"></script>
+</body>
+</html>

@@ -38,7 +38,9 @@ const S = {
   fnDown: false,
   truncated: false,
   cnesTruncated: false,
-  f: { ...G.DEFAULT_FILTERS },
+  f: { ...G.DEFAULT_FILTERS, exam: Object.hasOwn(G.EXAMS, params.get('exame') ?? '') ? params.get('exame') : '' },
+  ratings: new Map(), // id do local → { rating, reviews }, só o que veio do banco
+  ratingsAsked: new Set(),
   selected: null,
   demo: params.get('demo') === '1',
   seq: 0,
@@ -174,6 +176,7 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
   if (!google && !needOsm) { S.places = []; S.placesState = 'idle'; S.truncated = false; }
   S.phase = 'results';
   render(!refresh || !userMoved);
+  loadRatings(seq);
   if (S.coverage?.status === 'loading' && S.retries < 4) {
     S.retryTimer = setTimeout(() => {
       if (seq !== S.seq) return;
@@ -197,7 +200,27 @@ async function loadOsm(origin, radius, signal, seq) {
     if (signal.aborted || seq !== S.seq) return;
     S.placesState = 'error';
   }
-  if (S.phase === 'results') render(true);
+  if (S.phase === 'results') { render(true); loadRatings(seq); }
+}
+
+// Notas dos locais na tela (até 300), quando existem avaliações publicadas. Falha não atrapalha a busca.
+async function loadRatings(seq) {
+  const keys = allPlaces().map((p) => p.id).filter((id) => !S.ratingsAsked.has(id)).slice(0, 300);
+  if (!keys.length) return;
+  keys.forEach((k) => S.ratingsAsked.add(k));
+  try {
+    const rows = await rpc('place_ratings', { p_keys: keys });
+    let got = 0;
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const rating = Number(r.rating), reviews = Number(r.reviews);
+      if (!r.place_key || !Number.isFinite(rating) || !(reviews > 0)) continue;
+      S.ratings.set(r.place_key, { rating, reviews });
+      got += 1;
+    }
+    if (got && seq === S.seq && S.phase === 'results') render();
+  } catch {
+    keys.forEach((k) => S.ratingsAsked.delete(k));
+  }
 }
 
 function retryPlaces() {
@@ -410,8 +433,8 @@ const allFailed = () => S.imedState === 'error' && S.cnesState !== 'ok' && S.pla
 function badgesHTML(p) {
   const b = [];
   if (p.source === 'imed') {
-    b.push('<span class="bd bd-imed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro IMED</span>');
     if (p.is_demo) b.push('<span class="bd bd-demo">Demonstração</span>');
+    else b.push('<span class="bd bd-imed" title="Preço e agenda confirmados pela clínica"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado</span>');
     if (p.accepts_online_booking) b.push('<span class="bd bd-ok">Agenda pelo IMED</span>');
   } else if (p.source === 'cnes') {
     b.push('<span class="bd bd-cnes"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Cadastro oficial</span>');
@@ -430,6 +453,13 @@ function priceHTML(p) {
   return `<span class="pc-price">${S.f.exam ? `${esc(G.EXAMS[S.f.exam].n)}: ` : 'a partir de '}${G.formatPrice(v)}</span>`;
 }
 
+function ratingHTML(p, cls = 'pc-rate') {
+  const r = S.ratings.get(p.id);
+  if (!r) return '';
+  const label = `Nota ${G.formatRating(r.rating)} de 5, ${plural(r.reviews, 'avaliação', 'avaliações')}`;
+  return `<span class="${cls}" role="img" aria-label="${label}"><i class="fa-solid fa-star" aria-hidden="true"></i>${G.formatRating(r.rating)} <small>(${r.reviews})</small></span>`;
+}
+
 function contactLinksHTML(p) {
   const out = [];
   const tel = p.phone && G.telHref(p.phone);
@@ -439,18 +469,38 @@ function contactLinksHTML(p) {
   return out.length ? `<div class="pc-contact">${out.join('')}</div>` : '';
 }
 
+// Texto que o leitor de tela anuncia no cartão: nome, distância, selos, nota e preço (só o que existe).
+function cardLabel(p) {
+  const parts = [p.name, distanceText(p)];
+  if (p.source === 'imed') {
+    parts.push(p.is_demo ? 'Demonstração' : 'Parceiro verificado');
+    if (p.accepts_online_booking) parts.push('Agenda pelo IMED');
+  } else if (p.source === 'cnes') {
+    parts.push('Cadastro oficial');
+    if (p.hours?.[0] === 'Aberto 24 horas') parts.push('24 horas');
+    if (p.sus) parts.push('Atende SUS');
+  }
+  const r = S.ratings.get(p.id);
+  if (r) parts.push(`Nota ${G.formatRating(r.rating)} de 5, ${plural(r.reviews, 'avaliação', 'avaliações')}`);
+  if (p.source === 'imed') {
+    const v = S.f.exam ? G.priceFor(p, S.f.exam) : G.minPrice(p);
+    parts.push(v == null ? 'Preço sob consulta' : `${S.f.exam ? `${G.EXAMS[S.f.exam].n}: ` : 'a partir de '}${G.formatPrice(v)}`);
+  }
+  return `${parts.join(', ')}. Ver detalhes`;
+}
+
 function cardHTML(p) {
   const k = G.KINDS[p.kind];
   const svc = p.services.slice(0, 4).map((c) => `<span class="svc">${esc(G.EXAMS[c]?.n ?? c)}</span>`).join('')
     + (p.services.length > 4 ? `<span class="svc more">+${p.services.length - 4}</span>` : '');
-  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(p.name)}, ${distanceText(p)}. Ver detalhes">
+  return `<article class="pc${p.source === 'imed' ? ' imed' : ''}${p.id === S.selected ? ' on' : ''}" data-id="${esc(p.id)}" tabindex="0" role="button" aria-label="${esc(cardLabel(p))}">
     <span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span>
     <div class="pc-main">
       <div class="pc-badges">${badgesHTML(p)}</div>
       <h3>${esc(p.name)}</h3>
       <p class="pc-addr">${esc(p.address || 'Endereço não informado no mapa')}</p>
       ${svc ? `<div class="pc-svc">${svc}</div>` : ''}
-      <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${distanceText(p)}</span><span>${k.n}</span>${priceHTML(p)}${p.source === 'cnes' && p.hours ? `<span>${esc(p.hours[0])}</span>` : ''}</div>
+      <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${distanceText(p)}</span><span>${k.n}</span>${ratingHTML(p)}${priceHTML(p)}${p.source === 'cnes' && p.hours ? `<span>${esc(p.hours[0])}</span>` : ''}</div>
       ${contactLinksHTML(p)}
     </div>
     <i class="fa-solid fa-chevron-right pc-go" aria-hidden="true"></i>
@@ -509,9 +559,25 @@ function bannersHTML() {
 
 function countHTML(shown) {
   if (S.phase !== 'results' || allFailed()) return '';
-  const nImed = shown.filter((p) => p.source === 'imed').length;
+  const nImed = shown.filter((p) => p.source === 'imed' && !p.is_demo).length;
+  const nDemo = shown.filter((p) => p.source === 'imed' && p.is_demo).length;
   const where = S.originKind === 'gps' ? 'da sua localização (aproximada)' : `de <b>${esc(S.originLabel)}</b>`;
-  return `<b>${plural(shown.length, 'resultado', 'resultados')}</b> em até ${kmLabel(S.f.radius)} ${where}${nImed ? ` · ${plural(nImed, 'parceiro', 'parceiros')} IMED` : ''}`;
+  return `<b>${plural(shown.length, 'resultado', 'resultados')}</b> em até ${kmLabel(S.f.radius)} ${where}`
+    + (nImed ? ` · ${plural(nImed, 'parceiro verificado', 'parceiros verificados')}` : '')
+    + (nDemo ? ` · ${nDemo} de demonstração` : '');
+}
+
+// Faixa de preço do exame escolhido, só com valores informados pelas clínicas parceiras.
+// Usa só raio e exame: filtros como "Atende SUS" tiram os parceiros da lista, mas não apagam os preços da região.
+function priceBandHTML(all) {
+  if (S.phase !== 'results' || !S.f.exam || !Object.hasOwn(G.EXAMS, S.f.exam) || allFailed()) return '';
+  const name = G.EXAMS[S.f.exam].n;
+  const r = G.priceRange(G.filterPlaces(all, { ...G.DEFAULT_FILTERS, radius: S.f.radius, exam: S.f.exam }), S.f.exam);
+  if (!r) {
+    return `<p class="pt-band none"><i class="fa-solid fa-tag" aria-hidden="true"></i><span>Nenhuma clínica informou o preço de ${esc(name)} por aqui ainda. Os valores aparecem quando as clínicas parceiras informam.</span></p>`;
+  }
+  const range = r.min === r.max ? `${G.formatPrice(r.min)}` : `de ${G.formatPrice(r.min)} a ${G.formatPrice(r.max)}`;
+  return `<p class="pt-band"><i class="fa-solid fa-tag" aria-hidden="true"></i><span><b>${esc(name)}</b> perto de você: <b>${range}</b> em ${plural(r.count, 'clínica que informou', 'clínicas que informaram')} o preço.</span></p>`;
 }
 
 function renderFilters(all) {
@@ -525,6 +591,18 @@ function renderFilters(all) {
     el.parentElement.classList.toggle('on', String(S.f[key]) !== String(G.DEFAULT_FILTERS[key]));
   }
   $('#fImed').setAttribute('aria-pressed', String(S.f.onlyImed));
+  $('#fSus').setAttribute('aria-pressed', String(S.f.sus));
+  // Convênios: só os informados pelos parceiros encontrados.
+  const ins = G.insuranceOptions(all);
+  if (S.f.insurance && !ins.includes(S.f.insurance)) ins.unshift(S.f.insurance);
+  const fIns = $('#fIns');
+  fIns.innerHTML = '<option value="">Convênio</option>' + ins.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  fIns.value = S.f.insurance;
+  $('#fInsWrap').classList.toggle('hide', !ins.length);
+  $('#fInsWrap').classList.toggle('on', !!S.f.insurance);
+  const byRating = $('#fSort option[value="rating"]');
+  byRating.hidden = byRating.disabled = !S.ratings.size;
+  if (!S.ratings.size && S.f.sort === 'rating') { S.f.sort = 'dist'; $('#fSort').value = 'dist'; $('#fSort').parentElement.classList.remove('on'); }
   $('#fClear').hidden = !G.activeFilterCount(S.f);
 }
 
@@ -554,9 +632,11 @@ function render(fit = false) {
       'Os serviços de busca não responderam. Verifique sua internet e tente de novo em instantes.',
       '<button class="btn btn-primary" type="button" data-act="retry">Tentar de novo</button>', true);
   } else {
-    shown = G.sortPlaces(G.filterPlaces(all, S.f), S.f.sort, S.f.exam);
+    shown = G.sortPlaces(G.filterPlaces(all, S.f), S.f.sort, S.f.exam, S.ratings);
     let html = shown.length ? shown.map(cardHTML).join('') : emptyHTML(all);
     if (S.placesState === 'loading') html += '<div class="pt-more" role="status"><span class="spin" aria-hidden="true"></span>Carregando estabelecimentos do mapa…</div>';
+    if (S.f.insurance) html += '<p class="pt-note"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Convênios informados pelas clínicas parceiras. Confirme a cobertura com a clínica e com o seu plano.</p>';
+    else if (S.f.sus) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>"Atende SUS" vem do cadastro oficial (CNES). As clínicas parceiras ainda não informam esse dado, por isso ficam de fora deste filtro.</p>';
     if (S.f.exam && !S.f.onlyImed && (S.cnes.length || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
     if (!S.demo && S.imedState === 'ok' && !S.imed.length && S.placesState !== 'loading') {
       const fonte = S.cnes.length ? 'do cadastro oficial do Ministério da Saúde (CNES)' : 'de mapas públicos';
@@ -565,6 +645,8 @@ function render(fit = false) {
     list.innerHTML = html;
   }
   $('#count').innerHTML = countHTML(shown);
+  $('#legend').hidden = !(S.phase === 'results' && all.length && !allFailed());
+  $('#priceBand').innerHTML = priceBandHTML(all);
   drawMarkers(shown);
   if (fit) fitMap(shown);
 }
@@ -634,6 +716,30 @@ function contactHTML(p) {
   return rows.length ? `<ul class="dt-contact">${rows.join('')}</ul>` : '<p>O estabelecimento não informou telefone nem site. Você pode pedir ao IMED para agendar por você.</p>';
 }
 
+// Avaliações publicadas do local (as 5 mais novas). Sem avaliação ou com falha, a seção não aparece.
+const STARS = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+async function loadReviews(p) {
+  const box = () => $(`#dtReviews[data-id="${CSS.escape(p.id)}"]`);
+  let rows = [];
+  try { rows = await rpc('place_reviews', { p_key: p.id, p_limit: 5 }); } catch { rows = []; }
+  const el = box();
+  if (!el) return;
+  rows = (Array.isArray(rows) ? rows : []).filter((r) => r.rating >= 1 && r.rating <= 5);
+  if (!rows.length) { el.remove(); return; }
+  const r = S.ratings.get(p.id);
+  el.innerHTML = `<h4><i class="fa-solid fa-star" aria-hidden="true"></i>Avaliações${r ? ` <span class="dt-rate">${G.formatRating(r.rating)} <small>(${plural(r.reviews, 'avaliação', 'avaliações')})</small></span>` : ''}</h4>
+    <ul class="dt-reviews">${rows.map((v) => {
+      const n = Math.round(Number(v.rating));
+      const when = v.created_at ? new Date(v.created_at).toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }) : '';
+      const who = String(v.author_name ?? '').trim().split(/\s+/)[0];
+      return `<li><div class="rv-top"><span class="rv-stars" role="img" aria-label="Nota ${n} de 5">${STARS(n)}</span><span class="rv-who">${esc(who || 'Paciente')}${when ? ` · ${esc(when)}` : ''}</span></div>${v.comment ? `<p>${esc(v.comment)}</p>` : ''}</li>`;
+    }).join('')}</ul>
+    <p class="src">Avaliações de pacientes que fizeram o pedido pelo IMED.</p>`;
+  el.hidden = false;
+}
+
+const imedWhatsapp = () => G.onlyDigits(CFG.whatsapp);
+
 function openDetails(id) {
   const p = placeById(id);
   if (!p) return;
@@ -658,10 +764,18 @@ function openDetails(id) {
     cta = `<button class="btn btn-coral" type="button" data-book="${esc(p.id)}"><i class="fa-solid fa-headset" aria-hidden="true"></i>Pedir ao IMED para agendar</button>`;
   }
 
+  const wa = imedWhatsapp();
+  const waBtn = wa ? `<a class="btn btn-ghost wa-imed" href="${esc(G.whatsappHref(wa, `Olá! Encontrei "${p.name}" no IMED e gostaria de ajuda para agendar.`))}" target="_blank" rel="noopener"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i>Falar com o IMED no WhatsApp</a>` : '';
+  const claim = p.source === 'cnes'
+    ? `<p class="dt-claim"><a class="link" href="reivindicar.html?cnes=${encodeURIComponent(p.id.slice(5))}">É o responsável por este local? Assuma o cadastro</a></p>` : '';
+  const ins = p.source === 'imed' && p.insurances?.length
+    ? `<div class="dt-sec"><h4><i class="fa-solid fa-id-card" aria-hidden="true"></i>Convênios</h4><div class="dt-chips">${p.insurances.map((s) => `<span class="svc">${esc(s)}</span>`).join('')}</div><p class="src">Convênios informados pela clínica. Confirme a cobertura com ela e com o seu plano.</p></div>` : '';
+  const rating = ratingHTML(p, 'dt-rate');
+
   const note = p.source === 'imed'
     ? (p.is_demo
       ? '<p class="note demo"><i class="fa-solid fa-flask" aria-hidden="true"></i>Clínica de demonstração do IMED: nome e endereço fictícios, sem preço e sem horário. Serve para testar o fluxo de ponta a ponta.</p>'
-      : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Clínica parceira do IMED. Os dados são informados pela própria clínica.</p>')
+      : '<p class="note"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado do IMED: preços, exames e agenda são informados e confirmados pela própria clínica.</p>')
     : p.source === 'cnes'
       ? `<p class="note"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Dados do Cadastro Nacional de Estabelecimentos de Saúde (CNES), do Ministério da Saúde${p.updated_at ? `, atualizados em ${esc(new Date(`${p.updated_at}T12:00:00`).toLocaleDateString('pt-BR'))}` : ''}.${p.approx ? ' A localização no mapa é aproximada, pelo endereço.' : ''} Este estabelecimento ainda não é parceiro do IMED: confirme horários, exames e valores diretamente com ele.</p>`
       : `<p class="note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Dados do ${p.source === 'osm' ? 'OpenStreetMap, mantidos por voluntários' : 'Google Maps'}. Este estabelecimento ainda não é parceiro do IMED: confirme preços e horários diretamente com ele.</p>`;
@@ -669,16 +783,19 @@ function openDetails(id) {
   openSheet(head(esc(p.name)) + `<div class="sh-body">
     <div class="dt-top"><span class="pc-ic k-${p.kind}" aria-hidden="true"><i class="fa-solid ${k.icon}"></i></span>
       <div style="min-width:0"><div class="pc-badges">${badgesHTML(p)}</div><h3>${esc(p.name)}</h3>
-      <p>${esc(k.n)} · <b>${distanceText(p)}</b> ${S.originKind === 'gps' ? 'de você (aproximado)' : 'do ponto da busca'}</p>
+      <p>${esc(k.n)} · <b>${distanceText(p)}</b> ${S.originKind === 'gps' ? 'de você (aproximado)' : 'do ponto da busca'}${rating ? ` · ${rating}` : ''}</p>
       <p>${esc(p.address || 'Endereço não informado no mapa')}${p.cep ? ` · CEP ${esc(p.cep)}` : ''}</p></div></div>
     <div class="dt-acts">${acts.join('')}</div>
     ${p.description ? `<div class="dt-sec"><h4><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Sobre</h4><p>${esc(p.description)}</p></div>` : ''}
     <div class="dt-sec"><h4><i class="fa-solid fa-notes-medical" aria-hidden="true"></i>Serviços</h4>${servicesHTML(p)}</div>
     ${p.specialties.length ? `<div class="dt-sec"><h4><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Especialidades</h4><div class="dt-chips">${p.specialties.map((s) => `<span class="svc">${esc(s)}</span>`).join('')}</div></div>` : ''}
     <div class="dt-sec"><h4><i class="fa-regular fa-clock" aria-hidden="true"></i>Horário de funcionamento</h4>${hoursHTML(p)}</div>
+    ${ins}
     <div class="dt-sec"><h4><i class="fa-solid fa-address-book" aria-hidden="true"></i>Contato</h4>${contactHTML(p)}</div>
-    ${note}
-  </div>${cta ? `<div class="sh-foot">${cta}</div>` : ''}`);
+    <div class="dt-sec" id="dtReviews" data-id="${esc(p.id)}" hidden></div>
+    ${note}${claim}
+  </div>${cta || waBtn ? `<div class="sh-foot">${cta}${waBtn}</div>` : ''}`);
+  loadReviews(p);
 }
 
 /* ======================= painel: pedido de agendamento ======================= */
@@ -773,17 +890,25 @@ async function submitBooking(e, p) {
   errBox.classList.remove('show');
   if (Object.keys(errs).length) return;
   const id = crypto.randomUUID();
-  if (fd.get('website')) return bookingDone(p, v, id);
+  if (fd.get('website')) return bookingDone(p, v, id, false);
   const btn = $('#bkBtn', form);
   btn.disabled = true;
   btn.innerHTML = '<span class="spin" aria-hidden="true"></span>Enviando…';
   try {
-    await window.imedInsert('appointment_requests', G.bookingRow(p, v, id));
-    saveLocal(p, v, id);
-    bookingDone(p, v, id);
+    // Código secreto do pedido: fica só neste aparelho; o banco guarda apenas o resumo (SHA-256).
+    // Com ele a pessoa vê a situação do pedido e avalia o atendimento, mesmo sem conta.
+    const token = randomHex(32);
+    const row = G.bookingRow(p, v, id, { review_token_hash: await sha256Hex(token) });
+    // Decide pelo token de verdade (sessão válida ou renovada); sessão vencida conta como sem conta.
+    const auth = await loadAuth();
+    const logged = !!(await auth?.token?.().catch(() => null));
+    if (logged) await auth.insert('appointment_requests', row);
+    else await window.imedInsert('appointment_requests', row);
+    saveLocal(p, v, id, token);
+    bookingDone(p, v, id, logged);
   } catch (err) {
     const tel = p.phone && G.telHref(p.phone);
-    errBox.innerHTML = (/http 4\d\d/.test(err.message)
+    errBox.innerHTML = ((err.status >= 400 && err.status < 500) || /http 4\d\d/.test(err.message)
       ? 'O pedido não foi aceito. Confira a data e os dados e tente de novo.'
       : 'Não foi possível enviar agora. Verifique sua internet e tente de novo.')
       + (tel ? ` Se preferir, <a class="link" href="${esc(tel)}">ligue para o estabelecimento</a>.` : '');
@@ -793,22 +918,54 @@ async function submitBooking(e, p) {
   }
 }
 
-// Guarda no aparelho só o resumo do pedido, para aparecer em "Agendados" na página inicial.
-function saveLocal(p, v, id) {
+const randomHex = (bytes) => [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+let authMod;
+const loadAuth = () => (authMod ??= import('./auth.js').catch(() => null));
+
+// Guarda no aparelho o resumo do pedido e o código secreto, para "Meus pedidos" (página inicial e conta).
+function saveLocal(p, v, id, token) {
   try {
-    const list = JSON.parse(localStorage.getItem('imed_appts') || '[]');
-    const color = { imagem: '#0E7C9C', laboratorio: '#6C4BD8', clinica: '#1E9E5A', hospital: '#E8512F' }[p.kind];
+    let list = JSON.parse(localStorage.getItem('imed_appts') || '[]');
+    if (!Array.isArray(list)) list = [];
     list.unshift({
-      code: G.protocolFromId(id), type: 'pedido', status: 'pendente', name: p.name, ini: '', c: color, img: null,
-      items: [examLabel(v.exam)], date: G.formatDateLong(v.date), time: G.PERIODS[v.period].toLowerCase(), total: null,
+      type: 'pedido', code: G.protocolFromId(id), id, token, place_key: p.id, name: p.name,
+      exam: Object.hasOwn(G.PREP, v.exam ?? '') ? v.exam : null, items: [examLabel(v.exam)], date: v.date, period: v.period,
+      status: 'pendente', created: new Date().toISOString(),
     });
     localStorage.setItem('imed_appts', JSON.stringify(list.slice(0, 30)));
   } catch { /* armazenamento indisponível: o pedido já foi enviado */ }
 }
 
+// Lembrete na agenda do celular (.ics), com o preparo do exame e lembrete um dia antes.
+function downloadIcs(p, v, id) {
+  const site = CFG.siteUrl || location.origin + '/';
+  const guide = G.EXAMS[v.exam]?.slug;
+  const title = v.exam === 'consulta' || v.exam === 'outro' ? `${examLabel(v.exam)} — ${p.name}` : `Exame: ${examLabel(v.exam)} — ${p.name}`;
+  const description = [
+    `Pedido ${G.protocolFromId(id)} · ${p.name}${p.address ? ` · ${p.address}` : ''}`,
+    G.PREP[v.exam] ? `Preparo: ${G.PREP[v.exam]}` : '',
+    'Confirme o horário com o IMED. O horário só fica garantido depois da confirmação.',
+    guide ? `Guia do exame: ${site}exames/${guide}.html#preparo` : '',
+    `IMED: ${site}`,
+  ].filter(Boolean).join('\n');
+  const ics = G.icsFile({ id, title, date: v.date, period: v.period, description, url: site });
+  const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${G.protocolFromId(id).toLowerCase()}.ics`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
 const examLabel = (c) => G.EXAMS[c]?.n ?? (c === 'consulta' ? 'Consulta' : 'Outro atendimento');
 
-function bookingDone(p, v, id) {
+function bookingDone(p, v, id, logged) {
   const imed = p.source === 'imed';
   const guide = G.EXAMS[v.exam]?.slug;
   const d = G.onlyDigits(v.phone);
@@ -823,12 +980,15 @@ function bookingDone(p, v, id) {
       <li>No dia, leve documento com foto e o pedido médico.</li>
     </ol>
     <p class="note" style="text-align:left"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>O horário só fica garantido depois da confirmação.${p.is_demo ? ' Clínica de demonstração: pedido registrado só como teste.' : ''}</p>
-    <div style="display:grid;gap:10px;margin-top:18px">
-      ${guide ? `<a class="btn btn-primary" href="exames/${guide}.html#preparo">Como se preparar</a>` : ''}
+    <div class="ok-acts">
+      <button class="btn btn-primary" type="button" data-ics><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>
+      ${guide ? `<a class="btn btn-ghost" href="exames/${guide}.html#preparo"><i class="fa-solid fa-book-medical" aria-hidden="true"></i>Como se preparar</a>` : ''}
       <a class="btn btn-ghost" href="./#agenda">Ver meus pedidos</a>
+      ${logged ? '' : '<a class="btn btn-ghost" href="conta.html"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Criar conta para acompanhar</a>'}
       <button class="btn btn-ghost" type="button" data-close>Voltar aos resultados</button>
     </div>
   </div>`);
+  $('[data-ics]', $('#sheet')).addEventListener('click', () => downloadIcs(p, v, id));
 }
 
 /* ======================= eventos ======================= */
@@ -851,6 +1011,8 @@ function bind() {
     });
   }
   $('#fImed').addEventListener('click', () => { S.f.onlyImed = !S.f.onlyImed; render(); });
+  $('#fSus').addEventListener('click', () => { S.f.sus = !S.f.sus; render(); });
+  $('#fIns').addEventListener('change', (e) => { S.f.insurance = e.target.value; render(); });
   $('#fClear').addEventListener('click', () => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; render(); });
 
   $('#list').addEventListener('click', (e) => {
