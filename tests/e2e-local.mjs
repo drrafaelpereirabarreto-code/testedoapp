@@ -98,10 +98,10 @@ const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: CORS });
 const preflight = (route) => route.request().method() === 'OPTIONS' && (route.fulfill({ status: 204, headers: CORS }), true);
 
-// report: resposta de report_place_issue (padrão 'ok').
-async function newPage(browser, { mobile = false, tz = 'America/Sao_Paulo', est, clinics, insert, slots, initScript, report } = {}) {
+// report: resposta de report_place_issue (padrão 'ok'). viewport: outro tamanho de tela (o celular é 390×844).
+async function newPage(browser, { mobile = false, viewport, tz = 'America/Sao_Paulo', est, clinics, insert, slots, initScript, report } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 },
+    viewport: viewport ?? (mobile ? { width: 390, height: 844 } : { width: 1366, height: 900 }),
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz, serviceWorkers: 'block', acceptDownloads: true,
   });
   if (initScript) await context.addInitScript(initScript);
@@ -717,6 +717,179 @@ await scenario('celular (390px): ficha e agenda sem rolagem lateral', async () =
   await page.waitForSelector('.lc-ok');
   assert.ok(await overflow(page) <= 0);
   await shot(page, 'l07-celular-confirmado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+/* ======================= "Antes de ir: o que perguntar ao ligar" (quem não é parceiro) ======================= */
+const COPY_OK = () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } });
+// Nenhuma forma de copiar funciona: a área de transferência nega e o jeito antigo (execCommand) também falha.
+const COPY_DENY = () => {
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('negado', 'NotAllowedError')) } });
+  document.execCommand = () => false;
+};
+// Navegador sem a área de transferência (antigo ou de dentro de aplicativo): só o jeito antigo funciona. Guarda o
+// comando e o texto que estava selecionado na hora.
+const COPY_OLD = () => {
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+  document.execCommand = (cmd) => {
+    const t = document.activeElement;
+    window.__exec = { cmd, text: t?.value?.slice(t.selectionStart, t.selectionEnd) ?? '' };
+    return cmd === 'copy';
+  };
+};
+const questions = (page) => page.$$eval('.cq-list li', (els) => els.map((e) => e.textContent));
+const SUS_IMED = /Se preferir, peça ao IMED para agendar por você \(particular ou convênio\)\. Pelo SUS, o agendamento começa no posto de saúde \(UBS\)\./;
+
+await scenario('antes de ir: perguntas ao ligar no cadastro oficial (fechada até o toque, exame da busca, Copiar) e nada no parceiro', async () => {
+  const { page, errors, context } = await newPage(browser, { initScript: COPY_OK });
+  await page.goto(`${BASE}local.html?cnes=2077485&exame=rm`);
+  await page.waitForSelector('#lcName');
+  const box = page.locator('.lc-head details.cq');
+  assert.equal(await box.count(), 1, 'uma caixa, no topo da ficha');
+  assert.equal(await box.getAttribute('open'), null, 'fechada até o toque');
+  assert.equal(await page.locator('.cq-list').isVisible(), false);
+  assert.equal((await page.textContent('.cq summary')).trim(), 'Antes de ir: o que perguntar ao ligar');
+  // Ligar e Compartilhar continuam só nas ações do local (sem repetir dentro da caixa).
+  assert.equal(await page.locator('.lc-head a:has-text("Ligar")').count(), 1);
+  assert.equal(await page.locator('[data-act="share"]').count(), 1);
+  assert.equal(await page.locator('.cq a[href^="tel:"], .cq [data-act="share"]').count(), 0);
+  await page.click('.cq summary');
+  assert.equal(await box.getAttribute('open'), '');
+  const qs = await questions(page);
+  assert.equal(qs[0], 'Vocês fazem ressonância magnética?', 'exame da busca (?exame=rm), sempre a primeira pergunta');
+  assert.ok(qs.includes('Precisa agendar ou é por ordem de chegada?'));
+  assert.ok(qs.includes('Precisa de jejum ou de outro preparo para a ressonância magnética?'));
+  assert.ok(qs.includes('Atendem pelo SUS? Precisa de encaminhamento do posto de saúde?'), 'o cadastro oficial diz que atende SUS');
+  assert.ok(qs.includes('Quanto custa a ressonância magnética no particular?'));
+  assert.ok(qs.includes('Que documentos preciso levar? Precisa do pedido médico?'));
+  const text = await page.textContent('.cq');
+  assert.ok(!/R\$|\d{1,2}:\d{2}/.test(text), 'só perguntas: sem preço nem horário');
+  assert.match(text, /não sabemos o preparo que ele pede, o prazo do resultado nem o preço\. Ligue antes de ir, com o pedido médico em mãos, e pergunte:/);
+  // Atende SUS: o pedido pelo IMED é particular ou convênio, e o SUS começa no posto de saúde.
+  assert.match(text, /siga também a orientação do seu médico\. Se preferir, peça ao IMED para agendar por você \(particular ou convênio\)\./);
+  assert.match(text, SUS_IMED);
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForFunction(() => document.querySelector('.cq-msg').textContent);
+  assert.equal(await page.textContent('.cq-msg'), 'Perguntas copiadas. É só colar onde quiser.');
+  const copied = (await page.evaluate(() => window.__copied)).split('\n');
+  assert.deepEqual(copied.slice(0, 3), ['Hospital Santa Exemplo · (11) 3141-1000', 'O que perguntar ao ligar:', '1. Vocês fazem ressonância magnética?']);
+  assert.equal(copied.length, 2 + qs.length, 'todas as perguntas, numeradas');
+  assert.equal(await page.locator('.cq-txt').isVisible(), false, 'copiou: o quadro de seleção não aparece');
+  await shot(page, 'l08-perguntas-ao-ligar');
+  // Teclado: Enter no título fecha e abre a caixa.
+  await page.focus('.cq summary');
+  await page.keyboard.press('Enter');
+  assert.equal(await box.getAttribute('open'), null);
+  await page.keyboard.press('Enter');
+  assert.equal(await box.getAttribute('open'), '');
+  // O pedido ao IMED já vem com o exame da busca.
+  await page.click('#agendar [data-act="pedido"]');
+  assert.equal(await page.inputValue('#bkExam'), 'rm');
+  // Parceiro: preço, exames e agenda vêm da própria clínica; sem roteiro de perguntas.
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}&exame=rm`);
+  await page.waitForSelector('.sl-t');
+  assert.equal(await page.locator('.cq').count(), 0, 'parceiro com agenda');
+  await page.goto(`${BASE}local.html?id=${NOSCHED_ID}`);
+  await page.waitForSelector('#agendar [data-act="pedido"]');
+  assert.equal(await page.locator('.cq').count(), 0, 'parceiro sem agenda');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('antes de ir: laboratório sem telefone (o que perguntar na recepção) e sem dado do SUS; sem copiar sozinho, o aviso vem antes do texto selecionado', async () => {
+  const { page, errors, context } = await newPage(browser, { initScript: COPY_DENY });
+  await page.goto(`${BASE}local.html?cnes=6543210&exame=xyz`);
+  await page.waitForSelector('#lcName');
+  assert.equal(await page.locator('.lc-acts a:has-text("Ligar")').count(), 0, 'sem telefone, sem Ligar');
+  assert.equal((await page.textContent('.cq summary')).trim(), 'O que perguntar na recepção', 'sem telefone, o título não fala em ligar');
+  await page.click('.cq summary');
+  const qs = await questions(page);
+  assert.equal(qs[0], 'Vocês fazem todos os exames do meu pedido médico?', 'exame desconhecido na URL: vale o tipo do local');
+  assert.ok(qs.includes('Precisa de jejum? De quantas horas?'), 'laboratório: jejum');
+  assert.ok(qs.includes('Em quantos dias sai o resultado?'), 'laboratório: prazo');
+  assert.ok(qs.includes('Fazem coleta em casa?'));
+  assert.ok(!qs.some((q) => /SUS/.test(q)), 'sem o dado do SUS, sem a pergunta');
+  const text = await page.textContent('.cq');
+  assert.match(text, /O telefone deste local não foi informado\. Se for até lá, leve o pedido médico e pergunte na recepção:/);
+  assert.ok(!/ao ligar|Ligue/.test(text), 'nada de ligar');
+  assert.equal((await page.textContent('.cq-imed')).trim(), 'Se preferir, peça ao IMED para agendar por você.', 'o pedido ao IMED em destaque');
+  assert.ok(await page.isVisible('.cq-imed'));
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForSelector('.cq-txt:not([hidden])');
+  assert.match(await page.textContent('.cq-msg'), /^Não foi possível copiar sozinho\. As perguntas estão selecionadas no quadro abaixo/);
+  const sel = await page.evaluate(() => {
+    const t = document.querySelector('.cq-txt'), m = document.querySelector('.cq-msg');
+    return {
+      focused: document.activeElement === t, start: t.selectionStart, end: t.selectionEnd, len: t.value.length, lines: t.value.split('\n'),
+      warn: m.classList.contains('warn'), msgFirst: !!(m.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING), describedBy: t.getAttribute('aria-describedby') === m.id && !!m.id,
+    };
+  });
+  assert.ok(sel.focused, 'o foco vai para o texto');
+  assert.deepEqual([sel.start, sel.end], [0, sel.len], 'o texto todo fica selecionado');
+  assert.ok(sel.warn && sel.msgFirst, 'o aviso vem antes do quadro');
+  assert.ok(sel.describedBy, 'o quadro aponta para o aviso (leitor de tela)');
+  assert.deepEqual(sel.lines.slice(0, 3), ['Laboratório Sem Mapa', 'O que perguntar na recepção:', '1. Vocês fazem todos os exames do meu pedido médico?']);
+  assert.equal(sel.lines.length, 2 + qs.length);
+  await shot(page, 'l09-perguntas-selecionar');
+  // Navegador sem a área de transferência (antigo ou de dentro de aplicativo): copia pelo jeito antigo, sem o quadro.
+  await context.addInitScript(COPY_OLD);
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.click('.cq summary');
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForFunction(() => document.querySelector('.cq-msg').textContent);
+  assert.equal(await page.textContent('.cq-msg'), 'Perguntas copiadas. É só colar onde quiser.');
+  const old = await page.evaluate(() => ({ exec: window.__exec, hidden: document.querySelector('.cq-txt').hidden, value: document.querySelector('.cq-txt').value, act: document.activeElement?.dataset?.act, warn: document.querySelector('.cq-msg').classList.contains('warn') }));
+  assert.equal(old.exec?.cmd, 'copy');
+  assert.equal(old.exec.text, old.value, 'copiou o texto todo');
+  assert.match(old.exec.text, /^Hospital Santa Exemplo · \(11\) 3141-1000\nO que perguntar ao ligar:\n1\. Vocês fazem o exame ou a consulta de que eu preciso\?/);
+  assert.ok(old.hidden && !old.warn, 'copiou: o quadro não aparece');
+  assert.equal(old.act, 'copy-questions', 'o foco volta para o botão');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular (360px): sem copiar sozinho, o aviso e o texto selecionado aparecem na tela, sem rolagem lateral', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, viewport: { width: 360, height: 780 }, initScript: COPY_DENY });
+  await page.goto(`${BASE}local.html?cnes=2077485&exame=rm`);
+  await page.waitForSelector('#avaliacoes:not([hidden]) li');
+  await page.click('.cq summary');
+  assert.match(await page.textContent('.cq'), SUS_IMED, 'atende SUS: o pedido pelo IMED é particular ou convênio');
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForSelector('.cq-txt:not([hidden])');
+  const m = await page.evaluate(() => {
+    const r = (s) => document.querySelector(s).getBoundingClientRect();
+    const t = document.querySelector('.cq-txt');
+    // Fim do que dá para ver: a tela ou, no primeiro acesso, o aviso de privacidade fixo embaixo.
+    const end = Math.min(innerHeight, document.querySelector('.lgpd')?.getBoundingClientRect().top ?? innerHeight);
+    return { top: r('.pt-top').bottom, end, msg: r('.cq-msg'), txt: r('.cq-txt'), focused: document.activeElement === t, sel: [t.selectionStart, t.selectionEnd, t.value.length] };
+  });
+  assert.ok(m.msg.top >= m.top && m.msg.bottom <= m.end, `o aviso aparece inteiro (${Math.round(m.msg.top)} a ${Math.round(m.msg.bottom)} px; dá para ver de ${Math.round(m.top)} a ${Math.round(m.end)} px)`);
+  assert.ok(m.txt.top > m.msg.bottom && m.txt.top <= m.end - 60, `o quadro começa logo abaixo, na tela (${Math.round(m.txt.top)} px)`);
+  assert.ok(m.focused && m.sel[0] === 0 && m.sel[1] === m.sel[2], 'o texto continua todo selecionado');
+  assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  await shot(page, 'l11-celular-360-sem-copiar');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular (390px): caixa de perguntas aberta sem rolagem lateral e com alvos de toque grandes', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true });
+  await page.goto(`${BASE}local.html?cnes=2077485&exame=usg`);
+  await page.waitForSelector('#avaliacoes:not([hidden]) li');
+  const summary = await page.$eval('.cq summary', (el) => el.getBoundingClientRect().height);
+  assert.ok(summary >= 44, `título da caixa com ${summary}px de altura`);
+  await page.click('.cq summary');
+  assert.equal((await questions(page))[0], 'Vocês fazem ultrassom?');
+  const btn = await page.$eval('[data-act="copy-questions"]', (el) => el.getBoundingClientRect().height);
+  assert.ok(btn >= 44, `"Copiar as perguntas" com ${btn}px de altura`);
+  assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  // A caixa fica logo abaixo das ações do local, antes do aviso de emergência.
+  assert.ok(await page.evaluate(() => {
+    const acts = document.querySelector('.lc-head .lc-acts'), cq = document.querySelector('.lc-head .cq'), sos = document.querySelector('.lc-head .sos');
+    return acts.nextElementSibling === cq && cq.nextElementSibling === sos;
+  }), 'ordem: ações, perguntas, emergência');
+  await shot(page, 'l10-celular-perguntas');
   assert.deepEqual(errors, []);
   await context.close();
 });
