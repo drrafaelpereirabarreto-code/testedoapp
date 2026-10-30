@@ -1,0 +1,12 @@
+[15:45:30] == horizontal: 1280×720 @1.5x
+[15:45:32]   cena 1: inicio
+[15:45:48]   cena 2: mapa-reais
+[15:46:08]   cena 3: busca-exame
+[15:46:29]   ! busca-exame: locator.click: Timeout 5000ms exceeded.
+[15:46:33]   cena 4: resultados
+[15:46:46]   cena 5: detalhe
+[15:46:53]   cena 6: local
+[15:47:00]   cena 7: responsavel
+[15:47:07]   cena 8: final
+[15:47:11]   1056 quadros em 99.1 s; montando /home/runner/work/_temp/video/imed-horizontal.mp4
+[15:47:59] resumo: [{"formato":"horizontal","arquivo":"/home/runner/work/_temp/video/imed-horizontal.mp4","quadros":1056,"segundos":99.1,"falhas":["busca-exame"]}]
