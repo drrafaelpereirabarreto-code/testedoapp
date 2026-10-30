@@ -140,6 +140,7 @@ function resetAll() {
   S.d.profile = null; S.d.lists = {}; S.d.ctx = {}; S.d.unsigned = null;
   for (const id of ['#meCard', '#regCard', '#noticeCard', '#dutyCard', '#signCard', '#consult', '#histCard', '#adminCard']) $(id).hidden = true;
   $('#admin').innerHTML = ''; $('#hist').innerHTML = ''; $('#queue').innerHTML = '';
+  clearSteps($('#meSteps')); clearSteps($('#regSteps'));
 }
 
 /* ======================= cadastro ======================= */
@@ -148,6 +149,7 @@ async function loadMe() {
   try { rows = await A.rpc('tele_doctor_me'); } catch (err) {
     if (lostSession(err)) return;
     $('#meCard').hidden = false;
+    clearSteps($('#meSteps')); // sem a situação do cadastro, as etapas não aparecem
     $('#meBox').innerHTML = `<p class="bk-err show">${esc(T.errorText(T.errorInfo(err).code))}</p><button class="btn btn-ghost btn-sm" type="button" id="meRetry">Tentar de novo</button>`;
     $('#meRetry').addEventListener('click', loadMe);
     return;
@@ -180,6 +182,7 @@ function renderMe() {
     $('#regCard').hidden = false;
     $('#regCancel').hidden = true;
     $('#regBtn').textContent = 'Enviar para análise';
+    renderSteps();
     return;
   }
   $('#regCard').hidden = true;
@@ -197,6 +200,7 @@ function renderMe() {
       <p class="tl-small">Vão impressos nos documentos (Res. CFM 2.381/2024). Mudar estes dados não manda o cadastro para análise.</p>
       <div id="meProf"></div></section>`;
   renderProfile();
+  renderSteps();
   $('#editBtn').addEventListener('click', () => {
     fillReg(me);
     $('#regCard').hidden = false;
@@ -204,6 +208,52 @@ function renderMe() {
     $('#regBtn').textContent = me.status === 'approved' ? 'Salvar' : 'Enviar para análise';
     $('#regTitle').focus();
   });
+}
+
+/* ======================= etapas do cadastro ======================= */
+// Indicador no topo do cadastro: Conta criada → Cadastro enviado → Conferência do CRM → Aprovado → Disponível.
+// A etapa atual vem da situação de tele_doctor_me e, a última, do botão "Disponível para atender" desta página.
+// Recusado e suspenso aparecem como etapa com problema, com o que fazer. Quem ainda não tem cadastro vê as etapas no
+// quadro do formulário (#regSteps); quem já tem, no quadro "Seu cadastro de médico" (#meSteps).
+const STEPS = ['Conta criada', 'Cadastro enviado', 'Conferência do CRM', 'Aprovado', 'Disponível'];
+const CONTACT_LINK = '<a class="link" href="contato.html">fale com o IMED</a>';
+// at: índice da etapa atual; bad: situação com problema; on: disponível agora; msg: o que fazer (texto);
+// after: complemento com link (HTML fixo, sem dado de ninguém).
+function stepNow() {
+  const me = S.me;
+  if (!me) return { at: 1, msg: 'Agora: preencha o cadastro abaixo e toque em “Enviar para análise”.' };
+  switch (me.status) {
+    case 'pending': return { at: 2, msg: 'Agora: a equipe do IMED confere o seu CRM no portal do CFM e combina com você a prova de identidade.' };
+    case 'rejected': return { at: 2, bad: 'Recusado', msg: 'O cadastro foi recusado. Leia a observação da equipe, se houver, toque em “Corrigir e enviar de novo” e envie: o cadastro volta para a conferência.', after: ` Dúvidas? ${CONTACT_LINK}.` };
+    case 'suspended': return { at: 3, bad: 'Suspenso', msg: 'Você não pode atender agora. Veja a observação da equipe, se houver, e', after: ` ${CONTACT_LINK} para saber o que fazer.` };
+    case 'approved':
+      if (S.available) return { at: 4, on: true, msg: 'Você está disponível: os pacientes veem o seu nome e CRM. Atenda pelo quadro “Fila de pacientes”.' };
+      return { at: 3, msg: S.duty ? 'Agora: ligue “Disponível para atender”, no quadro “Fila de pacientes”, quando quiser atender.' : 'Agora: leia o aviso “Antes de ficar disponível” e marque que entendeu. Depois, ligue “Disponível para atender”.' };
+    default: return { at: 2, msg: '' };
+  }
+}
+function clearSteps(box) { box.hidden = true; box.innerHTML = ''; delete box.dataset.sig; }
+function renderSteps() {
+  const box = $(S.me ? '#meSteps' : '#regSteps');
+  clearSteps($(S.me ? '#regSteps' : '#meSteps'));
+  if (!A.user()) { clearSteps(box); return; }
+  const st = stepNow();
+  // Só refaz quando algo mudou (o foco de quem usa teclado não se perde no link de ajuda).
+  const sig = JSON.stringify(st);
+  if (box.dataset.sig === sig && !box.hidden) return;
+  box.dataset.sig = sig;
+  const items = STEPS.map((name, i) => {
+    const now = i === st.at;
+    const done = i < st.at;
+    const cls = now ? (st.bad ? 'bad' : st.on ? 'now on' : 'now') : done ? 'done' : '';
+    const mark = now && st.bad ? '<i class="fa-solid fa-triangle-exclamation"></i>' : done ? '<i class="fa-solid fa-check"></i>' : String(i + 1);
+    const note = now ? (st.bad ? `<small>Situação: ${esc(st.bad)}</small>` : '<small aria-hidden="true">Etapa atual</small>') : done ? '<span class="sr"> (concluída)</span>' : '';
+    return `<li${cls ? ` class="${cls}"` : ''}${now ? ' aria-current="step"' : ''}><span class="md-sn" aria-hidden="true">${mark}</span><span class="md-sl">${esc(name)}${note}</span></li>`;
+  }).join('');
+  box.innerHTML = `<ol class="md-stepper" aria-label="Etapas do seu cadastro de médico">${items}</ol>
+    ${st.msg ? `<p class="md-stepmsg${st.bad ? ' bad' : st.on ? ' on' : ''}">${esc(st.msg)}${st.after || ''}</p>` : ''}
+    <p class="md-stephelp"><a class="link" href="para-medicos.html#fluxo"><i class="fa-solid fa-circle-question" aria-hidden="true"></i>Como funciona para o médico</a></p>`;
+  box.hidden = false;
 }
 const REG = { full_name: ['#rName', '#erName'], crm: ['#rCrm', '#erCrm'], crm_uf: ['#rUf', '#erUf'], rqe: ['#rRqe', '#erRqe'], specialty: ['#rSpec', '#erSpec'], phone: ['#rPhone', '#erPhone'] };
 function fillReg(me) {
@@ -279,6 +329,7 @@ function startDuty() {
   S.duty = true;
   $('#dutyCard').hidden = !!S.c;
   queuePoll.start();
+  renderSteps();
   // Recarregou a página com "Disponível" ligado (nesta aba): liga de novo.
   if (wasAvail() && !S.available) setAvailable(true);
 }
@@ -287,6 +338,7 @@ function stopDuty() {
   queuePoll.stop();
   if (S.available) setAvailable(false);
   $('#dutyCard').hidden = true;
+  if (A.user()) renderSteps();
 }
 async function setAvailable(on, fromClick = false) {
   clearInterval(S.hb);
@@ -338,6 +390,7 @@ function renderAvail() {
     : 'Desligado: os pacientes veem “Nenhum médico atendendo agora”. Ao sair desta página, você deixa de aparecer.';
   S.queueSig = '';
   renderQueue();
+  renderSteps();
 }
 // Ao fechar a página: desliga o "disponível" (se não der, vence sozinho em 90 s).
 function offOnLeave() {
