@@ -32,6 +32,12 @@ const KINDS = {
   hospital: { n: 'Hospital', plural: 'Hospitais', color: '#E8512F', h: 2.9 },
 };
 const kindOf = (k) => KINDS[k] || KINDS.clinica;
+// Página de cada local: parceiro pelo id, estabelecimento do CNES pelo código de 7 dígitos.
+function localUrl(r, hash = '') {
+  if (r.partner && r.id) return `local.html?id=${encodeURIComponent(r.id)}${hash}`;
+  if (/^\d{7}$/.test(String(r.cnes || ''))) return `local.html?cnes=${r.cnes}${hash}`;
+  return '';
+}
 
 function toast(m) { const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800); }
 
@@ -172,7 +178,8 @@ function setPlaceLabels() {
 }
 function placeChanged() {
   setPlaceLabels();
-  heroList = []; if (window.HERO) window.HERO.setOrigin();
+  heroList = []; heroLoaded = false; if (window.HERO) window.HERO.setOrigin();
+  if (heroLite) renderHeroLite();
   if (heroWanted) loadHeroPlaces();
   if (realStarted) renderRealMap();
 }
@@ -240,12 +247,18 @@ async function renderRealMap() {
       const pop = document.createElement('div'); pop.className = 'rm-pop';
       const add = (tag, text) => { if (!text) return; const el = document.createElement(tag); el.textContent = text; pop.appendChild(el); };
       add('b', r.name); add('div', (r.partner ? 'Parceiro do IMED · ' : '') + k.n + ' · ' + fmtDist(r.distance_m)); add('div', [r.address_line, r.neighborhood].filter(Boolean).join(' · ')); add('div', r.phone); add('div', r.open_24h ? 'Aberto 24 horas' : r.shift);
+      const url = localUrl(r);
+      if (url) { const a = document.createElement('a'); a.href = url; a.textContent = 'Ver página do local'; pop.appendChild(a); }
       L.circleMarker([r.lat, r.lng], { radius: r.partner ? 8 : 6.5, color: r.partner ? '#FF6B4A' : '#fff', weight: r.partner ? 3 : 1.5, fillColor: k.color, fillOpacity: 0.95 }).bindPopup(pop).addTo(realLayer);
     });
     realMap.setView([o.lat, o.lng], 14);
     $('#realStats').innerHTML = Object.entries(KINDS).map(([kk, k]) => `<div class="rm-stat"><b>${rows.filter((r) => r.kind === kk).length}${many ? '+' : ''}</b><span><i style="background:${k.color}"></i>${k.plural}</span></div>`).join('');
     $('#realList').innerHTML = rows.length
-      ? rows.slice(0, 8).map((r) => { const k = kindOf(r.kind); return `<li><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)}${r.neighborhood ? ' · ' + esc(r.neighborhood) : ''}</small></span><span class="d">${fmtDist(r.distance_m)}</span></li>`; }).join('')
+      ? rows.slice(0, 8).map((r) => {
+        const k = kindOf(r.kind), url = localUrl(r);
+        const inner = `<span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)}${r.neighborhood ? ' · ' + esc(r.neighborhood) : ''}</small></span><span class="d">${fmtDist(r.distance_m)}</span>`;
+        return `<li>${url ? `<a href="${esc(url)}">${inner}</a>` : inner}</li>`;
+      }).join('')
       : '<li>Ainda não temos o cadastro oficial desta região. Toque em <b style="display:inline">Ver todas perto de mim</b> para buscar.</li>';
   } catch {
     if (seq !== realSeq) return;
@@ -264,7 +277,7 @@ async function renderRealMap() {
 
 /* ======================= MAPA 3D ======================= */
 // Estabelecimentos reais do CNES perto da origem. Enquanto carrega (ou se falhar), o 3D mostra só a cidade.
-let heroList = [], heroSeq = 0, heroWanted = false;
+let heroList = [], heroSeq = 0, heroWanted = false, heroLite = false, heroLoaded = false;
 const STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'em', 'para', '-', '&']);
 function initials(name) {
   const w = String(name).replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter((x) => x && !STOP.has(x.toLowerCase()));
@@ -288,6 +301,7 @@ async function loadHeroPlaces() {
   try {
     const { rows } = await nearbyAll(o, 3000, 80);
     if (seq !== heroSeq) return;
+    heroLoaded = true;
     // Parceiros primeiro (têm exames informados); o resto com variedade de tipos.
     const partners = rows.filter((r) => r.partner).slice(0, 6);
     heroList = [...partners, ...pickVaried(rows.filter((r) => !r.partner), 14 - partners.length)].sort((a, b) => a.distance_m - b.distance_m).map((r) => {
@@ -295,7 +309,27 @@ async function loadHeroPlaces() {
       return { id: r.key, n: r.name, ini: initials(r.name), c: k.color, lat: r.lat, lng: r.lng, open: true, r: 4.5, sup: false, kind: r.kind, h: k.h, row: r };
     });
     if (window.HERO) window.HERO.setOrigin();
-  } catch { /* sem dados: o 3D continua só com a cidade */ }
+    if (heroLite) renderHeroLite();
+  } catch {
+    // sem dados: o 3D continua só com a cidade; no modo leve, um texto neutro com link para a busca
+    if (seq === heroSeq && heroLite) { heroLoaded = true; renderHeroLite(); }
+  }
+}
+// Modo leve (aparelho simples, economia de dados ou "reduzir movimento"): sem 3D, só a ilustração
+// de fundo e a lista dos mesmos locais reais perto do ponto escolhido.
+function renderHeroLite() {
+  const box = $('#heroLite'); if (!box) return;
+  const list = heroList.slice(0, innerWidth < 700 ? 4 : 5);
+  const title = `<h2><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Perto de ${esc(placeName())}</h2>`;
+  if (!list.length) {
+    box.innerHTML = title + (heroLoaded ? '<p>Veja clínicas, laboratórios e hospitais perto de você na busca.</p>' : '<p>Carregando os locais perto daqui…</p>')
+      + '<a class="more" href="perto.html?usar=localizacao">Buscar perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
+    return;
+  }
+  box.innerHTML = title + '<ol>' + list.map((c) => {
+    const r = c.row, k = kindOf(r.kind), url = localUrl(r) || 'perto.html';
+    return `<li><a href="${esc(url)}"><span class="dot" style="background:${k.color}"></span><span style="min-width:0"><b>${esc(r.name)}</b><small>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)}</small></span></a></li>`;
+  }).join('') + '</ol><a class="more" href="perto.html?usar=localizacao">Ver todos perto de mim <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a>';
 }
 function openPlaceDetail(id) {
   const c = heroList.find((x) => x.id === id); if (!c) return;
@@ -305,10 +339,7 @@ function openPlaceDetail(id) {
   const tel = String(r.phone || '').replace(/\D/g, '');
   const extra = [r.open_24h ? 'Aberto 24 horas' : r.shift, r.sus ? 'Atende pelo SUS' : ''].filter(Boolean).join(' · ');
   const exams = r.partner && Array.isArray(r.exams) ? [...new Set(r.exams.map((e) => e && EXAMS[e.code]?.n).filter(Boolean))] : [];
-  // A busca ainda não abre um local específico: com GPS, busca perto de você; com bairro, abre a busca para escolher o ponto.
-  const exam = r.partner && Array.isArray(r.exams) && r.exams.length === 1 && EXAMS[r.exams[0]?.code] ? r.exams[0].code : '';
-  const search = S.here ? 'perto.html?usar=localizacao' + (exam ? '&exame=' + encodeURIComponent(exam) : '') : (exam ? examUrl(exam) : 'perto.html');
-  const searchTxt = S.here ? 'Buscar perto de mim e pedir agendamento' : 'Abrir a busca para pedir agendamento';
+  const page = localUrl(r);
   openSheet(head(esc(r.name)) + `<div class="sh-body">
     <span class="place-kind"><span style="background:${k.color}"></span>${r.partner ? 'Parceiro do IMED · ' : ''}${esc(k.n)} · ${fmtDist(r.distance_m)} de ${esc(placeName())}</span>
     <div class="place-info">
@@ -317,9 +348,10 @@ function openPlaceDetail(id) {
       ${extra ? `<div><i class="fa-regular fa-clock" aria-hidden="true"></i>${esc(extra)}</div>` : ''}
       ${exams.length ? `<div><i class="fa-solid fa-notes-medical" aria-hidden="true"></i>Exames informados pela clínica: ${esc(exams.join(', '))}</div>` : ''}
     </div>
-    <p class="note">${r.partner ? 'Dados informados pela clínica parceira' : 'Fonte: CNES/DataSUS'}${r.cnes ? ` (CNES ${esc(r.cnes)})` : ''}. Confirme horários e valores com o local.${S.here ? '' : ' Na busca, informe o endereço ou o bairro para ver este local no mapa.'}</p>
+    <p class="note">${r.partner ? 'Dados informados pela clínica parceira' : 'Fonte: CNES/DataSUS'}${r.cnes ? ` (CNES ${esc(r.cnes)})` : ''}. Confirme horários e valores com o local.</p>
     <div class="place-act">
-      <a class="btn btn-coral" href="${esc(search)}"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>${searchTxt}</a>
+      ${page ? `<a class="btn btn-coral" href="${esc(localUrl(r, '#agendar'))}"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>Pedir agendamento</a>
+      <a class="btn btn-ghost" href="${esc(page)}"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Ver página do local</a>` : '<a class="btn btn-coral" href="perto.html"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i>Abrir a busca</a>'}
       ${!r.partner && r.cnes ? `<a class="btn btn-ghost" href="reivindicar.html?cnes=${encodeURIComponent(r.cnes)}"><i class="fa-solid fa-hospital-user" aria-hidden="true"></i>É sua clínica? Assuma o cadastro</a>` : ''}
     </div>
   </div>`, 'sm', r.name);
@@ -332,15 +364,49 @@ const API = {
   onPick: (id) => openPlaceDetail(id),
   meta: (c) => `${c.row.partner ? 'Parceiro · ' : ''}${kindOf(c.kind).n} · ${fmtDist(c.row.distance_m)}`,
 };
+// Aparelho simples, economia de dados ou "reduzir movimento": não baixa o 3D (three.js tem ~650 KB).
+function liteReason() {
+  if (reduceMotion) return 'movimento';
+  const n = navigator, con = n.connection || {};
+  if (con.saveData) return 'economia';
+  if (/(^|-)2g$/.test(con.effectiveType || '')) return 'rede';
+  if (typeof n.deviceMemory === 'number' && n.deviceMemory <= 2) return 'memoria';
+  const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 700;
+  if (phone && n.hardwareConcurrency && n.hardwareConcurrency <= 4) return 'processador';
+  return '';
+}
+function goLite(why) {
+  heroLite = true;
+  document.body.classList.add('lite');
+  document.body.dataset.hero = 'leve';
+  if (why === 'webgl') document.body.classList.add('no-webgl');
+  renderHeroLite();
+  if (!heroWanted) loadHeroPlaces();
+}
+// Espera o navegador ficar livre (depois de mostrar o topo) e o topo estar na tela.
+const whenIdle = (fn) => { if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 3000 }); else setTimeout(fn, 1200); };
+function whenVisible(el, fn) {
+  if (!('IntersectionObserver' in window)) return fn();
+  const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fn(); } });
+  io.observe(el);
+}
 function startHero() {
   const el = $('#hero3d');
-  let ok = false;
-  try { const c = document.createElement('canvas'); ok = !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch { ok = false; }
-  if (!ok) { document.body.classList.add('no-webgl'); return; }
-  loadHeroPlaces();
-  const fontsReady = document.fonts && document.fonts.load ? Promise.race([document.fonts.load('800 46px Sora'), new Promise((r) => setTimeout(r, 1500))]) : Promise.resolve();
-  fontsReady.then(() => import('./hero3d.js')).then((m) => { window.HERO = m.initHero3D(el, API); })
-    .catch((err) => { console.warn('Mapa 3D indisponível', err); document.body.classList.add('no-webgl'); });
+  const why = liteReason();
+  if (why) { goLite(why); return; }
+  document.body.dataset.hero = 'espera';
+  // Primeiro o conteúdo aparece (dois quadros); depois, com o navegador livre e o topo na tela, baixa o 3D.
+  requestAnimationFrame(() => requestAnimationFrame(() => whenIdle(() => whenVisible(el, load3D))));
+  function load3D() {
+    let ok = false;
+    try { const c = document.createElement('canvas'); ok = !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch { ok = false; }
+    if (!ok) { goLite('webgl'); return; }
+    document.body.dataset.hero = 'carregando';
+    loadHeroPlaces();
+    const fontsReady = document.fonts && document.fonts.load ? Promise.race([document.fonts.load('800 46px Sora'), new Promise((r) => setTimeout(r, 1500))]) : Promise.resolve();
+    fontsReady.then(() => import('./hero3d.js')).then((m) => { window.HERO = m.initHero3D(el, API); document.body.dataset.hero = '3d'; })
+      .catch((err) => { console.warn('Mapa 3D indisponível', err); goLite('webgl'); });
+  }
 }
 
 /* ======================= AGENDADOS ======================= */
@@ -381,6 +447,8 @@ async function fetchStatus(list) {
   if (S.view === 'agenda') drawAppts(readAppts());
 }
 function renderAppts() {
+  // geo-core.js só é baixado quando a pessoa abre Agendados.
+  if (!geoCoreSync) loadGeoCore().then((m) => { geoCoreSync = m; if (S.view === 'agenda') drawAppts(readAppts()); });
   const list = readAppts();
   statusState = 'loading';
   drawAppts(list);
@@ -426,7 +494,6 @@ function drawAppts(list) {
   }; });
   box.querySelectorAll('[data-ics]').forEach((b) => { b.onclick = () => { const a = readAppts().find((x) => apptKey(x) === b.dataset.ics); if (a) downloadIcs(a); else drawAppts(readAppts()); }; });
 }
-loadGeoCore().then((m) => { geoCoreSync = m; if (S.view === 'agenda') drawAppts(readAppts()); });
 async function downloadIcs(a) {
   const m = await loadGeoCore();
   if (!m.icsFile) { toast('Não foi possível criar o lembrete agora.'); return; }
@@ -472,6 +539,15 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-tele]'))
       btn.disabled = false; btn.innerHTML = 'Tentar de novo <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>';
     });
   });
+})();
+
+/* ======================= PERGUNTAS: VER TODAS ======================= */
+(function () {
+  const b = $('#faqAll'), more = $('#faqMore'); if (!b || !more) return;
+  b.onclick = () => {
+    more.hidden = false; b.remove();
+    const first = more.querySelector('summary'); if (first) first.focus();
+  };
 })();
 
 /* ======================= WHATSAPP ======================= */

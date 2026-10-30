@@ -191,16 +191,17 @@ function growing(mat) {
 
 export function initHero3D(el, api) {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const small = Math.min(screen.width, screen.height) < 700;
-  const labelsEl = el.querySelector('.h3d-labels');
   let W = el.clientWidth, H = el.clientHeight;
+  // Celular: menos pixels por ponto (no máximo 1,5) e sombras mais leves.
+  const small = Math.min(screen.width, screen.height) < 700 || W < 700;
+  const labelsEl = el.querySelector('.h3d-labels');
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.75));
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, small ? 1.5 : 1.75));
   renderer.setSize(W, H);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = small ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.domElement.className = 'h3d-canvas'; renderer.domElement.setAttribute('aria-hidden', 'true');
   el.prepend(renderer.domElement);
 
@@ -524,8 +525,9 @@ export function initHero3D(el, api) {
   }
 
   let labelIds = new Set();
+  const maxLabels = () => (W < 700 ? 2 : 4);
   function pickLabels() {
-    const n = W < 700 ? 2 : 4;
+    const n = maxLabels();
     labelIds = new Set(clinicObjs.filter(o => o.c.open !== false).sort((a, b) => a.group.position.length() - b.group.position.length()).slice(0, n).map(o => o.id));
   }
 
@@ -637,13 +639,24 @@ export function initHero3D(el, api) {
       o.sx = x; o.sy = y;
       if (want) shown.push(o);
     });
-    // evita sobreposição: o mais próximo da câmera ganha
-    shown.sort((a, b) => (b.id === hoverId) - (a.id === hoverId) || a.group.position.distanceTo(camera.position) - b.group.position.distanceTo(camera.position));
-    const kept = [];
-    shown.forEach(o => { if (kept.every(k => Math.abs(k.sx - o.sx) > 190 || Math.abs(k.sy - o.sy) > 58)) kept.push(o); });
+    // Rótulo inteiro dentro da tela: empurra para dentro (a seta continua apontando o pino).
+    shown.forEach(o => {
+      if (!o.lw) { o.lw = o.label.offsetWidth || 180; o.lh = o.label.offsetHeight || 48; }
+      const half = Math.min(o.lw, W - 12) / 2;
+      o.cx = Math.min(Math.max(o.sx, half + 6), W - half - 6);
+    });
+    // evita sobreposição (caixa real de cada rótulo): o mais próximo da câmera ganha; no celular, no máximo 2
+    shown.sort((a, b) => (b.id === hoverId) - (a.id === hoverId) || (b.id === api.highlighted()) - (a.id === api.highlighted()) || a.group.position.distanceTo(camera.position) - b.group.position.distanceTo(camera.position));
+    const kept = [], max = maxLabels();
+    shown.forEach(o => {
+      if (kept.length >= max) return;
+      if (kept.every(k => Math.abs(k.cx - o.cx) > (k.lw + o.lw) / 2 + 8 || Math.abs(k.sy - o.sy) > Math.max(k.lh, o.lh) + 8)) kept.push(o);
+    });
     clinicObjs.forEach(o => {
       const vis = kept.includes(o);
-      o.label.style.transform = `translate3d(${o.sx.toFixed(1)}px,${o.sy.toFixed(1)}px,0) translate(-50%,calc(-100% - 22px))`;
+      const cx = vis ? o.cx : o.sx;
+      o.label.style.setProperty('--ax', `${(o.sx - cx).toFixed(1)}px`);
+      o.label.style.transform = `translate3d(${cx.toFixed(1)}px,${o.sy.toFixed(1)}px,0) translate(-50%,calc(-100% - 22px))`;
       o.label.classList.toggle('on', vis);
       o.label.classList.toggle('hot', hoverId === o.id);
       if (o.vis !== vis) {
@@ -659,7 +672,7 @@ export function initHero3D(el, api) {
 
   const ro = new ResizeObserver(() => {
     W = el.clientWidth; H = el.clientHeight; if (!W || !H) return;
-    renderer.setSize(W, H); frame(); pickLabels();
+    renderer.setSize(W, H); frame(); pickLabels(); clinicObjs.forEach(o => { o.lw = 0; });
   });
   ro.observe(el);
   const io = new IntersectionObserver(([e]) => { const was = running; running = e.isIntersecting && !document.hidden; if (running && !was) { last = performance.now(); requestAnimationFrame(tick); } });
@@ -669,6 +682,6 @@ export function initHero3D(el, api) {
   el.classList.add('h3d-ready');
   return {
     setOrigin() { origin = api.origin(); buildClinics(false); },
-    refreshLabels() { clinicObjs.forEach(o => { const s = o.label.querySelector('small'); if (s) s.textContent = api.meta(o.c); }); }
+    refreshLabels() { clinicObjs.forEach(o => { const s = o.label.querySelector('small'); if (s) s.textContent = api.meta(o.c); o.lw = 0; }); }
   };
 }

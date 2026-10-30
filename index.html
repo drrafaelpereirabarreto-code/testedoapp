@@ -26,9 +26,9 @@
 <meta name="apple-mobile-web-app-title" content="IMED">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://pyoqiecupxhdzigjudyd.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/vendor/fa/css/all.min.css">
-<link rel="modulepreload" href="assets/vendor/three.module.min.js">
 <style>
 :root{
   --navy:#05161e; --navy2:#082431; --navy3:#0c3343;
@@ -135,7 +135,7 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .h3d-label{position:absolute;left:0;top:0;display:flex;align-items:center;gap:10px;padding:7px 14px 7px 7px;border-radius:16px;background:rgba(7,32,43,.66);-webkit-backdrop-filter:blur(14px) saturate(1.5);backdrop-filter:blur(14px) saturate(1.5);border:1px solid rgba(127,240,228,.24);color:#fff;font-size:13px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .4s,background .3s,box-shadow .3s;box-shadow:0 14px 34px rgba(0,0,0,.3);will-change:transform;text-align:left}
 .h3d-label.on{opacity:1;pointer-events:auto}
 .h3d-label.hot,.h3d-label:hover{background:rgba(14,124,156,.9);box-shadow:0 18px 40px rgba(14,124,156,.45)}
-.h3d-label::after{content:"";position:absolute;left:50%;bottom:-6px;width:11px;height:11px;transform:translateX(-50%) rotate(45deg);background:rgba(7,32,43,.66);border-right:1px solid rgba(127,240,228,.24);border-bottom:1px solid rgba(127,240,228,.24)}
+.h3d-label::after{content:"";position:absolute;left:calc(50% + var(--ax,0px));bottom:-6px;width:11px;height:11px;transform:translateX(-50%) rotate(45deg);background:rgba(7,32,43,.66);border-right:1px solid rgba(127,240,228,.24);border-bottom:1px solid rgba(127,240,228,.24)}
 .h3d-label.hot::after,.h3d-label:hover::after{background:rgba(14,124,156,.9)}
 .h3d-label .lg{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font:800 12px Sora;color:#fff;box-shadow:inset 0 1px 0 rgba(255,255,255,.25)}
 .h3d-label b{display:block;font-weight:700;font-size:13px}
@@ -147,12 +147,31 @@ body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
 .scroll-cue{position:absolute;left:50%;bottom:58px;z-index:3;transform:translateX(-50%);width:26px;height:42px;border-radius:14px;border:2px solid rgba(255,255,255,.35)}
 .scroll-cue::after{content:"";position:absolute;left:50%;top:8px;width:4px;height:8px;border-radius:2px;background:#fff;transform:translateX(-50%);animation:cue 1.8s infinite}
 @keyframes cue{0%{opacity:0;transform:translate(-50%,0)}30%{opacity:1}100%{opacity:0;transform:translate(-50%,14px)}}
-body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opacity:.35}
+/* fundo leve (ilustração em SVG, sem foto): aparece enquanto o 3D carrega e fica no lugar dele em aparelho simples */
+.hero-3d::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;opacity:.9;transition:opacity 1.4s var(--ease);
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 600' preserveAspectRatio='xMidYMid slice'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.6' cy='.45' r='.6'%3E%3Cstop offset='0' stop-color='%23124a5c'/%3E%3Cstop offset='1' stop-color='%23124a5c' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='800' height='600' fill='url(%23g)'/%3E%3Cg transform='rotate(-16 400 300)' stroke='%237FF0E4' fill='none'%3E%3Cg stroke-opacity='.13' stroke-width='10'%3E%3Cpath d='M-200 60H1000M-200 170H1000M-200 280H1000M-200 390H1000M-200 500H1000M-200 610H1000M20 -200V800M150 -200V800M280 -200V800M410 -200V800M540 -200V800M670 -200V800M800 -200V800'/%3E%3C/g%3E%3Cpath d='M-200 335H1000M475 -200V800' stroke-opacity='.28' stroke-width='18'/%3E%3C/g%3E%3Cg fill='%2305161e' fill-opacity='.35'%3E%3Crect x='300' y='180' width='90' height='70' rx='8'/%3E%3Crect x='520' y='360' width='80' height='60' rx='8'/%3E%3C/g%3E%3Cg%3E%3Ccircle cx='470' cy='300' r='26' fill='%23FF6B4A' fill-opacity='.22'/%3E%3Ccircle cx='470' cy='300' r='10' fill='%23FF6B4A' stroke='%23fff' stroke-width='3'/%3E%3Ccircle cx='600' cy='210' r='8' fill='%23E8512F' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='360' cy='380' r='8' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='650' cy='420' r='8' fill='%236C4BD8' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='280' cy='230' r='8' fill='%231E9E5A' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='540' cy='120' r='7' fill='%230E7C9C' stroke='%23fff' stroke-width='2'/%3E%3C/g%3E%3C/svg%3E") center/cover no-repeat}
+.hero-3d.h3d-ready::before{opacity:0}
+.h3d-lite{position:relative;z-index:3;display:none}
+body.lite .h3d-lite{display:block}
+body.lite .hero-hint{display:none}
+.h3d-lite{position:absolute;right:max(28px,calc((100vw - 1240px)/2 + 20px));top:50%;transform:translateY(-50%);width:min(380px,34vw);padding:18px;border-radius:22px;background:rgba(7,32,43,.72);border:1px solid rgba(127,240,228,.22);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);color:#fff;box-shadow:0 24px 60px rgba(0,0,0,.3)}
+.h3d-lite h2{color:#fff;font-size:16px;letter-spacing:-.01em;margin-bottom:10px}
+.h3d-lite h2 i{color:var(--coral);margin-right:6px}
+.h3d-lite ol{list-style:none;display:grid;gap:6px}
+.h3d-lite li a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.06);min-width:0}
+.h3d-lite li a:hover{background:rgba(255,255,255,.12)}
+.h3d-lite .dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,.85)}
+.h3d-lite b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.h3d-lite small{display:block;color:rgba(255,255,255,.72);font-size:12px}
+.h3d-lite .more{display:inline-flex;gap:6px;align-items:center;margin-top:10px;color:var(--aqua2);font-weight:600;font-size:14px}
+.h3d-lite p{color:rgba(255,255,255,.78);font-size:14px;line-height:1.5}
 @media (max-width:979px){
   .hero{min-height:auto}
   .hero::after{background:linear-gradient(180deg,rgba(5,22,30,.15) 0%,rgba(5,22,30,0) 40%,rgba(5,22,30,.75) 100%)}
   .hero-in{min-height:auto;padding:118px 0 8px;max-width:none}
   .hero-3d{position:relative;inset:auto;height:430px;margin-top:-8px}
+  body.lite .hero-3d{height:auto;min-height:430px;padding:18px 20px 60px;display:flex;flex-direction:column;justify-content:center}
+  .h3d-lite{position:relative;right:auto;top:auto;transform:none;width:100%;max-width:560px;margin:0 auto}
   .hero-hint{display:none}
   .scroll-cue{display:none}
   .hs-loc{display:none}
@@ -166,7 +185,9 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
   .hsearch{padding:6px;border-radius:18px}
   .hs-go{padding:13px 16px}
   .hero-3d{height:380px}
+  body.lite .hero-3d{min-height:380px}
 }
+@media (max-width:699px){.h3d-label b{max-width:190px;overflow:hidden;text-overflow:ellipsis}}
 /* ================= LAYOUT ================= */
 .sheet-top{position:relative;z-index:4;background:#fff;border-radius:36px 36px 0 0;margin-top:-42px;padding-top:12px}
 .sec{margin:64px 0}
@@ -203,7 +224,10 @@ body.no-webgl .hero-3d{background:url(assets/img/recepcao.webp) center/cover;opa
 .rm-stat span{display:flex;align-items:center;justify-content:center;gap:5px;font-size:11.5px;color:var(--muted)}
 .rm-stat i{width:8px;height:8px;border-radius:50%}
 .rm-list{list-style:none;display:grid;gap:8px}
-.rm-list li{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:14px;color:var(--muted)}
+.rm-list li{padding:10px 12px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:14px;color:var(--muted)}
+.rm-list li:has(>a){padding:0}
+.rm-list li>a{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:14px;transition:background .2s}
+.rm-list li>a:hover{background:var(--bg2)}
 .rm-list .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;box-shadow:0 0 0 3px #fff,0 0 0 4px rgba(15,31,40,.08)}
 .rm-list b{display:block;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rm-list small{color:var(--muted);font-size:12.5px}
@@ -279,6 +303,7 @@ summary::-webkit-details-marker{display:none}
 summary::after{content:"+";flex-shrink:0;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--bg2);color:var(--primary);font-size:18px;line-height:1;transition:transform .3s}
 details[open] summary::after{transform:rotate(45deg)}
 details p{color:var(--muted);margin-top:10px;line-height:1.65;font-size:15.5px;max-width:760px}
+.faq-all{display:flex;align-items:center;gap:8px;margin:18px auto 0;padding:12px 18px;border-radius:12px;background:var(--bg2);color:var(--primary-d);font-weight:700;font-size:15px}
 /* footer */
 footer{background:var(--navy);color:rgba(255,255,255,.65);padding:56px 0 30px;margin-top:80px;font-size:14px}
 .f-grid{display:grid;grid-template-columns:1.6fr 1fr 1fr 1fr;gap:32px}
@@ -345,7 +370,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
 /* lista das clínicas reais (maior) */
 .rm-list{max-height:none}
-.rm-list a{display:contents}
+.rm-pop a{display:inline-block;margin-top:6px;color:var(--primary);font-weight:700;font-size:13px}
 .rm-more{display:flex;gap:10px;flex-wrap:wrap}
 .rm-more .btn{padding:12px 18px;font-size:14px}
 
@@ -414,6 +439,39 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 .wa-fab:hover{background:#178f47}
 @media (max-width:860px){.wa-fab{right:12px;bottom:calc(84px + env(safe-area-inset-bottom));padding:12px;font-size:0;gap:0}.wa-fab span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}body:has(.lgpd) .wa-fab{display:none}}
 
+/* celular: página mais curta */
+@media (max-width:699px){
+  .sec{margin:40px 0}
+  .sec-h{margin-bottom:16px}
+  .sec-h p{font-size:14.5px}
+  .rm-map{min-height:280px}
+  .rm-list li:nth-child(n+6){display:none}
+  .how{padding:30px 18px;border-radius:26px}
+  .how::before{display:none}
+  .how h2{font-size:24px;margin:8px 0 6px}
+  .how .sub{display:none}
+  .how-cta .btn-glass{display:none}
+  .how-steps{gap:0;margin:18px 0 20px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(127,240,228,.18)}
+  .how-steps li{display:grid;grid-template-columns:34px 1fr;column-gap:12px;padding:14px;border:0;border-radius:0;background:none}
+  .how-steps li+li{border-top:1px solid rgba(127,240,228,.14)}
+  .how-steps .n{width:34px;height:34px;border-radius:11px;font-size:15px;margin:0;grid-row:span 2}
+  .how-steps b{font-size:16px}
+  .how-steps p{font-size:13.5px;margin-top:3px;line-height:1.5}
+  .cities{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 -20px;padding:2px 20px 8px;gap:10px}
+  .cities::-webkit-scrollbar{display:none}
+  .city{flex:0 0 210px;scroll-snap-align:start}
+  .wl{padding:30px 20px}
+  .wl-ic{display:none}
+  .wl p{font-size:15.5px}
+  .partner{min-height:0}
+  .partner .p-in{padding:110px 22px 24px}
+  .p-perks{margin-top:16px}
+  .p-cta{margin-top:20px}
+  details{padding:16px 0}
+  summary{font-size:16px}
+  footer{margin-top:48px;padding-top:40px}
+}
+
 /* rodapé */
 .f-grid a,.f-grid button{font-size:14px}
 .bnav a{color:var(--muted)}
@@ -461,10 +519,10 @@ footer .logo{--hc:#fff;margin-bottom:12px}
           <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
         </a>
         <div class="hchips" id="hchips"></div>
-        <button class="install-hero install-auto hide" type="button" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt=""></span><span><b>Instale o app IMED</b><small>Abre em tela cheia, como um aplicativo</small></span><i class="fa-solid fa-download" aria-hidden="true"></i></button>
+        <button class="install-hero install-auto hide" type="button" data-install><span class="ic"><img src="assets/icons/icon-192.png" alt="" width="40" height="40" loading="lazy"></span><span><b>Instale o app IMED</b><small>Abre em tela cheia, como um aplicativo</small></span><i class="fa-solid fa-download" aria-hidden="true"></i></button>
       </div>
     </div>
-    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa 3D ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div></div>
+    <div class="hero-3d" id="hero3d" role="region" aria-label="Mapa ilustrativo com estabelecimentos de saúde reais perto do ponto escolhido"><div class="h3d-labels"></div><div class="h3d-lite" id="heroLite" aria-live="polite"></div></div>
     <div class="hero-hint"><i class="fa-solid fa-computer-mouse" aria-hidden="true"></i> Arraste para girar · clique num local</div>
     <span class="scroll-cue" aria-hidden="true"></span>
   </section>
@@ -498,7 +556,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
           <ol class="how-steps">
             <li><span class="n">1</span><b>Busque no mapa</b><p>Use sua localização, um CEP ou uma cidade e escolha o exame. Aparecem clínicas, laboratórios e hospitais perto de você.</p></li>
             <li><span class="n">2</span><b>Veja os dados oficiais</b><p>Endereço, telefone e serviços vêm do CNES, do Ministério da Saúde. Preço só aparece quando a própria clínica informou.</p></li>
-            <li><span class="n">3</span><b>Peça ao IMED</b><p>Diga o dia e o período que prefere. O IMED fala com a clínica, confirma com você e você acompanha em Agendados.</p></li>
+            <li><span class="n">3</span><b>Agende</b><p>Escolha um horário livre quando a clínica parceira tem agenda no IMED. Nos outros locais, diga o dia e o período: o IMED fala com o local e confirma com você. Acompanhe em Agendados.</p></li>
           </ol>
           <div class="how-cta"><a class="btn btn-coral" href="perto.html?usar=localizacao">Começar pela minha localização <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></a><a class="btn btn-glass" href="cidades/">Escolher uma cidade</a></div>
         </div>
@@ -535,7 +593,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
 
       <section class="sec rv" id="clinicas" aria-labelledby="partnerTitle">
         <div class="partner">
-          <img src="assets/img/fachada.webp" alt="" loading="lazy">
+          <img src="assets/img/fachada.webp" srcset="assets/img/fachada-sm.webp 640w, assets/img/fachada.webp 1264w" sizes="(max-width:760px) 100vw, 1240px" alt="" width="1264" height="848" loading="lazy" decoding="async">
           <div class="p-in">
             <span class="kicker light">Para clínicas</span>
             <h2 id="partnerTitle">Sua clínica já está no IMED? Assuma o cadastro</h2>
@@ -551,11 +609,14 @@ footer .logo{--hc:#fff;margin-bottom:12px}
         <div class="faq">
           <details><summary>De onde vêm as clínicas que aparecem no IMED?</summary><p>Do CNES, o Cadastro Nacional de Estabelecimentos de Saúde do Ministério da Saúde (DataSUS). Dele vêm o nome, o tipo, o endereço, o telefone e os serviços. O cadastro pode estar desatualizado: na dúvida, confirme por telefone antes de ir.</p></details>
           <details><summary>O IMED mostra preços?</summary><p>Só das clínicas parceiras que informaram o preço no painel do IMED. Quando não há preço informado, mostramos “sob consulta”: o valor é confirmado com a clínica. O IMED não estima nem inventa preços.</p></details>
-          <details><summary>Como funciona o pedido de agendamento?</summary><p>Você escolhe o local, o exame, o dia e o período que prefere e envia o pedido. Ele ainda não é um horário marcado: o IMED fala com a clínica e entra em contato com você para confirmar. Você acompanha a situação em <a class="link" href="#agenda" data-go="agenda">Agendados</a>.</p></details>
+          <details><summary>Como funciona o pedido de agendamento?</summary><p>Na página do local, você escolhe o exame. Se a clínica parceira tem agenda no IMED, você escolhe um horário livre e ele já fica confirmado. Nos outros locais, você diz o dia e o período que prefere: o IMED fala com o local e entra em contato com você para confirmar. Você acompanha a situação em <a class="link" href="#agenda" data-go="agenda">Agendados</a>.</p></details>
           <details><summary>As avaliações são de verdade?</summary><p>Sim. Só pode avaliar quem fez um pedido pelo IMED e teve o atendimento concluído, uma vez por pedido. Sem avaliações, não mostramos nota.</p></details>
-          <details><summary>Tenho uma clínica. Como mudo os dados ou recebo pedidos?</summary><p>Peça o cadastro em <a class="link" href="reivindicar.html">Sua clínica no IMED</a>. Depois que o IMED conferir que você é responsável pela clínica, você entra na <a class="link" href="painel.html">Área da clínica</a> para informar exames e preços e responder aos pedidos.</p></details>
           <details><summary>O que o IMED faz com a minha localização e os meus dados?</summary><p>A localização só é usada com sua permissão, para buscar lugares perto de você, e vai arredondada (cerca de 100 metros); não guardamos sua posição. Os dados do pedido servem só para o agendamento, seguindo a LGPD. Veja a <a class="link" href="privacidade.html">política de privacidade</a>.</p></details>
+          <div id="faqMore" hidden>
+          <details><summary>Tenho uma clínica. Como mudo os dados ou recebo pedidos?</summary><p>Peça o cadastro em <a class="link" href="reivindicar.html">Sua clínica no IMED</a>. Depois que o IMED conferir que você é responsável pela clínica, você entra na <a class="link" href="painel.html">Área da clínica</a> para informar exames e preços e responder aos pedidos.</p></details>
           <details><summary>Já existe teleconsulta?</summary><p>Ainda não. A teleconsulta está em preparação. <a class="link" href="#lista">Entre na lista de espera</a> para receber um aviso quando começar.</p></details>
+          </div>
+          <button class="faq-all" id="faqAll" type="button" aria-expanded="false" aria-controls="faqMore">Ver todas as perguntas <i class="fa-solid fa-chevron-down" aria-hidden="true"></i></button>
         </div>
       </section>
     </main>
@@ -575,7 +636,7 @@ footer .logo{--hc:#fff;margin-bottom:12px}
       <div><a class="logo" href="./" data-go="inicio"><span class="logo-mk"><i class="fa-solid fa-plus" aria-hidden="true"></i></span>IMED</a><p style="max-width:340px;line-height:1.6">Clínicas, laboratórios e hospitais reais perto de você, com dados do cadastro oficial (CNES), e pedido de agendamento pelo IMED.</p></div>
       <div><h5>Pacientes</h5><a href="perto.html">Clínicas perto de mim</a><a href="cidades/">Clínicas por cidade</a><a href="exames/">Guias de exames</a><a href="#agenda" data-go="agenda">Agendados</a><a href="conta.html">Minha conta</a><a href="#lista">Teleconsulta (em breve)</a><button type="button" data-install>Instalar o app</button></div>
       <div><h5>Clínicas</h5><a href="reivindicar.html">Sua clínica no IMED</a><a href="painel.html">Área da clínica</a></div>
-      <div><h5>Contato</h5><a href="mailto:contato@imed.com.br">contato@imed.com.br</a><a href="privacidade.html">Privacidade</a></div>
+      <div><h5>IMED</h5><a href="sobre.html">Quem somos</a><a href="termos.html">Termos de uso</a><a href="privacidade.html">Privacidade</a><a href="mailto:contato@imed.com.br">contato@imed.com.br</a></div>
     </div>
     <div class="f-bottom"><span>© 2026 IMED · Criado por Rafael Pereira Barreto Silva</span><span><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Dados dos estabelecimentos: CNES/DataSUS. Fotos ilustrativas geradas por IA.</span></div>
   </div>

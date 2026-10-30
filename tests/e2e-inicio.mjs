@@ -61,7 +61,8 @@ const APPTS = [
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
 const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST, GET, OPTIONS' } });
 
-async function newPage(browser, { mobile = false, cities, cnes, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce' } = {}) {
+// device: { memory, cores, saveData } simula o aparelho (navigator.deviceMemory, hardwareConcurrency, connection.saveData).
+async function newPage(browser, { mobile = false, cities, cnes, partners, status, waitlist, whatsapp = '', appts, motion = 'reduce', device = null } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
@@ -107,11 +108,20 @@ async function newPage(browser, { mobile = false, cities, cnes, partners, status
     if (!sessionStorage.getItem('fav')) { localStorage.setItem('imed_fav', '["dcp"]'); sessionStorage.setItem('fav', '1'); }
     if (list && !sessionStorage.getItem('seeded')) { localStorage.setItem('imed_appts', JSON.stringify(list)); sessionStorage.setItem('seeded', '1'); }
   }, { list: appts ?? null });
+  if (device) {
+    await context.addInitScript((d) => {
+      if (d.memory != null) Object.defineProperty(navigator, 'deviceMemory', { get: () => d.memory, configurable: true });
+      if (d.cores != null) Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => d.cores, configurable: true });
+      if (d.saveData) Object.defineProperty(navigator, 'connection', { get: () => ({ saveData: true, effectiveType: '4g' }), configurable: true });
+    }, device);
+  }
   const page = await context.newPage();
+  const requests = [];
+  page.on('request', (r) => requests.push(r.url()));
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
-  return { context, page, log, errors };
+  return { context, page, log, errors, requests };
 }
 
 const shot = async (page, name, full = false) => { if (SHOTS) { await page.waitForTimeout(500); await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: full }); } };
@@ -162,6 +172,13 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   const list = await page.$$eval('#realList li b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(list, ['Clínica Parceira Paulista', 'Hospital Santa Exemplo', 'Laboratório Análise Paulista', 'Centro de Imagem <b>Teste</b>'], 'nome do CNES mostrado como texto, parceiros juntos por distância');
   assert.match(await page.textContent('#realList li:first-child'), /Parceiro do IMED/);
+  const links = await page.$$eval('#realList li > a', (els) => els.map((e) => e.getAttribute('href')));
+  assert.deepEqual(links, [`local.html?id=${PARTNER_ID}`, 'local.html?cnes=2077485', 'local.html?cnes=6543210', 'local.html?cnes=7000001'], 'cada item leva à página do local');
+  // FAQ: 5 perguntas principais e "Ver todas"
+  assert.equal(await page.locator('.faq details:visible').count(), 5, 'FAQ com 5 perguntas visíveis');
+  await page.click('#faqAll');
+  assert.equal(await page.locator('.faq details:visible').count(), 7, 'Ver todas mostra as outras');
+  assert.equal(await page.locator('#faqAll').count(), 0);
   const stats = await page.$$eval('#realStats .rm-stat b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(stats, ['2', '1', '0', '1'], 'contagem por tipo inclui o parceiro (imagem)');
   const r = log.cnes.find((a) => a.p_radius_m === 2000);
@@ -190,7 +207,7 @@ await scenario('sem dado do banco: pílula com texto neutro, sem número e sem e
 });
 
 await scenario('mapa 3D: estabelecimentos reais perto, com tipo e distância, e painel do local', async () => {
-  const { page, log, errors, context } = await newPage(browser);
+  const { page, log, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 } });
   await page.goto(BASE);
   const supported = await page.evaluate(() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } });
   const r3 = await page.waitForFunction(() => document.querySelector('#hero3d').classList.contains('h3d-ready') || document.body.classList.contains('no-webgl'), null, { timeout: 15000 }).then(() => true);
@@ -211,8 +228,9 @@ await scenario('mapa 3D: estabelecimentos reais perto, com tipo e distância, e 
     await page.waitForSelector('.ov.open');
     const sheet = await page.textContent('#sheet');
     assert.match(sheet, /CNES/);
-    assert.ok(!/Pedir agendamento$/m.test(sheet), 'não promete pedido direto do local');
-    assert.equal(await page.getAttribute('#sheet .btn-coral', 'href'), 'perto.html', 'bairro escolhido: abre a busca sem pedir GPS');
+    assert.equal(await page.getAttribute('#sheet .btn-coral', 'href'), 'local.html?cnes=2077485#agendar', 'Pedir agendamento leva ao formulário da página do local');
+    assert.match(await page.textContent('#sheet .btn-coral'), /Pedir agendamento/);
+    assert.equal(await page.locator('#sheet a[href="local.html?cnes=2077485"]').count(), 1, 'Ver página do local');
     assert.equal(await page.locator('#sheet a[href="reivindicar.html?cnes=2077485"]').count(), 1, 'É sua clínica?');
     await page.keyboard.press('Escape');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
@@ -221,12 +239,82 @@ await scenario('mapa 3D: estabelecimentos reais perto, com tipo e distância, e 
     const ps = await page.textContent('#sheet');
     assert.match(ps, /Parceiro do IMED/);
     assert.match(ps, /Ressonância/);
+    assert.equal(await page.getAttribute('#sheet .btn-coral', 'href'), `local.html?id=${PARTNER_ID}#agendar`, 'parceiro pelo id');
     assert.ok(!/R\$/.test(ps));
     assert.equal(await page.locator('#sheet a[href^="reivindicar.html"]').count(), 0, 'parceiro já tem dono');
     await page.keyboard.press('Escape');
   } else {
     console.log('  (sem WebGL neste navegador: confere só que a página não quebrou)');
   }
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo leve com a lista real', async () => {
+  const { page, errors, context, requests } = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 1, cores: 8 } });
+  await page.goto(BASE);
+  await page.waitForSelector('#heroLite li a');
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => document.body.dataset.hero), 'leve');
+  assert.ok(!requests.some((u) => /three\.module\.min\.js|hero3d\.js/.test(u)), 'three.js e hero3d.js não são baixados');
+  assert.equal(await page.locator('#hero3d canvas').count(), 0);
+  assert.ok(await page.locator('#heroLite').isVisible());
+  const items = await page.$$eval('#heroLite li a', (els) => els.map((e) => [e.getAttribute('href'), e.textContent]));
+  assert.ok(items.length >= 1 && items.length <= 4, `até 4 locais no celular (${items.length})`);
+  assert.ok(items.some(([h, t]) => h === 'local.html?cnes=2077485' && /Hospital Santa Exemplo/.test(t) && /420 m/.test(t)), JSON.stringify(items));
+  assert.ok(items.some(([h]) => h === `local.html?id=${PARTNER_ID}`), 'parceiro pelo id');
+  assert.ok(items.some(([, t]) => t.includes('<b>Teste</b>')), 'nome escapado');
+  assert.ok(!/R\$|★/.test(await page.textContent('#heroLite')));
+  const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#hero3d'), '::before').backgroundImage);
+  assert.match(bg, /svg/, 'fundo em SVG, sem foto');
+  assert.ok(!requests.some((u) => /recepcao\.webp/.test(u)), 'sem foto de fundo');
+  assert.ok(!requests.some((u) => /geo-core\.js/.test(u)), 'geo-core.js só ao abrir Agendados');
+  assert.ok(!requests.some((u) => /leaflet\.js/.test(u)), 'Leaflet só quando o mapa se aproxima da tela');
+  await shot(page, 'inicio-celular-leve');
+  // economia de dados também usa o modo leve
+  const b = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8, saveData: true } });
+  await b.page.goto(BASE);
+  await b.page.waitForSelector('#heroLite li a');
+  assert.ok(!b.requests.some((u) => /three\.module/.test(u)));
+  await b.context.close();
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('aparelho normal: baixa o 3D só depois do H1 aparecer', async () => {
+  const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 } });
+  await page.goto(BASE);
+  await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /three\.module\.min\.js/.test(e.name)), null, { timeout: 15000 });
+  const t = await page.evaluate(() => {
+    const fcp = performance.getEntriesByType('paint').find((e) => e.name === 'first-contentful-paint');
+    const three = performance.getEntriesByType('resource').find((e) => /three\.module\.min\.js/.test(e.name));
+    return { fcp: fcp ? fcp.startTime : null, three: three.startTime, preload: !!document.querySelector('link[href*="three.module"]') };
+  });
+  assert.equal(t.preload, false, 'sem modulepreload do three.js');
+  assert.ok(t.fcp != null && t.three > t.fcp, `three.js (${Math.round(t.three)} ms) depois da primeira pintura com o H1 (${Math.round(t.fcp)} ms)`);
+  console.log(`  primeira pintura ${Math.round(t.fcp)} ms; three.js pedido em ${Math.round(t.three)} ms`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular com 3D: no máximo 2 rótulos, dentro da tela e sem sobreposição', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8 } });
+  await page.goto(BASE);
+  await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 20000 });
+  if (await page.evaluate(() => document.body.dataset.hero) !== '3d') { console.log('  (sem WebGL neste navegador: confere só o modo leve)'); await context.close(); return; }
+  await page.waitForFunction(() => document.querySelectorAll('.h3d-label').length >= 3, null, { timeout: 15000 });
+  await page.waitForTimeout(2500);
+  for (let i = 0; i < 4; i++) {
+    const boxes = await page.$$eval('.h3d-label.on', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; }));
+    assert.ok(boxes.length <= 2, `no máximo 2 rótulos (${boxes.length})`);
+    const W = await page.evaluate(() => document.querySelector('#hero3d').clientWidth);
+    boxes.forEach((b) => assert.ok(b.l >= 0 && b.r <= W, `rótulo dentro da tela (${Math.round(b.l)}..${Math.round(b.r)} de ${W})`));
+    if (boxes.length === 2) { const [a, b] = boxes; assert.ok(a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t, 'rótulos não se sobrepõem'); }
+    await page.waitForTimeout(500);
+  }
+  const ratio = await page.evaluate(() => { const c = document.querySelector('#hero3d canvas'); return c.width / c.clientWidth; });
+  assert.ok(ratio <= 1.5 + 1e-6, `pixel ratio no máximo 1,5 (${ratio})`);
+  await shot(page, 'inicio-celular-3d');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -349,12 +437,17 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   await page.waitForSelector('#realList li b');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
-  const wide = await page.evaluate(() => [...document.querySelectorAll('main *, header *, footer *')].filter((el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.right > innerWidth + 1 && st.position !== 'fixed' && !el.closest('.cats,.hchips,.h3d-labels,.leaflet-container'); }).map((el) => el.className || el.tagName).slice(0, 5));
+  const wide = await page.evaluate(() => [...document.querySelectorAll('main *, header *, footer *')].filter((el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.right > innerWidth + 1 && st.position !== 'fixed' && !el.closest('.cats,.cities,.hchips,.h3d-labels,.leaflet-container'); }).map((el) => el.className || el.tagName).slice(0, 5));
   assert.deepEqual(wide, [], 'nenhum elemento passa da largura da tela');
   const items = await page.$$eval('.bnav > *', (els) => els.map((e) => [e.textContent.trim(), e.getAttribute('href'), e.getBoundingClientRect().height]));
   assert.deepEqual(items.map((i) => i[0]), ['Início', 'Perto de mim', 'Agendados', 'Conta']);
   assert.equal(items[3][1], 'conta.html');
   assert.ok(items.every((i) => i[2] < 60), 'rótulos numa linha só');
+  // Página mais curta: antes destas mudanças media 7.295 px (390x844, 4 cidades, modo leve).
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  console.log(`  altura da página no celular: ${height} px (antes: 7295 px)`);
+  assert.ok(height < 6800, `página mais curta no celular (${height} px)`);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#cities')).overflowX), 'auto', 'cidades em carrossel');
   if (SHOTS) { await page.screenshot({ path: join(SHOTS, 'inicio-celular-inteira.png'), fullPage: true }); }
   await page.click('.bnav [data-go="agenda"]');
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
