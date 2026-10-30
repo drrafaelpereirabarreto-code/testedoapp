@@ -1,0 +1,215 @@
+# Testes automáticos do IMED no GitHub (aba "Actions" do repositório).
+#
+# Quando roda: a cada envio (push) para a main, em cada pull request e à mão
+# (Actions → Testes → Run workflow).
+# O que roda, um depois do outro, sem parar no primeiro erro:
+#   1. testes de unidade: tests/*.test.mjs
+#   2. testes das funções do servidor: supabase/functions/*/lib.test.ts
+#   3. cada teste de ponta a ponta tests/e2e-*.mjs, num Chromium de verdade
+#      (um arquivo novo, como tests/e2e-tele.mjs, entra sozinho).
+# No fim mostra quais falharam (no registro e no resumo da execução); se algum falhou, a execução fica vermelha.
+# Os testes de ponta a ponta simulam o banco e a internet: nada aqui acessa o Supabase de verdade.
+# Este arquivo não publica nada e não cria arquivos no repositório: o GitHub Pages continua publicando a raiz da main.
+name: Testes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Só leitura: os testes não escrevem nada no repositório.
+permissions:
+  contents: read
+
+# Um envio novo na mesma branch (ou no mesmo pull request) cancela a execução antiga que ainda estiver rodando.
+concurrency:
+  group: testes-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # A mesma versão usada para escrever os testes. Trocou aqui, o cache do navegador troca junto.
+  PLAYWRIGHT_VERSION: '1.63.0'
+
+jobs:
+  testes:
+    name: Unidade e ponta a ponta
+    # Ubuntu 24.04 fixo (o mesmo sistema da máquina onde os testes foram escritos); o "ubuntu-latest" muda sozinho.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar o Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # Sem package.json no repositório: o Playwright vai só para ./node_modules desta máquina temporária.
+      # --prefix . garante a pasta do repositório (sem ele, o npm procuraria um package.json nas pastas de cima).
+      - name: Instalar o Playwright
+        run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+
+      # Cache do navegador, pela versão do Playwright. Recuperar e guardar ficam separados para guardar
+      # logo depois de instalar, mesmo que algum teste falhe depois.
+      - name: Recuperar o navegador do cache
+        id: cache-navegador
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      # Com o cache, o download do Chromium é pulado; as bibliotecas do sistema (apt) são instaladas sempre.
+      - name: Instalar o Chromium e as bibliotecas do sistema
+        run: npx playwright install --with-deps chromium
+
+      - name: Guardar o navegador no cache
+        if: steps.cache-navegador.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.cache-navegador.outputs.cache-primary-key }}
+
+      # O site usa a fonte Inter (do Google Fonts, que os testes bloqueiam). A máquina onde os testes foram
+      # escritos tem a Inter instalada e preferida no lugar das fontes do sistema; sem ela o texto sai numa
+      # fonte mais larga e as medidas de tela que os testes conferem mudam (4 cenários falham). Aqui fica igual.
+      - name: Instalar a fonte Inter
+        run: |
+          # O passo anterior já atualizou a lista do apt; se ainda assim falhar, atualiza e tenta de novo.
+          sudo apt-get install -y --no-install-recommends fonts-inter \
+            || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends fonts-inter; }
+          sudo tee /etc/fonts/conf.d/56-prefer-inter.conf > /dev/null <<'XML'
+          <?xml version="1.0"?>
+          <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+          <fontconfig>
+            <alias><family>system-ui</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>ui-sans-serif</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>-apple-system</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>BlinkMacSystemFont</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>SF Pro Text</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>SF Pro Display</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>Segoe UI</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>Helvetica Neue</family><prefer><family>Inter</family></prefer></alias>
+            <alias><family>sans-serif</family><prefer><family>Inter</family></prefer></alias>
+          </fontconfig>
+          XML
+          fc-cache -f > /dev/null
+          echo "Fonte padrão agora: $(fc-match sans-serif)"
+
+      - name: Rodar os testes
+        id: testes
+        env:
+          # Capturas de tela: só quando um teste de ponta a ponta falha (ele roda de novo, com capturas).
+          CAPTURAS: ${{ runner.temp }}/capturas
+          # Tempo máximo de cada comando de teste: cada e2e e cada grupo (unidade, funções). Um teste travado
+          # não segura os outros nem gasta os 30 minutos do job sem deixar o resumo.
+          LIMITE_POR_ARQUIVO: 10m
+        run: |
+          # Sem isto, o código de "teste ... | tee" seria o do tee (sempre 0) e um teste quebrado passaria verde.
+          # O "shell: bash" lá em cima já liga, mas fica aqui para não depender dele.
+          set -o pipefail
+          shopt -s nullglob
+          mkdir -p "$CAPTURAS"
+          echo "Node $(node --version) · Playwright $(node -p "require('playwright/package.json').version")"
+
+          nomes=(); resultados=(); tempos=(); falharam=()
+
+          # teste NOME COMANDO...: roda o comando numa seção que abre e fecha no registro e anota o resultado.
+          # Não para no primeiro erro; deixa o código de saída em $codigo.
+          teste() {
+            local nome=$1; shift
+            local inicio=$SECONDS resultado saida linha
+            saida=$(mktemp)
+            echo "::group::$nome"
+            codigo=0
+            "$@" 2>&1 | tee "$saida" || codigo=$?
+            echo "::endgroup::"
+            if [ "$codigo" -eq 0 ]; then
+              resultado="ok"
+            else
+              if [ "$codigo" -eq 124 ] || [ "$codigo" -eq 137 ]; then
+                resultado="FALHOU (passou de $LIMITE_POR_ARQUIVO)"
+              else
+                resultado="FALHOU (código $codigo)"
+              fi
+              falharam+=("$nome")
+              echo "::error title=Teste falhou::$nome: $resultado"
+              # Os cenários que falharam aparecem também no topo da página da execução.
+              grep -E '^\s*(FALHOU|✖)' "$saida" | grep -v -F 'failing tests:' | awk '!visto[$0]++' | head -n 10 | while IFS= read -r linha; do
+                echo "::error title=Cenário que falhou::$nome → ${linha//%/%25}"
+              done || true
+            fi
+            rm -f "$saida"
+            nomes+=("$nome"); resultados+=("$resultado"); tempos+=("$(( SECONDS - inicio ))")
+          }
+
+          unidade=(tests/*.test.mjs)
+          if [ ${#unidade[@]} -gt 0 ]; then
+            teste "tests/*.test.mjs (unidade)" timeout -k 30s "$LIMITE_POR_ARQUIVO" node --test --test-reporter=spec "${unidade[@]}"
+          fi
+
+          funcoes=(supabase/functions/*/lib.test.ts)
+          if [ ${#funcoes[@]} -gt 0 ]; then
+            teste "supabase/functions/*/lib.test.ts (funções do servidor)" timeout -k 30s "$LIMITE_POR_ARQUIVO" node --experimental-strip-types --test --test-reporter=spec "${funcoes[@]}"
+          fi
+
+          for arquivo in tests/e2e-*.mjs; do
+            teste "$arquivo" timeout -k 30s "$LIMITE_POR_ARQUIVO" node "$arquivo"
+            # Falhou (sem ser por tempo) e ainda há tempo: roda de novo salvando capturas de tela,
+            # que mostram a página e dizem se a falha se repete.
+            if [ "$codigo" -ne 0 ] && [ "$codigo" -ne 124 ] && [ "$codigo" -ne 137 ] && [ "$SECONDS" -lt 900 ]; then
+              pasta="$CAPTURAS/$(basename "$arquivo" .mjs)"
+              mkdir -p "$pasta"
+              teste "$arquivo (2ª vez, com capturas)" env SHOTS="$pasta" timeout -k 30s "$LIMITE_POR_ARQUIVO" node "$arquivo"
+            fi
+          done
+
+          if [ ${#nomes[@]} -eq 0 ]; then
+            echo "::error title=Nenhum teste::nenhum arquivo de teste encontrado"
+            exit 1
+          fi
+
+          echo
+          echo "=============== Resumo ==============="
+          for i in "${!nomes[@]}"; do
+            printf '%-30s %5s s   %s\n' "${resultados[$i]}" "${tempos[$i]}" "${nomes[$i]}"
+          done
+          {
+            echo "### Resultado dos testes"
+            echo
+            echo "| Teste | Resultado | Tempo |"
+            echo "| --- | --- | --- |"
+            for i in "${!nomes[@]}"; do
+              echo "| \`${nomes[$i]}\` | ${resultados[$i]} | ${tempos[$i]} s |"
+            done
+            if [ -n "$(ls -A "$CAPTURAS" 2>/dev/null)" ]; then
+              echo
+              echo "O teste de ponta a ponta que falhou rodou de novo, com capturas de tela: estão no artifact"
+              echo "**capturas-de-tela**, no fim desta página. Se passou na 2ª vez, a falha acontece só às vezes (instável)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ ${#falharam[@]} -gt 0 ]; then
+            echo
+            echo "Falharam (${#falharam[@]}):"
+            printf '  - %s\n' "${falharam[@]}"
+            exit 1
+          fi
+          echo
+          echo "Todos os testes passaram."
+
+      - name: Guardar as capturas de tela
+        if: failure() && steps.testes.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: capturas-de-tela
+          path: ${{ runner.temp }}/capturas
+          if-no-files-found: ignore
+          retention-days: 14
