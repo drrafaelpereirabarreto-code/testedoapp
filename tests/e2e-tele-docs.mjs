@@ -53,12 +53,13 @@ const addDays = (d, n) => { const [y, m, dd] = d.split('-').map(Number); return 
 const ageOf = (birth) => { const [by, bm, bd] = birth.split('-').map(Number); const [ty, tm, td] = daySP(Date.now()).split('-').map(Number); return ty - by - (tm < bm || (tm === bm && td < bd) ? 1 : 0); };
 const DOCTOR_FNS = new Set(['tele_doctor_me', 'tele_set_available', 'tele_queue', 'tele_doctor_status', 'tele_offer', 'tele_mark_started', 'tele_doctor_messages', 'tele_doctor_send',
   'tele_set_exams', 'tele_end', 'tele_history', 'tele_admin_doctors', 'tele_doctor_profile', 'tele_doc_patient_data', 'tele_doc_create', 'tele_doc_cancel', 'tele_doc_list',
-  'tele_doc_pending', 'tele_doc_upload', 'tele_doc_pdf']);
+  'tele_doc_pending', 'tele_doc_upload', 'tele_doc_pdf', 'tele_painel_medico']);
 const KINDS = ['exames', 'receita', 'atestado', 'comparecimento', 'encaminhamento', 'relatorio', 'orientacoes'];
 const ALPHA = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 function makeDb() {
-  const db = { doctors: new Map(), consults: new Map(), docs: new Map(), files: new Map(), messages: [], calls: [], accessLog: [], t: 0, delay: {}, before: {} };
+  // painel: o banco já tem tele_painel_medico (senão, 404 como o PostgREST, e a área do médico segue sem o painel).
+  const db = { doctors: new Map(), consults: new Map(), docs: new Map(), files: new Map(), messages: [], calls: [], accessLog: [], t: 0, delay: {}, before: {}, painel: false };
   db.addDoctor = (d) => { const row = { id: randomUUID(), rqe: null, specialty: null, phone: null, status: 'approved', checked_at: iso(Date.now() - DAY), available_until: null, prof_address: null, prof_contact: null, created_at: iso(Date.now() - DAY), ...d }; db.doctors.set(row.id, row); return row; };
   db.addConsult = (c) => {
     const row = { id: randomUUID(), token: sha(randomUUID()), status: 'in_call', patient_name: 'Ana Maria da Silva', patient_birthdate: '1980-05-17', patient_phone: '11987654321', for_other: false,
@@ -379,6 +380,24 @@ const RPC = {
         signed: r.signed, signed_at: r.signed_at, file_size: r.file_size, file_sha256: r.file_sha256, doctor_snapshot: r.doctor_snapshot, patient_snapshot: r.patient_snapshot };
     });
   },
+  // Painel "Agora na plataforma" (supabase/migrations/20261030191354_painel_medico.sql): documentos para assinar = os
+  // de "Falta assinar" ainda no prazo de 7 dias (o vencido só pode ser cancelado). Só contagens.
+  tele_painel_medico(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    const all = [...db.consults.values()];
+    const waiting = all.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3);
+    const ini = Date.parse(`${daySP(now)}T00:00:00-03:00`);
+    return {
+      aguardando: waiting.length,
+      espera_mais_longa_min: waiting.length ? Math.max(0, Math.floor((now - Math.min(...waiting.map((c) => Date.parse(c.created_at)))) / 60000)) : null,
+      em_atendimento: all.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status)).length,
+      atendidos_hoje: all.filter((c) => c.doctor_id === d.id && c.status === 'ended' && c.started_at && Date.parse(c.ended_at) >= ini && Date.parse(c.ended_at) < ini + DAY).length,
+      documentos_para_assinar: [...db.docs.values()].filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.parse(x.created_at) >= now - 7 * DAY).length,
+      medicos_disponiveis: [...db.doctors.values()].filter((o) => o.status === 'approved' && o.available_until && Date.parse(o.available_until) > now).length,
+      atualizado_em: iso(now),
+    };
+  },
   tele_doc_pending(db, a, uid) {
     const d = me(db, uid, true);
     return [...db.docs.values()].filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.now() - Date.parse(x.created_at) < 30 * DAY)
@@ -480,6 +499,7 @@ async function newPage(browser, db, { mobile = false, store = null } = {}) {
     const args = JSON.parse(req.postData() || '{}');
     const uid = USERS[auth]?.id || null;
     db.calls.push({ fn, args, uid, auth, at: Date.now() });
+    if (fn === 'tele_painel_medico' && !db.painel) return json(route, { code: 'PGRST202', details: null, hint: null, message: 'Could not find the function public.tele_painel_medico without parameters in the schema cache' }, 404);
     if (DOCTOR_FNS.has(fn) && !uid) return json(route, { code: '42501', message: `permission denied for function ${fn}` }, 401);
     if (db.delay[fn]) await new Promise((r) => { setTimeout(r, db.delay[fn]); });
     try {
@@ -1206,10 +1226,17 @@ await scenario('"Falta assinar": lista do médico, selo no histórico, prazo de 
   d1.created_at = iso(Date.now() - 26 * 3600e3);
   d2.created_at = iso(Date.now() - 8 * DAY);
   RPC.tele_doc_upload(db, { p_doc: d3.id, p_pdf_base64: tinySigned(d3.code).toString('base64') }, 'u-doc');
+  db.painel = true; // com o painel "Agora na plataforma"
   const { page, errors, context } = await newPage(browser, db);
   await page.goto(loginUrl('tok-doc'));
   await visible(page, '#signCard');
   assert.equal(await text(page, '#signCount'), '2');
+  // Painel: conta só o que ainda dá para assinar (o vencido fica na lista, para cancelar); "Ver e assinar" leva à lista.
+  const signNum = () => page.$eval('[data-num="documentos_para_assinar"]', (li) => `${li.querySelector('.md-nv').textContent.trim()} ${li.querySelector('.md-nl').textContent.trim()}`);
+  await page.waitForFunction(() => !document.querySelector('#painel').hidden);
+  assert.equal(await signNum(), '1 documento para assinar');
+  await page.click('#nowSign');
+  await page.waitForFunction(() => document.activeElement?.id === 'signTitle');
   assert.match(await text(page, `#signList [data-docid="${d1.id}"]`), /Paciente: Paula Rocha/);
   assert.match(await text(page, `#signList [data-docid="${d1.id}"]`), /Envie o PDF assinado até/);
   assert.match(await text(page, `#signList [data-docid="${d2.id}"]`), /prazo para enviar o PDF assinado \(7 dias\) terminou/);
@@ -1226,6 +1253,10 @@ await scenario('"Falta assinar": lista do médico, selo no histórico, prazo de 
   await chooseFile(page, `#signList [data-docid="${d1.id}"] [data-dup]`, { name: 'assinado.pdf', mimeType: 'application/pdf', buffer: fakeSign(bytes) });
   await waitFor(() => !!d1.signed_at, 15000, 'PDF enviado');
   await page.waitForFunction(() => document.querySelector('#signCount').textContent === '1');
+  // Enviado: o painel pede os números na hora (sem esperar os 20 s) e o "Ver e assinar" some.
+  await page.waitForFunction(() => document.querySelector('[data-num="documentos_para_assinar"] .md-nv').textContent.trim() === '0');
+  assert.equal(await signNum(), '0 documentos para assinar');
+  assert.equal(await page.isVisible('#nowSign'), false);
   await page.waitForFunction((id) => document.querySelector(`#hist [data-hbadge="${id}"]`).hidden, c1.id);
   // Cancela o vencido, com motivo: a lista fica vazia e o quadro some.
   await page.click(`#signList [data-docid="${d2.id}"] [data-dcancel]`);

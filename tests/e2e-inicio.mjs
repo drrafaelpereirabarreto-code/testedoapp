@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import * as G from '../assets/js/geo-core.js';
+import { simularGeo, PAULISTA } from './geo-simulado.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -96,12 +97,16 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 // points: resposta de establishment_points. spyMap: guarda em window.__maps os mapas do Leaflet criados pela página.
 // cnesDate: resposta de cnes_last_update; cancel: de cancel_request; geocode: da Edge Function (centro da cidade);
 // store: chaves do localStorage gravadas antes de abrir (ex.: { imed_cidade: {...} }).
-async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, tele, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false, cnesDate, cancel, geocode, store = null } = {}) {
+// geo: permissão e localização simuladas (tests/geo-simulado.mjs). Padrão: localização já permitida, na Av. Paulista
+// (-23.56512, -46.65234, que arredonda para -23.565, -46.652, o ponto que os cenários do 3D conferem). geo: null deixa
+// o Chromium sem permissão (ele recusa sem mostrar o pedido: a página cai em "naoapareceu" e usa o exemplo).
+async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, tele, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false, cnesDate, cancel, geocode, store = null, geo = { estado: 'granted', pos: PAULISTA } } = {}) {
   const context = await browser.newContext({
     viewport: viewport || (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
     deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz,
     serviceWorkers: sw ? 'allow' : 'block', reducedMotion: motion, acceptDownloads: true, ...(ua ? { userAgent: ua } : {}),
   });
+  if (geo) await simularGeo(context, geo);
   if (now) await context.clock.setFixedTime(new Date(now));
   if (three) await context.route(`${BASE}assets/vendor/three.module.min.js`, three);
   const log = { cities: 0, cnes: [], points: [], partners: [], status: [], waitlist: [], tele: 0, cnesDate: 0, cnesDateArgs: [], cancel: [], geocode: [], track: [] };
@@ -211,6 +216,8 @@ async function newPage(browser, { mobile = false, cities, cnes, points, partners
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
   return { context, page, log, errors, requests };
 }
+// Espera a tela "Clínicas perto de você" chegar ao estado (data-estado).
+const tela = (page, estado, timeout = 10000) => page.waitForFunction((e) => document.querySelector('#reais')?.dataset.estado === e, estado, { timeout });
 
 const shot = async (page, name, full = false) => { if (SHOTS) { await page.waitForTimeout(500); await page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: full }); } };
 const results = [];
@@ -279,16 +286,15 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   const cats = await page.$$eval('#cats a', (els) => els.map((e) => e.getAttribute('href')));
   assert.ok(cats.includes('perto.html?exame=rm') && cats.includes('perto.html?exame=rx') && cats.includes('perto.html?exame=lab'));
   assert.ok(cats.every((h) => /^perto\.html\?exame=\w+$/.test(h)));
-  // cidades com link para a página da cidade
-  const cities = await page.$$eval('#cities a', (els) => els.map((e) => [e.getAttribute('href'), e.textContent]));
-  assert.deepEqual(cities.map((c) => c[0]), ['cidades/sp/sao-paulo/', 'cidades/rj/rio-de-janeiro/', 'cidades/mg/belo-horizonte/', 'cidades/sp/santa-barbara-d-oeste/'], 'mesma regra de scripts/gerar-cidades.mjs');
-  const { slugify } = await import('../scripts/gerar-cidades.mjs');
-  assert.equal(cities[3][0], `cidades/sp/${slugify("Santa Bárbara d'Oeste")}/`);
-  assert.match(cities[0][1], /6\.548 estabelecimentos/);
+  // A seção "Clínicas por cidade" saiu: a página liga para as cidades pelo "Todas as cidades" da tela.
+  assert.equal(await page.locator('#cidades, #cities').count(), 0, 'sem o carrossel de cidades');
+  assert.equal(await page.locator('#reais a[href="cidades/"]').count(), 1, '"Todas as cidades" na tela');
   // clínicas reais (CNES) perto
   const list = await page.$$eval('#realList li b', (els) => els.map((e) => e.textContent));
   assert.deepEqual(list, ['Clínica Parceira Paulista', 'Hospital Santa Exemplo', 'Laboratório Análise Paulista', 'Centro de Imagem <b>Teste</b>'], 'nome do CNES mostrado como texto, parceiros juntos por distância');
   assert.match(await page.textContent('#realList li:first-child'), /Parceiro do IMED/);
+  const dists = await page.$$eval('#realList .pv-km', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(dists, ['300 m', '420 m', '~640 m', '900 m'], 'posição achada pelo endereço com "~"');
   const links = await page.$$eval('#realList li > a', (els) => els.map((e) => e.getAttribute('href')));
   assert.deepEqual(links, [`local.html?id=${PARTNER_ID}`, 'local.html?cnes=2077485', 'local.html?cnes=6543210', 'local.html?cnes=7000001'], 'cada item leva à página do local');
   // FAQ: 5 perguntas principais e "Ver todas"
@@ -330,7 +336,8 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
   assert.ok(String(r.p_lat).split('.')[1].length <= 3, 'coordenada arredondada');
   const pr = log.partners.find((a) => a.p_radius_m === 2000);
   assert.ok(pr && pr.p_include_demo === false && pr.p_lat === r.p_lat, 'parceiros pedidos no mesmo ponto, sem demonstração');
-  assert.equal(r.p_limit, 8, 'a lista pede só os 8 mais próximos, com endereço');
+  assert.equal(r.p_limit, 10, 'a lista pede os 10 mais próximos, com endereço');
+  assert.ok(log.cnes.filter((a) => a.p_limit === 10).every((a) => a.p_radius_m === 2000 && !('p_kind' in a)), 'aba Todos em 2 km, sem tipo');
   const pt = log.points.find((a) => a.body.p_radius_m === 2000);
   assert.ok(pt, 'mapa pede os pontos da área inteira (2 km)');
   assert.match(pt.url, /\?select=cnes,name,kind,lat,lng,distance_m,total$/, 'só os campos que o mapa usa');
@@ -340,7 +347,7 @@ await scenario('só dados reais: sem preço, nota ou número inventado; pílula 
     assert.ok(await page.locator(`footer a[href="${href}"]`).count() >= 1, `rodapé com ${href}`);
   }
   assert.ok(await page.locator('#clinicas a[href="reivindicar.html"]').count() === 1);
-  assert.equal(await page.getAttribute('#nearCta', 'href'), 'perto.html?usar=localizacao');
+  assert.equal(await page.getAttribute('#nearCta', 'href'), '#reais');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -364,12 +371,15 @@ await scenario('mapa de clínicas reais: pontos da área inteira (2 km), não s�
   await page.locator('#realMap').evaluate((e) => e.scrollIntoView({ block: 'center' })); // longe do topo fixo
   const m = await page.evaluate(() => {
     const map = window.__maps.at(-1), b = map.getBounds();
-    let dots = 0, rings = 0;
-    map.eachLayer((l) => { if (l instanceof L.Circle) rings += 1; else if (l instanceof L.CircleMarker) dots += 1; });
-    return { n: b.getNorth(), s: b.getSouth(), e: b.getEast(), w: b.getWest(), dots, rings, canvas: !!map.getContainer().querySelector('canvas') };
+    let dots = 0, rings = 0, pins = 0;
+    map.eachLayer((l) => { if (l instanceof L.Circle) rings += 1; else if (l instanceof L.CircleMarker) dots += 1; else if (l instanceof L.Marker) pins += 1; });
+    const nums = [...map.getContainer().querySelectorAll('.pv-pin')].map((e) => e.textContent);
+    return { n: b.getNorth(), s: b.getSouth(), e: b.getEast(), w: b.getWest(), dots, rings, pins, nums, canvas: !!map.getContainer().querySelector('canvas') };
   });
   assert.equal(m.dots, 402, '400 pontos + o parceiro + "você"');
   assert.equal(m.rings, 1, 'círculo dos 2 km');
+  assert.equal(m.pins, 4, 'um pino numerado para cada item da lista');
+  assert.deepEqual(m.nums.sort(), ['1', '2', '3', '4'], 'os mesmos números da lista');
   assert.ok(m.canvas, 'pontos em canvas (leve no celular)');
   const dLat = 1950 / 110570, dLng = 1950 / (111320 * Math.cos((LAT0 * Math.PI) / 180));
   assert.ok(m.n >= LAT0 + dLat && m.s <= LAT0 - dLat && m.e >= LNG0 + dLng && m.w <= LNG0 - dLng, `mapa enquadra os 2 km inteiros (${JSON.stringify(m)})`);
@@ -397,13 +407,25 @@ await scenario('mapa de clínicas reais: pontos da área inteira (2 km), não s�
   await t.context.close();
 });
 
-await scenario('sem dado do banco: pílula com texto neutro, sem número e sem erro', async () => {
-  const { page, errors, context } = await newPage(browser, { cities: (r) => json(r, { message: 'erro' }, 500), cnes: (r) => json(r, { message: 'erro' }, 500) });
+await scenario('sem dado do banco: pílula com texto neutro, sem número e sem erro; seletor com "Tentar de novo"', async () => {
+  // Sem localização (o Chromium recusa sem perguntar) e sem as cidades do banco: sem atalhos inventados.
+  const { page, log, errors, context } = await newPage(browser, { geo: null, cities: (r) => json(r, { message: 'erro' }, 500), cnes: (r) => json(r, { message: 'erro' }, 500) });
   await page.goto(BASE);
+  await tela(page, 'naoapareceu');
   await page.waitForTimeout(800);
   const pill = await page.textContent('#livePill');
   assert.ok(!/\d/.test(pill), `pílula sem número (${pill})`);
-  assert.ok(await page.locator('#cities a[href="cidades/"]').count() === 1, 'cidades: só o link geral');
+  assert.equal(await page.locator('#cidades, #cities').count(), 0, 'sem o carrossel de cidades');
+  assert.equal(await page.locator('#reais .pv-at').count(), 0, 'atalhos das cidades escondidos');
+  assert.equal(await page.locator('#reais a[href="cidades/"]').count(), 1, 'só o link geral das cidades');
+  assert.equal(log.cities, 1);
+  await page.click('#cityBtn');
+  await page.waitForSelector('#cityIdle [data-recarregar]');
+  assert.match(await page.textContent('#cityIdle'), /Não foi possível carregar a lista de cidades agora\./);
+  await page.click('#cityIdle [data-recarregar]');
+  await until(() => log.cities === 2);
+  assert.equal(log.cities, 2, '"Tentar de novo" chama o banco de novo');
+  await page.waitForSelector('#cityIdle [data-recarregar]');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -475,7 +497,7 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   // Leitor de tela: só um resumo curto (role=status), não a lista inteira a cada troca.
   assert.equal(await page.getAttribute('#heroLite', 'aria-live'), null, 'lista sem aria-live');
   assert.equal(await page.getAttribute('#heroLiteStatus', 'role'), 'status');
-  assert.equal(await page.textContent('#heroLiteStatus'), '4 locais perto da Av. Paulista', 'exemplo da Av. Paulista, com "da"');
+  assert.equal(await page.textContent('#heroLiteStatus'), '4 locais perto da sua localização', 'localização permitida');
   // Lista acima do degradê do topo: texto claro com contraste de pelo menos 4,5:1 (WCAG AA).
   const parts = ['#heroLite h2', '#heroLite li b', '#heroLite li small', '#heroLite .more'];
   let worst = Infinity;
@@ -739,21 +761,35 @@ await scenario('celular 360px: nome comprido na lista de locais reais não passa
   await page.waitForSelector('#realList li b');
   // Mede contra a largura da tela (360), não contra innerWidth: no modo celular, quando algo passa da tela,
   // o navegador afasta o zoom e o innerWidth cresce junto (por isso a conta "scrollWidth - innerWidth" dá zero).
-  const m = await page.evaluate((W) => {
+  const W = 360;
+  const right = (sel) => page.evaluate(([s, w]) => { const e = document.querySelector(s); return e && e.getClientRects().length ? Math.round(e.getBoundingClientRect().right) - w : null; }, [sel, W]);
+  const m = await page.evaluate((w) => {
     const b = [...document.querySelectorAll('#realList li b')].find((x) => /Nome Bem Comprido/.test(x.textContent));
-    const right = (el) => Math.round(el.getBoundingClientRect().right) - W;
+    const r = (el) => Math.round(el.getBoundingClientRect().right) - w;
+    const wide = [...document.querySelectorAll('#reais *')].filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > w + 0.5).map((e) => e.className || e.tagName).slice(0, 5);
     return {
-      side: right(document.querySelector('.rm-side')), map: right(document.querySelector('#realMap')),
-      list: right(document.querySelector('#realList')), item: b ? right(b.closest('li')) : null, cut: !!b && b.scrollWidth > b.clientWidth,
+      card: r(document.querySelector('#reais .pv-card')), tabs: r(document.querySelector('#pvTabs')),
+      list: r(document.querySelector('#realList')), item: b ? r(b.closest('li')) : null, cut: !!b && b.scrollWidth > b.clientWidth, wide,
     };
-  }, 360);
+  }, W);
   await page.evaluate(() => document.querySelector('#realList').scrollIntoView({ block: 'center' }));
   await shot(page, 'inicio-celular-360');
   assert.ok(m.item !== null, 'o local de nome comprido aparece na lista');
-  for (const [k, what] of [['side', 'o quadro dos locais'], ['map', 'o mapa'], ['list', 'a lista'], ['item', 'o local de nome comprido']]) {
+  for (const [k, what] of [['card', 'a tela dos locais'], ['tabs', 'as abas'], ['list', 'a lista'], ['item', 'o local de nome comprido']]) {
     assert.ok(m[k] <= 0, `${what} cabe na tela de 360 px (passa ${m[k]} px)`);
   }
+  assert.deepEqual(m.wide, [], 'nada da tela passa dos 360 px');
   assert.ok(m.cut, 'o nome comprido é cortado com reticências');
+  // O seletor de cidade e o mapa em tela cheia também cabem.
+  await page.click('#cityBtn');
+  await page.waitForSelector('#cityQ');
+  assert.ok((await right('#sheet')) <= 0, 'o seletor cabe na tela');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
+  await page.click('#mapOpen');
+  await page.waitForSelector('#pvMapa.cheio #realMap .leaflet-marker-icon');
+  assert.ok((await right('#pvMapa')) <= 0 && (await right('#realStats')) <= 0, 'o mapa aberto e a legenda cabem na tela');
+  await page.click('#mapClose');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -767,7 +803,7 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   await page.waitForSelector('#realList li b');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
-  const wide = await page.evaluate(() => [...document.querySelectorAll('main *, header *, footer *')].filter((el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.right > innerWidth + 1 && st.position !== 'fixed' && !el.closest('.cats,.cities,.hchips,.h3d-labels,.leaflet-container'); }).map((el) => el.className || el.tagName).slice(0, 5));
+  const wide = await page.evaluate(() => [...document.querySelectorAll('main *, header *, footer *')].filter((el) => { const r = el.getBoundingClientRect(); const st = getComputedStyle(el); return r.width > 0 && r.right > innerWidth + 1 && st.position !== 'fixed' && !el.closest('.cats,.hchips,.h3d-labels,.leaflet-container'); }).map((el) => el.className || el.tagName).slice(0, 5));
   assert.deepEqual(wide, [], 'nenhum elemento passa da largura da tela');
   // Fontes do Google sempre com reserva: aqui elas nem carregam (rede simulada), e nada pode cair em Times.
   const lone = await page.evaluate(() => [...document.querySelectorAll('body *')].filter((el) => {
@@ -785,7 +821,7 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   console.log(`  altura da página no celular: ${height} px (antes: 7295 px)`);
   assert.ok(height < 7200, `página mais curta no celular (${height} px)`);
-  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#cities')).overflowX), 'auto', 'cidades em carrossel');
+  assert.equal(await page.locator('#cidades, #cities').count(), 0, 'sem o carrossel de cidades (a tela "Clínicas perto de você" tem o seletor)');
   if (SHOTS) { await page.screenshot({ path: join(SHOTS, 'inicio-celular-inteira.png'), fullPage: true }); }
   await page.click('.bnav [data-go="agenda"]');
   await page.waitForFunction(() => /Confirmado/.test(document.querySelector('#appts').textContent));
@@ -796,25 +832,54 @@ await scenario('celular 390px: sem rolagem lateral, menu de baixo coerente', asy
   await context.close();
 });
 
-await scenario('ponto de partida: "Exemplo: Av. Paulista (São Paulo)" até escolher e fonte do CNES com a data real dos dados da cidade', async () => {
-  const { page, log, errors, context } = await newPage(browser);
-  await page.goto(BASE);
-  await page.waitForFunction(() => /atualizados em/.test(document.querySelector('#heroSrc').textContent));
-  assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados de São Paulo atualizados em 30 de outubro de 2026');
-  assert.equal(log.cnesDate, 1);
-  assert.deepEqual(log.cnesDateArgs, [{ p_city: 3550308 }], 'a data é a dos dados de São Paulo (o exemplo do mapa), não a da importação mais nova de qualquer cidade');
-  assert.equal(await page.textContent('#addrSmall'), 'Exemplo');
-  assert.equal(await page.textContent('#addrTxt'), 'Av. Paulista (São Paulo)');
-  assert.equal(await page.textContent('#heroAddr'), 'Exemplo: Av. Paulista');
-  await scrollAll(page);
-  await page.waitForSelector('#realList li b');
-  assert.ok(await page.locator('#realExample').isVisible(), 'aviso de exemplo na seção do mapa');
-  assert.match(await page.textContent('#realExample'), /Exemplo: Av\. Paulista \(São Paulo\)\.\s*Escolha sua cidade/);
-  assert.equal(await page.textContent('#realWhere'), 'da Av. Paulista', '"da Av. Paulista", não "de Av. Paulista"');
-  assert.match(await page.textContent('.rm-where'), /Em até 2 km da Av\. Paulista/);
-  assert.ok(!/de Av\. Paulista/.test(await page.evaluate(() => document.body.innerText)), 'sem "de Av. Paulista" na página');
-  assert.deepEqual(errors, []);
-  await context.close();
+await scenario('origem do topo e fonte do CNES com a data real dos dados: exemplo → São Paulo, região → cidade da região, cidade escolhida → ela', async () => {
+  // Sem localização (o Chromium recusa sem perguntar): o topo usa o exemplo da Av. Paulista, marcado como exemplo.
+  {
+    const { page, log, errors, context } = await newPage(browser, { geo: null });
+    await page.goto(BASE);
+    await tela(page, 'naoapareceu');
+    await page.waitForFunction(() => /atualizados em/.test(document.querySelector('#heroSrc').textContent));
+    assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados de São Paulo atualizados em 30 de outubro de 2026');
+    assert.deepEqual(log.cnesDateArgs, [{ p_city: 3550308 }], 'a data é a dos dados de São Paulo (o exemplo), não a da importação mais nova');
+    assert.equal(await page.textContent('#addrSmall'), 'Onde você está?');
+    assert.equal(await page.textContent('#addrTxt'), 'Escolher cidade');
+    assert.equal(await page.textContent('#heroAddr'), 'Escolher cidade');
+    assert.equal(await page.locator('#realList li b').count(), 0, 'sem origem, sem lista');
+    assert.ok(!/de Av\. Paulista/.test(await page.evaluate(() => document.body.innerText)), 'sem "de Av. Paulista" na página');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Localização permitida: a região vem do cadastro (os locais mais perto são de São Paulo) e a fonte segue a região.
+  {
+    const { page, log, errors, context } = await newPage(browser);
+    await page.goto(BASE);
+    await tela(page, 'lista');
+    await page.waitForFunction(() => /atualizados em/.test(document.querySelector('#heroSrc').textContent));
+    assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados de São Paulo atualizados em 30 de outubro de 2026');
+    assert.deepEqual(log.cnesDateArgs, [{ p_city: 3550308 }], 'uma chamada, com a cidade da região');
+    assert.equal(await page.textContent('#addrSmall'), 'Sua região');
+    assert.equal(await page.textContent('#addrTxt'), 'São Paulo - SP');
+    assert.equal(await page.textContent('#heroAddr'), 'São Paulo');
+    assert.equal(await page.textContent('#cityLine'), 'Distâncias medidas da sua localização aproximada.');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // Cidade escolhida antes: abre direto nela, sem geocodificar.
+  {
+    const { page, log, errors, context } = await newPage(browser, { geo: null, store: { imed_cidade: { ibge: 3304557, name: 'Rio de Janeiro', uf: 'RJ', lat: -22.907, lng: -43.173 } } });
+    await page.goto(BASE);
+    await tela(page, 'lista');
+    await page.waitForFunction(() => /atualizados em/.test(document.querySelector('#heroSrc').textContent));
+    assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados do Rio de Janeiro atualizados em 30 de outubro de 2026');
+    assert.deepEqual(log.cnesDateArgs, [{ p_city: 3304557 }]);
+    assert.equal(log.geocode.length, 0, 'centro guardado: sem geocodificar');
+    assert.equal(await page.textContent('#addrSmall'), 'Cidade escolhida');
+    assert.equal(await page.textContent('#addrTxt'), 'Rio de Janeiro - RJ');
+    const at = log.cnes.find((a) => a.p_radius_m === 2000);
+    assert.deepEqual([at.p_lat, at.p_lng], [-22.907, -43.173], 'lista perto do centro do Rio');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
   // Sem a data (função fora do ar): só a fonte, sem data inventada.
   const b = await newPage(browser, { cnesDate: (r) => json(r, { message: 'erro' }, 500) });
   await b.page.goto(BASE);
@@ -824,66 +889,76 @@ await scenario('ponto de partida: "Exemplo: Av. Paulista (São Paulo)" até esco
   // Sem as cidades do banco (sem contagem), a linha da fonte nem aparece.
   const c = await newPage(browser, { cities: (r) => json(r, { message: 'erro' }, 500) });
   await c.page.goto(BASE);
+  await tela(c.page, 'lista');
   await c.page.waitForTimeout(600);
   assert.ok(await c.page.locator('#heroSrc').isHidden());
   assert.equal(c.log.cnesDate, 0);
   await c.context.close();
 });
 
-await scenario('"Escolha sua cidade": cidades do banco, centro pela geocodificação da busca, guardado no aparelho', async () => {
+await scenario('seletor de cidade: busca com setas, centro pela geocodificação da busca, guardado no aparelho', async () => {
   const { page, log, errors, context } = await newPage(browser);
   await page.goto(BASE);
-  await scrollAll(page);
-  await page.waitForSelector('#realList li b');
+  await tela(page, 'lista');
   const before = log.cnes.length;
-  await page.click('#realChoose');
-  await page.waitForSelector('#citySel:not([disabled])');
-  assert.equal(await page.evaluate(() => document.activeElement.id), 'citySel', 'foco na lista de cidades');
-  assert.match(await page.textContent('.sh-body'), /Até você escolher, o mapa mostra um exemplo/);
-  const opts = await page.$$eval('#citySel option', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(opts, ['Escolha a cidade', 'Belo Horizonte - MG', 'Rio de Janeiro - RJ', "Santa Bárbara d'Oeste - SP", 'São Paulo - SP'], 'cidades importadas em ordem alfabética');
-  assert.equal(await page.locator('#sheet button[data-pl]').count(), 7, 'os bairros de São Paulo continuam (um botão para cada)');
-  await page.selectOption('#citySel', '3304557');
+  await page.locator('#cityBtn').scrollIntoViewIfNeeded();
+  await page.click('#cityBtn');
+  await page.waitForSelector('.ov.open .sheet.cid #cityQ');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'cityQ', 'foco no campo da cidade');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-expanded'), 'false');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-controls'), 'cityList');
+  await page.keyboard.type('rio');
+  await page.waitForFunction(() => document.querySelector('#cityHint').textContent === '1 cidade encontrada');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-expanded'), 'true');
+  assert.deepEqual(await page.$$eval('#cityList [role=option]', (els) => els.map((e) => e.textContent)), ['Rio de Janeiro - RJ3.000 locais no cadastro oficial']);
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.getAttribute('#cityQ', 'aria-activedescendant'), 'cityOpt-3304557');
+  assert.equal(await page.getAttribute('#cityOpt-3304557', 'aria-selected'), 'true');
+  await page.keyboard.press('Enter');
   await page.waitForFunction(() => !document.querySelector('#ov').classList.contains('open'));
   assert.deepEqual(log.geocode.at(-1), { action: 'geocode', q: 'Rio de Janeiro, RJ' }, 'mesma geocodificação da busca');
-  await page.waitForFunction(() => document.querySelector('#realWhere').textContent === 'do centro do Rio de Janeiro');
-  assert.ok(await page.locator('#realExample').isHidden(), 'escolheu: some o aviso de exemplo');
+  await tela(page, 'lista');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn', 'o foco volta para quem abriu');
+  assert.equal(await page.textContent('#cityName'), 'Rio de Janeiro - RJ');
   await page.waitForFunction(() => /dados do Rio de Janeiro atualizados em/.test(document.querySelector('#heroSrc').textContent));
   assert.deepEqual(log.cnesDateArgs.at(-1), { p_city: 3304557 }, 'a fonte passa a dizer a data dos dados do Rio de Janeiro');
-  assert.notEqual(await page.evaluate(() => document.activeElement.tagName), 'BODY', 'o foco não se perde ao escolher');
-  assert.equal(await page.textContent('#addrSmall'), 'Ponto de partida');
+  assert.equal(await page.textContent('#addrSmall'), 'Cidade escolhida');
   assert.equal(await page.textContent('#addrTxt'), 'Rio de Janeiro - RJ');
+  assert.match(await page.textContent('#cityLine'), /Distâncias medidas do centro do Rio de Janeiro\. Rio de Janeiro fica a 363 km de você\./);
   await until(() => log.cnes.slice(before).some((a) => a.p_radius_m === 2000));
   const at = log.cnes.slice(before).find((a) => a.p_radius_m === 2000);
-  assert.ok(at, 'mapa busca de novo');
   assert.deepEqual([at.p_lat, at.p_lng], [-22.907, -43.173], 'centro da cidade, arredondado (~110 m)');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_cidade')));
   assert.deepEqual(saved, { ibge: 3304557, name: 'Rio de Janeiro', uf: 'RJ', lat: -22.907, lng: -43.173 });
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('imed_cidades_recentes'))), [saved], 'recentes com o Rio');
   // Volta depois: a cidade continua escolhida, sem chamar a geocodificação de novo.
   const geo = log.geocode.length;
   await page.reload();
-  await scrollAll(page);
-  await page.waitForFunction(() => document.querySelector('#realWhere').textContent === 'do centro do Rio de Janeiro');
+  await tela(page, 'lista');
+  assert.equal(await page.textContent('#cityName'), 'Rio de Janeiro - RJ');
   assert.equal(log.geocode.length, geo);
-  assert.ok(await page.locator('#realExample').isHidden());
-  // Bairro de São Paulo: preposição certa e a cidade sai do aparelho.
-  await page.click('#realPlace');
-  await page.click('#sheet button.opt:has-text("Tatuapé")');
-  await page.waitForFunction(() => document.querySelector('#realWhere').textContent === 'do Tatuapé');
-  assert.equal(await page.evaluate(() => localStorage.getItem('imed_cidade')), 'null');
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('imed_place'))), 'tatuape');
   assert.deepEqual(errors, []);
   await context.close();
-  // Geocodificação fora do ar: avisa na própria janela e deixa escolher de novo.
+  // Geocodificação fora do ar: avisa na própria janela e deixa escolher de novo; nada é guardado.
   const b = await newPage(browser, { geocode: (r) => json(r, { ok: false, error: 'geocoder_unavailable' }, 502) });
   await b.page.goto(BASE);
   await b.page.click('#addrBtn');
-  await b.page.waitForSelector('#citySel:not([disabled])');
-  await b.page.selectOption('#citySel', '3106200');
-  await b.page.waitForFunction(() => /Não foi possível achar o centro/.test(document.querySelector('#cityMsg').textContent));
+  await b.page.waitForSelector('#cityQ');
+  await b.page.keyboard.type('belo');
+  await b.page.waitForSelector('#cityList [role=option]');
+  await b.page.keyboard.press('Enter');
+  await b.page.waitForFunction(() => /Não foi possível achar o centro/.test(document.querySelector('#cityHint').textContent));
   assert.ok(await b.page.locator('#ov.open').count(), 'a janela continua aberta');
-  assert.equal(await b.page.isDisabled('#citySel'), false);
+  assert.equal(await b.page.isDisabled('#cityQ'), false);
   assert.equal(await b.page.evaluate(() => localStorage.getItem('imed_cidade')), null);
+  assert.equal(await b.page.evaluate(() => localStorage.getItem('imed_cidades_recentes')), null);
+  // Esc com texto limpa o campo; Esc com o campo vazio fecha a janela.
+  await b.page.focus('#cityQ');
+  await b.page.keyboard.press('Escape');
+  assert.equal(await b.page.inputValue('#cityQ'), '');
+  assert.ok(await b.page.locator('#ov.open').count(), 'Esc com texto não fecha');
+  await b.page.keyboard.press('Escape');
+  await b.page.waitForSelector('.ov:not(.open)', { state: 'attached' });
   assert.deepEqual(b.errors, []);
   await b.context.close();
 });
@@ -897,10 +972,12 @@ await scenario('contador de visitas (?visitas=teste): a página inicial conta a 
   await page.goto(`${BASE}?visitas=teste`);
   await scrollAll(page);
   await wait(2);
-  await page.click('#realChoose');
-  await page.waitForSelector('#citySel:not([disabled])');
-  await page.selectOption('#citySel', '3304557');
-  await page.waitForFunction(() => document.querySelector('#realWhere').textContent === 'do centro do Rio de Janeiro');
+  await page.click('#cityBtn');
+  await page.waitForSelector('#cityQ');
+  await page.keyboard.type('rio');
+  await page.waitForSelector('#cityList [role=option]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#cityName').textContent === 'Rio de Janeiro - RJ');
   await wait(3);
   assert.deepEqual(log.track.slice(1), [{ p_path: '/' }, { p_path: '/', p_event: 'busca_cidade', p_detail: 'RJ/Rio de Janeiro' }]);
   assert.ok(!/-22\.9|-43\.1/.test(JSON.stringify(log.track)), 'nada do centro do mapa');
@@ -1032,7 +1109,7 @@ await scenario('service worker ligado: com economia de dados ou 2G, não instala
   const swSrc = await readFile(join(ROOT, 'sw.js'), 'utf8');
   const core = (swSrc.match(/const CORE = \[([\s\S]*?)\];/) || ['', ''])[1];
   const HEAVY_3D = /three\.module\.min\.js|hero3d\.js/;
-  const OTHER = /leaflet\.js|geo-core\.js|painel\.js|local\.js|perto\.js/;
+  const OTHER = /leaflet\.js|geo-core\.js|painel\.js|\/local\.js|\/perto\.js/; // inicio-perto.js é da página inicial
   for (const [name, device, wantSW] of [
     ['economia de dados', { memory: 8, cores: 8, saveData: true }, false],
     ['internet 2G', { memory: 8, cores: 8, effectiveType: '2g' }, false],

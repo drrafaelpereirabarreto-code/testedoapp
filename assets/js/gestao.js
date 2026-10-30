@@ -2,6 +2,8 @@
 // A página em si é pública (GitHub Pages), mas não mostra nada sem a conta da equipe: os números vêm das funções do
 // banco public.admin_gestao e public.admin_cobranca_*, que conferem no servidor se a conta é de administrador (sem
 // isso o banco recusa com 42501). Sem login: quadro de entrar. Conta que não é da equipe: aviso e nenhuma busca de dados.
+// No topo, o bloco "Agora": a fila da teleconsulta neste momento (chave "agora" de admin_gestao), que não depende do
+// período e atualiza junto com o resto da página; banco ainda sem essa chave: o bloco não aparece.
 // Regras puras, gráficos em SVG, fluxograma, planilha e validação: gestao-core.js (testados em tests/gestao.test.mjs).
 // Nada aqui vai para o localStorage além da sessão de login (auth.js); os números ficam só na memória da página.
 import { auth, $, $$, esc, note, loading, toast, finishLogin, renderAuth, friendlyError, EXPIRED } from './clinica.js';
@@ -76,6 +78,7 @@ const SECOES = [['sec-resumo', 'Resumo'], ['sec-atend', 'Atendimentos'], ['sec-f
 
 function renderShell() {
   app().innerHTML = `<nav class="gs-toc" aria-label="Partes do painel">${SECOES.map(([id, n]) => `<a href="#${id}">${esc(n)}</a>`).join('')}</nav>
+    ${agoraShellHtml()}
     <section class="cl-card gs-ctl" aria-label="Período dos números">
       <fieldset class="gs-period"><legend>Período</legend>
         <div class="gs-seg">${G.PERIODOS.map(([v, n]) => `<label><input type="radio" name="gsDias" value="${v}"${v === S.days ? ' checked' : ''}><span>${esc(n)}</span></label>`).join('')}</div>
@@ -107,7 +110,7 @@ async function loadGestao() {
   const seq = ++S.seq;
   const box = $('#gsData');
   if (!box) return;
-  const busy = [box, $('#cobResumo')].filter(Boolean);
+  const busy = [box, $('#cobResumo'), $('#sec-agora')].filter(Boolean);
   // Trocou o período ou atualizou: os números de antes ficam (mais claros) até os novos chegarem.
   if (S.data) busy.forEach((el) => el.classList.add('gs-busy'));
   box.setAttribute('aria-busy', 'true');
@@ -125,10 +128,11 @@ async function loadGestao() {
     S.data = null;
     S.charts = new Map();
     $('#cobResumo').innerHTML = '';
+    renderAgora(null); // sem os números de agora (nada de mostrar os de antes como se fossem de agora)
     setText($('#gsPeriodo'), '');
     setText($('#gsHora'), '');
     box.innerHTML = noFn(err)
-      ? section('sec-resumo', 'Resumo', 'fa-list-check', note('O painel de gestão ainda não está ligado no banco. Os números aparecem aqui depois que a atualização do banco for aplicada.', 'warn'))
+      ? section('sec-resumo', 'Resumo do período', 'fa-list-check', note('O painel de gestão ainda não está ligado no banco. Os números aparecem aqui depois que a atualização do banco for aplicada.', 'warn'))
       : card(`${note(esc(friendlyError(err, 'Não foi possível carregar os números agora. Tente de novo em instantes.')), 'err')}${retryBtn('retryGestao')}`);
     const retry = $('#retryGestao');
     if (retry) retry.onclick = () => loadGestao();
@@ -143,6 +147,7 @@ function renderData() {
   const d = S.data;
   const abertas = tabelasAbertas();
   S.charts = new Map();
+  renderAgora(d);
   $('#gsData').innerHTML = [secResumo(d), secAtend(d), secFluxo(d), secResult(d), secMedicos(d), secClinicas(d)].join('');
   $('#cobResumo').innerHTML = cobResumoHtml(d);
   reabrirTabelas(abertas);
@@ -183,11 +188,45 @@ function fig({ id, title, sub = '', legend = '', build, table }) {
     </figure>`;
 }
 
+/* ---------- 0. agora (a teleconsulta neste momento) ---------- */
+// Bloco fixo, feito uma vez (renderShell), antes do período: só o conteúdo muda. Os números vêm da chave "agora" de
+// admin_gestao, na mesma chamada do resto da página (atualizam junto: troca de período, "Atualizar números", depois de
+// mexer numa cobrança) e não dependem do período. Banco ainda sem a chave, ou erro ao buscar: o bloco fica escondido.
+// Leitor de tela: os números do bloco não são "ao vivo"; uma frase curta (região aria-live educada) só é reescrita
+// quando os números mudam (o mesmo texto não é lido de novo a cada atualização). Com o bloco escondido (ao abrir a
+// página ou depois de um erro), a frase é escrita antes de o bloco aparecer: não é anunciada, a pessoa lê ao chegar nele.
+function agoraShellHtml() {
+  return `<section class="cl-card gs-agora" id="sec-agora" aria-labelledby="sec-agora-h" hidden>
+      <div class="gs-agora-hd">
+        <h2 id="sec-agora-h"><i class="fa-solid fa-clock" aria-hidden="true"></i>Agora na teleconsulta</h2>
+        <p class="gs-agora-hora" id="gsAgoraHora"></p>
+      </div>
+      <p class="cl-help gs-agora-help">Números deste momento: não dependem do período escolhido logo abaixo, que vale só para o resto da página. Para ver de novo, use “Atualizar números”.</p>
+      <div class="gs-kpis gs-agora-kpis" id="gsAgoraKpis"></div>
+      <div id="gsAgoraAlerta"></div>
+      <p class="sr" id="gsAgoraFala" aria-live="polite" aria-atomic="true"></p>
+    </section>`;
+}
+function renderAgora(d) {
+  const sec = $('#sec-agora');
+  if (!sec) return;
+  const a = d?.agora || null;
+  if (!a) { if (!sec.hidden) sec.hidden = true; return; }
+  $('#gsAgoraKpis').innerHTML = G.agoraItens(a).map((x) => kpi(x.label, x.value, x.sub, { warn: x.warn, id: x.id })).join('');
+  $('#gsAgoraAlerta').innerHTML = G.agoraSemMedico(a)
+    ? '<p class="cl-note warn gs-agora-alerta"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Há paciente esperando e nenhum médico disponível agora.</span></p>'
+    : '';
+  // A hora é a do banco (sem ela, sem hora: nada do relógio daqui); não vai na frase (mudaria a cada atualização).
+  setText($('#gsAgoraHora'), d.gerado_em ? `Atualizado às ${G.fmtHora(d.gerado_em)}` : '');
+  setText($('#gsAgoraFala'), G.agoraTexto(a));
+  if (sec.hidden) sec.hidden = false;
+}
+
 /* ---------- 1. resumo ---------- */
 function secResumo(d) {
   const p = d.pacientes;
   const c = d.cobranca;
-  return section('sec-resumo', 'Resumo', 'fa-list-check', `
+  return section('sec-resumo', 'Resumo do período', 'fa-list-check', `
     <div class="gs-kpis" id="gsKpis">
       ${kpi('Pacientes atendidos', G.fmtInt(p.atendidos), 'teleconsultas realizadas e pedidos concluídos', { id: 'atendidos' })}
       ${kpi('Pedidos de agendamento', G.fmtInt(p.pedidos.total), 'feitos no período', { id: 'pedidos' })}

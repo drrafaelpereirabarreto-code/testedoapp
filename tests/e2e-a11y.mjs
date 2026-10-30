@@ -310,7 +310,7 @@ const PAGES = [
   { name: 'Início (modo leve)', url: 'index.html', motion: 'reduce', open: async (p) => { await p.waitForSelector('#heroLite li a'); await openHome(p); } },
   { name: 'Início · Meus pedidos', url: 'index.html#agenda', open: async (p) => { await p.waitForSelector('.appt'); } },
   { name: 'Início · aviso de privacidade', url: 'index.html', lgpd: true, motion: 'reduce', open: async (p) => { await p.waitForSelector('.lgpd button'); } },
-  { name: 'Início · janela da cidade', url: 'index.html', motion: 'reduce', open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.click('#realChoose'); await p.waitForSelector('.ov.open #citySel'); await waitIdle(p); } },
+  { name: 'Início · janela da cidade', url: 'index.html', motion: 'reduce', open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.waitForSelector('#realList li b'); await p.click('#cityBtn'); await p.waitForSelector('.ov.open #cityQ'); await p.waitForSelector('#cityIdle .cid-op'); await waitIdle(p); } },
   { name: 'Perto de mim', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc'); await p.waitForFunction(() => !document.querySelector('.pt-more')); } },
   { name: 'Perto · ficha', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc'); await p.click('.pc[data-id] >> nth=0'); await p.waitForSelector('.sh-ov.open'); await p.waitForTimeout(300); } },
   { name: 'Perto · pedido', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc:not(.imed)'); await p.click('.pc:not(.imed) >> nth=0'); await p.waitForSelector('.sh-ov.open [data-book]'); await p.click('.sh-ov.open [data-book]'); await p.waitForSelector('#bookForm'); await p.waitForTimeout(300); } },
@@ -891,48 +891,51 @@ await scenario('teclado: Meus pedidos pelo menu do topo, cancelar com confirmaç
   await context.close();
 });
 
-await scenario('janelas: na página inicial, "Escolha sua cidade" prende o foco, Esc fecha e o foco volta', async () => {
+await scenario('janelas: na página inicial, o seletor de cidade prende o foco, Esc fecha e o foco volta', async () => {
   for (const mobile of [false, true]) {
     const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce' });
     await page.goto(`${BASE}index.html`);
     await page.evaluate(() => document.querySelector('#reais').scrollIntoView());
     await page.waitForSelector('#realList li b');
-    await page.focus('#realChoose');
+    await page.focus('#cityBtn');
     await page.keyboard.press('Enter');
     await page.waitForSelector('.ov.open');
-    await page.waitForFunction(() => document.activeElement?.closest('#sheet'));
+    await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
     assert.equal(await page.getAttribute('#sheet', 'role'), 'dialog');
+    await page.waitForSelector('#cityIdle .cid-op');
     await trapped(page, '#sheet', 12);
     await page.keyboard.press('Escape');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'realChoose', 'o foco volta para "Escolha sua cidade"');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn', 'o foco volta para o botão da cidade');
     assert.deepEqual(errors, []);
     await context.close();
   }
 });
 
-await scenario('janelas: escolher a cidade pelo "Escolha sua cidade" do aviso de exemplo (que some) deixa o foco num botão visível', async () => {
+await scenario('janelas: escolher a cidade por um botão que some (cartão sem localização) deixa o foco num botão visível', async () => {
   for (const mobile of [false, true]) {
-    const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce' });
+    // Sem a permissão do Playwright: o Chromium recusa sem perguntar e a tela mostra o cartão com "Escolher minha cidade".
+    const { page, errors, context } = await newPage(browser, { mobile, motion: 'reduce', geo: false });
     await page.goto(`${BASE}index.html`);
-    await page.evaluate(() => document.querySelector('#reais').scrollIntoView());
-    await page.waitForSelector('#realList li b');
-    await page.focus('#realChoose');
+    await page.waitForFunction(() => document.querySelector('#reais').dataset.estado === 'naoapareceu');
+    await page.focus('#pvEstado [data-bt="escolher"]');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('#citySel:not([disabled])');
-    await page.selectOption('#citySel', '3304557');
+    await page.waitForFunction(() => document.activeElement?.id === 'cityQ');
+    await page.keyboard.type('rio');
+    await page.waitForSelector('#cityList [role=option]');
+    await page.keyboard.press('Enter');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    await page.waitForFunction(() => document.querySelector('#realExample')?.hidden);
+    await page.waitForFunction(() => document.querySelector('#reais').dataset.estado !== 'naoapareceu');
     const f = await page.evaluate(() => { const a = document.activeElement; return { id: a?.id || '', tag: a?.tagName, visible: !!a?.getClientRects().length }; });
     assert.notEqual(f.tag, 'BODY', 'o foco não cai no <body>');
     assert.ok(f.visible, `o foco fica num elemento visível (${f.id || f.tag})`);
-    assert.equal(f.id, 'realPlace', 'o foco vai para o "trocar" do mesmo mapa');
-    // Bairro, pelo "trocar": o foco volta para o próprio "trocar".
+    assert.equal(f.id, 'cityBtn', 'o foco vai para o botão da cidade da mesma tela');
+    // Pelo botão da cidade: o foco volta para ele.
     await page.keyboard.press('Enter');
-    await page.waitForSelector('#sheet button[data-pl]');
-    await page.click('#sheet button[data-pl] >> nth=1');
+    await page.waitForSelector('#cityIdle .cid-op');
+    await page.click('#cityIdle .cid-op >> nth=0');
     await page.waitForSelector('.ov:not(.open)', { state: 'attached' });
-    assert.equal(await page.evaluate(() => document.activeElement.id), 'realPlace');
+    assert.equal(await page.evaluate(() => document.activeElement.id), 'cityBtn');
     assert.deepEqual(errors, []);
     await context.close();
   }

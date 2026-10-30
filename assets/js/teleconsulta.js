@@ -1,6 +1,7 @@
-// Teleconsulta (paciente): quem atende agora, pedido com termo de consentimento, fila com a posição real,
-// vídeo direto com o médico (WebRTC), plano B (telefone e mensagens), exames pedidos, documentos (rascunho e PDF
-// assinado pelo médico) e resumo.
+// Teleconsulta (paciente): quem atende agora, perguntas frequentes (o que resolve e o que não sai por ela), pedido
+// com termo de consentimento, fila com a posição real, vídeo direto com o médico (WebRTC), plano B (telefone e
+// mensagens), exames pedidos, documentos (rascunho e PDF assinado pelo médico) e resumo. No fim do início, o cartão
+// "É médico?" leva à página Para médicos e à área do médico (escondido na fila, na consulta e no resumo).
 // Sem conta: o aparelho guarda {id, token} em localStorage 'imed_tele' (o banco só tem o SHA-256 do token).
 // Regras e textos: tele-core.js e tele-docs.js. Contrato do banco: supabase/migrations/*_teleconsulta.sql e
 // *_tele_documentos.sql.
@@ -50,6 +51,8 @@ function show(v) {
   for (const [k, sel] of Object.entries(VIEWS)) $(sel).hidden = k !== v;
   $('#prepCard').hidden = !(v === 'start' || v === 'wait');
   $('#histCard').hidden = v !== 'start' || !T.readHistory(store).length;
+  // "É médico?": só no início (na fila, na consulta e no resumo, nada que não seja do paciente).
+  $('#mdJoin').hidden = v !== 'start';
   document.title = TITLES[v];
   if (v === 'start') docsPoll.start(); else docsPoll.stop();
   if (v !== 'start' && v !== 'wait') stopTest();

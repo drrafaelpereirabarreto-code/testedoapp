@@ -1,5 +1,7 @@
 // Testes das regras puras do painel de gestão (assets/js/gestao-core.js) e da página gestao.html:
-// R$ e números (Intl pt-BR), datas no fuso de São Paulo, a resposta do banco (null vira "—", zero é zero), os gráficos
+// R$ e números (Intl pt-BR), datas no fuso de São Paulo, a resposta do banco (null vira "—", zero é zero), o bloco
+// "Agora" (a fila da teleconsulta neste momento: só as 4 contagens, sem a chave não aparece, frase curta para o leitor
+// de tela), os gráficos
 // em SVG (linhas, colunas e barras: resumo para leitor de tela, nada fora do desenho, nada de NaN), funil, fluxograma
 // da entrada de médicos, validação do formulário "Nova cobrança" e a planilha CSV (aspas, ponto e vírgula e fórmulas).
 // A página: só para a equipe (fora do Google, fora do mapa do site, sem o contador de visitas, nenhuma página pública
@@ -159,6 +161,7 @@ test('resposta do banco: série em ordem e sem repetir, null continua null ("—
   assert.equal(d.outros.avisos_de_erro, 2);
   assert.equal(G.somaSerie(d.serie, 'pedidos'), 3);
   assert.equal(G.somaSerie([{ pedidos: null }], 'pedidos'), null, 'nenhum número: null, não zero');
+  assert.equal(d.agora, null, 'banco ainda sem a migração nova (sem a chave "agora"): sem o bloco');
 });
 
 test('resposta do banco fora do formato: tudo vira null ("—"), nada é inventado', () => {
@@ -173,6 +176,7 @@ test('resposta do banco fora do formato: tudo vira null ("—"), nada é inventa
     assert.deepEqual(d.medicos.aguardando, []);
     assert.equal(d.cobranca.faturado_cents, null);
     assert.deepEqual(d.cobranca.por_mes, []);
+    assert.equal(d.agora, null);
   }
   const d = G.normalizeGestao({ pacientes: { atendidos: -3, pedidos: { total: '12', pendente: 'muitos', contatado: true, confirmado: '' }, avaliacoes: { total: 2, media: 7 } } });
   assert.equal(d.pacientes.atendidos, null, 'negativo não é contagem');
@@ -184,6 +188,68 @@ test('resposta do banco fora do formato: tudo vira null ("—"), nada é inventa
   const muitos = G.normalizeGestao({ medicos: { aguardando: Array.from({ length: 80 }, (_, i) => ({ id: `m${i}`, nome: `M ${i}` })) } });
   assert.equal(muitos.medicos.aguardando.length, 50, 'no máximo 50 aguardando');
   assert.equal(muitos.medicos.aguardando[0].desde, null);
+});
+
+/* ======================= agora: a teleconsulta neste momento ======================= */
+// O exemplo do contrato da chave "agora" de admin_gestao (migração 20261030191354_painel_medico).
+const AGORA = { aguardando: 3, espera_mais_longa_min: 12, em_atendimento: 1, medicos_disponiveis: 0 };
+
+test('agora: só as 4 contagens da chave "agora" (nada de nome, idade ou motivo); sem a chave ou sem número, null (o bloco não aparece)', () => {
+  assert.deepEqual(G.AGORA_KEYS, ['aguardando', 'espera_mais_longa_min', 'em_atendimento', 'medicos_disponiveis']);
+  assert.deepEqual(G.normalizeAgora(AGORA), AGORA);
+  assert.deepEqual(G.normalizeGestao({ ...RAW, agora: AGORA }).agora, AGORA, 'vem junto com o resto da página');
+  assert.deepEqual(G.normalizeAgora({ aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 0 }), { aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 0 }, 'banco novo: zero é zero');
+  // LGPD: mesmo que a resposta trouxesse quem está na fila, só as contagens passam.
+  const extra = G.normalizeAgora({ ...AGORA, fila: [{ nome: 'Maria Paciente', idade: 47, motivo: 'dor no peito' }], nome: 'João' });
+  assert.deepEqual(Object.keys(extra), G.AGORA_KEYS);
+  assert.ok(!/Maria|João|dor|47/.test(JSON.stringify(extra)));
+  // Sem a chave, fora do formato ou sem nenhum número: null.
+  for (const v of [undefined, null, 'agora', 3, true, [], [AGORA], {}, { outra: 1 }, { aguardando: -1, espera_mais_longa_min: 'muito', em_atendimento: '', medicos_disponiveis: false }]) {
+    assert.equal(G.normalizeAgora(v), null, JSON.stringify(v));
+  }
+  // Parte faltando: só ela fica "—" (null); número em texto vale (como no resto da resposta).
+  assert.deepEqual(G.normalizeAgora({ aguardando: '2', medicos_disponiveis: 1, em_atendimento: -3 }), { aguardando: 2, espera_mais_longa_min: null, em_atendimento: null, medicos_disponiveis: 1 });
+  // Ninguém na fila: não há espera, mesmo que viesse um número.
+  assert.equal(G.normalizeAgora({ ...AGORA, aguardando: 0, espera_mais_longa_min: 5 }).espera_mais_longa_min, null);
+  assert.equal(G.normalizeAgora({ ...AGORA, aguardando: null, espera_mais_longa_min: 5 }).espera_mais_longa_min, 5, 'sem o número da fila: a espera do banco fica');
+});
+
+test('agora: os 4 números com nome e explicação ("—" sem número); paciente esperando sem médico disponível fica em destaque', () => {
+  const it = G.agoraItens(AGORA);
+  assert.deepEqual(it.map((x) => [x.id, x.label, x.value, x.sub, x.warn]), [
+    ['agora-aguardando', 'Aguardando atendimento', '3', 'pacientes na fila, esperando um médico aceitar', true],
+    ['agora-espera', 'Espera mais longa', '12 min', 'do primeiro paciente da fila', false],
+    ['agora-atendimento', 'Em atendimento', '1', 'consulta aceita por um médico ou em andamento', false],
+    ['agora-medicos', 'Médicos disponíveis', '0', 'aprovados, com a página de atendimento aberta', false],
+  ]);
+  // A explicação embaixo do número no singular quando ele é 1 (nunca "1 / pacientes na fila").
+  assert.deepEqual(G.agoraItens({ aguardando: 1, espera_mais_longa_min: 3, em_atendimento: 2, medicos_disponiveis: 1 }).map((x) => x.sub), [
+    'paciente na fila, esperando um médico aceitar', 'do primeiro paciente da fila', 'consultas aceitas por um médico ou em andamento', 'aprovado, com a página de atendimento aberta',
+  ]);
+  const vazio = G.agoraItens(G.normalizeAgora({ aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 0 }));
+  assert.deepEqual(vazio.map((x) => x.value), ['0', '—', '0', '0']);
+  assert.equal(vazio[1].sub, 'ninguém na fila agora');
+  assert.ok(vazio.every((x) => !x.warn), 'ninguém esperando: sem destaque, mesmo sem médico');
+  assert.deepEqual(G.agoraItens({ aguardando: null, espera_mais_longa_min: null, em_atendimento: null, medicos_disponiveis: 2 }).map((x) => x.value), ['—', '—', '—', '2']);
+  assert.deepEqual(G.agoraItens(null).map((x) => x.value), ['—', '—', '—', '—']);
+  // Espera: em minutos inteiros (de 0 até perto das 2 h, quando o pedido expira).
+  assert.deepEqual([0, 1, 59, 60, 119].map((m) => G.agoraItens({ ...AGORA, espera_mais_longa_min: m })[1].value), ['menos de 1 min', '1 min', '59 min', '1 h', '1 h 59 min']);
+  // Destaque só com paciente esperando e o número de médicos igual a zero (sem o número: sem destaque inventado).
+  assert.equal(G.agoraSemMedico(AGORA), true);
+  for (const a of [{ ...AGORA, medicos_disponiveis: 1 }, { ...AGORA, medicos_disponiveis: null }, { ...AGORA, aguardando: 0 }, { ...AGORA, aguardando: null }, null, undefined]) assert.equal(G.agoraSemMedico(a), false, JSON.stringify(a));
+});
+
+test('agora: frase curta e em português simples para o leitor de tela (singular, plural, zero e sem número)', () => {
+  assert.deepEqual([0, 0.4, 1, 12, 60, 61, 75, 119, 120, null, -1].map(G.fmtMinFala),
+    ['menos de 1 minuto', 'menos de 1 minuto', '1 minuto', '12 minutos', '1 hora', '1 hora e 1 minuto', '1 hora e 15 minutos', '1 hora e 59 minutos', '2 horas', '', '']);
+  assert.equal(G.agoraTexto(AGORA), 'Agora: 3 pacientes aguardando atendimento (o primeiro espera há 12 minutos), 1 consulta em atendimento e nenhum médico disponível.');
+  assert.equal(G.agoraTexto({ aguardando: 1, espera_mais_longa_min: 0, em_atendimento: 2, medicos_disponiveis: 1 }), 'Agora: 1 paciente aguardando atendimento (espera há menos de 1 minuto), 2 consultas em atendimento e 1 médico disponível.');
+  assert.equal(G.agoraTexto(G.normalizeAgora({ aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 3 })), 'Agora: nenhum paciente aguardando atendimento, nenhuma consulta em atendimento e 3 médicos disponíveis.');
+  assert.equal(G.agoraTexto({ aguardando: 1234, espera_mais_longa_min: null, em_atendimento: 1, medicos_disponiveis: 2 }), 'Agora: 1.234 pacientes aguardando atendimento, 1 consulta em atendimento e 2 médicos disponíveis.');
+  assert.equal(G.agoraTexto({ aguardando: null, espera_mais_longa_min: 75, em_atendimento: null, medicos_disponiveis: null }), 'Agora: sem o número de pacientes aguardando (o primeiro da fila espera há 1 hora e 15 minutos), sem o número de consultas em atendimento e sem o número de médicos disponíveis.');
+  for (const v of [null, undefined, 'x']) assert.equal(G.agoraTexto(v), '', String(v));
+  // A frase não leva hora (mudaria a cada atualização e seria lida de novo sem nada ter mudado).
+  assert.ok(!/\d\d:\d\d/.test(G.agoraTexto(AGORA)));
 });
 
 test('funil: % de cada etapa sobre a anterior e sobre a primeira; sem a anterior, null', () => {

@@ -11,9 +11,18 @@
 //   com o que fazer; etapas escondidas quando a leitura do cadastro falha (sem voltar com a situação antiga); e a
 //   INSCRIÇÃO COMPLETA do médico (e-mail, cadastro, conferência e aprovação pela equipe do IMED, aviso e
 //   "Disponível para atender"), com capturas de tela de cada passo para mostrar o fluxo;
-// - ligações: página inicial ("É médico? Atenda pelo IMED"), rodapé (scripts/rodape.mjs), sitemap.xml e topo da área
-//   do médico;
-// - acessibilidade: auditoria do axe-core (WCAG A/AA) na página nova e nas etapas, quando o axe-core estiver instalado.
+// - Plataforma de atendimento (medico.html): painel "Agora na plataforma" do médico aprovado com os números do banco
+//   (tele_painel_medico, simulado com as regras de supabase/migrations/20261030191354_painel_medico.sql): aguardando
+//   (com "o primeiro espera há"), em atendimento, atendidos hoje, documentos para assinar (leva a "Falta assinar") e
+//   médicos disponíveis; sem dado de paciente; "Ficar disponível"/"Ver a fila"; quem não está aprovado não vê números
+//   (nem pede); banco sem a função (404/PGRST202) ou sem permissão: o painel some sem erro; servidor fora do ar: tenta
+//   de novo; a cada 20 s com a aba à vista (relógio controlado pelo teste), parado com a aba escondida, e o leitor de
+//   tela avisado só quando muda quem espera; topo com o nome da plataforma, menu (Painel, Fila, Consultas, Documentos,
+//   Meu cadastro) e "Site do IMED"; celular de 360 px sem rolagem lateral, menu que abre e fecha, alvos de 44 px;
+// - ligações: página inicial ("É médico? Atenda pelo IMED"), rodapé (scripts/rodape.mjs, com "Área do médico" depois
+//   de "Para médicos"), sitemap.xml e topo da área do médico;
+// - acessibilidade: auditoria do axe-core (WCAG A/AA) na página nova, nas etapas, no topo da plataforma e no painel,
+//   quando o axe-core estiver instalado.
 // O banco e a entrada pelo link do e-mail são simulados EM MEMÓRIA (context.route), com as mesmas regras de
 // supabase/migrations/*_teleconsulta.sql usadas aqui (como em tests/e2e-tele.mjs).
 // Rodar: node tests/e2e-medicos.mjs   (precisa do pacote "playwright")
@@ -87,18 +96,38 @@ const USERS = {
 };
 const UFS = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 const DOCTOR_FNS = new Set(['tele_doctor_me', 'tele_doctor_register', 'tele_set_available', 'tele_queue', 'tele_history', 'tele_doctor_profile', 'tele_doc_pending',
-  'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor']);
+  'tele_painel_medico', 'tele_admin_doctors', 'tele_admin_save_checks', 'tele_admin_set_doctor']);
 const DAY = 86400e3;
 const iso = (t = Date.now()) => new Date(t).toISOString();
 const digits = (v) => String(v ?? '').replace(/\D/g, '');
 class PgErr extends Error { constructor(message, details = null) { super(message); this.details = details; } }
+// Dia de hoje em São Paulo (sem horário de verão desde 2019: UTC-3) e o começo dele.
+const todaySP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const startOfTodaySP = () => Date.parse(`${todaySP()}T00:00:00-03:00`);
+// "HH:MM" no horário de Brasília (como a página mostra "Atualizado às HH:MM").
+const hhmmSP = (t) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(t));
 
 function makeDb() {
-  const db = { doctors: new Map(), admins: new Set(['u-admin']), checks: [], calls: [], otp: [], failMe: false }; // failMe: tele_doctor_me falha
+  // failMe: tele_doctor_me falha. consults/docs: só o mínimo da fila e dos documentos para os números do painel.
+  // painelErr: resposta de erro de tele_painel_medico ({ status, body }, ou função que devolve isso); painelAt: hora fixa
+  // dos números (atualizado_em).
+  const db = { doctors: new Map(), admins: new Set(['u-admin']), checks: [], calls: [], otp: [], failMe: false, consults: [], docs: [], painelErr: null, painelAt: null };
   db.addDoctor = (d) => {
     const row = { id: randomUUID(), rqe: null, specialty: null, phone: null, status: 'approved', review_note: null, reviewed_at: null, reviewed_by: null,
       checked_at: iso(Date.now() - DAY), available_until: null, created_at: iso(Date.now() - DAY), updated_at: iso(), ...d };
     db.doctors.set(row.id, row);
+    return row;
+  };
+  db.addConsult = (c) => {
+    const row = { id: randomUUID(), status: 'waiting', patient_name: 'Paciente', patient_birthdate: '1980-01-01', reason: 'Teste', for_other: false, relationship: null,
+      doctor_id: null, accepted_at: null, started_at: null, ended_at: null, created_at: iso(), ...c };
+    db.consults.push(row);
+    return row;
+  };
+  db.addDoc = (d) => {
+    const row = { id: randomUUID(), consultation_id: randomUUID(), kind: 'atestado', payload: {}, code: 'ABCD2345', status: 'emitido', signed_at: null, created_at: iso(),
+      doctor_snapshot: {}, patient_snapshot: { name: 'Paciente' }, ...d };
+    db.docs.push(row);
     return row;
   };
   db.called = (fn) => db.calls.filter((c) => c.fn === fn);
@@ -132,6 +161,37 @@ function checkMissing(c, d) {
 }
 const lastCheck = (db, d) => [...db.checks].reverse().find((c) => c.doctor_id === d.id) || null;
 const emailOf = (uid) => Object.values(USERS).find((u) => u.id === uid)?.email || null;
+// Situação de fato (private.tele_effective_status): esperando há mais de 2 h ou aceita sem começar há mais de 30 min =
+// expirada; em andamento há mais de 3 h = encerrada.
+function effective(c, now = Date.now()) {
+  if (c.status === 'waiting' && Date.parse(c.created_at) < now - 2 * 3600e3) return 'expired';
+  if (c.status === 'accepted' && !c.started_at && Date.parse(c.accepted_at) < now - 30 * 60e3) return 'expired';
+  if (['accepted', 'in_call'].includes(c.status) && c.started_at && Date.parse(c.started_at) < now - 3 * 3600e3) return 'ended';
+  return c.status;
+}
+// Números do painel do médico com as regras de supabase/migrations/20261030191354_painel_medico.sql (tele_painel_medico):
+// só contagens e minutos, nenhum dado de paciente.
+function painel(db, d) {
+  const now = Date.now();
+  const waiting = db.consults.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3);
+  const oldest = waiting.length ? Math.min(...waiting.map((c) => Date.parse(c.created_at))) : null;
+  const ini = startOfTodaySP();
+  const done = db.consults.filter((c) => {
+    if (c.doctor_id !== d.id || !c.started_at || effective(c, now) !== 'ended' || Date.parse(c.created_at) < ini - DAY) return false;
+    // O fim é o que vem primeiro: o gravado ou 3 h depois do começo (com 3 h a consulta já conta como encerrada).
+    const end = Math.min(c.ended_at ? Date.parse(c.ended_at) : Infinity, Date.parse(c.started_at) + 3 * 3600e3);
+    return end >= ini && end < ini + DAY;
+  });
+  return {
+    aguardando: waiting.length,
+    espera_mais_longa_min: oldest == null ? null : Math.max(0, Math.floor((now - oldest) / 60000)),
+    em_atendimento: db.consults.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status) && ['accepted', 'in_call'].includes(effective(c, now))).length,
+    atendidos_hoje: done.length,
+    documentos_para_assinar: db.docs.filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.parse(x.created_at) >= now - 7 * DAY).length,
+    medicos_disponiveis: [...db.doctors.values()].filter((o) => o.status === 'approved' && o.available_until && Date.parse(o.available_until) > now).length,
+    atualizado_em: db.painelAt || iso(now).replace(/\.\d{3}Z$/, 'Z'),
+  };
+}
 
 const RPC = {
   tele_doctor_me(db, a, uid) {
@@ -166,10 +226,28 @@ const RPC = {
     const d = docOf(db, uid); if (d) d.available_until = null;
     return null;
   },
-  tele_queue(db, a, uid) { me(db, uid, true); return []; },
+  // Fila (como tele_queue): primeiro as consultas dele em andamento, depois quem espera (há até 2 h), por ordem de chegada.
+  tele_queue(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    const own = db.consults.filter((c) => c.doctor_id === d.id && ['accepted', 'in_call'].includes(c.status) && ['accepted', 'in_call'].includes(effective(c, now)));
+    const wait = db.consults.filter((c) => c.status === 'waiting' && Date.parse(c.created_at) >= now - 2 * 3600e3).sort((x, y) => x.created_at.localeCompare(y.created_at));
+    return [...own, ...wait].map((c) => ({ id: c.id, status: c.status, patient_name: c.patient_name, age_years: 46, reason: c.reason, for_other: c.for_other,
+      relationship: c.relationship, wait_minutes: Math.floor((now - Date.parse(c.created_at)) / 60000), created_at: c.created_at, accepted_at: c.accepted_at, seen_seconds: 5 }));
+  },
   tele_history() { return []; }, // sem consultas anteriores (não é o assunto deste teste)
   tele_doctor_profile(db, a, uid) { me(db, uid, false); return [{ prof_address: null, prof_contact: null }]; },
-  tele_doc_pending(db, a, uid) { me(db, uid, true); return []; },
+  // "Falta assinar" (como tele_doc_pending): emitidos sem PDF assinado dos últimos 30 dias; expired = passou dos 7 dias.
+  tele_doc_pending(db, a, uid) {
+    const d = me(db, uid, true);
+    const now = Date.now();
+    return db.docs.filter((x) => x.doctor_id === d.id && x.status === 'emitido' && !x.signed_at && Date.parse(x.created_at) > now - 30 * DAY)
+      .sort((x, y) => x.created_at.localeCompare(y.created_at))
+      .map((x) => ({ id: x.id, consultation_id: x.consultation_id, patient_name: x.patient_snapshot.name, kind: x.kind, payload: x.payload, code: x.code, status: x.status,
+        created_at: x.created_at, signed: false, doctor_snapshot: x.doctor_snapshot, patient_snapshot: x.patient_snapshot, expired: Date.parse(x.created_at) < now - 7 * DAY }));
+  },
+  // Painel "Agora na plataforma" (contrato novo): só para médico aprovado (o mesmo erro da fila), sem dado de paciente.
+  tele_painel_medico(db, a, uid) { return painel(db, me(db, uid, true)); },
   tele_admin_doctors(db, a, uid) {
     if (!db.admins.has(uid)) throw new PgErr('so_admin');
     const list = [...db.doctors.values()];
@@ -216,14 +294,26 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 
 /* ======================= páginas ======================= */
 // csp: false liga o bypassCSP (só para injetar o axe-core; nos outros cenários a CSP da página vale).
-async function newPage(browser, db, { mobile = false, csp = true } = {}) {
+// width: largura do celular (padrão 390); painelMs: intervalo do painel "Agora na plataforma" (padrão do site: 20 s);
+// notice: o aviso "Antes de ficar disponível" já lido neste navegador (para quem já atende).
+async function newPage(browser, db, { mobile = false, csp = true, width = 390, painelMs = 0, notice = false } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    viewport: mobile ? { width, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block', reducedMotion: 'reduce', bypassCSP: !csp,
   });
   // Aviso de privacidade já aceito (não cobre a página nas capturas).
   await context.addInitScript(() => { try { localStorage.setItem('imed_lgpd', '1'); } catch { /* ignora */ } });
+  if (notice) {
+    const version = read('assets/js/tele-core.js').match(/NOTICE_VERSION = '([^']+)'/)[1];
+    await context.addInitScript(([v, ids]) => { try { for (const id of ids) localStorage.setItem(`imed_medico_aviso:${id}`, v); } catch { /* ignora */ } }, [version, Object.values(USERS).map((u) => u.id)]);
+  }
+  if (painelMs) {
+    await context.route(`${BASE}assets/js/config.js`, async (route) => {
+      const src = await readFile(join(ROOT, 'assets/js/config.js'), 'utf8');
+      return route.fulfill({ status: 200, contentType: 'text/javascript', body: `${src}\nwindow.IMED_CONFIG.tele = { ...(window.IMED_CONFIG.tele || {}), painelMs: ${Number(painelMs)} };\n` });
+    });
+  }
   await context.route('https://tile.openstreetmap.org/**', (r) => r.abort());
   await context.route(`${SUPA}/**`, async (route) => {
     const req = route.request();
@@ -241,6 +331,9 @@ async function newPage(browser, db, { mobile = false, csp = true } = {}) {
     db.calls.push({ fn, args, uid, at: Date.now() });
     if (fn === 'tele_doctor_me' && db.failMe) return json(route, { message: 'falha simulada' }, 503); // leitura do cadastro falhando
     if (DOCTOR_FNS.has(fn) && !uid) return json(route, { code: '42501', message: `permission denied for function ${fn}` }, 401);
+    // Painel com erro simulado (banco sem a função nova, sem permissão ou fora do ar).
+    const pe = fn === 'tele_painel_medico' && (typeof db.painelErr === 'function' ? db.painelErr() : db.painelErr);
+    if (pe) return json(route, pe.body, pe.status);
     try {
       const out = RPC[fn](db, args, uid);
       return out === null ? route.fulfill({ status: 204, body: '', headers: cors }) : json(route, out);
@@ -361,6 +454,60 @@ async function runAxe(page, include = null) {
     const r = await axe.run(inc ? { include: inc } : document, { runOnly: { type: 'tag', values: tags }, resultTypes: ['violations'] });
     return r.violations.filter((v) => ['serious', 'critical'].includes(v.impact)).map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')}`);
   }, [AXE_TAGS, include]);
+}
+
+/* ---------- painel "Agora na plataforma" e topo da plataforma (medico.html) ---------- */
+const NUMS = ['aguardando', 'em_atendimento', 'atendidos_hoje', 'documentos_para_assinar', 'medicos_disponiveis'];
+// O painel como a pessoa vê: número e rótulo de cada quadro, "o primeiro espera há", a hora, o botão e o aviso ao leitor.
+const panelView = (page) => page.evaluate((keys) => {
+  const t = (el) => (el?.textContent || '').replace(/\s+/g, ' ').trim();
+  const p = document.querySelector('#painel');
+  return {
+    shown: !p.closest('[hidden]') && p.getBoundingClientRect().height > 0,
+    nums: Object.fromEntries(keys.map((k) => { const li = p.querySelector(`[data-num="${k}"]`); return [k, `${t(li.querySelector('.md-nv'))} ${t(li.querySelector('.md-nl'))}`]; })),
+    wait: t(p.querySelector('#nowWait')), at: t(p.querySelector('#nowAt')), btn: t(p.querySelector('#nowBtn')),
+    sign: !p.querySelector('#nowSign').closest('[hidden]'), me: t(p.querySelector('#nowMe')), live: t(p.querySelector('#nowLive')),
+  };
+}, NUMS);
+// Espera o painel à vista com o número `n` em `key` (o resto é conferido depois, com a mensagem do que ficou diferente).
+const waitNum = (page, key, n, timeout = 15000) => page.waitForFunction(([k, v]) => {
+  const p = document.querySelector('#painel');
+  return !p.closest('[hidden]') && p.querySelector(`[data-num="${k}"] .md-nv`).textContent.trim() === v;
+}, [key, String(n)], { timeout });
+// Itens do menu do topo à vista: [texto, destino].
+const menuItems = (page) => page.$$eval('#mdMenu [data-go]', (as) => as.filter((a) => !a.closest('[hidden]')).map((a) => [a.textContent.trim(), a.getAttribute('href')]));
+const focusedId = (page) => page.evaluate(() => document.activeElement?.id || '');
+// Espera uma condição do lado do teste (o banco simulado), no tempo de verdade.
+async function until(fn, what, ms = 8000) {
+  const t0 = Date.now();
+  while (!fn()) { if (Date.now() - t0 > ms) throw new Error(`tempo esgotado esperando: ${what}`); await new Promise((r) => setTimeout(r, 50)); }
+}
+const painelCalls = (db, uid) => db.called('tele_painel_medico').filter((c) => c.uid === uid).length;
+// Esconde ou mostra a aba (tela apagada ou outra aba à frente): a página vê document.hidden.
+const setTabHidden = (page, hidden) => page.evaluate((h) => {
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => h });
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (h ? 'hidden' : 'visible') });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, hidden);
+// Fila, atendidos e documentos de exemplo para a Carla (u-ok): 3 esperando (o primeiro há 12 min e meio), 4 atendidos
+// hoje, 2 documentos no prazo para assinar e mais 1 vencido (fica em "Falta assinar", fora do número), 1 médico atendendo.
+function seedPanel(db) {
+  const carla = docOf(db, 'u-ok');
+  const now = Date.now();
+  db.addDoctor({ user_id: 'u-davi', full_name: 'Davi Rocha', crm: '776655', crm_uf: 'MG', available_until: iso(now + 80e3) }); // atendendo agora
+  db.addDoctor({ user_id: 'u-old', full_name: 'Teo Antigo', crm: '776600', crm_uf: 'MG', available_until: iso(now - 60e3) }); // saiu: não conta
+  for (const [name, reason, min] of [['Maria Souza', 'Tosse e febre há 3 dias', 12.5], ['João Lima', 'Dor de garganta', 6], ['Ana Prado', 'Renovar receita', 1]]) {
+    db.addConsult({ patient_name: name, reason, created_at: iso(now - min * 60e3) });
+  }
+  db.addConsult({ patient_name: 'Pedido Velho', created_at: iso(now - 3 * 3600e3) }); // mais de 2 h: expirado, não conta
+  for (let i = 0; i < 4; i++) db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: `Atendido ${i}`, created_at: iso(now - 50 * 60e3), accepted_at: iso(now - 40 * 60e3), started_at: iso(now - 30 * 60e3), ended_at: iso(now - 1000) });
+  db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: 'Sem atendimento', created_at: iso(now - 50 * 60e3), accepted_at: iso(now - 40 * 60e3), ended_at: iso(now - 1000) }); // não começou
+  db.addConsult({ status: 'ended', doctor_id: carla.id, patient_name: 'De ontem', created_at: iso(now - 26 * 3600e3), accepted_at: iso(now - 26 * 3600e3), started_at: iso(now - 26 * 3600e3), ended_at: iso(now - 25 * 3600e3) });
+  db.addDoc({ doctor_id: carla.id, kind: 'atestado', code: 'ATST2345', created_at: iso(now - 3600e3), patient_snapshot: { name: 'Atendido 0' } });
+  db.addDoc({ doctor_id: carla.id, kind: 'exames', code: 'EXAM2345', created_at: iso(now - 2 * DAY), patient_snapshot: { name: 'Atendido 1' } });
+  db.addDoc({ doctor_id: carla.id, kind: 'receita', code: 'RECE2345', created_at: iso(now - 8 * DAY), patient_snapshot: { name: 'Atendido 2' } }); // vencido
+  db.addDoc({ doctor_id: carla.id, kind: 'relatorio', code: 'RELA2345', created_at: iso(now - 3600e3), signed_at: iso(now - 600e3), patient_snapshot: { name: 'Atendido 3' } }); // já assinado
+  return carla;
 }
 
 const browser = await chromium.launch();
@@ -706,19 +853,332 @@ await scenario('área do médico no celular (390 px): etapas em pé, sem rolagem
   }
 });
 
+/* ---------- Plataforma de atendimento: painel "Agora na plataforma" e menu do topo ---------- */
+await scenario('painel "Agora na plataforma" (médico aprovado): números do banco, sem dado de paciente, botões e "Falta assinar"', async () => {
+  const db = seedDb();
+  const carla = seedPanel(db);
+  db.painelAt = '2026-10-30T15:00:00Z'; // hora dos números: a do banco (12:00 em Brasília)
+  const { page, errors, context } = await newPage(browser, db);
+  await page.goto(loginUrl('tok-ok'));
+  await visible(page, '#noticeCard');
+  await waitNum(page, 'aguardando', 3);
+  // No topo da página, antes de "Sua conta", com o título e a hora dos números.
+  assert.ok(await page.$eval('#painel', (p) => !!(p.compareDocumentPosition(document.querySelector('#authCard')) & Node.DOCUMENT_POSITION_FOLLOWING)), 'painel antes de "Sua conta"');
+  assert.equal(await page.getAttribute('#painel', 'aria-labelledby'), 'nowTitle');
+  assert.equal(await text(page, '#nowTitle'), 'Agora na plataforma');
+  let v = await panelView(page);
+  assert.deepEqual(v.nums, {
+    aguardando: '3 pacientes aguardando atendimento',
+    em_atendimento: '0 pacientes em atendimento com você',
+    atendidos_hoje: '4 pacientes atendidos hoje por você',
+    documentos_para_assinar: '2 documentos para assinar',
+    medicos_disponiveis: '1 médico disponível agora',
+  }, 'os números do banco (singular e plural certos)');
+  assert.equal(v.wait, 'O primeiro da fila espera há 12 min.');
+  assert.equal(v.at, 'Atualizado às 12:00', 'hora dos números vinda do banco (horário de Brasília)');
+  assert.equal(v.btn, 'Ficar disponível');
+  assert.ok(v.sign, 'documentos para assinar: "Ver e assinar"');
+  assert.equal(v.live, '', 'nada anunciado ao abrir');
+  // A chamada não manda nada (o banco sabe quem é pela sessão) e só o médico aprovado chama.
+  assert.deepEqual(db.called('tele_painel_medico').map((c) => [c.uid, c.args]), [['u-ok', {}]]);
+  // LGPD: o painel só tem contagens; nome, idade e motivo de quem espera ficam fora.
+  const painelText = await text(page, '#painel');
+  for (const re of [/Maria|João|Ana Prado|Atendido|Pedido Velho/, /Tosse|garganta|receita/i, /\d+ anos/]) assert.doesNotMatch(painelText, re);
+  assert.match(painelText, /Só números: este painel não mostra dados de pacientes\./);
+  // Os números não são "ao vivo" (o leitor de tela não lê o painel a cada 20 s); só #nowLive avisa, educado.
+  assert.equal(await page.locator('#painel [aria-live]').count(), 0, 'sem aria-live nos números');
+  assert.equal(await page.getAttribute('#nowLive', 'role'), 'status');
+  assert.equal(await page.locator('#painel ul.md-nums[role="list"] > li').count(), 5);
+  await shot(page, 'medicos-16-painel-aprovado');
+  await shotEl(page, '#painel', 'medicos-16b-painel-numeros');
+
+  // Menu do topo: as cinco partes, cada uma levando a um quadro que está na tela (a fila, antes do aviso, leva ao aviso).
+  assert.deepEqual(await menuItems(page), [['Painel', '#painel'], ['Fila', '#noticeCard'], ['Consultas', '#histCard'], ['Documentos', '#signCard'], ['Meu cadastro', '#meCard']]);
+  assert.equal(await text(page, '.md-brand'), 'Plataforma de atendimento');
+  assert.equal(await page.getAttribute('#mdMenu', 'aria-label'), 'Plataforma de atendimento');
+  assert.equal(await page.getAttribute('#mdMenu .md-site', 'href'), './', '"Site do IMED" volta para o site');
+  assert.equal((await text(page, '#mdMenu .md-site')), 'Site do IMED');
+  assert.equal(await page.isVisible('#menuBtn'), false, 'tela larga: o menu fica na linha do topo');
+  assert.equal(await text(page, 'h1'), 'Plataforma de atendimento do IMED');
+  assert.match(await page.title(), /^Área do médico: plataforma de atendimento \| IMED$/);
+
+  // "Ver e assinar" leva ao quadro "Falta assinar" (com o foco no título dele).
+  await page.click('#nowSign');
+  await page.waitForFunction(() => document.activeElement?.id === 'signTitle');
+  assert.match(await text(page, '#signTitle'), /Falta assinar \(3\)/, 'a lista tem também o vencido (que só dá para cancelar)');
+  // Menu: "Meu cadastro" e "Painel" levam ao quadro e põem o foco no título.
+  await page.click('#mdMenu [data-go="cadastro"]');
+  await page.waitForFunction(() => document.activeElement?.id === 'meTitle');
+  await page.click('#mdMenu [data-go="painel"]');
+  await page.waitForFunction(() => document.activeElement?.id === 'nowTitle');
+
+  // "Ficar disponível" antes de ler o aviso: leva ao aviso (o médico precisa ler e marcar).
+  await page.click('#nowBtn');
+  await page.waitForFunction(() => document.activeElement?.id === 'noticeTitle');
+  assert.equal(docOf(db, 'u-ok').available_until, null, 'ainda não ficou disponível');
+  await page.check('#noticeOk');
+  await page.click('#noticeBtn');
+  await visible(page, '#dutyCard');
+  assert.deepEqual((await menuItems(page)).find(([t]) => t === 'Fila'), ['Fila', '#dutyCard'], 'lido o aviso, "Fila" leva à fila');
+  // Agora liga: o banco passa a contar a Carla entre os médicos disponíveis e o botão vira "Ver a fila".
+  await page.click('#nowBtn');
+  await page.waitForSelector('#availBtn[aria-checked="true"]');
+  await waitNum(page, 'medicos_disponiveis', 2);
+  v = await panelView(page);
+  assert.equal(v.nums.medicos_disponiveis, '2 médicos disponíveis agora');
+  assert.equal(v.me, 'Contando você.');
+  assert.equal(v.btn, 'Ver a fila');
+  assert.ok(Date.parse(carla.available_until) > Date.now(), 'disponível no banco');
+  await expectSteps(page, '#meSteps', { current: 'Disponível', on: true, msg: /Você está disponível/ });
+  assert.match(await page.textContent('#toast'), /você está disponível/i);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await shot(page, 'medicos-17-painel-disponivel');
+  await page.click('#nowBtn');
+  await page.waitForFunction(() => document.activeElement?.id === 'dutyTitle');
+  assert.deepEqual(errors, [], 'sem erro no console');
+  await context.close();
+});
+
+await scenario('médico em análise, recusado, suspenso ou sem cadastro: sem números (o painel nem é pedido), só as etapas', async () => {
+  const db = seedDb();
+  seedPanel(db);
+  for (const [tok, sel, current, menu] of [
+    ['tok-new', '#regSteps', 'Envio do cadastro', [['Meu cadastro', '#regCard']]],
+    ['tok-pend', '#meSteps', 'Conferência do CRM', [['Consultas', '#histCard'], ['Meu cadastro', '#meCard']]],
+    ['tok-rej', '#meSteps', 'Conferência do CRM', [['Consultas', '#histCard'], ['Meu cadastro', '#meCard']]],
+    ['tok-sus', '#meSteps', 'Aprovado', [['Consultas', '#histCard'], ['Meu cadastro', '#meCard']]],
+  ]) {
+    const { page, errors, context } = await newPage(browser, db);
+    await page.goto(loginUrl(tok));
+    await waitStep(page, sel, current);
+    await page.waitForTimeout(400);
+    const uid = USERS[tok].id;
+    assert.equal(painelCalls(db, uid), 0, `${tok}: o painel não é pedido ao banco`);
+    assert.equal(await page.isHidden('#painel'), true, `${tok}: painel escondido`);
+    assert.deepEqual(await menuItems(page), menu, `${tok}: menu só com o que está na tela`);
+    assert.equal(await page.isVisible('#menuBtn'), false);
+    if (tok === 'tok-pend') await shot(page, 'medicos-18-em-analise-sem-numeros');
+    assert.deepEqual(errors, [], tok);
+    await context.close();
+  }
+  // O banco recusa o painel de quem não está aprovado (o mesmo erro da fila).
+  assert.throws(() => RPC.tele_painel_medico(db, {}, 'u-pend'), /nao_aprovado/);
+  assert.throws(() => RPC.tele_painel_medico(db, {}, 'u-new'), /sem_cadastro/);
+
+  // Aprovado que é suspenso com a página aberta: na próxima atualização o banco recusa, o painel some e as etapas mostram
+  // "Suspenso" (sem ficar pedindo o painel de novo).
+  const { page, errors, context } = await newPage(browser, db, { painelMs: 500 });
+  await page.goto(loginUrl('tok-ok'));
+  await waitNum(page, 'aguardando', 3);
+  docOf(db, 'u-ok').status = 'suspended';
+  await page.waitForSelector('#painel', { state: 'hidden' });
+  await expectSteps(page, '#meSteps', { current: 'Aprovado', bad: 'Suspenso', msg: /Você não pode atender agora/ });
+  const n = painelCalls(db, 'u-ok');
+  await page.waitForTimeout(1500);
+  assert.equal(painelCalls(db, 'u-ok'), n, 'parou de pedir o painel');
+  assert.ok(!(await menuItems(page)).some(([t]) => t === 'Painel'), 'menu sem "Painel"');
+  assert.deepEqual(errors, []);
+  docOf(db, 'u-ok').status = 'approved';
+  await context.close();
+});
+
+await scenario('banco ainda sem a função do painel (404/PGRST202) ou sem permissão: o painel some sem erro; servidor fora do ar: tenta de novo', async () => {
+  const db = seedDb();
+  seedPanel(db);
+  const missing = { status: 404, body: { code: 'PGRST202', details: 'Searched for the function public.tele_painel_medico without parameters or with a single unnamed json/jsonb parameter, but no matches were found in the schema cache.', hint: null, message: 'Could not find the function public.tele_painel_medico without parameters in the schema cache' } };
+  const denied = { status: 403, body: { code: '42501', details: null, hint: null, message: 'permission denied for function tele_painel_medico' } };
+  for (const [name, err] of [['404/PGRST202', missing], ['sem permissão (42501)', denied]]) {
+    db.painelErr = err;
+    const before = painelCalls(db, 'u-ok');
+    const { page, errors, context } = await newPage(browser, db, { painelMs: 400, notice: true });
+    await page.goto(loginUrl('tok-ok'));
+    await visible(page, '#dutyCard');
+    await page.waitForTimeout(1600);
+    assert.equal(painelCalls(db, 'u-ok') - before, 1, `${name}: pediu uma vez só e parou`);
+    assert.equal(await page.isHidden('#painel'), true, `${name}: painel escondido`);
+    assert.doesNotMatch(await text(page, '#main'), /Sem resposta do servidor|Não foi possível|expirou/, `${name}: nenhuma mensagem de erro`);
+    assert.deepEqual((await menuItems(page)).map(([t]) => t), ['Fila', 'Consultas', 'Documentos', 'Meu cadastro'], `${name}: menu sem "Painel"`);
+    // O resto da área do médico continua: fica disponível pela fila.
+    await page.click('#availBtn');
+    await page.waitForSelector('#availBtn[aria-checked="true"]');
+    await expectSteps(page, '#meSteps', { current: 'Disponível', on: true, msg: /Você está disponível/ });
+    assert.equal(await page.isHidden('#painel'), true);
+    if (name === '404/PGRST202') { await page.evaluate(() => window.scrollTo(0, 0)); await shot(page, 'medicos-19-sem-a-funcao-no-banco'); }
+    assert.deepEqual(errors, [], `${name}: sem erro no console`);
+    await context.close();
+  }
+  // Servidor fora do ar: o painel aparece quando volta; se cair de novo, mostra os números de antes, com a hora deles.
+  let fails = 2;
+  db.painelErr = () => (fails-- > 0 ? { status: 503, body: { message: 'falha simulada' } } : null);
+  const b0 = painelCalls(db, 'u-ok');
+  const { page, errors, context } = await newPage(browser, db, { painelMs: 400, notice: true });
+  await page.goto(loginUrl('tok-ok'));
+  await waitNum(page, 'aguardando', 3);
+  assert.ok(painelCalls(db, 'u-ok') >= b0 + 3, 'tentou de novo sozinho');
+  assert.match((await panelView(page)).at, /^Atualizado às \d\d:\d\d$/);
+  db.painelErr = { status: 503, body: { message: 'falha simulada' } };
+  await page.waitForFunction(() => /Sem resposta do servidor agora: tentando de novo/.test(document.querySelector('#nowAt').textContent));
+  const v = await panelView(page);
+  assert.ok(v.shown, 'continua à vista');
+  assert.match(v.at, /^Atualizado às \d\d:\d\d\. Sem resposta do servidor agora: tentando de novo…$/);
+  assert.equal(v.nums.aguardando, '3 pacientes aguardando atendimento', 'os números de antes ficam, com a hora deles');
+  db.painelErr = null;
+  await page.waitForFunction(() => /^Atualizado às \d\d:\d\d$/.test(document.querySelector('#nowAt').textContent));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('atualização: a cada 20 s com a aba à vista, para com a aba escondida e volta na hora; o leitor de tela ouve só a mudança da fila', async () => {
+  const db = seedDb();
+  seedPanel(db);
+  const { page, errors, context } = await newPage(browser, db, { notice: true });
+  await page.clock.install(); // relógio controlado pelo teste: os 20 s de verdade, sem esperar
+  await page.goto(loginUrl('tok-ok'));
+  await waitNum(page, 'aguardando', 3);
+  await page.waitForTimeout(300);
+  const calls = () => painelCalls(db, 'u-ok');
+  const n0 = calls();
+  assert.equal(n0, 1, 'uma chamada ao abrir');
+  // Live region: conta quantas vezes o texto do aviso muda e se os números foram refeitos sem mudar.
+  await page.evaluate(() => {
+    window.__live = 0; window.__nums = 0;
+    new MutationObserver((ms) => { window.__live += ms.length; }).observe(document.querySelector('#nowLive'), { childList: true, characterData: true, subtree: true });
+    new MutationObserver((ms) => { window.__nums += ms.length; }).observe(document.querySelector('#painel .md-nums'), { childList: true, characterData: true, subtree: true, attributes: true });
+  });
+  // (o relógio da página também anda sozinho, no tempo de verdade: as contas têm folga de alguns segundos)
+  await page.clock.runFor(15000);
+  await page.waitForTimeout(400);
+  assert.equal(calls(), n0, 'aos 15 s, ainda não');
+  await page.clock.runFor(6000);
+  await until(() => calls() === n0 + 1, 'aos 20 s, de novo');
+  await page.waitForTimeout(300);
+  assert.deepEqual(await page.evaluate(() => [window.__live, window.__nums]), [0, 0], 'números iguais: nada refeito nem anunciado');
+  // Chegou mais um paciente: na próxima atualização o número muda e o leitor de tela ouve uma frase curta, uma vez.
+  db.addConsult({ patient_name: 'Rita Nova', reason: 'Alergia', created_at: iso() });
+  await page.clock.runFor(21000);
+  await waitNum(page, 'aguardando', 4);
+  let v = await panelView(page);
+  assert.equal(v.live, 'Agora há 4 pacientes aguardando atendimento.');
+  assert.doesNotMatch(v.live, /Rita|Alergia/, 'sem nome nem motivo no aviso');
+  await page.clock.runFor(21000);
+  await until(() => calls() === n0 + 3, 'mais uma atualização');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__live), 1, 'anunciado uma vez só (não a cada atualização)');
+  // Aba escondida: para de pedir (nem a atualização que já estava marcada); ao voltar, pede na hora.
+  await setTabHidden(page, true);
+  const hiddenAt = calls();
+  await page.clock.runFor(90000);
+  await page.waitForTimeout(400);
+  assert.equal(calls(), hiddenAt, 'com a aba escondida, nenhuma chamada');
+  db.consults.filter((c) => c.status === 'waiting').forEach((c) => { c.status = 'cancelled'; });
+  await setTabHidden(page, false);
+  await waitNum(page, 'aguardando', 0);
+  assert.equal(calls(), hiddenAt + 1, 'voltou: pediu na hora');
+  v = await panelView(page);
+  assert.equal(v.wait, '', 'sem "o primeiro espera" quando ninguém espera');
+  assert.equal(v.live, 'Agora ninguém está aguardando atendimento.');
+  assert.match(v.at, /^Atualizado às \d\d:\d\d$/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('Plataforma de atendimento no celular (360 px): topo com menu que abre e fecha, painel em lista, sem rolagem lateral e alvos de 44 px', async () => {
+  const db = seedDb();
+  seedPanel(db);
+  // Antes de entrar: o topo mostra o nome da plataforma e "Site do IMED" (sem botão "Menu" vazio).
+  let p = await newPage(browser, db, { mobile: true, width: 360 });
+  await p.page.goto(`${BASE}medico.html`);
+  await visible(p.page, '#loginEmail');
+  await noOverflow(p.page, 'medico.html sem entrar (360 px)');
+  assert.ok(await p.page.evaluate(() => document.documentElement.scrollWidth) <= 360, 'cabe nos 360 px configurados');
+  assert.equal(await p.page.isVisible('#menuBtn'), false);
+  assert.equal(await p.page.isVisible('#mdMenu .md-site'), true);
+  for (const sel of ['.logo', '#mdMenu .md-site']) {
+    const b = await p.page.locator(sel).boundingBox();
+    assert.ok(b.height >= 43.5 && b.x >= 0 && b.x + b.width <= 360, `${sel}: 44 px e dentro da tela (${JSON.stringify(b)})`);
+  }
+  await shot(p.page, 'medicos-20-celular-sem-entrar');
+  assert.deepEqual(p.errors, []);
+  await p.context.close();
+
+  // Médico aprovado: painel em lista (um número embaixo do outro) e menu pelo botão.
+  p = await newPage(browser, db, { mobile: true, width: 360, notice: true });
+  const { page } = p;
+  await page.goto(loginUrl('tok-ok'));
+  await waitNum(page, 'aguardando', 3);
+  await visible(page, '#dutyCard');
+  await noOverflow(page, 'painel no celular (360 px)');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth) <= 360, 'cabe nos 360 px configurados');
+  const tiles = await page.locator('#painel .md-num').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { l: Math.round(r.left), r: r.right, t: r.top }; }));
+  tiles.forEach((t, i) => { assert.ok(t.r <= 360 - 12, 'quadro dentro da tela'); if (i) { assert.ok(t.t > tiles[i - 1].t, 'um embaixo do outro'); assert.equal(t.l, tiles[0].l); } });
+  for (const sel of ['#nowBtn', '#nowSign', '#menuBtn']) {
+    const b = await page.locator(sel).boundingBox();
+    assert.ok(b.height >= 43.5 && b.x >= 0 && b.x + b.width <= 360, `${sel}: 44 px e dentro da tela (${JSON.stringify(b)})`);
+  }
+  assert.match(await text(page, '#nowWait'), /O primeiro da fila espera há 12 min\./);
+  await shot(page, 'medicos-21-celular-painel');
+  // Menu fechado: os itens não aparecem nem recebem foco.
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'false');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-controls'), 'mdMenu');
+  assert.equal(await page.isVisible('#mdMenu [data-go="painel"]'), false);
+  // Abre: cinco itens e "Site do IMED", cada um com 44 px e dentro da tela.
+  await page.click('#menuBtn');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'true');
+  await visible(page, '#mdMenu [data-go="painel"]');
+  assert.deepEqual((await menuItems(page)).map(([t]) => t), ['Painel', 'Fila', 'Consultas', 'Documentos', 'Meu cadastro']);
+  const links = await page.locator('#mdMenu a').evaluateAll((els) => els.filter((e) => e.offsetParent !== null).map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent.trim(), h: r.height, l: r.left, r: r.right, top: r.top }; }));
+  assert.equal(links.length, 6);
+  for (const l of links) assert.ok(l.h >= 43.5 && l.l >= 0 && l.r <= 360, `${l.t}: 44 px e dentro da tela (${JSON.stringify(l)})`);
+  links.forEach((l, i) => { if (i) assert.ok(l.top > links[i - 1].top, 'um embaixo do outro'); });
+  await noOverflow(page, 'menu aberto (360 px)');
+  await shot(page, 'medicos-22-celular-menu-aberto');
+  // Esc fecha e devolve o foco ao botão.
+  await page.locator('#mdMenu [data-go="fila"]').focus();
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'false');
+  assert.equal(await focusedId(page), 'menuBtn');
+  await page.waitForSelector('#mdMenu [data-go="painel"]', { state: 'hidden' });
+  // Abre e escolhe "Fila": o menu fecha e o foco vai para o título da fila, à vista (não fica atrás do topo).
+  await page.click('#menuBtn');
+  await page.click('#mdMenu [data-go="fila"]');
+  await page.waitForFunction(() => document.activeElement?.id === 'dutyTitle');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'false');
+  const topH = await page.locator('#mdTop').evaluate((h) => h.getBoundingClientRect().bottom);
+  const tb = await page.locator('#dutyTitle').boundingBox();
+  assert.ok(tb.y >= topH - 1 && tb.y < 844, `título da fila à vista, abaixo do topo (${tb.y} >= ${topH})`);
+  // Um toque fora do topo também fecha.
+  await page.click('#menuBtn');
+  await page.locator('#nowTitle').dispatchEvent('click');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'false');
+  // Com o Tab, sair do menu aberto fecha a caixa (ela não cobre o que recebe o foco).
+  await page.click('#menuBtn');
+  await page.locator('#mdMenu .md-site').focus();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.getAttribute('#menuBtn', 'aria-expanded'), 'false', 'foco saiu do topo: menu fechado');
+  assert.deepEqual(p.errors, []);
+  await p.context.close();
+});
+
 await scenario('ligações: página inicial, rodapé, sitemap e topo da área do médico levam a para-medicos.html', async () => {
   // Página inicial: link discreto na seção da teleconsulta.
   const idx = read('index.html');
   const sec = idx.slice(idx.indexOf('<section class="sec rv" id="lista"'), idx.indexOf('</section>', idx.indexOf('id="lista"')));
   assert.match(sec, /<p class="tele-doc"><a href="para-medicos\.html"><i class="fa-solid fa-user-doctor" aria-hidden="true"><\/i>É médico\? Atenda pelo IMED<\/a><\/p>/);
-  // Rodapé (modelo): "Para médicos" no grupo de clínicas e médicos.
+  // Rodapé (modelo): "Para médicos" e, logo depois, "Área do médico" (a Plataforma de atendimento) no grupo de clínicas
+  // e médicos.
   const grupo = GRUPOS.find(([, links]) => links.some(([, p]) => p === 'para-medicos.html'));
   assert.equal(grupo?.[0], 'Clínicas e médicos');
-  assert.ok(rodapeHtml('').includes('<li><a href="para-medicos.html">Para médicos</a></li>'));
+  const paths = grupo[1].map(([, p]) => p);
+  assert.equal(paths.indexOf('medico.html'), paths.indexOf('para-medicos.html') + 1, '"Área do médico" logo depois de "Para médicos"');
+  assert.deepEqual(grupo[1].find(([, p]) => p === 'medico.html'), ['Área do médico', 'medico.html']);
+  assert.ok(rodapeHtml('').includes('<li><a href="para-medicos.html">Para médicos</a></li>\n          <li><a href="medico.html">Área do médico</a></li>'));
   assert.ok(rodapeHtml('../').includes('<li><a href="../para-medicos.html">Para médicos</a></li>'));
-  // Sitemap e topo da área do médico.
+  assert.ok(rodapeHtml('../../../').includes('<li><a href="../../../medico.html">Área do médico</a></li>'));
+  // Sitemap e topo da área do médico (agora "Plataforma de atendimento", com "Site do IMED" de volta para o site).
   assert.equal((read('sitemap.xml').match(/<loc>https:\/\/drrafaelpereirabarreto-code\.github\.io\/testedoapp\/para-medicos\.html<\/loc>/g) || []).length, 1);
   assert.match(read('medico.html'), /<p class="md-howto"><a href="para-medicos\.html">/);
+  assert.match(read('medico.html'), /<span class="md-brand">Plataforma de atendimento<\/span>/);
+  assert.match(read('medico.html'), /<a class="md-site" href="\.\/"><i class="fa-solid fa-house" aria-hidden="true"><\/i><span class="md-site-t">Site do IMED<\/span><\/a>/);
   // No celular, o link da página inicial aparece e tem 44 px de altura (fácil de tocar).
   const db = makeDb();
   const { page, context } = await newPage(browser, db, { mobile: true });
@@ -740,7 +1200,7 @@ await scenario('ligações: página inicial, rodapé, sitemap e topo da área do
   await context.close();
 });
 
-await scenario('acessibilidade (axe-core): página nova, etapas e link de ajuda sem problema grave', async () => {
+await scenario('acessibilidade (axe-core): página nova, etapas, link de ajuda, topo da plataforma e painel sem problema grave', async () => {
   if (!AXE) { console.log('  aviso - axe-core não encontrado: auditoria pulada (instale o axe-core ou passe AXE_PATH).'); return; }
   const db = seedDb();
   for (const mobile of [false, true]) {
@@ -754,7 +1214,17 @@ await scenario('acessibilidade (axe-core): página nova, etapas e link de ajuda 
     const { page, context } = await newPage(browser, db, { csp: false });
     await page.goto(loginUrl(tok));
     await visible(page, `${sel} .md-stepper`);
-    assert.deepEqual(await runAxe(page, [[sel], ['.md-howto']]), [], `medico.html ${tok}`);
+    assert.deepEqual(await runAxe(page, [[sel], ['.md-howto'], ['#mdTop']]), [], `medico.html ${tok}`);
+    await context.close();
+  }
+  // Médico aprovado: topo com o menu (no celular, aberto) e o painel "Agora na plataforma".
+  seedPanel(db);
+  for (const mobile of [false, true]) {
+    const { page, context } = await newPage(browser, db, { mobile, width: 360, csp: false, notice: true });
+    await page.goto(loginUrl('tok-ok'));
+    await waitNum(page, 'aguardando', 3);
+    if (mobile) { await page.click('#menuBtn'); await visible(page, '#mdMenu [data-go="painel"]'); }
+    assert.deepEqual(await runAxe(page, [['#mdTop'], ['#painel']]), [], `medico.html aprovado (${mobile ? 'celular, menu aberto' : 'computador'})`);
     await context.close();
   }
 });

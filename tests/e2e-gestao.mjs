@@ -3,14 +3,19 @@
 // com as regras do contrato (só admin; 42501 'forbidden'; dado inválido 22023 com mensagem curta em português).
 // Cenários: sem login (quadro de entrar, nada do banco); conta que não é da equipe (aviso e nenhuma busca de dados);
 // equipe com dados (números, gráficos com resumo para leitor de tela e tabela, funis, resultados, fluxograma da entrada
-// de médicos com os números, médicos aguardando, clínicas, faturamento); período 7/30/90/365 (12 meses: colunas por
+// de médicos com os números, médicos aguardando, clínicas, faturamento); bloco "Agora" (a fila da teleconsulta neste
+// momento, chave "agora" de admin_gestao: no topo, antes do período; não muda com o período; atualiza junto com a
+// página; o leitor de tela só ouve a frase quando os números mudam; nenhum dado de paciente; sem médico disponível em
+// destaque; erro do banco esconde o bloco); banco ainda sem a chave "agora" (o bloco não aparece, nada quebra; aparece
+// quando a migração chega); período 7/30/90/365 (12 meses: colunas por
 // semana, tabelas abertas continuam abertas); banco ainda sem as funções (aviso, sem quebrar); cobrança (criar, prévia
 // do valor, erro de validação, erro do banco, marcar como paga hoje e noutro dia, cancelar e voltar para pendente com
 // confirmação, Enter de novo não desfaz, filtro, lista cheia e planilha CSV); a conta deixa de ser da equipe com a
 // página aberta (42501); banco novo (tudo zero); link "Painel de gestão" no painel.html só para a equipe; entrada
-// vencida; celular 390 px sem rolagem lateral (também em 12 meses); nenhum erro no console. Com o axe-core por perto
-// (AXE_PATH ou node_modules), audita a página da equipe no computador e no celular, com as tabelas abertas e os quadros
-// de pagamento e de voltar para pendente (falha com violação grave).
+// vencida; celular 390 px sem rolagem lateral (também em 12 meses) e celular 360 px (o bloco "Agora" e a página toda,
+// medidos contra a largura configurada); nenhum erro no console. Com o axe-core por perto
+// (AXE_PATH ou node_modules), audita a página da equipe no computador e no celular, com as tabelas abertas, o bloco
+// "Agora" com o aviso de nenhum médico e os quadros de pagamento e de voltar para pendente (falha com violação grave).
 // Rodar com: node tests/e2e-gestao.mjs   (precisa do pacote "playwright" instalado)
 // Opcional: SHOTS=pasta salva capturas de tela (para mostrar o teste); E2E_PORT muda a porta (padrão 4761);
 //           ONLY="trecho" roda só os cenários com esse texto no nome; AXE_PATH=<pasta>/node_modules/axe-core.
@@ -89,6 +94,10 @@ const AGUARDANDO = [
 
 // Números do período (o resto vem das regras do contrato). A série soma os totais, como no banco.
 const PAT = { pedidos: [0, 1, 0, 2, 1, 0, 1], tele_pedidas: [1, 0, 0, 1, 0, 1, 0], tele_encerradas: [1, 0, 0, 0, 0, 1, 0], documentos: [0, 2, 0, 0, 1, 0, 0] };
+// A teleconsulta agora (chave "agora" de admin_gestao, migração 20261030191354_painel_medico): igual em qualquer
+// período; os médicos disponíveis são o mesmo número de medicos.disponiveis_agora.
+const AGORA = { aguardando: 1, espera_mais_longa_min: 7, em_atendimento: 0, medicos_disponiveis: 1 };
+const AGORA_IDS = ['agora-aguardando', 'agora-espera', 'agora-atendimento', 'agora-medicos'];
 function resumoCobranca(charges, days) {
   const from = addDays(HOJE, 1 - days);
   const pagas = charges.filter((c) => c.status === 'pago' && daySP(c.pago_em) >= from && daySP(c.pago_em) <= HOJE);
@@ -105,7 +114,7 @@ function resumoCobranca(charges, days) {
     })),
   };
 }
-function gestao(days, charges) {
+function gestao(days, charges, agora = AGORA) {
   const de = addDays(HOJE, 1 - days);
   const serie = Array.from({ length: days }, (_, i) => ({
     dia: addDays(de, i), visitas: i === days - 4 ? 1000 : 120 + ((i * 53) % 97),
@@ -128,10 +137,11 @@ function gestao(days, charges) {
       avaliacoes: { total: 3, media: 4.7 },
     },
     funil: { visitas: tot('visitas'), abriram_busca: 1200, abriram_local: 480, pedidos: ped, confirmados: confirmado + concluido, concluidos: concluido, abriram_tele: 300, tele_fila: tp, tele_atendidas: te, tele_encerradas: te, tele_com_documento: Math.min(te, 5) },
-    medicos: { inscritos_periodo: days >= 30 ? 4 : 1, pendente: 2, aprovado: 5, recusado: 1, suspenso: 0, disponiveis_agora: 1, aprovacao_media_horas: 30.5, aguardando: AGUARDANDO },
+    medicos: { inscritos_periodo: days >= 30 ? 4 : 1, pendente: 2, aprovado: 5, recusado: 1, suspenso: 0, disponiveis_agora: agora?.medicos_disponiveis ?? 1, aprovacao_media_horas: 30.5, aguardando: AGUARDANDO },
     clinicas: { parceiras: 7, com_agenda: 3, com_preco: 5, interessadas: days >= 30 ? 11 : 2, reivindicacoes: { pendente: 2, aprovado: 7, recusado: 1 } },
     outros: { lista_espera: 40, contatos: 6, avisos_de_erro: 2 },
     cobranca: resumoCobranca(charges, days),
+    agora: clone(agora),
   };
 }
 // Banco novo: tudo zero, médias sem número (null), ninguém aguardando, nenhuma cobrança (12 meses zerados).
@@ -153,6 +163,7 @@ function gestaoZero(days) {
     clinicas: { ...z(['parceiras', 'com_agenda', 'com_preco', 'interessadas']), reivindicacoes: z(['pendente', 'aprovado', 'recusado']) },
     outros: z(['lista_espera', 'contatos', 'avisos_de_erro']),
     cobranca: resumoCobranca([], days),
+    agora: { aguardando: 0, espera_mais_longa_min: null, em_atendimento: 0, medicos_disponiveis: 0 },
   };
 }
 
@@ -167,16 +178,16 @@ const STATUS = ['pendente', 'pago', 'cancelado'];
 const FORMAS = ['pix', 'cartao', 'boleto', 'dinheiro', 'transferencia', 'outro'];
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(`${s}T12:00:00Z`)) && new Date(`${s}T12:00:00Z`).toISOString().slice(0, 10) === s;
 
-async function newPage(browser, { mobile = false, logged = false, email = 'equipe@imed.com.br', expired = false, db: dbOpts = {}, bypassCSP = false } = {}) {
+async function newPage(browser, { mobile = false, width = 390, logged = false, email = 'equipe@imed.com.br', expired = false, db: dbOpts = {}, bypassCSP = false } = {}) {
   const context = await browser.newContext({
-    viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
+    viewport: mobile ? { width, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', acceptDownloads: true, bypassCSP,
   });
   await context.clock.setFixedTime(new Date(NOW));
   const nowS = Math.floor(Date.parse(NOW) / 1000);
   const db = {
     admin: true, charges: clone(CHARGES), gestaoMissing: false, cobMissing: false, gestaoError: null, gestaoDelay: 0, cobError: null, saveError: null,
-    failRefresh: false, members: [], clinics: [], calls: [], zero: false,
+    failRefresh: false, members: [], clinics: [], calls: [], zero: false, agora: clone(AGORA),
     ...dbOpts,
   };
   const log = [];
@@ -212,7 +223,7 @@ async function newPage(browser, { mobile = false, logged = false, email = 'equip
         if (!isAdmin) return onlyAdmin();
         if (db.gestaoError) return json(route, db.gestaoError.body, db.gestaoError.status);
         const days = Math.min(366, Math.max(1, Number(body?.p_days) || 30));
-        const g = db.zero ? gestaoZero(days) : gestao(days, db.charges);
+        const g = db.zero ? gestaoZero(days) : gestao(days, db.charges, db.agora);
         return json(route, db.patchGestao ? db.patchGestao(g) : g);
       }
       case 'rpc/admin_cobranca_listar': {
@@ -303,6 +314,24 @@ const noOverflow = async (page) => {
   const vw = page.viewportSize().width;
   assert.ok(w <= vw && sw <= vw, `sem rolagem lateral (janela ${w}px, conteúdo ${sw}px, aparelho ${vw}px)`);
 };
+// "Atualizar números" e espera os números novos chegarem (uma chamada a mais de admin_gestao).
+async function atualizar(page, log) {
+  const n = calls(log, '/rpc/admin_gestao').length;
+  await page.click('#gsRefresh');
+  await page.waitForFunction(() => !document.querySelector('#gsData[aria-busy]'));
+  assert.equal(calls(log, '/rpc/admin_gestao').length, n + 1, 'buscou os números de novo');
+}
+const agoraV = (page) => Promise.all(AGORA_IDS.map((id) => kpiV(page, id)));
+// Em ordem: quando a frase do leitor de tela (região aria-live do bloco "Agora") muda e quando o bloco aparece ou some.
+const vigiaAgora = (page) => page.addInitScript(() => {
+  window.__agora = [];
+  new MutationObserver((recs) => {
+    for (const r of recs) {
+      const el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+      if (r.type === 'attributes') { if (el?.id === 'sec-agora') window.__agora.push(el.hidden ? 'esconde' : 'mostra'); } else if (el?.closest?.('#gsAgoraFala')) window.__agora.push('fala');
+    }
+  }).observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden'] });
+});
 const brl = (c) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c / 100).replace(/\s/g, ' ');
 const int = (n) => new Intl.NumberFormat('pt-BR').format(n);
 const dm = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
@@ -413,6 +442,9 @@ await scenario('equipe do IMED: resumo, gráficos com resumo e tabela, funis, re
   assert.equal(await kpiV(page, 'receber'), brl(C.a_receber_cents));
   assert.equal(C.faturado_cents, 49900);
   assert.equal(C.a_receber_cents, 33950);
+  // 0. agora: no topo, com os números deste momento (detalhes no cenário do bloco "Agora")
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1']);
+  assert.equal(norm(await page.textContent('#sec-resumo-h')), 'Resumo do período');
   // 2. atendimentos por dia: um quadro de colunas por número (sem as visitas), cada um com resumo para leitor de tela,
   // e uma tabela com os mesmos números
   const atend = page.locator('figure[data-fig="atend"]');
@@ -535,6 +567,128 @@ await scenario('equipe do IMED: resumo, gráficos com resumo e tabela, funis, re
   await context.close();
 });
 
+await scenario('agora na teleconsulta: no topo, antes do período; números deste momento (não mudam com o período), atualizam junto com a página, sem dado de paciente, e o leitor de tela só ouve quando mudam', async () => {
+  // O banco manda (por engano) nomes e motivos junto: nada disso pode aparecer (LGPD: só as contagens).
+  const comNomes = { ...AGORA, fila: [{ nome: 'Maria Paciente', idade: 47, motivo: 'dor no peito' }], pacientes: ['João Sem Nome'] };
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, db: { agora: comNomes } });
+  await vigiaAgora(page);
+  await page.goto(`${BASE}gestao.html`);
+  await page.waitForSelector('#sec-agora:not([hidden]) [data-kpi="agora-aguardando"]');
+  await page.waitForSelector('#cobLista table');
+  // No topo: depois dos atalhos, antes do período e do resumo do período.
+  assert.deepEqual(await page.evaluate(() => [...document.querySelector('#app').children].map((el) => el.id || [...el.classList].at(-1))), ['gs-toc', 'sec-agora', 'gs-ctl', 'gsData', 'sec-cobranca']);
+  const topo = (sel) => page.locator(sel).evaluate((el) => el.getBoundingClientRect().top);
+  assert.ok(await topo('#sec-agora') < await topo('.gs-ctl') && await topo('.gs-ctl') < await topo('#sec-resumo'), 'na tela também');
+  // Deixa claro que são números de agora (o resto da página é do período).
+  assert.equal(norm(await page.textContent('#sec-agora-h')), 'Agora na teleconsulta');
+  assert.equal(await page.getAttribute('#sec-agora', 'aria-labelledby'), 'sec-agora-h');
+  assert.equal(norm(await page.textContent('#gsAgoraHora')), 'Atualizado às 12:00', 'a hora do banco');
+  assert.equal(norm(await page.textContent('#sec-agora .gs-agora-help')), 'Números deste momento: não dependem do período escolhido logo abaixo, que vale só para o resto da página. Para ver de novo, use “Atualizar números”.');
+  assert.equal(norm(await page.textContent('#sec-resumo-h')), 'Resumo do período');
+  // Os 4 números, com o nome e a explicação (no singular quando o número é 1).
+  assert.deepEqual(await page.locator('#gsAgoraKpis .gs-kpi').evaluateAll((k) => k.map((x) => [x.querySelector('.gs-kpi-l').textContent.trim(), x.querySelector('small').textContent.trim()])), [
+    ['Aguardando atendimento', 'paciente na fila, esperando um médico aceitar'], ['Espera mais longa', 'do primeiro paciente da fila'],
+    ['Em atendimento', 'consultas aceitas por um médico ou em andamento'], ['Médicos disponíveis', 'aprovado, com a página de atendimento aberta'],
+  ]);
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1']);
+  assert.equal(await page.locator('#sec-agora .gs-warn, #gsAgoraAlerta .cl-note').count(), 0, 'há médico disponível: sem destaque');
+  const kpis = await page.locator('#gsAgoraKpis .gs-kpi').evaluateAll((k) => k.map((x) => Math.round(x.getBoundingClientRect().top)));
+  assert.ok(kpis.every((t) => t === kpis[0]), 'os 4 lado a lado no computador');
+  // Leitor de tela: só uma frase curta é lida sozinha (educada, inteira); os números não ficam "ao vivo".
+  assert.equal(await page.getAttribute('#gsAgoraFala', 'aria-live'), 'polite');
+  assert.equal(await page.getAttribute('#gsAgoraFala', 'aria-atomic'), 'true');
+  assert.equal(await page.locator('#sec-agora [aria-live], #sec-agora [role="status"], #sec-agora [role="alert"]').count(), 1);
+  assert.equal(norm(await page.textContent('#gsAgoraFala')), 'Agora: 1 paciente aguardando atendimento (espera há 7 minutos), nenhuma consulta em atendimento e 1 médico disponível.');
+  assert.deepEqual(await page.evaluate(() => window.__agora), ['fala', 'mostra'], 'a frase é escrita antes de o bloco aparecer: ao abrir a página nada é anunciado');
+  // LGPD: nenhum nome, idade ou motivo de paciente na página.
+  const tudo = await page.content();
+  for (const s of ['Maria Paciente', 'dor no peito', 'João Sem Nome']) assert.ok(!tudo.includes(s), `${s} não aparece`);
+  await shot(page, 'gestao-17-agora', '#sec-agora');
+  // Trocar o período não muda os números de agora; atualizar com os mesmos números não lê nada de novo.
+  await page.click('.gs-seg label:has-text("7 dias")');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mini="pedidos"] rect.gs-hit').length === 7);
+  assert.deepEqual(calls(log, '/rpc/admin_gestao').at(-1).body, { p_days: 7 });
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1'], 'os números de agora não dependem do período');
+  await atualizar(page, log);
+  assert.deepEqual(await page.evaluate(() => window.__agora), ['fala', 'mostra'], 'mesmos números: nada é anunciado a cada atualização');
+  // O banco muda (3 na fila, nenhum médico): "Atualizar números" traz os novos; os de antes ficam (mais claros) até eles chegarem.
+  db.agora = { aguardando: 3, espera_mais_longa_min: 12, em_atendimento: 1, medicos_disponiveis: 0 };
+  db.gestaoDelay = 600;
+  await page.click('#gsRefresh');
+  await page.waitForSelector('#sec-agora.gs-busy');
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1'], 'segura os números de antes');
+  await page.waitForFunction(() => !document.querySelector('#sec-agora.gs-busy'));
+  db.gestaoDelay = 0;
+  assert.deepEqual(await agoraV(page), ['3', '12 min', '1', '0']);
+  assert.equal(norm(await page.textContent('#gsAgoraFala')), 'Agora: 3 pacientes aguardando atendimento (o primeiro espera há 12 minutos), 1 consulta em atendimento e nenhum médico disponível.');
+  assert.deepEqual(await page.evaluate(() => window.__agora), ['fala', 'mostra', 'fala'], 'os números mudaram: a frase é lida uma vez');
+  // Paciente esperando e nenhum médico disponível: em destaque, com o aviso escrito (sem ser lido sozinho).
+  assert.equal(await page.locator('[data-kpi="agora-aguardando"].gs-warn').count(), 1);
+  assert.equal(norm(await page.textContent('#gsAgoraAlerta')), 'Há paciente esperando e nenhum médico disponível agora.');
+  assert.equal(await page.locator('#gsAgoraAlerta [role], #gsAgoraAlerta [aria-live]').count(), 0);
+  assert.equal(norm(await page.textContent('ol.gs-flow .gs-fs4 .gs-fx-n')), '0', 'o fluxograma dos médicos mostra o mesmo número');
+  await shot(page, 'gestao-18-agora-sem-medico', '#sec-agora');
+  // Mexer numa cobrança busca os números da página de novo: os de agora vêm junto.
+  db.agora = { aguardando: 0, espera_mais_longa_min: null, em_atendimento: 1, medicos_disponiveis: 2 };
+  await page.click(`#cob-${ID(1)} [data-pay]`);
+  await page.selectOption(`#forma-${ID(1)}`, 'pix');
+  await page.click(`#cob-${ID(1)} [data-confirm-pay]`);
+  await page.waitForFunction(() => document.querySelector('[data-kpi="agora-medicos"] .gs-kpi-v')?.textContent === '2');
+  assert.deepEqual(await agoraV(page), ['0', '—', '1', '2']);
+  assert.equal(norm(await page.textContent('[data-kpi="agora-espera"] small')), 'ninguém na fila agora');
+  assert.equal(await page.locator('#sec-agora .gs-warn, #gsAgoraAlerta .cl-note').count(), 0, 'ninguém esperando: sem destaque');
+  assert.equal(norm(await page.textContent('#gsAgoraFala')), 'Agora: nenhum paciente aguardando atendimento, 1 consulta em atendimento e 2 médicos disponíveis.');
+  // O banco falha: o bloco some (nada dos números de antes como se fossem de agora); de volta, sem ler a frase de novo.
+  db.gestaoError = { status: 500, body: { message: 'erro' } };
+  await page.click('#gsRefresh');
+  await page.waitForSelector('#retryGestao');
+  assert.equal(await page.isHidden('#sec-agora'), true);
+  db.gestaoError = null;
+  await page.click('#retryGestao');
+  await page.waitForSelector('#sec-agora:not([hidden])');
+  assert.deepEqual(await agoraV(page), ['0', '—', '1', '2']);
+  assert.deepEqual(await page.evaluate(() => window.__agora), ['fala', 'mostra', 'fala', 'fala', 'esconde', 'mostra'], 'cada mudança lida uma vez; depois do erro, os mesmos números voltam calados');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('banco ainda sem a chave "agora" (migração nova não aplicada): o bloco não aparece, o resto funciona e o bloco chega com a migração', async () => {
+  const semAgora = (g) => { delete g.agora; return g; };
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, db: { patchGestao: semAgora } });
+  await vigiaAgora(page);
+  await page.goto(`${BASE}gestao.html`);
+  await page.waitForSelector('#sec-resumo .gs-kpi');
+  await page.waitForSelector('#cobLista table');
+  assert.equal(await page.isHidden('#sec-agora'), true, 'sem a chave: sem o bloco');
+  assert.equal(await page.locator('[data-kpi^="agora-"]').count(), 0, 'nenhum número de agora');
+  assert.equal(await page.textContent('#gsAgoraFala'), '', 'nada para o leitor de tela');
+  // O resto do painel segue igual (o fluxograma dos médicos tem o número dele).
+  assert.equal(await kpiV(page, 'pedidos'), int(F30.pacientes.pedidos.total));
+  assert.match(norm(await page.textContent('#gsWhen')), /^Números de 01\/10\/2026 a 30\/10\/2026 \(30 dias\), no horário de São Paulo\. Atualizado às 12:00\.$/);
+  assert.equal(norm(await page.textContent('ol.gs-flow .gs-fs4 .gs-fx-n')), '1');
+  assert.equal(await page.locator('#cobForm:not([hidden])').count(), 1);
+  await shot(page, 'gestao-19-sem-a-chave-agora');
+  // Chave nula, fora do formato ou sem nenhum número (e com um nome que não deveria vir): também sem o bloco.
+  for (const agora of [null, [], 'agora', {}, { aguardando: 'muitos', medicos_disponiveis: -1, fila: [{ nome: 'Maria Paciente' }] }]) {
+    db.patchGestao = (g) => ({ ...g, agora });
+    await atualizar(page, log);
+    assert.equal(await page.isHidden('#sec-agora'), true, JSON.stringify(agora));
+    assert.equal(await kpiV(page, 'pedidos'), int(F30.pacientes.pedidos.total));
+  }
+  assert.ok(!(await page.content()).includes('Maria Paciente'));
+  // A migração chega com a página aberta: o bloco aparece na próxima atualização (e some se a chave sumir de novo).
+  db.patchGestao = null;
+  await atualizar(page, log);
+  assert.equal(await page.isHidden('#sec-agora'), false);
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1']);
+  db.patchGestao = semAgora;
+  await atualizar(page, log);
+  assert.equal(await page.isHidden('#sec-agora'), true);
+  assert.deepEqual(await page.evaluate(() => window.__agora), ['fala', 'mostra', 'esconde'], 'aparece sem ser anunciado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('período: 7 dias, 12 meses e 90 dias; os números de antes ficam (mais claros) até os novos chegarem', async () => {
   const { page, log, errors, context, db } = await newPage(browser, { logged: true });
   await page.goto(`${BASE}gestao.html`);
@@ -602,6 +756,7 @@ await scenario('banco ainda sem as funções: aviso claro na gestão e na cobran
   assert.equal(await page.isHidden('#cobForm'), true, 'sem a função, sem o formulário');
   assert.equal(await page.isHidden('#cobNovaLink'), true, 'nem o atalho para ele');
   assert.equal(await page.locator('.gs-fig').count(), 0);
+  assert.equal(await page.isHidden('#sec-agora'), true, 'sem a função, sem o bloco "Agora"');
   assert.match(norm(await page.textContent('#sec-cobranca .gs-honest')), /O IMED ainda não recebe pagamentos pelo site/);
   await shot(page, 'gestao-09-banco-sem-funcoes');
   // Outro erro: mensagem e "Tentar de novo".
@@ -894,6 +1049,11 @@ await scenario('banco novo (tudo zero, médias sem número): "—" nas médias, 
   assert.deepEqual([await kpiV(page, 'faturado'), await kpiV(page, 'receber'), await kpiV(page, 'cob-atrasado')], [brl(0), brl(0), brl(0)]);
   assert.deepEqual([await kpiV(page, 'espera'), await kpiV(page, 'duracao')], ['—', '—'], 'média sem número: "—"');
   assert.equal(await page.locator('[data-kpi="cob-atrasado"].gs-warn').count(), 0);
+  // Agora: ninguém na fila (sem espera), ninguém em atendimento e nenhum médico; sem paciente, sem o aviso.
+  assert.deepEqual(await agoraV(page), ['0', '—', '0', '0']);
+  assert.equal(norm(await page.textContent('[data-kpi="agora-espera"] small')), 'ninguém na fila agora');
+  assert.equal(await page.locator('#sec-agora .gs-warn, #gsAgoraAlerta .cl-note').count(), 0, 'ninguém esperando: sem o aviso de nenhum médico');
+  assert.equal(norm(await page.textContent('#gsAgoraFala')), 'Agora: nenhum paciente aguardando atendimento, nenhuma consulta em atendimento e nenhum médico disponível.');
   assert.equal(await page.locator('#app path.gs-bar').count(), 0, 'nenhuma coluna ou barra com zero');
   assert.match(await page.getAttribute('figure[data-fig="funil-agenda"] svg', 'aria-label'), /^Agendamento: da busca ao atendimento: abriram a busca \(perto de mim\) 0, abriram a página de um local 0 \(— da etapa anterior\)/);
   assert.equal(norm(await page.textContent('#gsAgT')), 'Aguardando conferência (0)');
@@ -919,6 +1079,8 @@ await scenario('resposta incompleta do banco: nada inventado (sem hora, sem tota
   await page.waitForSelector('#sec-resumo .gs-kpi');
   await page.waitForSelector('#cobLista table');
   assert.equal(norm(await page.textContent('#gsHora')), '', 'sem a hora do banco, sem hora (nada do relógio do aparelho)');
+  assert.equal(await page.isHidden('#gsAgoraHora'), true, 'nem no bloco "Agora"');
+  assert.deepEqual(await agoraV(page), ['1', '7 min', '0', '1'], 'os números de agora continuam');
   assert.match(norm(await page.textContent('#gsWhen')), /^Números de 01\/10\/2026 a 30\/10\/2026 \(30 dias\), no horário de São Paulo\.$/);
   assert.equal(norm(await page.textContent('#gsAgT')), 'Aguardando conferência (—)', 'sem o total do banco: "—" (a lista vem cortada em 50)');
   assert.equal(await page.locator('#gsAguardando li').count(), 2);
@@ -1031,13 +1193,61 @@ await scenario('celular (390 px): sem rolagem lateral, gráficos na largura da t
   await context.close();
 });
 
+await scenario('celular (360 px): bloco "Agora" com os números inteiros, dois por linha, o aviso cabendo e a página toda sem rolagem lateral', async () => {
+  // Fila cheia e nenhum médico (o caso de texto mais comprido: "1 h 59 min" e o aviso).
+  const { page, errors, context } = await newPage(browser, { mobile: true, width: 360, logged: true, db: { agora: { aguardando: 12, espera_mais_longa_min: 119, em_atendimento: 3, medicos_disponiveis: 0 } } });
+  await page.goto(`${BASE}gestao.html`);
+  await page.waitForSelector('#sec-agora:not([hidden]) .gs-kpi');
+  await page.waitForSelector('#cobLista table');
+  assert.equal(page.viewportSize().width, 360);
+  await noOverflow(page);
+  assert.deepEqual(await agoraV(page), ['12', '1 h 59 min', '3', '0']);
+  // Dois números por linha, cada um inteiro dentro do quadro dele e do bloco (nada cortado nem para fora).
+  const k = await page.locator('#gsAgoraKpis .gs-kpi').evaluateAll((els) => els.map((el) => {
+    const r = el.getBoundingClientRect();
+    const v = el.querySelector('.gs-kpi-v');
+    return { l: r.left, r: r.right, t: Math.round(r.top), cabe: v.scrollWidth <= v.clientWidth + 1 && el.scrollWidth <= el.clientWidth + 1 };
+  }));
+  assert.ok(k[0].t === k[1].t && k[2].t === k[3].t && k[2].t > k[0].t, 'dois por linha');
+  assert.ok(k.every((x) => x.cabe), 'nenhum número cortado');
+  const sec = await page.locator('#sec-agora').evaluate((el) => { const r = el.getBoundingClientRect(); return { l: r.left, r: r.right }; });
+  assert.ok(k.every((x) => x.l >= sec.l - 0.5 && x.r <= sec.r + 0.5), 'os números dentro do bloco');
+  assert.ok(sec.l >= 0 && sec.r <= 360, `o bloco dentro da tela: ${sec.l}..${sec.r}`);
+  const aviso = await page.locator('#gsAgoraAlerta .cl-note').evaluate((el) => { const r = el.getBoundingClientRect(); return [r.left, r.right, el.scrollWidth <= el.clientWidth + 1]; });
+  assert.ok(aviso[0] >= sec.l && aviso[1] <= sec.r && aviso[2], 'o aviso de nenhum médico cabe');
+  await shot(page, 'gestao-20-celular-360-agora', '#sec-agora');
+  // A página toda em 360 px: tabelas abertas, o quadro de pagamento aberto e 12 meses, sem rolagem lateral.
+  await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
+  await noOverflow(page);
+  await page.click(`#cob-${ID(1)} [data-pay]`);
+  await noOverflow(page);
+  await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = false; });
+  await page.click('.gs-seg label:has-text("12 meses")');
+  await page.waitForFunction(() => document.querySelectorAll('[data-mini="pedidos"] rect.gs-hit').length === 52);
+  await noOverflow(page);
+  assert.deepEqual(await agoraV(page), ['12', '1 h 59 min', '3', '0'], 'os de agora não mudam com o período');
+  const fora = await page.evaluate(() => [...document.querySelectorAll('.gs-svg')].flatMap((svg) => {
+    const b = svg.getBoundingClientRect();
+    return [...svg.querySelectorAll('text')].filter((t) => { const r = t.getBoundingClientRect(); return r.left < b.left - 1 || r.right > b.right + 1; }).map((t) => t.textContent);
+  }));
+  assert.deepEqual(fora, [], 'nenhum texto sai do gráfico');
+  // Alvos de toque de 44 px.
+  const small = await page.evaluate(() => [...document.querySelectorAll('#app button, #app a.btn, #app select, .gs-seg label, .gs-toc a, #app summary')]
+    .filter((el) => el.offsetParent).map((el) => [el.textContent.trim().slice(0, 30), Math.round(el.getBoundingClientRect().height)]).filter(([, h]) => h < 43.5));
+  assert.deepEqual(small, [], 'alvos de toque com 44 px');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('acessibilidade (axe): página da equipe no computador e no celular, sem violação grave', async () => {
   if (!AXE) { console.log('   aviso - axe-core não encontrado: auditoria pulada (use AXE_PATH=<pasta>/node_modules/axe-core)'); return; }
   for (const mobile of [false, true]) {
-    const { page, errors, context, db } = await newPage(browser, { mobile, logged: true, bypassCSP: true });
+    // Com o bloco "Agora" em destaque (paciente esperando e nenhum médico disponível).
+    const { page, errors, context, db } = await newPage(browser, { mobile, width: 360, logged: true, bypassCSP: true, db: { agora: { aguardando: 2, espera_mais_longa_min: 15, em_atendimento: 0, medicos_disponiveis: 0 } } });
     await page.goto(`${BASE}gestao.html`);
     await page.waitForSelector('#sec-resumo .gs-kpi');
     await page.waitForSelector('#cobLista table');
+    await page.waitForSelector('#gsAgoraAlerta .cl-note');
     // Com todas as tabelas abertas ("Ver em tabela") e o quadro de pagamento aberto.
     await page.evaluate(() => { for (const d of document.querySelectorAll('details')) d.open = true; });
     await page.click(`#cob-${ID(1)} [data-pay]`);
