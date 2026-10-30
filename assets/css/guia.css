@@ -1,8 +1,8 @@
 /* Estilo dos guias de exames do IMED */
 :root{
-  --navy:#05161e; --primary:#0E7C9C; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
-  --coral:#FF6B4A; --coral-d:#E8512F; --coral-s:#FFF0EC; --gold:#F5A524; --green:#1E9E5A; --green-s:#E7F6EE;
-  --ink:#0F1F28; --text:#2B3A44; --muted:#667A86; --line:#E6EDF1; --bg2:#F4F8FA;
+  --navy:#05161e; --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --coral:#FF6B4A; --coral-d:#BF3B20; --coral-s:#FFF0EC; --gold:#F5A524; --green:#137A44; --green-s:#E7F6EE;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874; --line:#E6EDF1; --bg2:#F4F8FA;
   --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
   --ease:cubic-bezier(.2,.8,.2,1);
 }
@@ -13,18 +13,21 @@ h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacin
 a{color:inherit;text-decoration:none}
 img{display:block;max-width:100%}
 button{font:inherit;cursor:pointer;border:0;background:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:#fff;color:var(--ink);font-weight:700;box-shadow:var(--sh2)}
+.skip:focus{top:12px}
 .wrap{max-width:1200px;margin:0 auto;padding:0 20px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:14px 22px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .25s var(--ease),box-shadow .25s;white-space:nowrap}
-.btn-coral{background:linear-gradient(180deg,#FF7A5C,#FF6B4A);color:#fff;box-shadow:0 10px 24px rgba(255,107,74,.32)}
+.btn-coral{background:linear-gradient(180deg,#C8442A,#B83A20);color:#fff;box-shadow:0 10px 24px rgba(184,58,32,.32)}
 .btn-coral:hover{transform:translateY(-1px);box-shadow:0 14px 34px rgba(255,107,74,.42)}
-.btn-primary{background:linear-gradient(180deg,#1290B3,#0E7C9C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.28)}
+.btn-primary{background:linear-gradient(180deg,#0F7B9A,#0B6F8C);color:#fff;box-shadow:0 10px 24px rgba(14,124,156,.28)}
 .btn-glass{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25)}
 .btn-glass:hover{background:rgba(255,255,255,.2)}
 
 /* topo */
 .g-top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.88);-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);border-bottom:1px solid var(--line)}
 .g-top .wrap{display:flex;align-items:center;gap:18px;height:68px}
-.logo{display:flex;align-items:center;gap:9px;font-family:'Sora';font-weight:800;font-size:21px;color:var(--ink)}
+.logo{display:flex;align-items:center;gap:9px;font-family:'Sora','Inter',system-ui,-apple-system,sans-serif;font-weight:800;font-size:21px;color:var(--ink)}
 .logo-mk{position:relative;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(145deg,#16A6C9,#0E7C9C);color:#fff;font-size:14px;box-shadow:0 6px 16px rgba(14,124,156,.35)}
 .logo-mk::after{content:"";position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--coral);border:2px solid #fff}
 .g-top nav{display:flex;gap:4px;margin-left:auto}
@@ -47,7 +50,7 @@ button{font:inherit;cursor:pointer;border:0;background:none}
 .facts span{display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:12px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.16);font-size:13.5px;font-weight:600;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
 .facts i{color:var(--aqua2)}
 .g-cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:28px}
-.g-ico{justify-self:center;width:min(300px,70%);filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));animation:float 6s ease-in-out infinite}
+.g-ico{justify-self:center;width:min(300px,70%);height:auto;filter:drop-shadow(0 30px 40px rgba(0,0,0,.45));animation:float 6s ease-in-out infinite}
 @keyframes float{50%{transform:translateY(-12px) rotate(-2deg)}}
 @media (prefers-reduced-motion:reduce){.g-ico{animation:none}}
 @media (max-width:820px){.g-hero .wrap{grid-template-columns:1fr;min-height:0;padding-top:28px;padding-bottom:44px}.g-ico{order:-1;width:150px;justify-self:start}}
@@ -66,7 +69,7 @@ button{font:inherit;cursor:pointer;border:0;background:none}
 @media (max-width:640px){.uses{grid-template-columns:1fr}}
 .steps{list-style:none;counter-reset:s;display:grid;gap:12px}
 .steps li{counter-increment:s;position:relative;padding:16px 18px 16px 64px;border:1px solid var(--line);border-radius:18px;line-height:1.55}
-.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#FF8A6E,#FF6B4A);color:#fff;font:800 15px Sora}
+.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:linear-gradient(145deg,#C8442A,#B83A20);color:#fff;font:800 15px Sora,Inter,system-ui,sans-serif}
 .prep{list-style:none;display:grid;gap:10px}
 .prep li{display:flex;gap:12px;align-items:flex-start;line-height:1.55;font-size:16px}
 .prep li i{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--green-s);color:var(--green);font-size:12px;flex-shrink:0;margin-top:1px}
@@ -85,13 +88,15 @@ details p{color:var(--muted);margin-top:10px;font-size:15.5px!important}
 @media (max-width:980px){.g-side{position:static}}
 .card{border:1px solid var(--line);border-radius:22px;padding:20px;background:#fff}
 .card h3{font-size:16px;margin-bottom:12px}
-.where-card{background:linear-gradient(145deg,#0E7C9C,#0A5C76);color:#fff;border:0;box-shadow:0 24px 50px rgba(14,124,156,.3);display:grid;gap:10px}
-.where-card h3{color:rgba(255,255,255,.85);font-family:'Inter';font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:0}
-.where-card p{color:rgba(255,255,255,.82);font-size:14.5px;line-height:1.55;margin-bottom:4px}
+.where-card{background:linear-gradient(145deg,#0B7290,#0A5C76);color:#fff;border:0;box-shadow:0 24px 50px rgba(14,124,156,.3);display:grid;gap:10px}
+.where-card h3{color:#fff;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:0}
+.where-card p{color:rgba(255,255,255,.95);font-size:14.5px;line-height:1.55;margin-bottom:4px}
 .where-card .btn{width:100%;background:#fff;color:var(--primary-d);white-space:normal;text-align:center;line-height:1.3}
-.where-card .btn-line{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4)}
+.where-card .btn-line{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7)}
 .where-card .btn-line:hover{background:rgba(255,255,255,.12)}
-.btn:focus-visible,a:focus-visible{outline:3px solid #7FF0E4;outline-offset:2px}
+:focus-visible{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
+main[tabindex="-1"]:focus{outline:none}
+.g-hero :focus-visible,.where-card :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
 .others{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
 .others a{min-width:0;overflow-wrap:anywhere}
 .others a{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border-radius:14px;font-size:11.5px;font-weight:600;text-align:center;color:var(--ink)}
@@ -112,7 +117,15 @@ details p{color:var(--muted);margin-top:10px;font-size:15.5px!important}
 .hub .meta span{font-size:12px;font-weight:700;padding:5px 9px;border-radius:8px;background:var(--bg2);color:var(--muted)}
 .hub .go{margin-top:14px;color:var(--primary);font-weight:700;font-size:14px}
 
-footer{background:var(--navy);color:rgba(255,255,255,.65);padding:40px 0 28px;font-size:14px}
-footer .wrap{display:flex;flex-wrap:wrap;gap:16px;justify-content:space-between;align-items:center}
-footer a{color:#fff;font-weight:600}
-footer .logo{color:#fff}
+/* foto de fundo feita por IA: o aviso fica junto da foto */
+.g-ill{position:absolute;right:12px;bottom:12px;z-index:1;display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;background:rgba(5,22,30,.72);color:rgba(255,255,255,.92);font-size:12px;font-weight:600;letter-spacing:.01em;pointer-events:none}
+
+/* Celular e telas de toque: alvos com pelo menos 44 px (dedo, inclusive de quem tem tremor ou vista cansada). */
+@media (max-width:860px),(pointer:coarse){
+  .btn,.g-top .btn{min-height:44px}
+  .logo{min-height:44px}
+  .crumbs a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+  summary{min-height:44px;align-items:center}
+}
+/* "Reduzir movimento" ligado no aparelho: nada se mexe sozinho (animações e transições param) e a rolagem não desliza. */
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important;scroll-behavior:auto!important}}
