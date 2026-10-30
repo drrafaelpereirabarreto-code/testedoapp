@@ -1,5 +1,7 @@
 # Perto de você: tela de aplicativo na página inicial, com pedido de localização ao abrir e seletor de cidade
 
+> **Situação:** feito e publicado em 30/10/2026 (noite). Código em `assets/js/inicio-perto.js` e `assets/js/inicio-core.js`; decisões em `memory/context/arquitetura.md`.
+
 ## Julgamento
 
 JULGAMENTO (0 a 10; em "risco", nota alta = risco baixo)

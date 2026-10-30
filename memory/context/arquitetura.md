@@ -3,7 +3,8 @@
 ## Páginas
 | Arquivo | Para quê |
 |---------|----------|
-| `index.html` | Início: cidade 3D (`assets/js/hero3d.js`), mapa de clínicas reais (#reais), agendados, lista de espera |
+| `index.html` | Início: cidade 3D (`assets/js/hero3d.js`), "Clínicas perto de você" (#reais: os 10 mais perto, abas por tipo, mapa e seletor "Onde você está?"), agendados, lista de espera |
+| `assets/js/inicio-perto.js` + `inicio-core.js` | Início "perto de você": pede a localização ao abrir (1 vez por aba; não pede sozinho depois de 2 recusas ou pedidos sem resposta), lista e mapa (no celular, mapa em tela cheia só depois do toque), seletor de cidade. Regras puras em `inicio-core.js` (testadas em `tests/inicio-core.test.mjs`; posição simulada nos e2e com `tests/geo-simulado.mjs`) |
 | `perto.html` + `assets/js/perto.js` | Busca por localização/CEP: mapa, lista, filtros, detalhes, pedido |
 | `assets/js/geo-core.js` | Regras puras (normalizar, filtrar, ordenar, pedido) — testadas em `tests/geo-core.test.mjs` |
 | `assets/js/auth.js` | Login por link mágico (Supabase Auth via REST) para conta, painel e reivindicação |
@@ -19,6 +20,18 @@
 | `para-medicos.html` | Página pública "Atenda pelo IMED": requisitos, situação do IMED, fluxograma da inscrição até o atendimento, perguntas |
 | `contato.html`, `como-funciona.html`, `acessibilidade.html` | Fale com o IMED (protocolo), regras do site, acessibilidade |
 | `scripts/rodape.mjs`, `aplicar-rodape.mjs`, `aplicar-visitas.mjs`, `fontes.mjs` | Rodapé único, contador de visitas em todas as páginas, letras e ícones do próprio site (rode depois de criar página) |
+
+## Página inicial "perto de você" (decisões)
+- Decisão do Dr. Rafael (30/10): a página inicial pede a localização assim que abre. A busca (`perto.html`) continua
+  pedindo só no toque. O aviso do Lighthouse sobre "pede localização ao carregar" é esperado na página inicial.
+- A posição fica só na memória da página (arredondada, ~110 m): nunca vai para o aparelho, o endereço ou o banco.
+- Chaves do aparelho: `imed_cidade` e `imed_cidades_recentes` (cidade escolhida no seletor), `imed_geo_recusas`
+  (contagem de recusas), `imed_geo_pedido` (sessionStorage: já pediu nesta aba). A chave antiga `imed_place`
+  (bairros de São Paulo) é apagada ao abrir.
+- Aviso LGPD: com `data-lgpd-depois` no `<html>`, `assets/js/aviso.js` espera a página chamar `IMED_LGPD.mostrar()`
+  (depois da resposta do pedido de localização), ou aparece sozinho em 15 s.
+- Botão voltar do celular: mapa em tela cheia e seletor de cidade entram no histórico (`history.pushState` com
+  `imedMapa` / `imedCid`), então "voltar" fecha o que está aberto em vez de sair da página.
 
 ## Supabase (`pyoqiecupxhdzigjudyd`)
 - Migrações em `supabase/migrations` com o **mesmo número de versão aplicado no banco** (confira `list_migrations` e renomeie o arquivo).
