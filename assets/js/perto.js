@@ -2,6 +2,11 @@
 // Fluxo: a pessoa permite a localização (ou digita CEP, cidade ou endereço) → o site busca no banco do
 // IMED, já ordenados por distância, as clínicas parceiras e os estabelecimentos reais do cadastro oficial
 // (CNES) → lista e mapa com filtros → detalhes → pedido de agendamento gravado no banco.
+// A busca vale para a área inteira do raio escolhido (5 km por padrão, até 50 km): o mapa abre mostrando
+// o círculo todo, com um ponto para cada estabelecimento do cadastro oficial (establishment_points), e a
+// lista mostra os parceiros e os estabelecimentos por distância, em páginas de 50 ("Ver mais"). Os filtros
+// de tipo, exame e SUS são aplicados pelo banco na área inteira; os outros, no navegador. Parceiros e
+// locais do mapa público têm sempre pino; os do cadastro oficial ganham pino quando o mapa está perto.
 // Se a cidade ainda não está no banco, o servidor começa a importá-la do CNES e, enquanto isso, a página
 // completa a lista com o mapa público (OpenStreetMap) e busca de novo em alguns segundos.
 // Privacidade: as coordenadas são arredondadas (~110 m) assim que chegam, ficam só na memória
@@ -27,7 +32,11 @@ const S = {
   fetchedRadius: 0,
   provider: null, // google | osm (informado pelo servidor)
   imed: [],
-  cnes: [], // estabelecimentos reais do cadastro oficial (CNES), já no banco do IMED
+  // Estabelecimentos reais do cadastro oficial (CNES) que vieram com a busca: os mais próximos, sem filtro.
+  base: [],
+  baseServed: 0, // quantos o servidor mandou (sem contar o local aberto por ?local=)
+  baseRadius: 0, // raio que essas linhas cobrem (a função do servidor busca no máximo 20 km)
+  baseTotal: null, // total da área sem filtro, quando veio junto
   places: [], // estabelecimentos do mapa (Google Places ou OpenStreetMap)
   imedState: 'idle', // idle | loading | ok | error
   cnesState: 'idle',
@@ -36,8 +45,18 @@ const S = {
   retries: 0,
   retryTimer: 0,
   fnDown: false,
-  truncated: false,
-  cnesTruncated: false,
+  truncated: false, // o mapa público (OpenStreetMap) devolveu o máximo de locais
+  // Área inteira: lista do cadastro oficial em páginas, por chave de consulta (raio, tipo, exame, SUS).
+  lists: new Map(),
+  totals: new Map(), // chave → total real da área, contado pelo banco
+  pts: { key: '', rows: [], total: null, kinds: [], state: 'idle' }, // pontos do mapa da chave atual
+  ptsCache: new Map(),
+  areaAsked: '', // última chave cuja lista e pontos foram pedidos ao banco
+  extra: new Map(), // locais abertos pelo ponto do mapa ou por ?local=, com a distância calculada
+  areaTimer: 0,
+  areaCtrl: null,
+  moreCtrl: null,
+  pointCtrl: null,
   f: { ...G.DEFAULT_FILTERS, exam: Object.hasOwn(G.EXAMS, params.get('exame') ?? '') ? params.get('exame') : '' },
   ratings: new Map(), // id do local → { rating, reviews }, só o que veio do banco
   ratingsAsked: new Set(),
@@ -78,7 +97,8 @@ async function callFn(body, parent, ms = 20000) {
   }
 }
 
-// Plano B quando a função do servidor não responde: as mesmas buscas direto no banco.
+// Funções do banco (PostgREST). Também são o plano B quando a função do servidor não responde.
+// fn pode trazer "?select=…" para pedir só algumas colunas.
 async function rpc(fn, args, parent) {
   const t = linkedSignal(parent, 12000);
   try {
@@ -93,7 +113,14 @@ const rpcNearby = (origin, radius, parent) =>
   rpc('nearby_clinics', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_include_demo: S.demo, p_limit: 100 }, parent);
 const rpcEstablishments = (origin, radius, parent) =>
   rpc('nearby_establishments', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_limit: CNES_LIMIT }, parent);
-const CNES_LIMIT = 250;
+const CNES_LIMIT = 250; // estabelecimentos que vêm com a busca (os mais próximos)
+const PAGE = 50; // estabelecimentos do cadastro oficial por página da lista
+const POINTS_LIMIT = 3000; // pontos da área no mapa (os mais próximos)
+const PIN_LIMIT = 100; // pinos do cadastro oficial (os primeiros da lista); o resto da área aparece como ponto
+const FAR_ZOOM = 15; // abaixo deste zoom o mapa está afastado (a área inteira): o cadastro oficial fica só como ponto
+const FN_MAX_RADIUS = 20000; // a função do servidor busca até 20 km; acima disso, os parceiros vêm direto do banco
+const OSM_MAX_RADIUS = 20000; // o mapa público (Overpass, gratuito) é consultado no máximo em 20 km
+const AREA_DELAY = 250; // espera depois de mexer nos filtros, antes de buscar de novo
 const RETRY_MS = 9000;
 
 async function fetchOverpass(origin, radius, parent) {
@@ -125,37 +152,47 @@ async function fetchOverpass(origin, radius, parent) {
 async function runSearch(origin, label, kind, precision = null, refresh = false) {
   S.ctrl?.abort();
   clearTimeout(S.retryTimer);
+  resetArea();
   const ctrl = (S.ctrl = new AbortController());
   const seq = ++S.seq;
   const radius = S.f.radius;
   if (!refresh) {
     Object.assign(S, {
       phase: 'loading', origin, originLabel: label, originKind: kind, precision, fetchedRadius: radius,
-      imed: [], cnes: [], places: [], imedState: 'loading', cnesState: 'loading', placesState: 'idle', coverage: null,
-      retries: 0, fnDown: false, truncated: false, cnesTruncated: false, selected: null,
+      imed: [], base: [], baseServed: 0, baseRadius: 0, baseTotal: null, places: [],
+      imedState: 'loading', cnesState: 'loading', placesState: 'idle', coverage: null,
+      retries: 0, fnDown: false, truncated: false, selected: null,
     });
+    S.extra.clear();
     userMoved = false;
     hideAreaBtn();
     drawOrigin();
-    moveMap(() => map.fitBounds(L.latLng(origin.lat, origin.lng).toBounds(radius * 2)));
+    fitMap();
     render();
   }
 
-  let r = null;
-  try {
-    r = await callFn({ action: 'search', lat: origin.lat, lng: origin.lng, radius_m: radius, include_demo: S.demo }, ctrl.signal);
-  } catch {
-    if (ctrl.signal.aborted || seq !== S.seq) return;
-  }
-  if (seq !== S.seq) return;
+  // Acima de 20 km a função do servidor não chega: os parceiros da área inteira vêm direto do banco.
+  const wide = radius > FN_MAX_RADIUS;
+  const [fnRes, wideRes] = await Promise.allSettled([
+    callFn({ action: 'search', lat: origin.lat, lng: origin.lng, radius_m: radius, include_demo: S.demo }, ctrl.signal),
+    wide ? rpcNearby(origin, radius, ctrl.signal) : Promise.resolve(null),
+  ]);
+  if (ctrl.signal.aborted || seq !== S.seq) return;
+  const r = fnRes.status === 'fulfilled' ? fnRes.value : null;
+  const widePartners = wide && wideRes.status === 'fulfilled' && Array.isArray(wideRes.value) ? wideRes.value : null;
   if (r) {
     S.fnDown = false;
     S.provider = r.provider;
-    S.imed = (r.imed ?? []).map((row) => G.normalizeImedRow(row, origin));
-    S.imedState = r.warnings?.includes('imed_unavailable') ? 'error' : 'ok';
-    S.cnes = (r.cnes ?? []).map((row) => G.normalizeCnes(row, origin));
+    S.imed = (widePartners ?? r.imed ?? []).map((row) => G.normalizeImedRow(row, origin));
+    S.imedState = r.warnings?.includes('imed_unavailable') && !widePartners ? 'error' : 'ok';
+    // Acima de 20 km sem a resposta do banco: ficam só os parceiros de até 20 km, e a pessoa é avisada.
+    if (wide && !widePartners) S.imedState = 'error';
+    const rows = Array.isArray(r.cnes) ? r.cnes : [];
+    S.base = rows.map((row) => G.normalizeCnes(row, origin));
+    S.baseServed = rows.length;
+    S.baseRadius = Number(r.radius_m) > 0 ? Number(r.radius_m) : Math.min(radius, FN_MAX_RADIUS);
+    S.baseTotal = G.rowsTotal(rows);
     S.cnesState = r.warnings?.includes('cnes_unavailable') ? 'error' : 'ok';
-    S.cnesTruncated = (r.cnes ?? []).length >= CNES_LIMIT;
     S.coverage = r.coverage ?? null;
     if (r.provider === 'google') {
       S.places = (r.places ?? []).map((p) => G.normalizeGoogle(p, origin)).filter(Boolean);
@@ -164,22 +201,30 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
   } else {
     // A função do servidor não respondeu: o banco é consultado direto.
     S.fnDown = true;
-    const [imedRes, cnesRes] = await Promise.allSettled([rpcNearby(origin, radius, ctrl.signal), rpcEstablishments(origin, radius, ctrl.signal)]);
+    const [imedRes, cnesRes] = await Promise.allSettled([
+      widePartners ? Promise.resolve(widePartners) : rpcNearby(origin, radius, ctrl.signal),
+      rpcEstablishments(origin, radius, ctrl.signal),
+    ]);
     if (ctrl.signal.aborted || seq !== S.seq) return;
     S.imed = imedRes.status === 'fulfilled' ? imedRes.value.map((row) => G.normalizeImedRow(row, origin)) : [];
     S.imedState = imedRes.status === 'fulfilled' ? 'ok' : 'error';
-    S.cnes = cnesRes.status === 'fulfilled' ? cnesRes.value.map((row) => G.normalizeCnes(row, origin)) : [];
+    const rows = cnesRes.status === 'fulfilled' && Array.isArray(cnesRes.value) ? cnesRes.value : [];
+    S.base = rows.map((row) => G.normalizeCnes(row, origin));
+    S.baseServed = rows.length;
+    S.baseRadius = radius;
+    S.baseTotal = G.rowsTotal(rows);
     S.cnesState = cnesRes.status === 'fulfilled' ? 'ok' : 'error';
-    S.cnesTruncated = S.cnes.length >= CNES_LIMIT;
-    S.coverage = { status: S.cnes.length ? 'done' : 'unavailable', city: null, uf: null };
+    S.coverage = { status: S.base.length ? 'done' : 'unavailable', city: null, uf: null };
   }
   // Com a cidade no banco, o cadastro oficial basta; sem ela, o mapa público completa a lista.
   const google = S.provider === 'google' && !S.fnDown;
   const needOsm = !google && S.coverage?.status !== 'done';
   if (!google && !needOsm) { S.places = []; S.placesState = 'idle'; S.truncated = false; }
+  resetArea(); // a lista e os pontos da área recomeçam com o que acabou de chegar
   S.phase = 'results';
   if (S.pendingOpen) includePending(origin);
   render(!refresh || !userMoved);
+  syncArea(); // pontos da área inteira no mapa e, com filtro de tipo, exame ou SUS, a lista vinda do banco
   loadRatings(seq);
   loadSchedules(seq);
   if (S.pendingOpen && !refresh) openPending();
@@ -196,10 +241,12 @@ async function runSearch(origin, label, kind, precision = null, refresh = false)
 async function loadOsm(origin, radius, signal, seq) {
   S.placesState = 'loading';
   if (S.phase === 'results') render();
+  // O Overpass é um serviço gratuito e mantido por voluntários: a consulta vai até 20 km.
+  const r = Math.min(radius, OSM_MAX_RADIUS);
   try {
-    const json = await fetchOverpass(origin, radius, signal);
+    const json = await fetchOverpass(origin, r, signal);
     if (seq !== S.seq) return;
-    S.places = G.parseOverpass(json, origin, radius);
+    S.places = G.parseOverpass(json, origin, r);
     S.truncated = (json.elements?.length ?? 0) >= 1000;
     S.placesState = 'ok';
   } catch {
@@ -210,8 +257,9 @@ async function loadOsm(origin, radius, signal, seq) {
 }
 
 // Notas dos locais na tela (até 300), quando existem avaliações publicadas. Falha não atrapalha a busca.
-async function loadRatings(seq) {
-  const keys = allPlaces().map((p) => p.id).filter((id) => !S.ratingsAsked.has(id)).slice(0, 300);
+// ids: locais específicos (por exemplo, o ponto do mapa que acabou de ser aberto).
+async function loadRatings(seq, ids = null) {
+  const keys = (ids ?? allPlaces().map((p) => p.id)).filter((id) => !S.ratingsAsked.has(id)).slice(0, 300);
   if (!keys.length) return;
   keys.forEach((k) => S.ratingsAsked.add(k));
   try {
@@ -249,9 +297,297 @@ async function loadSchedules(seq) {
 }
 const hasSchedule = (p) => !!p && p.source === 'imed' && p.accepts_online_booking && S.scheduled.has(p.clinic_id);
 
+/* ======================= área inteira: pontos no mapa e lista em páginas ======================= */
+// Cada combinação de raio, tipo, exame e SUS é uma consulta ao banco (chave). O total vem contado pelo
+// banco; nada é estimado. Sem filtro de tipo, exame ou SUS, as primeiras páginas da lista são os
+// estabelecimentos que já vieram com a busca.
+const areaKey = () => G.areaKey(S.f);
+
+function resetArea() {
+  clearTimeout(S.areaTimer);
+  S.areaCtrl?.abort();
+  S.moreCtrl?.abort();
+  S.lists.clear();
+  S.totals.clear();
+  S.ptsCache.clear();
+  S.pts = { key: '', rows: [], total: null, kinds: [], state: 'idle' };
+  S.areaAsked = '';
+}
+
+// Lista do cadastro oficial da consulta atual. state: loading (primeira página a caminho) | ok | error.
+function listFor() {
+  const key = areaKey();
+  let l = S.lists.get(key);
+  if (l) return l;
+  const radius = G.areaFilters(S.f).radius;
+  const filtered = G.hasAreaFilter(S.f);
+  l = { key, radius, filtered, rows: [], ids: new Set(), served: 0, view: PAGE, exhausted: false, state: 'loading', more: 'idle' };
+  if (!filtered && S.cnesState === 'ok') {
+    // Os estabelecimentos da busca são os mais próximos, na mesma ordem do banco: servem de primeiras páginas.
+    for (const p of S.base) {
+      if (p.distance_m > radius || l.ids.has(p.id)) continue;
+      l.ids.add(p.id);
+      l.rows.push(p);
+      if (!p.injected) l.served += 1;
+    }
+    // A busca trouxe menos que o máximo e cobre este raio: não há outros no banco.
+    l.exhausted = S.baseRadius >= radius && S.baseServed < CNES_LIMIT;
+    l.state = 'ok';
+    if (S.baseTotal != null && S.baseRadius === radius) S.totals.set(key, S.baseTotal);
+    else if (l.exhausted && !S.totals.has(key)) S.totals.set(key, l.served);
+  }
+  S.lists.set(key, l);
+  return l;
+}
+
+// Linhas do cadastro oficial que entram na lista agora. Enquanto a primeira página com filtros não chega
+// (ou se ela falhou), a lista usa o que já tem: os estabelecimentos da busca, filtrados no navegador.
+function cnesRows() {
+  if (S.phase !== 'results') return [];
+  const l = listFor();
+  return l.state === 'ok' ? l.rows.slice(0, l.view) : S.base;
+}
+
+const pagerOf = (l) => G.pagerState({ view: l.view, loaded: l.rows.length, served: l.served, exhausted: l.exhausted }, S.totals.get(l.key) ?? null, PAGE);
+
+// Junta uma página do banco à lista, sem repetir o mesmo estabelecimento.
+function addRows(l, rows, limit) {
+  const list = Array.isArray(rows) ? rows : [];
+  let added = 0;
+  for (const row of list) {
+    const p = G.normalizeCnes(row, S.origin);
+    if (l.ids.has(p.id)) continue;
+    l.ids.add(p.id);
+    l.rows.push(p);
+    added += 1;
+  }
+  l.served += list.length;
+  if (list.length < limit) l.exhausted = true;
+  const total = G.rowsTotal(list);
+  if (total != null) S.totals.set(l.key, total);
+  else if (l.exhausted) S.totals.set(l.key, l.served);
+  return added;
+}
+
+// Depois de mexer em raio, tipo, exame ou SUS: espera um instante (a pessoa pode mexer de novo) e busca.
+function scheduleArea() {
+  clearTimeout(S.areaTimer);
+  S.moreCtrl?.abort();
+  S.areaTimer = setTimeout(syncArea, AREA_DELAY);
+}
+
+// Busca o que falta para a consulta atual: os pontos do mapa e, se preciso, a primeira página da lista.
+// A requisição anterior é cancelada. Com um filtro que só os parceiros atendem (preço, convênio,
+// "Parceiros verificados"), o cadastro oficial não aparece: nada é buscado até o filtro sair (changeFilters).
+function syncArea() {
+  clearTimeout(S.areaTimer);
+  if (S.phase !== 'results' || !S.origin || G.onlyPartnerFilter(S.f)) return;
+  S.areaCtrl?.abort();
+  const ctrl = (S.areaCtrl = new AbortController());
+  const seq = S.seq;
+  const key = areaKey();
+  S.areaAsked = key;
+  const l = listFor();
+  if (l.state !== 'ok') loadFirstPage(l, ctrl.signal, seq);
+  if (S.pts.key !== key || S.pts.state !== 'ok') loadPoints(key, ctrl.signal, seq);
+}
+
+async function loadFirstPage(l, signal, seq) {
+  l.state = 'loading';
+  if (l.key === areaKey()) render();
+  try {
+    const rows = await rpc('nearby_establishments', { ...G.areaArgs(S.origin, S.f), p_limit: PAGE, p_offset: 0 }, signal);
+    if (signal.aborted || seq !== S.seq) return;
+    l.rows = [];
+    l.ids.clear();
+    l.served = 0;
+    addRows(l, rows, PAGE);
+    l.state = 'ok';
+    if (!l.filtered) S.cnesState = 'ok';
+  } catch {
+    if (signal.aborted || seq !== S.seq) return;
+    l.state = 'error';
+  }
+  if (l.key === areaKey()) {
+    render();
+    loadRatings(seq);
+  }
+}
+
+async function loadPoints(key, signal, seq) {
+  const hit = S.ptsCache.get(key);
+  if (hit) {
+    S.pts = { key, ...hit, state: 'ok' };
+    render();
+    return;
+  }
+  S.pts = { key, rows: [], total: null, kinds: [], state: 'loading' };
+  render();
+  try {
+    const rows = await rpc(`establishment_points?select=${G.POINT_FIELDS}`, { ...G.areaArgs(S.origin, S.f), p_limit: POINTS_LIMIT }, signal);
+    if (signal.aborted || seq !== S.seq || S.pts.key !== key) return;
+    const { points, total } = G.normalizePoints(rows);
+    const t = total ?? (points.length < POINTS_LIMIT ? points.length : null);
+    const kinds = Object.keys(G.KINDS).filter((k) => points.some((p) => p.kind === k));
+    S.pts = { key, rows: points, total: t, kinds, state: 'ok' };
+    if (t != null) S.totals.set(key, t);
+    S.ptsCache.set(key, { rows: points, total: t, kinds });
+    if (S.ptsCache.size > 6) S.ptsCache.delete(S.ptsCache.keys().next().value);
+  } catch {
+    if (signal.aborted || seq !== S.seq || S.pts.key !== key) return;
+    S.pts = { key, rows: [], total: null, kinds: [], state: 'error' };
+  }
+  render();
+}
+
+// "Ver mais": mostra a próxima página da lista, buscando no banco quando as já baixadas acabam.
+// A lista não é refeita: entram só os cartões novos (com centenas de cartões, refazer tudo travava o
+// celular). Enquanto carrega ou se falhar, o botão é o mesmo, então o foco de quem usa teclado fica nele.
+async function showMore() {
+  if (S.phase !== 'results') return;
+  const l = listFor();
+  // A primeira página com filtros falhou: o botão tenta de novo.
+  if (l.state === 'error') { syncArea(); return; }
+  if (l.state !== 'ok' || l.more === 'loading') return;
+  const st = pagerOf(l);
+  if (!st.more) return;
+  const seq = S.seq;
+  if (st.fetch) {
+    l.more = 'loading';
+    patchPager();
+    announce('Carregando mais locais…');
+    S.moreCtrl?.abort();
+    const ctrl = (S.moreCtrl = new AbortController());
+    try {
+      const rows = await rpc('nearby_establishments', { ...G.areaArgs(S.origin, S.f), p_limit: PAGE, p_offset: l.served }, ctrl.signal);
+      if (seq !== S.seq) return;
+      addRows(l, rows, PAGE);
+      l.more = 'idle';
+    } catch {
+      if (seq !== S.seq) return;
+      l.more = ctrl.signal.aborted ? 'idle' : 'error';
+      if (l.key === areaKey()) {
+        patchPager();
+        if (l.more === 'error') announce('Não foi possível carregar mais agora. Verifique sua internet e toque em "Tentar de novo".');
+      }
+      return;
+    }
+    if (l.key !== areaKey()) return; // os filtros mudaram enquanto carregava
+  }
+  l.view += PAGE;
+  const fresh = renderMore();
+  // Quem usa teclado ou leitor de tela continua do primeiro local novo (ou no botão, se nenhum novo
+  // passou nos filtros do navegador, como especialidade).
+  const first = fresh[0] ? $(`#list .pc[data-id="${CSS.escape(fresh[0])}"]`) : null;
+  const more = $('#list .pt-pager [data-act="more"]');
+  if (first) {
+    first.focus({ preventScroll: true });
+    first.scrollIntoView({ block: 'nearest' });
+    announce(`${plural(fresh.length, 'local a mais', 'locais a mais')} na lista.`);
+  } else {
+    (more ?? $('#list')).focus({ preventScroll: true });
+    announce(more ? 'Nenhum local novo com esses filtros nesta parte da lista. Toque em "Ver mais" para continuar procurando.' : 'Não há outros locais com esses filtros.');
+  }
+  loadRatings(seq);
+}
+
+const announce = (text) => { $('#srMsg').textContent = text; };
+
+// Troca o "Ver mais" pelo estado atual (carregando, erro, próxima página) sem recriar o botão: o foco
+// de quem usa teclado ou leitor de tela não se perde.
+function patchPager() {
+  const old = $('#list > .pt-pager');
+  if (!old) return;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = pagerHTML(listView.shown.length, listView.total).trim();
+  const next = tpl.content.firstElementChild;
+  const btn = $(':scope > [data-act="more"]', old);
+  const nbtn = next && $(':scope > [data-act="more"]', next);
+  if (!btn || !nbtn) {
+    const focused = old.contains(document.activeElement);
+    if (next) old.replaceWith(next); else old.remove();
+    if (focused) ($('#list .pt-pager [data-act="more"]') ?? $('#list')).focus({ preventScroll: true });
+    return;
+  }
+  for (const { name } of [...btn.attributes]) if (!nbtn.hasAttribute(name)) btn.removeAttribute(name);
+  for (const { name, value } of [...nbtn.attributes]) btn.setAttribute(name, value);
+  btn.innerHTML = nbtn.innerHTML;
+  const kids = [...next.childNodes];
+  const at = kids.indexOf(nbtn);
+  for (const n of [...old.childNodes]) if (n !== btn) n.remove();
+  btn.before(...kids.slice(0, at));
+  btn.after(...kids.slice(at + 1));
+  old.className = next.className;
+}
+
+// Depois do "Ver mais": põe na lista só os cartões novos, cada um no seu lugar (mesma ordem de render()),
+// e atualiza contagem, botão e mapa. Se a lista na tela não bater com a nova, refaz tudo.
+// Devolve os ids dos locais novos, na ordem da lista.
+function renderMore() {
+  const list = $('#list');
+  const pager = $(':scope > .pt-pager', list);
+  const now = $$(':scope > .pc[data-id]', list);
+  const at = new Map(now.map((c, i) => [c.dataset.id, i]));
+  const all = allPlaces();
+  const shown = G.sortPlaces(G.filterPlaces(all, S.f), S.f.sort, S.f.exam, S.ratings);
+  const fresh = shown.filter((p) => !at.has(p.id)).map((p) => p.id);
+  const kept = shown.filter((p) => at.has(p.id));
+  if (!pager || !now.length || kept.length !== now.length || kept.some((p, i) => at.get(p.id) !== i)) {
+    render();
+    return fresh;
+  }
+  let html = '';
+  let k = 0;
+  for (const p of shown) {
+    if (!at.has(p.id)) { html += cardHTML(p); continue; }
+    if (html) { now[k].insertAdjacentHTML('beforebegin', html); html = ''; }
+    k += 1;
+  }
+  if (html) pager.insertAdjacentHTML('beforebegin', html);
+  listView = { shown, total: areaTotal(shown) };
+  renderFilters(all);
+  setHTML($('#count'), countHTML(shown, listView.total));
+  patchPager();
+  drawMap(shown);
+  return fresh;
+}
+
+/* ======================= detalhe de um ponto do mapa ======================= */
+// O ponto traz só código, tipo e posição; o detalhe vem do cadastro (tabela establishments) ao tocar.
+async function openPoint(pt) {
+  const id = `cnes:${pt.cnes}`;
+  if (placeById(id)) return openDetails(id);
+  const path = G.pointDetailPath(pt.cnes);
+  if (!path || !S.origin) return;
+  S.pointCtrl?.abort();
+  const ctrl = (S.pointCtrl = new AbortController());
+  const origin = S.origin;
+  S.lastPoint = pt;
+  openSheet(head('Carregando…') + `<div class="sh-body" aria-busy="true">${SKELETON.repeat(2)}</div>`);
+  let row = null;
+  try {
+    const rows = await restGet(path, ctrl.signal);
+    row = Array.isArray(rows) ? rows[0] : null;
+  } catch {
+    row = undefined;
+  }
+  // Quem fechou a janela enquanto carregava não vê o detalhe abrir sozinho.
+  if (ctrl.signal.aborted || !$('#ov').classList.contains('open')) return;
+  if (!row) {
+    const retry = row === undefined ? `<button class="btn btn-primary" type="button" data-point="${esc(pt.cnes)}"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i>Tentar de novo</button>` : '';
+    openSheet(head('Não foi possível abrir') + `<div class="sh-body">${stateHTML('fa-plug-circle-xmark',
+      row === undefined ? 'Não foi possível abrir este local agora' : 'Não encontramos este local',
+      row === undefined ? 'Verifique sua internet e tente de novo.' : 'Ele pode ter mudado ou deixado de funcionar no cadastro oficial.', retry, true)}</div>`);
+    return;
+  }
+  S.extra.set(id, G.pointToPlace(row, pt, origin));
+  loadRatings(S.seq, [id]);
+  openDetails(id);
+}
+
 /* ======================= abrir um local direto (?local=cnes:… ou imed:…) ======================= */
-async function restGet(path) {
-  const t = linkedSignal(null, 15000);
+async function restGet(path, parent = null) {
+  const t = linkedSignal(parent, 15000);
   try {
     const res = await fetch(`${CFG.supabaseUrl}/rest/v1/${path}`, { headers: authHeaders(), signal: t.signal });
     if (!res.ok) throw new Error(`banco ${res.status}`);
@@ -293,17 +629,17 @@ async function openLocal(ref) {
 // Garante que o local pedido está na lista, mesmo que a busca em volta não o traga.
 function includePending(origin) {
   const p = S.pendingOpen;
-  if (placeById(p.id) || allPlaces().some((x) => x.id === p.id)) return;
   const item = { ...p, distance_m: Math.round(G.haversine(origin, p)) };
+  S.extra.set(p.id, item); // o detalhe abre mesmo que um filtro o tire da lista
+  if (S.imed.some((x) => x.id === p.id) || S.base.some((x) => x.id === p.id)) return;
   if (p.source === 'imed') S.imed = [item, ...S.imed];
-  else S.cnes = [item, ...S.cnes];
+  else S.base = [{ ...item, injected: true }, ...S.base];
 }
 
 function openPending() {
   const p = S.pendingOpen;
   S.pendingOpen = null;
-  const shown = allPlaces().find((x) => x.id === p.id) ? p.id : null;
-  if (!shown) return;
+  if (!placeById(p.id)) return;
   moveMap(() => map.setView([p.lat, p.lng], 16));
   userMoved = true;
   openDetails(p.id);
@@ -402,9 +738,18 @@ function setQMsg(text, isError = false, info = false) {
 }
 
 /* ======================= mapa ======================= */
-let map, markersLayer, originLayer, programmatic = false, programmaticTimer = 0, userMoved = false;
+let map, markersLayer, originLayer, ptsLayer, ptsRenderer, programmatic = false, programmaticTimer = 0, userMoved = false;
 const markerById = new Map();
+let markersKey = ''; // pinos desenhados agora (busca + ids): o mesmo conjunto não é refeito
+let lastShown = []; // locais da lista na tela (para redesenhar o mapa ao aproximar ou afastar)
+let listView = { shown: [], total: null }; // o que a lista mostra agora (para o "Ver mais")
+let drawnFar = null; // o mapa estava afastado no último desenho?
+let hotId = null; // local da lista sob o mouse (o pino ou o ponto dele fica em destaque)
+let hotCnes = null;
 const PIN = '<svg viewBox="0 0 32 42" aria-hidden="true"><path d="M16 40.5s12.5-13.6 12.5-23.6C28.5 9.6 22.9 4 16 4S3.5 9.6 3.5 16.9c0 10 12.5 23.6 12.5 23.6z"/></svg>';
+// Cores dos pontos, as mesmas dos ícones de cada tipo (perto.css, .k-*).
+const KIND_COLOR = { imagem: '#0E7C9C', laboratorio: '#6C4BD8', clinica: '#1E9E5A', hospital: '#E8512F' };
+const KIND_SHORT = { imagem: 'Imagem', laboratorio: 'Laboratório', clinica: 'Clínica', hospital: 'Hospital' };
 
 function initMap() {
   map = L.map('map', { zoomControl: false, minZoom: 4, maxZoom: CFG.map.maxZoom }).setView([-15.8, -47.9], 4);
@@ -412,10 +757,44 @@ function initMap() {
   map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
   L.tileLayer(CFG.map.tiles, { maxZoom: CFG.map.maxZoom, attribution: CFG.map.attribution }).addTo(map);
   originLayer = L.layerGroup().addTo(map);
+  // "Você está aqui" fica acima dos pinos (que ficam a 600), para não sumir embaixo deles.
+  map.createPane('me').style.zIndex = '620';
+  // Pontos da área inteira: milhares de círculos desenhados num único canvas (leve até no celular),
+  // acima do círculo da busca e abaixo dos pinos da lista.
+  map.createPane('pts').style.zIndex = '450';
+  ptsRenderer = L.canvas({ pane: 'pts', padding: 0.2, tolerance: L.Browser.mobile ? 8 : 4 });
+  ptsLayer = L.featureGroup().addTo(map);
+  ptsLayer.on('click', (e) => { if (e.layer?.pt) openPoint(e.layer.pt); });
   markersLayer = L.layerGroup().addTo(map);
   map.on('dragstart', () => { userMoved = true; });
   map.on('zoomstart', () => { if (!programmatic) userMoved = true; });
   map.on('moveend', onMapMove);
+  map.on('moveend resize', trackView);
+  map.on('zoomend', onZoom);
+  onZoom();
+}
+
+// Com o mapa afastado (a área inteira), o cadastro oficial fica só como ponto (dezenas de pinos
+// empilhados no centro escondiam o "Você está aqui") e os outros pinos ficam menores. Ao aproximar,
+// os primeiros da lista voltam a ter pino; os pontos crescem um pouco.
+function onZoom() {
+  const far = map.getZoom() < FAR_ZOOM;
+  const el = $('#map');
+  el.classList.toggle('z-far', far);
+  el.dataset.zoom = String(map.getZoom());
+  resizePoints();
+  if (drawnFar !== null && far !== drawnFar) drawMap(lastShown);
+}
+
+// Tamanho da área visível no mapa (menor lado, em metros) e zoom. Ficam no contêiner para conferência (testes).
+function trackView() {
+  const b = map.getBounds();
+  const c = map.getCenter();
+  const w = map.distance([c.lat, b.getWest()], [c.lat, b.getEast()]);
+  const h = map.distance([b.getSouth(), c.lng], [b.getNorth(), c.lng]);
+  const el = $('#map');
+  el.dataset.viewM = String(Math.round(Math.min(w, h)));
+  el.dataset.zoom = String(map.getZoom());
 }
 
 function moveMap(fn) {
@@ -431,6 +810,11 @@ function pinIcon(p) {
 }
 
 function drawMarkers(list) {
+  const key = `${S.seq}|${list.map((p) => p.id).join(',')}`;
+  if (key === markersKey) return; // os mesmos pinos: nada a refazer (o selecionado é marcado em setSelected)
+  markersKey = key;
+  const hot = hotId;
+  setHot(null);
   markersLayer.clearLayers();
   markerById.clear();
   for (const p of list) {
@@ -442,6 +826,8 @@ function drawMarkers(list) {
     m.addTo(markersLayer);
     markerById.set(p.id, m);
   }
+  $('#map').dataset.pins = String(list.length);
+  setHot(hot);
 }
 
 function drawOrigin() {
@@ -451,20 +837,130 @@ function drawOrigin() {
   L.circle([S.origin.lat, S.origin.lng], { radius: S.f.radius, color: '#0E7C9C', weight: 1.5, opacity: 0.5, fillColor: '#2EE6D6', fillOpacity: 0.06, interactive: false }).addTo(originLayer);
   L.marker([S.origin.lat, S.origin.lng], {
     icon: L.divIcon({ className: 'mk-wrap', iconSize: [20, 20], iconAnchor: [10, 10], html: `<span class="me${gps ? '' : ' pin'}"></span>` }),
-    keyboard: false, zIndexOffset: -100,
+    keyboard: false, pane: 'me',
   }).bindTooltip(gps ? 'Você está aqui (aproximado)' : 'Ponto da busca', { direction: 'top', className: 'me-tip', offset: [0, -10] }).addTo(originLayer);
 }
 
-function fitMap(list) {
-  if (!S.origin || userMoved) return;
-  const near = list.slice(0, 25);
-  moveMap(() => {
-    if (near.length) {
-      map.fitBounds(L.latLngBounds([[S.origin.lat, S.origin.lng], ...near.map((p) => [p.lat, p.lng])]), { padding: [56, 56], maxZoom: 16 });
-    } else {
-      map.fitBounds(L.latLng(S.origin.lat, S.origin.lng).toBounds(S.f.radius * 2));
-    }
+// Pinos e pontos do mapa para os locais da lista. Parceiros e locais do mapa público (OpenStreetMap,
+// Google) têm sempre pino: eles não têm ponto. Do cadastro oficial, com o mapa afastado, quem tem ponto
+// fica só como ponto; perto, os 100 primeiros da lista ganham pino. Ninguém da lista some do mapa.
+function drawMap(shown) {
+  lastShown = shown;
+  const far = (drawnFar = map.getZoom() < FAR_ZOOM);
+  syncPoints();
+  let n = 0;
+  const pins = shown.filter((p) => {
+    if (p.source !== 'cnes') return true;
+    if (far && ptsView.byCnes.has(p.id.slice(5))) return false;
+    return n++ < PIN_LIMIT;
   });
+  drawMarkers(pins);
+  renderMapKey(placePoints(new Set(pins.filter((p) => p.source === 'cnes').map((p) => p.id.slice(5)))));
+}
+
+// Pontos de toda a área (cadastro oficial). Quem já tem pino não ganha ponto embaixo. Com filtro que só
+// os parceiros atendem (preço, convênio, "Parceiros verificados"), não há pontos: ninguém ali passa no filtro.
+const NO_POINTS = [];
+const ptsView = { rows: NO_POINTS, byCnes: new Map(), radius: 0, pinned: null, drawn: 0 };
+const pointRadius = () => { const z = map.getZoom(); return z >= 16 ? 6 : z >= 14 ? 5 : z >= 12 ? 4 : 3; };
+const pointsShown = () => S.phase === 'results' && S.pts.key === areaKey() && !G.onlyPartnerFilter(S.f);
+// O total da área só vale com a cidade inteira no banco: enquanto ela é importada, o número ainda cresce.
+const totalKnown = () => S.coverage?.status !== 'loading';
+
+// Cria os círculos quando muda o conjunto de pontos (consulta nova, ou o filtro de parceiros ligou/desligou).
+function syncPoints() {
+  const rows = pointsShown() && S.pts.state === 'ok' ? S.pts.rows : NO_POINTS;
+  if (ptsView.rows === rows) return;
+  ptsLayer.clearLayers();
+  ptsView.byCnes = new Map();
+  ptsView.rows = rows;
+  ptsView.pinned = null;
+  const radius = (ptsView.radius = pointRadius());
+  for (const pt of rows) {
+    const m = L.circleMarker([pt.lat, pt.lng], {
+      renderer: ptsRenderer, radius, color: '#fff', weight: 1, opacity: 0.95,
+      fillColor: KIND_COLOR[pt.kind] ?? KIND_COLOR.clinica, fillOpacity: 0.9,
+    });
+    m.pt = pt;
+    ptsView.byCnes.set(pt.cnes, m);
+  }
+}
+
+// Põe no mapa os pontos de quem não tem pino. O mesmo conjunto de pinos não percorre os pontos de novo.
+function placePoints(pinned) {
+  const key = [...pinned].sort().join(',');
+  if (ptsView.pinned === key) return ptsView.drawn;
+  ptsView.pinned = key;
+  let drawn = 0;
+  for (const [cnes, m] of ptsView.byCnes) {
+    const on = ptsLayer.hasLayer(m);
+    if (pinned.has(cnes)) { if (on) ptsLayer.removeLayer(m); }
+    else { if (!on) ptsLayer.addLayer(m); drawn += 1; }
+  }
+  ptsView.drawn = drawn;
+  if (S.selected?.startsWith('cnes:')) stylePoint(S.selected.slice(5));
+  if (hotCnes) stylePoint(hotCnes);
+  const el = $('#map');
+  el.dataset.points = String(ptsView.rows.length);
+  el.dataset.pointsDrawn = String(drawn);
+  return drawn;
+}
+
+// Ponto em destaque (contorno escuro e maior): o local selecionado ou o cartão sob o mouse.
+const pointMarked = (cnes) => cnes === hotCnes || S.selected === `cnes:${cnes}`;
+function stylePoint(cnes) {
+  const m = ptsView.byCnes.get(cnes);
+  if (!m) return;
+  const on = pointMarked(cnes);
+  m.setStyle(on ? { color: '#05161e', weight: 2.5, radius: ptsView.radius + 3 } : { color: '#fff', weight: 1, radius: ptsView.radius });
+  if (on && ptsLayer.hasLayer(m)) m.bringToFront();
+}
+
+// Cartão sob o mouse: destaca o pino ou, se ele estiver só como ponto, o ponto.
+function setHot(id) {
+  if (id === hotId) return;
+  $$('.mk.hot').forEach((x) => x.classList.remove('hot', 'on'));
+  const prev = hotCnes;
+  hotId = id;
+  hotCnes = null;
+  if (prev) stylePoint(prev);
+  if (!id || id === S.selected) return;
+  const m = markerById.get(id);
+  if (m) m.getElement()?.querySelector('.mk')?.classList.add('hot', 'on');
+  else if (id.startsWith('cnes:') && ptsView.byCnes.has(id.slice(5))) { hotCnes = id.slice(5); stylePoint(hotCnes); }
+}
+
+// Pontos um pouco maiores quando o mapa está mais perto.
+function resizePoints() {
+  const r = pointRadius();
+  if (r === ptsView.radius) return;
+  ptsView.radius = r;
+  for (const [cnes, m] of ptsView.byCnes) m.setRadius(pointMarked(cnes) ? r + 3 : r);
+}
+
+// Legenda das cores dos pontos (ou o aviso de que não carregaram, com "Tentar de novo").
+function renderMapKey(drawn) {
+  const el = $('#mapKey');
+  const pts = S.pts;
+  const mine = pointsShown();
+  if (mine && pts.state === 'error') {
+    el.hidden = false;
+    el.classList.add('err');
+    setHTML(el, '<span>Os pontos da área não carregaram.</span><button type="button" data-act="points-retry">Tentar de novo</button>');
+    return;
+  }
+  el.classList.remove('err');
+  if (!mine || pts.state !== 'ok' || !drawn) { el.hidden = true; setHTML(el, ''); return; }
+  const cap = totalKnown() && pts.total != null && pts.total > pts.rows.length
+    ? `<small>${G.formatCount(pts.rows.length)} de ${G.formatCount(pts.total)} no mapa</small>` : '';
+  el.hidden = false;
+  setHTML(el, `<b>Cadastro oficial</b>${pts.kinds.map((k) => `<span><i class="dot k-${k}" aria-hidden="true"></i>${KIND_SHORT[k]}</span>`).join('')}${cap}`);
+}
+
+// Mostra a área inteira da busca (o círculo do raio), a não ser que a pessoa já tenha mexido no mapa.
+function fitMap() {
+  if (!S.origin || userMoved) return;
+  moveMap(() => map.fitBounds(L.latLng(S.origin.lat, S.origin.lng).toBounds(S.f.radius * 2), { padding: [8, 8] }));
 }
 
 function setSelected(id) {
@@ -475,6 +971,7 @@ function setSelected(id) {
     const m = markerById.get(pid);
     m?.getElement()?.querySelector('.mk')?.classList.toggle('on', pid === id);
     m?.setZIndexOffset(pid === id ? 1000 : pid.startsWith('imed:') ? 500 : 0);
+    if (pid.startsWith('cnes:')) stylePoint(pid.slice(5)); // só como ponto (mapa afastado): o ponto fica em destaque
   }
   $$('.pc.on').forEach((c) => c.classList.remove('on'));
   if (id) $(`.pc[data-id="${CSS.escape(id)}"]`)?.classList.add('on');
@@ -485,19 +982,24 @@ function onMapMove() {
   if (!S.origin || S.phase !== 'results' || !userMoved) return;
   const c = map.getCenter();
   const far = G.haversine(S.origin, { lat: c.lat, lng: c.lng }) > Math.max(400, S.f.radius * 0.3);
-  $('#areaBtn').classList.toggle('hide', !far);
+  // Com mais estabelecimentos do que pontos no mapa, aproximar bastante também oferece buscar ali.
+  const capped = pointsShown() && S.pts.state === 'ok' && S.pts.total != null && S.pts.total > S.pts.rows.length;
+  const closer = capped && map.getZoom() >= map.getBoundsZoom(L.latLng(S.origin.lat, S.origin.lng).toBounds(S.f.radius * 2)) + 2;
+  $('#areaBtn').classList.toggle('hide', !(far || closer));
 }
 
 function hideAreaBtn() { $('#areaBtn').classList.add('hide'); }
 
+// Busca em volta do centro do mapa, com a maior distância que cabe na tela. (O mapa abre mostrando o
+// círculo inteiro com folga; escolher a distância seguinte aumentava o raio a cada "Buscar nesta área".)
 function searchMapArea() {
   const c = map.getCenter();
   const b = map.getBounds();
   const half = Math.min(map.distance(c, [b.getNorth(), c.lng]), map.distance(c, [c.lat, b.getEast()]));
-  S.f.radius = G.RADII.find((r) => r >= half) ?? G.RADII[G.RADII.length - 1];
+  S.f.radius = [...G.RADII].reverse().find((r) => r <= half) ?? G.RADII[0];
   $('#q').value = '';
   setQMsg('');
-  runSearch({ lat: G.roundCoord(c.lat), lng: G.roundCoord(c.lng) }, 'a área do mapa', 'mapa');
+  runSearch({ lat: G.roundCoord(c.lat), lng: G.roundCoord(c.lng) }, 'centro do mapa', 'mapa');
 }
 
 function setMapView(on) {
@@ -510,8 +1012,15 @@ function setMapView(on) {
 
 /* ======================= lista ======================= */
 // Parceiros IMED primeiro na junção: o mesmo lugar no cadastro oficial ou no mapa não aparece duas vezes.
-const allPlaces = () => G.mergePlaces(G.mergePlaces(S.imed, S.cnes), S.places);
-const placeById = (id) => [S.imed, S.cnes, S.places].map((l) => l.find((p) => p.id === id)).find(Boolean);
+const allPlaces = () => G.mergePlaces(G.mergePlaces(S.imed, cnesRows()), S.places);
+function placeById(id) {
+  const rows = S.lists.get(areaKey())?.rows ?? [];
+  for (const list of [S.imed, S.base, rows, S.places]) {
+    const p = list.find((x) => x.id === id);
+    if (p) return p;
+  }
+  return S.extra.get(id) ?? null;
+}
 const SOURCE_LABEL = { osm: 'OpenStreetMap', google: 'Google Maps' };
 const distanceText = (p) => `${p.approx ? '~' : ''}${G.formatDistance(p.distance_m)}`;
 const allFailed = () => S.imedState === 'error' && S.cnesState !== 'ok' && S.placesState === 'error';
@@ -606,27 +1115,83 @@ const BTN_TYPE = '<button class="btn btn-ghost" type="button" data-act="type">Di
 
 function introHTML() {
   const demo = S.demo ? '<button class="btn btn-ghost" type="button" data-act="demo-sp">Testar na Av. Paulista</button>' : '';
+  const max = G.RADII[G.RADII.length - 1];
   return stateHTML('fa-location-crosshairs', 'Veja o que tem perto de você',
     'Para mostrar distâncias reais, o IMED pede permissão para usar a localização do seu aparelho. Se preferir, digite seu CEP, cidade ou endereço.',
     BTN_LOCATE + BTN_TYPE + demo, false,
-    `<ul>
-      <li><i class="fa-solid fa-check" aria-hidden="true"></i>Usada só para esta busca, com precisão de cerca de 100 metros.</li>
+    `<p class="st-area"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span>Mostramos clínicas, laboratórios e hospitais em até ${kmLabel(G.DEFAULT_FILTERS.radius)}; você pode aumentar para até ${kmLabel(max)}.</span></p>
+    <ul>
+      <li><i class="fa-solid fa-check" aria-hidden="true"></i>Usada só para esta busca, de forma aproximada — nunca guardamos sua posição exata.</li>
       <li><i class="fa-solid fa-check" aria-hidden="true"></i>Não guardamos sua localização no aparelho nem no banco.</li>
       <li><i class="fa-solid fa-check" aria-hidden="true"></i>Você pode revogar a permissão quando quiser no navegador.</li>
     </ul><p class="src"><a class="link" href="privacidade.html">Como tratamos seus dados</a></p>`);
 }
 
-function emptyHTML(all) {
+const countWord = (n) => `${G.formatCount(n)} ${n === 1 ? 'estabelecimento' : 'estabelecimentos'}`;
+
+// Total real de estabelecimentos na área com os filtros: o cadastro oficial contado pelo banco (já com
+// tipo, exame e SUS) mais os parceiros na tela. null: não dá para saber pelo banco (mapa público
+// misturado, especialidade, que o banco não filtra, ou cidade ainda sendo importada); undefined: contando.
+function areaTotal(shown) {
+  if (S.phase !== 'results' || S.places.length || S.placesState === 'loading' || S.f.specialty) return null;
+  const others = shown.filter((p) => p.source !== 'cnes').length;
+  if (G.onlyPartnerFilter(S.f)) return others;
+  if (!totalKnown()) return null;
+  const t = S.totals.get(areaKey());
+  return t == null ? undefined : t + others;
+}
+
+// Quantos há na área sem os filtros (para o aviso "Nada com esses filtros"). Sem o total do banco: null.
+function regionTotal() {
+  if (S.places.length || !totalKnown()) return null;
+  const t = S.totals.get(G.areaKey({ ...S.f, kind: '', exam: '', sus: false }));
+  return t == null ? null : t + S.imed.filter((p) => p.distance_m <= S.f.radius).length;
+}
+
+const areaBusy = () => S.phase === 'results' && (S.pts.state === 'loading' || listFor().state === 'loading');
+
+function emptyHTML() {
   if (S.placesState === 'loading') return '';
-  if (all.length && G.activeFilterCount(S.f)) {
-    const priceNote = S.f.price ? '<p class="src">Preços só aparecem para clínicas parceiras que informaram valores ao IMED. Nenhum valor é estimado.</p>' : '';
-    return stateHTML('fa-filter', 'Nada com esses filtros', `Há ${plural(all.length, 'estabelecimento', 'estabelecimentos')} na região, mas nenhum combina com os filtros escolhidos.`,
-      '<button class="btn btn-primary" type="button" data-act="clear">Limpar filtros</button>', false, priceNote);
-  }
   const next = G.RADII.find((r) => r > S.f.radius);
+  if (G.activeFilterCount(S.f)) {
+    const priceNote = S.f.price ? '<p class="src">Preços só aparecem para clínicas parceiras que informaram valores ao IMED. Nenhum valor é estimado.</p>' : '';
+    const n = regionTotal();
+    const text = n ? `Há ${countWord(n)} em até ${kmLabel(S.f.radius)}, mas nenhum combina com os filtros escolhidos.`
+      : `Nenhum estabelecimento em até ${kmLabel(S.f.radius)} combina com os filtros escolhidos.`;
+    const wider = next && !G.onlyPartnerFilter(S.f) ? `<button class="btn btn-ghost" type="button" data-act="radius" data-radius="${next}">Buscar em até ${kmLabel(next)}</button>` : '';
+    return stateHTML('fa-filter', 'Nada com esses filtros', text,
+      '<button class="btn btn-primary" type="button" data-act="clear">Limpar filtros</button>' + wider, false, priceNote);
+  }
   return stateHTML('fa-map-location-dot', `Nenhum estabelecimento em até ${kmLabel(S.f.radius)}`,
     'Não encontramos clínicas, laboratórios ou centros de diagnóstico mapeados nesta distância.',
     (next ? `<button class="btn btn-primary" type="button" data-act="radius" data-radius="${next}">Buscar em até ${kmLabel(next)}</button>` : '') + BTN_TYPE);
+}
+
+// Fim da lista: "Ver mais 50 (de N)", carregando, ou "Tentar de novo" quando a busca no banco falhou.
+// É sempre o mesmo botão (data-act="more"); carregando, ele fica aria-disabled em vez de disabled, para o
+// foco continuar nele (patchPager só troca o texto e os atributos).
+function pagerHTML(shownCount, total) {
+  if (S.phase !== 'results' || G.onlyPartnerFilter(S.f)) return '';
+  const l = listFor();
+  if (l.state === 'loading') {
+    return shownCount ? `<div class="pt-pager"><p class="pt-pager-busy" role="status"><span class="spin" aria-hidden="true"></span>Buscando em toda a área de até ${kmLabel(S.f.radius)}…</p></div>` : '';
+  }
+  const btn = (icon, label, attrs = '') => `<button class="btn btn-ghost" type="button" data-act="more"${attrs}>${icon}${label}</button>`;
+  const RETRY = '<i class="fa-solid fa-rotate-right" aria-hidden="true"></i>';
+  if (l.state === 'error') {
+    return `<div class="pt-pager"><p class="pt-pager-msg">Não conseguimos buscar na área inteira agora. A lista mostra só os locais já carregados.</p>${btn(RETRY, 'Tentar de novo')}</div>`;
+  }
+  if (l.more === 'error') {
+    return `<div class="pt-pager"><p class="pt-pager-msg">Não foi possível carregar mais agora. Verifique sua internet.</p>${btn(RETRY, 'Tentar de novo')}</div>`;
+  }
+  const known = typeof total === 'number';
+  const shownText = known ? `<p class="pt-pager-info">Mostrando ${G.formatCount(shownCount)} de ${G.formatCount(total)}</p>` : '';
+  if (l.more === 'loading') {
+    return `<div class="pt-pager">${shownText}${btn('<span class="spin" aria-hidden="true"></span>', 'Carregando mais…', ' aria-disabled="true" aria-busy="true"')}</div>`;
+  }
+  const st = pagerOf(l);
+  if (!st.more) return ''; // todos já estão na lista
+  return `<div class="pt-pager">${shownText}${btn('<i class="fa-solid fa-angles-down" aria-hidden="true"></i>', G.moreLabel(st.next, known ? total : null))}</div>`;
 }
 
 function bannersHTML() {
@@ -641,16 +1206,26 @@ function bannersHTML() {
   if (!failed && S.imedState === 'error') b.push('<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Não conseguimos carregar as clínicas parceiras do IMED agora.<button type="button" data-act="retry">Tentar de novo</button></span></div>');
   if (!failed && S.cnesState === 'error') b.push('<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>O cadastro oficial de clínicas não respondeu agora.<button type="button" data-act="retry">Tentar de novo</button></span></div>');
   if (!failed && S.placesState === 'error') b.push(`<div class="bn warn"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><span>Os estabelecimentos do mapa (${S.provider === 'google' && !S.fnDown ? 'Google Maps' : 'OpenStreetMap'}) não carregaram agora.<button type="button" data-act="retry-places">Tentar de novo</button></span></div>`);
-  if (S.truncated || S.cnesTruncated) b.push('<div class="bn"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Região com muitos estabelecimentos: mostrando os mais próximos. Diminua a distância ou use os filtros para ver outros.</span></div>');
+  if (S.truncated) b.push('<div class="bn"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>O mapa público tem muitos locais nesta região e mostramos só parte deles. Diminua a distância para ver os mais próximos.</span></div>');
+  const p = S.pts;
+  if (!failed && pointsShown() && totalKnown() && p.state === 'ok' && p.total != null && p.total > p.rows.length) {
+    b.push(`<div class="bn" id="ptsCap"><i class="fa-solid fa-map-location-dot" aria-hidden="true"></i><span>O mapa mostra os ${G.formatCount(p.rows.length)} mais próximos. Aproxime o mapa e toque em "Buscar nesta área" para ver outros.</span></div>`);
+  }
   return b.join('');
 }
 
-function countHTML(shown) {
+function countHTML(shown, total) {
   if (S.phase !== 'results' || allFailed()) return '';
   const nImed = shown.filter((p) => p.source === 'imed' && !p.is_demo).length;
   const nDemo = shown.filter((p) => p.source === 'imed' && p.is_demo).length;
-  const where = S.originKind === 'gps' ? 'da sua localização (aproximada)' : `de <b>${esc(S.originLabel)}</b>`;
-  return `<b>${plural(shown.length, 'resultado', 'resultados')}</b> em até ${kmLabel(S.f.radius)} ${where}`
+  const where = S.originKind === 'gps' ? 'da sua localização (aproximada)'
+    : S.originKind === 'mapa' ? 'do centro do mapa' : `de <b>${esc(S.originLabel)}</b>`;
+  const km = kmLabel(S.f.radius);
+  let head;
+  if (typeof total === 'number') head = `<b>${countWord(total)}</b> em até ${km} ${where}`;
+  else if (total === undefined && areaBusy()) head = `Contando os estabelecimentos em até ${km} ${where}…`;
+  else head = `<b>${plural(shown.length, 'resultado', 'resultados')}</b>${S.f.specialty ? ' entre os locais já carregados,' : ''} em até ${km} ${where}`;
+  return head
     + (nImed ? ` · ${plural(nImed, 'parceiro verificado', 'parceiros verificados')}` : '')
     + (nDemo ? ` · ${nDemo} de demonstração` : '');
 }
@@ -694,49 +1269,77 @@ function renderFilters(all) {
   $('#fClear').hidden = !G.activeFilterCount(S.f);
 }
 
+// Escreve o HTML só quando muda (a contagem é aria-live: reescrever igual faria o leitor de tela repetir).
+function setHTML(el, html) {
+  if (el._html === html) return;
+  el._html = html;
+  el.innerHTML = html;
+}
+
+// Troca o conteúdo da lista sem tirar o lugar de quem usa teclado: o foco volta para o mesmo cartão ou
+// botão (ou para a própria lista, se ele não existir mais).
+function setListHTML(list, html) {
+  const a = document.activeElement;
+  let sel = null;
+  if (a && a !== list && list.contains(a)) {
+    const card = a.closest('.pc[data-id]');
+    sel = card ? `.pc[data-id="${CSS.escape(card.dataset.id)}"]` : a.dataset.act ? `[data-act="${CSS.escape(a.dataset.act)}"]` : '';
+  }
+  list.innerHTML = html;
+  if (sel !== null) ((sel && $(sel, list)) || list).focus({ preventScroll: true });
+}
+
 function render(fit = false) {
-  const all = S.phase === 'results' ? allPlaces() : [];
+  const results = S.phase === 'results';
+  const all = results ? allPlaces() : [];
   renderFilters(all);
-  $('#banners').innerHTML = bannersHTML();
+  setHTML($('#banners'), bannersHTML());
   $('#viewToggle').classList.toggle('hide', !S.origin);
-  $('#mapLoad').classList.toggle('hide', !(S.phase === 'loading' || S.placesState === 'loading'));
+  $('#mapLoad').classList.toggle('hide', !(S.phase === 'loading' || S.placesState === 'loading' || (results && S.pts.state === 'loading' && !G.onlyPartnerFilter(S.f))));
   const list = $('#list');
   list.setAttribute('aria-busy', String(S.phase === 'loading' || S.phase === 'locating'));
   let shown = [];
+  let total = null;
 
-  if (S.phase === 'intro') list.innerHTML = introHTML();
+  if (S.phase === 'intro') setListHTML(list, introHTML());
   else if (S.phase === 'locating') {
-    list.innerHTML = stateHTML('fa-location-crosshairs', 'Aguardando sua permissão…',
+    setListHTML(list, stateHTML('fa-location-crosshairs', 'Aguardando sua permissão…',
       'Se o navegador perguntar, toque em <b>Permitir</b>. A localização é usada só para esta busca.',
-      '<button class="btn btn-ghost" type="button" data-act="type">Prefiro digitar o endereço</button>').replace('class="ic"', 'class="ic pulse"');
+      '<button class="btn btn-ghost" type="button" data-act="type">Prefiro digitar o endereço</button>').replace('class="ic"', 'class="ic pulse"'));
   } else if (S.phase === 'geo-error') {
     const [t, d] = GEO_MSG[S.geoError] ?? GEO_MSG.unavailable;
     const again = S.geoError === 'unsupported' ? '' : '<button class="btn btn-primary" type="button" data-act="locate">Tentar de novo</button>';
-    list.innerHTML = stateHTML('fa-location-pin-lock', t, d, again + '<button class="btn btn-ghost" type="button" data-act="type">Digitar endereço</button>', true);
+    setListHTML(list, stateHTML('fa-location-pin-lock', t, d, again + '<button class="btn btn-ghost" type="button" data-act="type">Digitar endereço</button>', true));
   } else if (S.phase === 'loading') {
-    list.innerHTML = SKELETON.repeat(5);
+    setListHTML(list, SKELETON.repeat(5));
   } else if (allFailed()) {
-    list.innerHTML = stateHTML('fa-plug-circle-xmark', 'Não foi possível buscar agora',
+    setListHTML(list, stateHTML('fa-plug-circle-xmark', 'Não foi possível buscar agora',
       'Os serviços de busca não responderam. Verifique sua internet e tente de novo em instantes.',
-      '<button class="btn btn-primary" type="button" data-act="retry">Tentar de novo</button>', true);
+      '<button class="btn btn-primary" type="button" data-act="retry">Tentar de novo</button>', true));
   } else {
     shown = G.sortPlaces(G.filterPlaces(all, S.f), S.f.sort, S.f.exam, S.ratings);
-    let html = shown.length ? shown.map(cardHTML).join('') : emptyHTML(all);
+    total = areaTotal(shown);
+    // Enquanto o banco busca na área inteira, sem nada para mostrar ainda: esqueleto, não "nada encontrado".
+    const waiting = !shown.length && !G.onlyPartnerFilter(S.f) && listFor().state === 'loading';
+    let html = shown.length ? shown.map(cardHTML).join('') : waiting ? SKELETON.repeat(3) : emptyHTML();
+    html += pagerHTML(shown.length, total);
     if (S.placesState === 'loading') html += '<div class="pt-more" role="status"><span class="spin" aria-hidden="true"></span>Carregando estabelecimentos do mapa…</div>';
     if (S.f.insurance) html += '<p class="pt-note"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Convênios informados pelas clínicas parceiras. Confirme a cobertura com a clínica e com o seu plano.</p>';
     else if (S.f.sus) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>"Atende SUS" vem do cadastro oficial (CNES). As clínicas parceiras ainda não informam esse dado, por isso ficam de fora deste filtro.</p>';
-    if (S.f.exam && !S.f.onlyImed && (S.cnes.length || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
+    const official = S.base.length || cnesRows().length;
+    if (S.f.exam && !S.f.onlyImed && (official || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
     if (!S.demo && S.imedState === 'ok' && !S.imed.length && S.placesState !== 'loading') {
-      const fonte = S.cnes.length ? 'do cadastro oficial do Ministério da Saúde (CNES)' : 'de mapas públicos';
+      const fonte = official ? 'do cadastro oficial do Ministério da Saúde (CNES)' : 'de mapas públicos';
       html += `<p class="pt-note"><i class="fa-solid fa-handshake" aria-hidden="true"></i>Ainda não há clínicas parceiras do IMED nesta região. Os resultados vêm ${fonte}. Tem uma clínica? <a class="link" href="parceiros.html">Seja parceira</a>.</p>`;
     }
-    list.innerHTML = html;
+    setListHTML(list, html);
   }
-  $('#count').innerHTML = countHTML(shown);
-  $('#legend').hidden = !(S.phase === 'results' && all.length && !allFailed());
-  $('#priceBand').innerHTML = priceBandHTML(all);
-  drawMarkers(shown);
-  if (fit) fitMap(shown);
+  listView = { shown, total };
+  setHTML($('#count'), countHTML(shown, total));
+  $('#legend').hidden = !(results && (all.length || S.pts.rows.length) && !allFailed());
+  setHTML($('#priceBand'), priceBandHTML(all));
+  drawMap(shown);
+  if (fit) fitMap();
 }
 
 /* ======================= painel: detalhes ======================= */
@@ -751,15 +1354,20 @@ function openSheet(html) {
   $('#ov').classList.add('open');
   $('#ov').setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
-  setTimeout(() => ($('[data-close]', sh) ?? sh).focus(), 40);
+  // (Se a pessoa já fechou com Esc nesse meio-tempo, o foco fica onde voltou.)
+  setTimeout(() => { if ($('#ov').classList.contains('open')) ($('[data-close]', sh) ?? sh).focus(); }, 40);
 }
 
 function closeSheet() {
+  S.pointCtrl?.abort();
   if (!$('#ov').classList.contains('open')) return;
   $('#ov').classList.remove('open');
   $('#ov').setAttribute('aria-hidden', 'true');
   document.body.style.overflow = document.body.classList.contains('show-map') ? 'hidden' : '';
-  lastFocus?.focus?.({ preventScroll: true });
+  // Se a lista foi refeita enquanto o painel estava aberto, o foco volta para o mesmo cartão.
+  const back = lastFocus?.isConnected ? lastFocus
+    : lastFocus?.dataset?.id ? $(`#list .pc[data-id="${CSS.escape(lastFocus.dataset.id)}"]`) : null;
+  back?.focus?.({ preventScroll: true });
 }
 
 function servicesHTML(p) {
@@ -1087,19 +1695,20 @@ function bind() {
   const ids = { kind: 'fKind', exam: 'fExam', specialty: 'fSpec', radius: 'fDist', price: 'fPrice', sort: 'fSort' };
   for (const [key, id] of Object.entries(ids)) {
     $(`#${id}`).addEventListener('change', (e) => {
-      S.f[key] = key === 'radius' ? Number(e.target.value) : e.target.value;
-      if (key === 'radius') {
-        if (S.origin && S.f.radius > S.fetchedRadius) return retrySearch();
-        drawOrigin();
-        userMoved = false;
-      }
-      render(key === 'radius');
+      const value = key === 'radius' ? Number(e.target.value) : e.target.value;
+      // Raio maior que o da busca: busca tudo de novo (parceiros e mapa público também mudam).
+      if (key === 'radius' && S.origin && value > S.fetchedRadius) { S.f.radius = value; return retrySearch(); }
+      changeFilters(() => {
+        S.f[key] = value;
+        if (key === 'radius') { drawOrigin(); userMoved = false; }
+      }, key === 'radius');
     });
   }
-  $('#fImed').addEventListener('click', () => { S.f.onlyImed = !S.f.onlyImed; render(); });
-  $('#fSus').addEventListener('click', () => { S.f.sus = !S.f.sus; render(); });
-  $('#fIns').addEventListener('change', (e) => { S.f.insurance = e.target.value; render(); });
-  $('#fClear').addEventListener('click', () => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; render(); });
+  $('#fImed').addEventListener('click', () => changeFilters(() => { S.f.onlyImed = !S.f.onlyImed; }));
+  $('#fSus').addEventListener('click', () => changeFilters(() => { S.f.sus = !S.f.sus; }));
+  $('#fIns').addEventListener('change', (e) => changeFilters(() => { S.f.insurance = e.target.value; }));
+  $('#fClear').addEventListener('click', clearFilters);
+  $('#mapKey').addEventListener('click', (e) => { if (e.target.closest('[data-act="points-retry"]')) syncArea(); });
 
   $('#list').addEventListener('click', (e) => {
     const act = e.target.closest('[data-act]');
@@ -1113,19 +1722,16 @@ function bind() {
     const card = e.target.closest?.('.pc[data-id]');
     if (card && e.target === card && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openDetails(card.dataset.id); }
   });
-  $('#list').addEventListener('mouseover', (e) => {
-    const card = e.target.closest('.pc[data-id]');
-    const m = card && markerById.get(card.dataset.id);
-    $$('.mk.hot').forEach((x) => x.classList.remove('hot', 'on'));
-    if (m && card.dataset.id !== S.selected) m.getElement()?.querySelector('.mk')?.classList.add('hot', 'on');
-  });
-  $('#list').addEventListener('mouseleave', () => $$('.mk.hot').forEach((x) => x.classList.remove('hot', 'on')));
+  $('#list').addEventListener('mouseover', (e) => setHot(e.target.closest('.pc[data-id]')?.dataset.id ?? null));
+  $('#list').addEventListener('mouseleave', () => setHot(null));
 
   const ov = $('#ov');
   ov.addEventListener('click', (e) => {
     if (e.target === ov || e.target.closest('[data-close]')) return closeSheet();
     const b = e.target.closest('[data-book]');
-    if (b) openBooking(b.dataset.book);
+    if (b) return openBooking(b.dataset.book);
+    const pt = e.target.closest('[data-point]');
+    if (pt && S.lastPoint?.cnes === pt.dataset.point) openPoint(S.lastPoint);
   });
   document.addEventListener('keydown', (e) => {
     if (!ov.classList.contains('open')) return;
@@ -1140,13 +1746,28 @@ function bind() {
   });
 }
 
+// Muda filtros e redesenha na hora. Se mudou raio, tipo, exame ou SUS, a área inteira é buscada de novo
+// no banco logo depois (com uma pequena espera, caso a pessoa mexa em mais de um filtro). Ao desligar um
+// filtro só de parceiros, o cadastro oficial volta: busca o que ainda não tinha sido buscado.
+function changeFilters(fn, fit = false) {
+  const before = areaKey();
+  const partners = G.onlyPartnerFilter(S.f);
+  fn();
+  render(fit);
+  if (S.phase !== 'results') return;
+  if (areaKey() !== before) scheduleArea();
+  else if (partners && !G.onlyPartnerFilter(S.f) && S.areaAsked !== areaKey()) syncArea();
+}
+const clearFilters = () => changeFilters(() => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; });
+
 function onAction(el) {
   const a = el.dataset.act;
   if (a === 'locate') locate();
   else if (a === 'type') { $('#q').focus(); $('#q').scrollIntoView({ behavior: 'smooth', block: 'center' }); }
   else if (a === 'retry') retrySearch();
   else if (a === 'retry-places') retryPlaces();
-  else if (a === 'clear') { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; render(); }
+  else if (a === 'more') showMore();
+  else if (a === 'clear') clearFilters();
   else if (a === 'radius') { S.f.radius = Number(el.dataset.radius); retrySearch(); }
   else if (a === 'demo-sp') runSearch({ lat: -23.565, lng: -46.652 }, 'Av. Paulista, São Paulo - SP', 'busca', 'endereco');
 }

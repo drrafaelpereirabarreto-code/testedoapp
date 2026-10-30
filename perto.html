@@ -95,6 +95,7 @@
           <option value="5000" selected>Até 5 km</option>
           <option value="10000">Até 10 km</option>
           <option value="20000">Até 20 km</option>
+          <option value="50000">Até 50 km</option>
         </select>
       </label>
       <label class="fchip"><span class="sr">Faixa de preço</span>
@@ -130,14 +131,18 @@
         <li><span class="bd bd-imed"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>Parceiro verificado</span><span>Clínica parceira do IMED. Preços, exames e agenda são informados e confirmados pela própria clínica.</span></li>
         <li><span class="bd bd-cnes"><i class="fa-solid fa-building-circle-check" aria-hidden="true"></i>Cadastro oficial</span><span>Estabelecimento real do cadastro do Ministério da Saúde (CNES). Ainda não é parceiro: confirme preço e horário com o local.</span></li>
         <li><span class="bd bd-demo">Demonstração</span><span>Clínica fictícia, só para testar o site.</span></li>
+        <li><span class="bd bd-dots"><i class="dot k-imagem" aria-hidden="true"></i><i class="dot k-laboratorio" aria-hidden="true"></i><i class="dot k-clinica" aria-hidden="true"></i><i class="dot k-hospital" aria-hidden="true"></i>Pontos no mapa</span><span>Cada ponto é um estabelecimento do cadastro oficial na área da busca, na cor do tipo. Toque no ponto para ver os detalhes. Parceiros e locais do mapa público aparecem sempre como pino; ao aproximar o mapa, os primeiros da lista também.</span></li>
       </ul>
     </details>
     <div id="priceBand"></div>
     <div class="pt-list" id="list" tabindex="-1"></div>
+    <p class="sr" id="srMsg" role="status" aria-live="polite"></p>
   </section>
 
   <section class="pt-mapcol" aria-label="Mapa dos resultados">
+    <p class="sr">Cada ponto colorido do mapa é um estabelecimento do cadastro oficial na área da busca. Pelo teclado ou leitor de tela, use a lista de resultados: ela traz os mesmos locais, com o botão "Ver mais".</p>
     <div class="pt-map" id="map"></div>
+    <div class="pt-mapkey" id="mapKey" hidden></div>
     <button class="pt-area hide" id="areaBtn" type="button"><i class="fa-solid fa-rotate" aria-hidden="true"></i>Buscar nesta área</button>
     <div class="pt-mapload hide" id="mapLoad" role="status"><span class="spin" aria-hidden="true"></span>Buscando estabelecimentos…</div>
   </section>

@@ -2,6 +2,7 @@
 // com localização simulada e respostas simuladas do servidor, do banco e do OpenStreetMap.
 // Rodar com: node tests/e2e-perto.mjs   (precisa do pacote "playwright" instalado)
 // Opcional: SHOTS=pasta node tests/e2e-perto.mjs  salva capturas de tela nessa pasta.
+//           ONLY="texto" node tests/e2e-perto.mjs  roda só os cenários com esse texto no nome.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -14,6 +15,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SHOTS = process.env.SHOTS || '';
+const ONLY = process.env.ONLY ? new RegExp(process.env.ONLY, 'i') : null; // ex.: ONLY="área inteira" roda só esses cenários
 const FN = 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/clinicas-proximas';
 const REST = 'https://pyoqiecupxhdzigjudyd.supabase.co/rest/v1/';
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
@@ -59,6 +61,25 @@ const REVIEWS = { 'cnes:2077485': [
 ] };
 
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: { 'Access-Control-Allow-Origin': '*' } });
+const PREFLIGHT = { status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } };
+
+// Distância em metros (igual à do site), para o banco simulado ordenar e filtrar pela área.
+const hav = (a, b) => {
+  const R = 6371000, r = Math.PI / 180;
+  const h = Math.sin(((b.lat - a.lat) * r) / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(((b.lng - a.lng) * r) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
+// Banco simulado: estabelecimentos da área com os filtros de nearby_establishments / establishment_points,
+// em ordem de distância (desempate pelo código), com o total da área em cada linha.
+function areaRows(rows, b) {
+  const o = { lat: b.p_lat, lng: b.p_lng };
+  return rows.map((x) => ({ x, d: hav(o, x) }))
+    .filter(({ x, d }) => d <= (b.p_radius_m ?? 5000) && (!b.p_kind || x.kind === b.p_kind)
+      && (!b.p_exam || (x.services ?? []).includes(b.p_exam)) && (b.p_sus == null || x.sus === b.p_sus))
+    .sort((a, c) => a.d - c.d || a.x.cnes.localeCompare(c.x.cnes));
+}
+const pageOf = (list, from, n) => list.slice(from, from + n).map(({ x, d }) => ({ ...x, distance_m: Math.round(d), total: list.length }));
+const pointsOf = (list, n) => list.slice(0, n).map(({ x }) => ({ cnes: x.cnes, kind: x.kind, lat: x.lat, lng: x.lng, total: list.length }));
 
 // Estabelecimentos reais do CNES, como vêm da função nearby_establishments.
 const CNES_ROWS = [
@@ -66,14 +87,17 @@ const CNES_ROWS = [
   { cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', cnes_type: 39, address_line: 'Alameda Santos, 200', neighborhood: 'Bela Vista', cep: '01418000', city: 'São Paulo', uf: 'SP', city_code: '355030', lat: -23.5655, lng: -46.6520, distance_m: 640, location_source: 'endereco', phone: '(11) 3000-2000', shift: 'Manhã e tarde', open_24h: false, sus: true, services: ['lab'], specialties: [], cnes_updated_at: '2026-08-02' },
 ];
 
-async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, ratings, reviews, scheduled = [], rest } = {}) {
+// data: estabelecimentos do banco simulado. Sem data, o banco tem os mesmos que a última busca devolveu.
+async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass, insert, cnesRpc, points, ratings, reviews, scheduled = [], rest, data } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block',
     ...(geo ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
-  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [], ratings: [], reviews: [], schedule: [], rest: [] };
+  const log = { fn: [], overpass: [], rpc: [], insert: [], cnes: [], points: [], ratings: [], reviews: [], schedule: [], rest: [] };
+  let lastSearch = null;
+  const dataset = () => data ?? (Array.isArray(lastSearch?.cnes) ? lastSearch.cnes : []);
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -81,7 +105,13 @@ async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass,
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
     const body = JSON.parse(route.request().postData() || '{}');
     log.fn.push(body);
-    return (fn ?? defaultFn)(route, body);
+    // Guarda a resposta da busca: o banco simulado passa a ter os mesmos estabelecimentos.
+    const spy = {
+      request: () => route.request(),
+      abort: (...a) => route.abort(...a),
+      fulfill: (o) => { if (body.action === 'search') { try { lastSearch = JSON.parse(o.body); } catch { lastSearch = null; } } return route.fulfill(o); },
+    };
+    return (fn ?? defaultFn)(spy, body);
   });
   await context.route('https://overpass-api.de/**', async (route) => { log.overpass.push(route.request().postData()); return (overpass ?? ((r) => json(r, OSM)))(route); });
   await context.route('https://overpass.kumi.systems/**', async (route) => { log.overpass.push(route.request().postData()); return (overpass ?? ((r) => json(r, OSM)))(route); });
@@ -91,9 +121,18 @@ async function newPage(browser, { geo = true, mobile = false, fn, rpc, overpass,
     return (rpc ?? ((r) => json(r, IMED_ROWS)))(route);
   });
   await context.route(`${REST}rpc/nearby_establishments`, async (route) => {
-    if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
-    log.cnes.push(JSON.parse(route.request().postData() || '{}'));
-    return (cnesRpc ?? ((r) => json(r, [])))(route);
+    if (route.request().method() === 'OPTIONS') return route.fulfill(PREFLIGHT);
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.cnes.push(body);
+    if (cnesRpc) return cnesRpc(route, body, dataset());
+    return json(route, pageOf(areaRows(dataset(), body), body.p_offset ?? 0, body.p_limit ?? 150));
+  });
+  await context.route((u) => u.href.startsWith(`${REST}rpc/establishment_points`), async (route) => {
+    if (route.request().method() === 'OPTIONS') return route.fulfill(PREFLIGHT);
+    const body = JSON.parse(route.request().postData() || '{}');
+    log.points.push({ body, search: new URL(route.request().url()).search });
+    if (points) return points(route, body, dataset());
+    return json(route, pointsOf(areaRows(dataset(), body), body.p_limit ?? 3000));
   });
   await context.route(`${REST}rpc/place_ratings`, async (route) => {
     if (route.request().method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' } });
@@ -148,6 +187,24 @@ const fullFn = (r, b) => (b.action === 'search'
   : defaultFn(r, b));
 const names = (page) => page.$$eval('.pc h3', (els) => els.map((e) => e.textContent));
 const ready = async (page) => { await page.waitForSelector('.pc'); await page.waitForFunction(() => !document.querySelector('.pt-more')); };
+// Pinos no mapa (sem contar o "Você está aqui"). sel: '.mk-imed' só parceiros, '.mk:not(.mk-imed)' os outros.
+const pins = (page, sel = '.mk') => page.locator(`.leaflet-marker-icon ${sel}`).count();
+const zoomOf = async (page) => Number(await page.getAttribute('#map', 'data-zoom'));
+// Aproxima o mapa pelo botão "+" até o zoom pedido (a partir de 15 o mapa está "perto").
+async function zoomIn(page, target) {
+  for (let z = await zoomOf(page); z < target; z += 1) {
+    await page.click('.leaflet-control-zoom-in');
+    await page.waitForSelector(`#map[data-zoom="${z + 1}"]`, { state: 'attached' });
+  }
+  await page.waitForTimeout(350); // fim da animação
+}
+// O que aparece no centro do ponto "Você está aqui" é o próprio ponto (nenhum pino por cima)?
+const meOnTop = (page) => page.evaluate(() => {
+  const me = document.querySelector('.leaflet-marker-icon .me');
+  const r = me.getBoundingClientRect();
+  return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.me') === me;
+});
+const focusIsMore = (page) => page.evaluate(() => !!document.activeElement?.matches('#list .pt-pager [data-act="more"]'));
 const fillBooking = async (page, exam = 'rm') => {
   await page.selectOption('#bkExam', exam);
   await page.fill('#bkDate', await page.$eval('#bkDate', (el) => el.min));
@@ -164,6 +221,7 @@ const WA_CONFIG = () => {
 const shot = async (page, name) => { if (SHOTS) { await page.waitForTimeout(450); await page.screenshot({ path: join(SHOTS, `${name}.png`) }); } };
 const results = [];
 async function scenario(name, fn) {
+  if (ONLY && !ONLY.test(name)) return;
   try { await fn(); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 4).join('\n  ')}`); }
 }
@@ -407,7 +465,11 @@ await scenario('sem pedir permissão ao abrir a página direto', async () => {
   const { page, context } = await newPage(browser, { geo: false });
   await page.goto(`${BASE}perto.html`);
   await page.waitForSelector('.st h2:has-text("Veja o que tem perto de você")');
-  assert.match(await page.textContent('.st'), /cerca de 100 metros/);
+  const intro = await page.textContent('.st');
+  assert.doesNotMatch(intro, /100 metros|100 m\b/, 'sem dar a impressão de que a busca é de 100 metros');
+  assert.match(intro, /Usada só para esta busca, de forma aproximada — nunca guardamos sua posição exata\./);
+  assert.match(intro, /Mostramos clínicas, laboratórios e hospitais em até 5 km; você pode aumentar para até 50 km\./);
+  assert.doesNotMatch(await page.textContent('body'), /100 metros/);
   await shot(page, '06-inicio');
   await context.close();
 });
@@ -495,7 +557,14 @@ await scenario('clínicas reais do CNES: sem OpenStreetMap, selo oficial, ficha 
   assert.match(await page.textContent('.pc >> nth=0'), /24 horas/);
   assert.match(await page.textContent('.pc >> nth=1'), /Atende SUS/);
   assert.match(await page.textContent('.pc >> nth=1 >> .pc-dist'), /^~/, 'distância aproximada quando o local veio do endereço');
-  assert.equal(await page.locator('.leaflet-marker-icon .mk').count(), 2);
+  // Cada resultado aparece no mapa: afastado (área inteira) como ponto; perto, como pino.
+  await page.waitForSelector('#map[data-points="2"]');
+  assert.ok(await zoomOf(page) < 15);
+  assert.equal(await pins(page), 0);
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '2');
+  await zoomIn(page, 15);
+  assert.equal(await pins(page), 2);
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '0', 'sem ponto embaixo do pino');
   await shot(page, '14-cnes-resultados');
   await page.click('.pc >> nth=0');
   await page.waitForSelector('.sh-ov.open');
@@ -864,6 +933,529 @@ await scenario('?local= de parceiro (imed:…) e de local inexistente', async ()
   await b.page.waitForSelector('.st h2');
   assert.match(await b.page.textContent('.st h2'), /Veja o que tem perto de você/, 'referência inválida: página normal');
   await b.context.close();
+});
+
+/* ======================= área inteira da busca (milhares de estabelecimentos) ======================= */
+const ORIGIN = { lat: -23.561, lng: -46.657 }; // posição simulada, já arredondada pelo site
+const COS = Math.cos((ORIGIN.lat * Math.PI) / 180);
+const KIND_NAME = { imagem: 'Centro de Imagem', laboratorio: 'Laboratório', clinica: 'Clínica', hospital: 'Hospital' };
+const estRow = (i, dx, dy, kind, sus, name) => ({
+  cnes: String(3000000 + i), name: name ?? `${KIND_NAME[kind]} Teste ${i + 1}`, kind, cnes_type: 1,
+  address_line: `Rua Teste, ${i + 1}`, neighborhood: 'Bela Vista', cep: '01310100', city: 'São Paulo', uf: 'SP', city_code: '355030',
+  lat: ORIGIN.lat + dy / 111320, lng: ORIGIN.lng + dx / (111320 * COS), location_source: 'cnes', phone: null,
+  shift: 'Manhã e tarde', open_24h: false, sus, services: kind === 'imagem' ? ['rx', 'usg'] : kind === 'laboratorio' ? ['lab'] : [],
+  specialties: [], cnes_updated_at: '2026-09-01',
+});
+// 3.158 estabelecimentos em espiral até ~4,7 km (como em volta da Av. Paulista) e um único hospital, 3,8 km
+// a leste, sozinho num raio de 500 m (para o teste tocar nele sem pegar um vizinho).
+const BIG = (() => {
+  const kinds = ['clinica', 'laboratorio', 'imagem'];
+  const rows = [];
+  for (let i = 0, k = 0; k < 3157; i++) {
+    const d = 40 + i * 1.45, a = i * 2.399963;
+    const dx = d * Math.cos(a), dy = d * Math.sin(a);
+    if (Math.hypot(dx - 3800, dy) < 500) continue;
+    rows.push(estRow(k, dx, dy, kinds[k % 3], k % 4 === 0));
+    if (k === 3 || k === 7) rows.at(-1).specialties = ['Cardiologia']; // só dois, entre os 50 mais próximos
+    k += 1;
+  }
+  rows.push(estRow(3157, 3800, 0, 'hospital', true, 'Hospital Leste do Teste'));
+  return rows;
+})();
+const HOSPITAL = BIG.at(-1);
+const fmtN = (n) => new Intl.NumberFormat('pt-BR').format(n);
+const nOf = (kind, sus) => BIG.filter((x) => (!kind || x.kind === kind) && (!sus || x.sus)).length;
+// Função do servidor com a área grande: os 250 mais próximos, com o total da área em cada linha (como o
+// banco manda). O raio da função vai no máximo a 20 km, como no servidor de verdade. imed: parceiros.
+const mkBigFn = ({ imed = [] } = {}) => (r, b) => {
+  if (b.action !== 'search') return defaultFn(r, b);
+  const radius = Math.min(b.radius_m, 20000);
+  const list = areaRows(BIG, { p_lat: b.lat, p_lng: b.lng, p_radius_m: radius });
+  return json(r, { ok: true, provider: 'osm', radius_m: radius, warnings: [], imed, cnes: pageOf(list, 0, 250), places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } });
+};
+const bigFn = mkBigFn();
+// Detalhe de um estabelecimento (tabela establishments com municipalities), como o PostgREST devolve.
+const restBig = (route, u) => {
+  if (!u.pathname.endsWith('/establishments')) return json(route, []);
+  const row = BIG.find((x) => `eq.${x.cnes}` === u.searchParams.get('cnes'));
+  if (!row) return json(route, []);
+  const { city, uf, city_code: code, lat, lng, ...rest } = row;
+  return json(route, [{ ...rest, municipalities: { name: city, uf, cnes_code: Number(code) } }]);
+};
+const fail503 = (route) => route.fulfill({ status: 503, body: '', headers: { 'Access-Control-Allow-Origin': '*' } });
+const cards = (page) => page.$$eval('#list .pc[data-id]', (els) => els.map((e) => e.dataset.id));
+const viewM = (page) => page.$eval('#map', (el) => Number(el.dataset.viewM));
+const countHas = (page, text) => page.waitForFunction((t) => document.querySelector('#count').textContent.includes(t), text);
+// Procura no canvas dos pontos o único hospital (cor #E8512F, a única avermelhada; misturada um pouco
+// com algum ponto embaixo) e devolve o centro dele na tela.
+async function findHospitalDot(page) {
+  for (let i = 0; i < 30; i++) {
+    const dot = await page.evaluate(() => {
+      const cv = document.querySelector('.leaflet-pts-pane canvas');
+      if (!cv || !cv.width) return null;
+      const { data } = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height);
+      let sx = 0, sy = 0, n = 0;
+      for (let k = 0; k < data.length; k += 4) {
+        if (data[k + 3] > 150 && data[k] - data[k + 1] > 100 && data[k] - data[k + 2] > 100) {
+          const p = k / 4; sx += p % cv.width; sy += Math.floor(p / cv.width); n += 1;
+        }
+      }
+      if (!n) return null;
+      const rect = cv.getBoundingClientRect();
+      return { x: rect.left + (sx / n) * (rect.width / cv.width), y: rect.top + (sy / n) * (rect.height / cv.height), n };
+    });
+    if (dot) return dot;
+    await page.waitForTimeout(100);
+  }
+  return null;
+}
+
+await scenario('área inteira: o mapa abre mostrando o raio todo, com os pontos e a contagem real', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG, rest: restBig });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  await countHas(page, '3.158 estabelecimentos em até 5 km');
+  assert.match(await page.textContent('#count'), /^3\.158 estabelecimentos em até 5 km da sua localização \(aproximada\)$/);
+  const span = await viewM(page);
+  assert.ok(span >= 5000 * 1.6, `o mapa mostra o círculo de 5 km inteiro (${span} m)`);
+  assert.ok(span <= 5000 * 4, `sem afastar demais (${span} m)`);
+  assert.equal((await cards(page)).length, 50, 'lista em páginas de 50');
+  assert.equal(await pins(page), 0, 'afastado, os da lista também aparecem como ponto (sem pilha de pinos)');
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '3000');
+  assert.match(await page.textContent('#legend'), /Parceiros e locais do mapa público aparecem sempre como pino; ao aproximar o mapa, os primeiros da lista também\./);
+  assert.equal(log.points.length, 1);
+  assert.equal(log.points[0].search, '?select=cnes,kind,lat,lng,total', 'pede só as colunas necessárias');
+  assert.deepEqual(log.points[0].body, { p_lat: -23.561, p_lng: -46.657, p_radius_m: 5000, p_limit: 3000 });
+  assert.equal(log.cnes.length, 0, 'as primeiras páginas já vieram com a busca');
+  assert.match(await page.textContent('#ptsCap'), /O mapa mostra os 3\.000 mais próximos\. Aproxime o mapa e toque em "Buscar nesta área" para ver outros\./);
+  assert.doesNotMatch(await page.textContent('#banners'), /Região com muitos estabelecimentos/);
+  assert.match(await page.textContent('#mapKey'), /Cadastro oficial.*Imagem.*Laboratório.*Clínica.*Hospital.*3\.000 de 3\.158 no mapa/s);
+  assert.match(await page.textContent('.pt-pager'), /Mostrando 50 de 3\.158/);
+  assert.match(await page.textContent('[data-act="more"]'), /Ver mais 50 \(de 3\.158\)/);
+  await shot(page, '25-area-inteira-desktop');
+  // Tocar num ponto abre o detalhe daquele local, buscado na tabela do cadastro oficial.
+  const dot = await findHospitalDot(page);
+  assert.ok(dot, 'o hospital aparece no mapa como ponto');
+  await page.mouse.click(dot.x, dot.y);
+  await page.waitForSelector('.sh-ov.open .dt-top');
+  assert.match(await page.textContent('#shTitle'), /Hospital Leste do Teste/);
+  const req = log.rest.find((r) => r.startsWith('establishments?'));
+  assert.ok(req.endsWith(`&cnes=eq.${HOSPITAL.cnes}`), req);
+  assert.ok(!new URLSearchParams(req.split('?')[1]).get('select').split(',').includes('location'), 'sem pedir a localização (já veio no ponto)');
+  const sheet = await page.textContent('#sheet');
+  assert.match(sheet, /Cadastro oficial/);
+  assert.match(sheet, /Atende SUS/);
+  assert.match(sheet, /3,8 km/, 'distância a partir do ponto da busca');
+  assert.ok(!/R\$/.test(sheet), 'sem preço inventado');
+  await shot(page, '26-ponto-detalhe');
+  await page.keyboard.press('Escape');
+  await page.mouse.click(dot.x, dot.y);
+  await page.waitForSelector('.sh-ov.open .dt-top');
+  assert.equal(log.rest.filter((r) => r.startsWith('establishments?')).length, 1, 'o detalhe fica guardado: não busca de novo');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Ver mais": páginas de 50 e, depois dos 250, o banco com p_offset, sem repetir', async () => {
+  let failOnce = false;
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG, cnesRpc: (route, b, rows) => {
+    if (failOnce && b.p_offset === 300) { failOnce = false; return fail503(route); }
+    // Cada página começa com o último da anterior (o banco mudou entre uma e outra): não pode aparecer duas vezes.
+    return json(route, pageOf(areaRows(rows, b), Math.max(0, b.p_offset - 1), b.p_limit));
+  } });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('[data-act="more"]');
+  for (const n of [100, 150, 200, 250]) {
+    await page.click('[data-act="more"]');
+    await page.waitForFunction((k) => document.querySelectorAll('#list .pc').length === k, n);
+  }
+  assert.equal(log.cnes.length, 0, 'até 250, sem ir ao banco');
+  await page.click('[data-act="more"]');
+  await page.waitForFunction(() => document.querySelectorAll('#list .pc').length > 250 && document.querySelector('[data-act="more"]'));
+  assert.deepEqual(log.cnes.map((b) => [b.p_offset, b.p_limit, b.p_radius_m]), [[250, 50, 5000]]);
+  assert.ok(!('p_kind' in log.cnes[0]) && !('p_exam' in log.cnes[0]) && !('p_sus' in log.cnes[0]), 'sem filtro, sem parâmetros de filtro');
+  let ids = await cards(page);
+  assert.equal(ids.length, 299, 'o repetido não entra');
+  assert.equal(new Set(ids).size, ids.length, 'nenhum local duas vezes');
+  assert.ok(await page.evaluate(() => document.activeElement?.matches('.pc[data-id]')), 'o foco vai para o primeiro local novo');
+  assert.match(await page.textContent('#srMsg'), /49 locais a mais na lista/);
+  assert.match(await page.textContent('[data-act="more"]'), /Ver mais 50 \(de 3\.158\)/);
+  assert.match(await page.textContent('.pt-pager'), /Mostrando 299 de 3\.158/);
+  // A página seguinte falha: a lista continua e o botão vira "Tentar de novo".
+  failOnce = true;
+  await page.click('[data-act="more"]');
+  await page.waitForSelector('.pt-pager-msg');
+  assert.match(await page.textContent('.pt-pager'), /Não foi possível carregar mais agora.*Tentar de novo/s);
+  assert.equal((await cards(page)).length, 299);
+  await shot(page, '27-ver-mais-erro');
+  await page.click('[data-act="more"]');
+  await page.waitForFunction(() => document.querySelectorAll('#list .pc').length > 299);
+  assert.deepEqual(log.cnes.slice(1).map((b) => b.p_offset), [300, 300], 'tenta de novo a mesma página');
+  ids = await cards(page);
+  assert.equal(ids.length, 349);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('filtros de tipo e SUS valem para a área inteira (banco), com espera e cancelamento', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG, rpc: (r) => json(r, []), cnesRpc: async (route, b, rows) => {
+    if (b.p_kind === 'laboratorio') await new Promise((ok) => setTimeout(ok, 900)); // resposta atrasada
+    try { await json(route, pageOf(areaRows(rows, b), b.p_offset ?? 0, b.p_limit)); } catch { /* pedido cancelado pelo site */ }
+  } });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  const n0 = log.cnes.length;
+  // Duas escolhas seguidas: o site espera a pessoa terminar e busca só a última.
+  await page.selectOption('#fKind', 'clinica');
+  await page.selectOption('#fKind', 'imagem');
+  await countHas(page, `${fmtN(nOf('imagem'))} estabelecimentos em até 5 km`);
+  assert.deepEqual(log.cnes.slice(n0).map((b) => [b.p_kind, b.p_offset, b.p_limit]), [['imagem', 0, 50]]);
+  assert.equal(log.points.at(-1).body.p_kind, 'imagem');
+  await page.waitForSelector(`#map[data-points="${nOf('imagem')}"]`);
+  let meta = await page.$$eval('#list .pc .pc-meta', (els) => els.map((e) => e.textContent));
+  assert.equal(meta.length, 50);
+  assert.ok(meta.every((t) => /Diagnóstico por imagem/.test(t)), 'só centros de imagem, os 50 mais próximos da área');
+  assert.equal(await page.locator('#ptsCap').count(), 0, 'sem aviso: todos os pontos cabem no mapa');
+  assert.match(await page.textContent('[data-act="more"]'), new RegExp(`Ver mais 50 \\(de ${fmtN(nOf('imagem')).replace('.', '\\.')}\\)`));
+  // "Atende SUS" também vai para o banco (p_sus=true), junto com o tipo.
+  await page.click('#fSus');
+  await countHas(page, `${fmtN(nOf('imagem', true))} estabelecimentos`);
+  assert.deepEqual([log.cnes.at(-1).p_kind, log.cnes.at(-1).p_sus], ['imagem', true]);
+  assert.deepEqual([log.points.at(-1).body.p_kind, log.points.at(-1).body.p_sus], ['imagem', true]);
+  await shot(page, '28-filtro-area-inteira');
+  // Volta sem SUS: a consulta já feita é reaproveitada, sem ir ao banco de novo.
+  const n1 = log.cnes.length, p1 = log.points.length;
+  await page.click('#fSus');
+  await countHas(page, `${fmtN(nOf('imagem'))} estabelecimentos`);
+  await page.waitForTimeout(400);
+  assert.equal(log.cnes.length, n1);
+  assert.equal(log.points.length, p1);
+  // A resposta atrasada de "laboratório" não pode passar por cima da escolha seguinte.
+  await page.selectOption('#fKind', 'laboratorio');
+  for (let i = 0; i < 40 && !log.cnes.some((b) => b.p_kind === 'laboratorio'); i++) await page.waitForTimeout(50);
+  assert.ok(log.cnes.some((b) => b.p_kind === 'laboratorio'));
+  await page.selectOption('#fKind', 'clinica');
+  await countHas(page, `${fmtN(nOf('clinica'))} estabelecimentos`);
+  await page.waitForTimeout(1100);
+  meta = await page.$$eval('#list .pc .pc-meta', (els) => els.map((e) => e.textContent));
+  assert.ok(meta.length === 50 && meta.every((t) => /Clínica/.test(t)), 'fica a lista do último filtro');
+  assert.match(await page.textContent('#count'), new RegExp(`${fmtN(nOf('clinica')).replace('.', '\\.')} estabelecimentos`));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('busca com filtro fora do ar: usa o que já tem e o botão vira "Tentar de novo"', async () => {
+  let down = true;
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG,
+    cnesRpc: (route, b, rows) => (down ? fail503(route) : json(route, pageOf(areaRows(rows, b), b.p_offset ?? 0, b.p_limit))) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('[data-act="more"]');
+  await page.selectOption('#fKind', 'imagem');
+  await page.waitForSelector('.pt-pager-msg');
+  assert.match(await page.textContent('.pt-pager'), /Não conseguimos buscar na área inteira agora.*Tentar de novo/s);
+  const local = BIG.slice(0, 250).filter((x) => x.kind === 'imagem').length;
+  assert.equal((await cards(page)).length, local, 'mostra os centros de imagem que já tinham vindo com a busca');
+  assert.equal(log.cnes.at(-1).p_kind, 'imagem');
+  down = false;
+  await page.click('[data-act="more"]');
+  await countHas(page, `${fmtN(nOf('imagem'))} estabelecimentos`);
+  await page.waitForFunction(() => document.querySelectorAll('#list .pc').length === 50);
+  assert.equal(await page.locator('.pt-pager-msg').count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pontos do mapa fora do ar: a busca continua e dá para tentar de novo', async () => {
+  let down = true;
+  const { page, errors, context } = await newPage(browser, { fn: bigFn, data: BIG,
+    points: (route, b, rows) => (down ? fail503(route) : json(route, pointsOf(areaRows(rows, b), b.p_limit))) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#mapKey.err');
+  assert.equal((await cards(page)).length, 50, 'a lista continua');
+  assert.match(await page.textContent('#count'), /3\.158 estabelecimentos em até 5 km/, 'o total veio junto com a busca');
+  assert.equal(await page.getAttribute('#map', 'data-points'), '0');
+  assert.match(await page.textContent('#mapKey'), /Os pontos da área não carregaram\.\s*Tentar de novo/);
+  assert.match(await page.textContent('[data-act="more"]'), /Ver mais 50 \(de 3\.158\)/);
+  assert.equal(await page.locator('#ptsCap').count(), 0);
+  down = false;
+  await page.click('#mapKey [data-act="points-retry"]');
+  await page.waitForSelector('#map[data-points="3000"]');
+  assert.equal(await page.locator('#mapKey.err').count(), 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('distância de até 50 km: busca, parceiros e pontos na área toda', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  assert.deepEqual(await page.$$eval('#fDist option', (o) => o.map((x) => x.value)), ['1000', '2000', '5000', '10000', '20000', '50000']);
+  assert.equal(await page.inputValue('#fDist'), '5000', '5 km continua sendo o padrão');
+  await page.selectOption('#fDist', '50000');
+  await countHas(page, '3.158 estabelecimentos em até 50 km');
+  assert.equal(log.fn.filter((b) => b.action === 'search').at(-1).radius_m, 50000);
+  assert.equal(log.rpc.at(-1).p_radius_m, 50000, 'parceiros acima de 20 km vêm direto do banco');
+  assert.equal(log.points.at(-1).body.p_radius_m, 50000);
+  await page.waitForFunction(() => Number(document.querySelector('#map').dataset.viewM) >= 80000);
+  assert.equal(log.overpass.length, 0);
+  await shot(page, '29-50km');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular (390px): área inteira no mapa, "Ver mais" e toque no ponto', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, fn: bigFn, data: BIG, rest: restBig });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]', { state: 'attached' }); // no celular o mapa fica atrás da lista
+  await countHas(page, '3.158 estabelecimentos');
+  let overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
+  await shot(page, '30-celular-contagem');
+  await page.locator('.pt-pager').scrollIntoViewIfNeeded();
+  await shot(page, '31-celular-ver-mais');
+  await page.click('#viewToggle');
+  await page.waitForTimeout(500);
+  assert.ok(await viewM(page) >= 8000, 'no celular o mapa também mostra o raio todo');
+  await shot(page, '32-celular-area-inteira');
+  const dot = await findHospitalDot(page);
+  assert.ok(dot, 'o hospital aparece no mapa');
+  await page.touchscreen.tap(dot.x, dot.y);
+  await page.waitForSelector('.sh-ov.open .dt-top');
+  assert.match(await page.textContent('#shTitle'), /Hospital Leste do Teste/);
+  await shot(page, '33-celular-ponto-detalhe');
+  overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pinos: parceiros e locais do mapa público nunca somem do mapa (o limite vale só para o cadastro oficial)', async () => {
+  // a) Parceiros além da posição 100 da lista, depois de um "Ver mais".
+  const a = await newPage(browser, { fn: mkBigFn({ imed: PARTNER_ROWS }), data: BIG });
+  await a.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await a.page.waitForSelector('#map[data-points="3000"]');
+  assert.equal(await pins(a.page, '.mk-imed'), 2);
+  await a.page.click('[data-act="more"]');
+  await a.page.waitForFunction(() => document.querySelectorAll('#list .pc').length === 102);
+  const ids = await cards(a.page);
+  assert.equal(ids.indexOf(`imed:${PARTNER_ROWS[1].id}`), 101, 'o parceiro a 1,1 km fica depois dos 100 do cadastro oficial');
+  assert.equal(await pins(a.page, '.mk-imed'), 2, 'os dois parceiros continuam com pino');
+  await zoomIn(a.page, 15);
+  assert.equal(await pins(a.page, '.mk-imed'), 2, 'perto também');
+  assert.equal(await pins(a.page, '.mk:not(.mk-imed)'), 100, 'do cadastro oficial, só os 100 primeiros da lista ganham pino');
+  assert.equal(await a.page.getAttribute('#map', 'data-points-drawn'), '2900', 'o resto como ponto');
+  assert.deepEqual(a.errors, []);
+  await a.context.close();
+  // b) Cidade ainda fora do banco com 150 locais do mapa público (sem ponto): todos com pino.
+  const osm = { elements: Array.from({ length: 150 }, (_, i) => ({
+    type: 'node', id: 9000 + i, lat: ORIGIN.lat + (Math.sin(i) * (100 + i * 12)) / 111320, lon: ORIGIN.lng + (Math.cos(i) * (100 + i * 12)) / (111320 * COS),
+    tags: { name: `Clínica Popular ${i + 1}`, amenity: 'clinic' },
+  })) };
+  const b = await newPage(browser, { overpass: (r) => json(r, osm) });
+  await b.page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(b.page);
+  assert.equal((await cards(b.page)).length, 150);
+  assert.equal(await pins(b.page), 150, 'um pino para cada local do mapa público');
+  assert.equal(await b.page.getAttribute('#map', 'data-points-drawn'), '0');
+  assert.deepEqual(b.errors, []);
+  await b.context.close();
+});
+
+await scenario('mapa afastado: "Você está aqui" fica por cima e a lista vira ponto; perto, a lista volta a ter pino', async () => {
+  for (const mobile of [false, true]) {
+    const { page, errors, context } = await newPage(browser, { mobile, fn: bigFn, data: BIG });
+    await page.goto(`${BASE}perto.html?usar=localizacao`);
+    await page.waitForSelector('#map[data-points="3000"]', { state: 'attached' });
+    if (mobile) { await page.click('#viewToggle'); await page.waitForTimeout(500); }
+    assert.ok(await zoomOf(page) < 15, 'abre afastado (área inteira)');
+    assert.equal(await pins(page), 0, 'sem pilha de pinos em volta da origem');
+    assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '3000', 'os da lista aparecem como ponto');
+    assert.ok(await meOnTop(page), '"Você está aqui" aparece por cima');
+    await shot(page, mobile ? '35-celular-origem-afastado' : '34-origem-afastado');
+    await zoomIn(page, 16);
+    assert.equal(await pins(page), 50, 'perto, os 50 da lista ganham pino');
+    assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '2950');
+    assert.ok(await meOnTop(page), 'a origem continua por cima dos pinos');
+    await shot(page, mobile ? '37-celular-origem-perto' : '36-origem-perto');
+    if (mobile) {
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      assert.ok(overflow <= 0, `sem rolagem lateral (${overflow}px)`);
+    }
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('filtros só de parceiros (verificados, preço, convênio) tiram do mapa os pontos de quem não é parceiro', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: mkBigFn({ imed: PARTNER_ROWS }), data: BIG });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  await page.waitForSelector('#ptsCap');
+  const p0 = log.points.length;
+  await page.click('#fImed');
+  await countHas(page, '2 estabelecimentos em até 5 km');
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '0', 'sem pontos do cadastro oficial');
+  assert.equal(await page.locator('#ptsCap').count(), 0, 'sem o aviso dos 3.000 pontos');
+  assert.ok(await page.locator('#mapKey').isHidden(), 'sem a legenda do cadastro oficial');
+  assert.equal(await pins(page, '.mk-imed'), 2, 'os parceiros continuam no mapa');
+  await shot(page, '38-so-parceiros');
+  await page.click('#fImed');
+  await page.waitForSelector('#map[data-points-drawn="3000"]');
+  assert.equal(await page.locator('#ptsCap').count(), 1, 'o aviso volta');
+  assert.ok(await page.locator('#mapKey').isVisible());
+  assert.equal(log.points.length, p0, 'os pontos voltam do que já tinha sido baixado');
+  await page.selectOption('#fPrice', 'ate100');
+  await countHas(page, '0 estabelecimentos');
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '0');
+  assert.equal(await page.locator('#ptsCap').count(), 0);
+  await page.selectOption('#fPrice', '');
+  await page.waitForSelector('#map[data-points-drawn="3000"]');
+  // Nova busca com o filtro de parceiros ligado: não baixa os pontos de quem não aparece.
+  await page.click('#fImed');
+  await page.selectOption('#fDist', '10000');
+  await page.waitForFunction(() => document.querySelector('#count').textContent.includes('em até 10 km'));
+  await page.waitForTimeout(400);
+  assert.equal(log.points.length, p0, 'sem pedir os pontos com "Parceiros verificados" ligado');
+  assert.equal(await page.getAttribute('#map', 'data-points-drawn'), '0');
+  await page.click('#fImed');
+  await page.waitForSelector('#map[data-points="3000"][data-points-drawn="3000"]');
+  assert.equal(log.points.at(-1).body.p_radius_m, 10000, 'desligando, busca os pontos da área nova');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Buscar nesta área" depois de arrastar o mapa mantém a distância escolhida', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  const searches = () => log.fn.filter((b) => b.action === 'search');
+  for (const dx of [-240, 240]) { // arrasta para um lado e depois volta
+    await page.waitForTimeout(1000); // o enquadramento automático terminou
+    const n = searches().length;
+    const box = await page.locator('#map').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 - 30, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForSelector('#areaBtn:not(.hide)');
+    await page.click('#areaBtn');
+    for (let t = 0; t < 40 && searches().length === n; t++) await page.waitForTimeout(50);
+    assert.equal(searches().length, n + 1);
+    assert.equal(searches().at(-1).radius_m, 5000, `arrastando ${dx} px: continua em 5 km`);
+    assert.equal(await page.inputValue('#fDist'), '5000');
+    await countHas(page, 'estabelecimentos em até 5 km do centro do mapa');
+  }
+  await page.waitForSelector('#list .pc');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Ver mais" pelo teclado: o foco fica no botão enquanto carrega e quando falha; sem refazer a lista', async () => {
+  let release = null, fail = true;
+  const { page, log, errors, context } = await newPage(browser, { fn: bigFn, data: BIG, cnesRpc: async (route, b, rows) => {
+    await new Promise((ok) => { release = ok; }); // a resposta espera o teste liberar
+    if (fail) { fail = false; return fail503(route); }
+    return json(route, pageOf(areaRows(rows, b), b.p_offset ?? 0, b.p_limit));
+  } });
+  const answer = async () => {
+    for (let t = 0; t < 60 && !release; t++) await page.waitForTimeout(50);
+    const r = release; release = null; r();
+  };
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('[data-act="more"]');
+  // Marca um cartão e o pino da origem: se a lista ou o mapa forem refeitos, a marca some.
+  await page.$eval('#list .pc[data-id]', (el) => { el.dataset.keep = '1'; });
+  for (const n of [100, 150, 200, 250]) {
+    await page.focus('[data-act="more"]');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction((k) => document.querySelectorAll('#list .pc').length === k, n);
+  }
+  assert.equal(await page.locator('#list .pc[data-keep="1"]').count(), 1, 'os cartões que já estavam não são refeitos');
+  assert.ok(await page.evaluate(() => document.activeElement?.matches('.pc[data-id]')), 'o foco vai para o primeiro local novo');
+  // Agora a próxima página vem do banco (demora): o foco fica no mesmo botão.
+  await page.focus('[data-act="more"]');
+  const btn = await page.$('[data-act="more"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('[data-act="more"][aria-busy="true"]');
+  assert.ok(await focusIsMore(page), 'carregando: o foco continua no botão');
+  assert.equal(await page.getAttribute('[data-act="more"]', 'aria-disabled'), 'true');
+  assert.match(await page.textContent('[data-act="more"]'), /Carregando mais/);
+  await answer(); // falha
+  await page.waitForSelector('.pt-pager-msg');
+  assert.ok(await focusIsMore(page), 'depois da falha o foco fica no "Tentar de novo"');
+  assert.ok(await btn.evaluate((el) => el.isConnected && el === document.activeElement), 'é o mesmo botão');
+  assert.match(await page.textContent('[data-act="more"]'), /Tentar de novo/);
+  assert.match(await page.textContent('#srMsg'), /Não foi possível carregar mais/);
+  await page.keyboard.press('Enter');
+  await answer(); // agora responde
+  await page.waitForFunction(() => document.querySelectorAll('#list .pc').length === 300);
+  assert.deepEqual(log.cnes.map((b) => b.p_offset), [250, 250]);
+  assert.ok(await page.evaluate(() => document.activeElement?.matches('.pc[data-id]')), 'o foco vai para o primeiro local novo');
+  assert.equal(await page.locator('#list .pc[data-keep="1"]').count(), 1);
+  assert.match(await page.textContent('#srMsg'), /50 locais a mais na lista/);
+  assert.equal(await page.locator('#list .pt-pager-msg').count(), 0);
+  // Filtro do navegador (especialidade) sem nenhum novo na próxima página: não diz que acabou.
+  await page.selectOption('#fSpec', 'Cardiologia');
+  await page.waitForFunction(() => document.querySelectorAll('#list .pc').length === 2);
+  await page.focus('[data-act="more"]');
+  await page.keyboard.press('Enter');
+  await answer();
+  await page.waitForFunction(() => /Nenhum local novo/.test(document.querySelector('#srMsg').textContent));
+  assert.doesNotMatch(await page.textContent('#srMsg'), /Não há outros locais/);
+  assert.ok(await focusIsMore(page), 'o foco fica no "Ver mais" para continuar');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('distância do banco: quem está na borda do raio entra na lista (sem recalcular na esfera)', async () => {
+  // ~4.997 m ao norte pelo banco (elipsoide); a conta na esfera daria ~5.017 m.
+  const edge = { ...CNES_ROWS[1], cnes: '7000001', name: 'Laboratório da Borda', lat: ORIGIN.lat + 0.04512, lng: ORIGIN.lng, distance_m: 4997, location_source: 'cnes' };
+  const fn = (r, b) => (b.action === 'search'
+    ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: [{ ...edge, total: 1 }], places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } })
+    : defaultFn(r, b));
+  const { page, errors, context } = await newPage(browser, { fn, points: (route) => json(route, [{ cnes: edge.cnes, kind: edge.kind, lat: edge.lat, lng: edge.lng, total: 1 }]) });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await countHas(page, '1 estabelecimento em até 5 km');
+  await page.waitForSelector('.pc:has-text("Laboratório da Borda")');
+  assert.match(await page.textContent('.pc .pc-dist'), /5,0 km/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('acima de 20 km: se os parceiros da área toda não carregarem, aparece o aviso', async () => {
+  const { page, errors, context } = await newPage(browser, { fn: mkBigFn({ imed: PARTNER_ROWS }), data: BIG, rpc: fail503 });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('#map[data-points="3000"]');
+  assert.equal(await page.locator('.bn.warn').count(), 0);
+  await page.selectOption('#fDist', '50000');
+  await countHas(page, 'em até 50 km');
+  await page.waitForSelector('.bn.warn');
+  assert.match(await page.textContent('#banners'), /Não conseguimos carregar as clínicas parceiras do IMED agora\.\s*Tentar de novo/);
+  assert.ok((await names(page)).includes('Imagem Paulista Verificada'), 'os parceiros de até 20 km continuam');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('cidade sendo importada: a contagem parcial não aparece como total da área', async () => {
+  const rows = BIG.slice(0, 12);
+  const fn = (r, b) => (b.action === 'search'
+    ? json(r, { ok: true, provider: 'osm', radius_m: 5000, warnings: [], imed: [], cnes: pageOf(areaRows(rows, { p_lat: b.lat, p_lng: b.lng }), 0, 250), places: [], coverage: { status: 'loading', city: 'São Paulo', uf: 'SP' } })
+    : defaultFn(r, b));
+  const { page, errors, context } = await newPage(browser, { fn, data: rows, overpass: fail503,
+    points: (route, b) => json(route, pointsOf(areaRows(rows, b), 5)) }); // só 5 dos 12 no mapa
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await page.waitForSelector('.bn .spin');
+  await page.waitForSelector('#map[data-points="5"]');
+  await page.waitForSelector('.bn.warn');
+  const count = await page.textContent('#count');
+  assert.match(count, /^12 resultados em até 5 km/);
+  assert.doesNotMatch(count, /estabelecimentos/, 'sem "12 estabelecimentos", que seria só o que já chegou');
+  assert.equal(await page.locator('#ptsCap').count(), 0);
+  assert.doesNotMatch(await page.textContent('#mapKey'), /no mapa/);
+  assert.doesNotMatch(await page.textContent('#list'), /Mostrando \d+ de/);
+  assert.deepEqual(errors, []);
+  await context.close();
 });
 
 await browser.close();
