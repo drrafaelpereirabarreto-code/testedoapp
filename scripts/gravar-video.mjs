@@ -29,9 +29,12 @@ const PAULISTA = { latitude: -23.5650, longitude: -46.6520 };
 const NAVY = '#05161e';
 
 // A escala (dsf) vai no próprio Chromium: com a escala só emulada, os quadros saem no tamanho da tela em CSS (360×640).
+// No computador, a cidade 3D em tela grande, desenhada sem placa de vídeo (no servidor do GitHub), deixa a página
+// quase parada (7 quadros por segundo, digitação travada; pausar não adianta, a cena continua sendo desenhada).
+// Com "movimento reduzido" ela aparece pronta e parada, e o vídeo vai direto para a busca do exame.
 const TELAS = {
-  vertical: { viewport: { width: 360, height: 640 }, dsf: 3, movel: true },
-  horizontal: { viewport: { width: 1280, height: 720 }, dsf: 1.5, movel: false },
+  vertical: { viewport: { width: 360, height: 640 }, dsf: 3, movel: true, movimento: 'no-preference' },
+  horizontal: { viewport: { width: 1280, height: 720 }, dsf: 1.5, movel: false, movimento: 'reduce' },
 };
 const UA_CELULAR = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36';
 
@@ -208,14 +211,20 @@ async function roteiro(page, tela, cena) {
 
   await cena('busca-exame', async () => {
     await semLegenda(page);
+    if (!movel) {
+      await ir(page, 'perto.html?exame=rm');
+      await L('Procure pelo exame que você precisa');
+      await pausa(2400);
+      return;
+    }
     await rolar(page, { dy: -100000, ms: 1300 });
     await pausa(400);
     await L('Procure pelo exame que você precisa');
-    // Foco pelo teclado, com o círculo do toque: o clique do Playwright espera a página parar de se mexer, e a
-    // cidade 3D desenhada sem placa de vídeo (no servidor do GitHub) não deixa (a gravação de 30/10 falhou assim).
+    // Foco e digitação direto pelo teclado, com o círculo do toque: o clique e o pressSequentially do Playwright
+    // esperam a página parar de se mexer, e a cidade 3D sem placa de vídeo não deixa (as gravações de 30/10 falharam assim).
     await marcarToque(page, '#heroQ');
-    await page.locator('#heroQ').focus();
-    await page.locator('#heroQ').pressSequentially('ressonância', { delay: 115 });
+    await page.evaluate(() => document.querySelector('#heroQ').focus());
+    await page.keyboard.type('ressonância', { delay: 115 });
     await page.locator('#heroSug .sug').first().waitFor({ timeout: 5000 });
     await pausa(1300);
     // Escolhe a primeira sugestão pelo teclado (seta para baixo e Enter), mostrando o toque onde ela está:
@@ -313,7 +322,7 @@ async function gravar(formato) {
   const context = await browser.newContext({
     viewport: null, hasTouch: tela.movel,
     userAgent: tela.movel ? UA_CELULAR : undefined, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
-    geolocation: PAULISTA, permissions: ['geolocation'], serviceWorkers: 'block', reducedMotion: 'no-preference',
+    geolocation: PAULISTA, permissions: ['geolocation'], serviceWorkers: 'block', reducedMotion: tela.movimento,
   });
   // O contador de visitas do site não conta a gravação.
   await context.route('**/rest/v1/rpc/track*', (r) => r.fulfill({ status: 204, body: '' }));
