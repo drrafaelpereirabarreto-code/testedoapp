@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { simularGeo } from './geo-simulado.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -49,14 +50,22 @@ const EST = {
 };
 const CITY_ROWS = Array.from({ length: 12 }, (_, i) => ({ cnes: String(8000001 + i), name: `Clínica ${i + 1}`, kind: ['clinica', 'imagem', 'laboratorio', 'hospital'][i % 4], address_line: 'Rua Rocha, 343', neighborhood: 'Bela Vista', cep: '01330000', phone: null, shift: 'Manhã e tarde', open_24h: false, sus: i % 3 === 0, services: [], lat: -23.559, lng: -46.649, total: 6548 }));
 
+// Cidade de nome comprido (a linha da fonte do topo fica mais longa): a pessoa em Nossa Senhora do Socorro (SE).
+const LONGA = { ibge: 2804805, name: 'Nossa Senhora do Socorro', uf: 'SE', total: 312, imagem: 20, laboratorio: 30, clinica: 250, hospital: 12 };
+const NEAR_LONGA = NEAR.map((r) => ({ ...r, city: LONGA.name, uf: LONGA.uf, city_code: 280480 }));
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // slow: atraso das respostas do banco (ms), para ver o que a tela faz enquanto os dados chegam.
-async function newPage(browser, { mobile = true, width = 390, height = 844, slow = 0, js = true, date = '2026-10-27' } = {}) {
+// geo: permissão e localização simuladas (tests/geo-simulado.mjs); sem ela, o Chromium recusa sem perguntar e a
+// página inicial cai em "naoapareceu" (exemplo da Av. Paulista). longa: a pessoa numa cidade de nome comprido.
+// leve: aparelho simples (sem o 3D, que no computador pesa e demora).
+async function newPage(browser, { mobile = true, width = 390, height = 844, slow = 0, js = true, date = '2026-10-27', geo = null, longa = false, leve = false } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width, height } : { width: 1280, height: 800 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile,
     locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', javaScriptEnabled: js,
   });
+  if (geo) await simularGeo(context, geo);
+  if (leve) await context.addInitScript(() => Object.defineProperty(navigator, 'deviceMemory', { get: () => 1, configurable: true }));
   const requests = [];
   context.on('request', (r) => requests.push(r.url()));
   await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (r) => r.abort());
@@ -68,8 +77,8 @@ async function newPage(browser, { mobile = true, width = 390, height = 844, slow
     const fn = u.pathname.split('/').pop();
     if (slow) await wait(slow);
     let body = [];
-    if (fn === 'imported_cities') body = CITIES;
-    else if (fn === 'nearby_establishments') body = NEAR;
+    if (fn === 'imported_cities') body = longa ? [...CITIES, LONGA] : CITIES;
+    else if (fn === 'nearby_establishments') body = longa ? NEAR_LONGA : NEAR;
     else if (fn === 'cnes_last_update') body = date;
     else if (fn === 'city_establishments') body = CITY_ROWS;
     else if (fn === 'establishments') body = u.searchParams.get('cnes') === 'eq.2077485' ? [EST] : [];
@@ -166,6 +175,9 @@ await scenario('sem pulos na tela enquanto os dados chegam (CLS): início, busca
     await page.waitForSelector(ready);
     await settle(page);
     if (url === 'index.html') {
+      // Sem localização (o Chromium recusa sem perguntar): "o navegador não mostrou o pedido" e o exemplo da Paulista.
+      assert.equal(await page.evaluate(() => document.querySelector('#reais').dataset.estado), 'naoapareceu');
+      assert.equal(await page.textContent('#heroLite h2'), 'Exemplo: perto da Av. Paulista');
       assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados de São Paulo atualizados em 27 de outubro de 2026');
       assert.equal(await page.locator('#heroLite li.ph').count(), 0);
     }
@@ -176,12 +188,82 @@ await scenario('sem pulos na tela enquanto os dados chegam (CLS): início, busca
   // Início no computador, com o 3D, e sem a data do banco: a linha da fonte encolhe para uma linha (só aí mexe um pouco).
   const { page, context } = await newPage(browser, { mobile: false, slow: 300, date: null });
   await page.goto(BASE);
-  await page.waitForFunction(() => !document.querySelector('#heroSrc').hidden);
+  // Com a máquina ocupada (outros testes ao mesmo tempo), o 3D demora: espera até 90 s.
+  await page.waitForFunction(() => !document.querySelector('#heroSrc').hidden, null, { timeout: 90000 });
   await settle(page);
   assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde');
   const { cls } = await clsAfterFonts(page);
   assert.ok(cls < 0.01, `início no computador: CLS ${cls.toFixed(4)}`);
   await context.close();
+});
+
+await scenario('início com a localização já permitida (celular, 390 e 412 px): sem pulos enquanto o #nearCta e o #addrBtn mudam de texto e sem Leaflet antes do toque', async () => {
+  for (const width of [390, 412]) {
+    const { page, requests, errors, context } = await newPage(browser, { slow: 500, width, geo: { estado: 'granted' } });
+    await page.goto(BASE + 'index.html');
+    // Os textos do topo mudam com a localização: o local mais perto de verdade e a região da pessoa.
+    await page.waitForFunction(() => /^Mais perto:/.test(document.querySelector('#nearCta small')?.textContent || ''));
+    await page.waitForFunction(() => document.querySelector('#addrTxt').textContent === 'São Paulo - SP');
+    await page.waitForSelector('#heroLite li a');
+    await settle(page);
+    assert.equal(await page.evaluate(() => document.querySelector('#reais').dataset.estado), 'lista');
+    assert.equal(await page.textContent('#nearCta small'), 'Mais perto: Local Teste 1, a 60 m');
+    assert.equal(await page.textContent('#addrSmall'), 'Sua região');
+    assert.equal(await page.textContent('#heroLite h2'), 'Perto da sua localização');
+    const { cls, shifts } = await clsAfterFonts(page);
+    assert.ok(cls < 0.005, `início com localização (${width}px): CLS ${cls.toFixed(4)} — ${shifts.join(' | ')}`);
+    // Celular: o mapa (Leaflet, imagens e pontos) só vem no toque em "Ver no mapa", nem rolando até a tela.
+    await page.locator('#reais').scrollIntoViewIfNeeded();
+    await page.waitForSelector('#realList li b');
+    await page.waitForTimeout(600);
+    assert.deepEqual(requests.filter((u) => /leaflet\.(js|css)$|tile\.openstreetmap|establishment_points/.test(u)), [], `${width}px: nada do mapa antes do toque`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('início, 1ª visita: tocar no "Encontrar clínicas perto de mim" (ou rolar até a lista) com o pedido aberto e responder 2,5 s depois não faz a tela pular', async () => {
+  // A resposta chega bem depois do toque (fora da janela de 0,5 s em que o navegador desconta o que o toque mexe):
+  // a tela "Clínicas perto de você" já tem o lugar das abas, do resumo, da frase das distâncias e das linhas da lista,
+  // e o cartão "Aguardando sua permissão…" fica por cima das linhas de espera.
+  // toque: o "Encontrar clínicas perto de mim" rola até a tela (o alto dela fica abaixo do aviso fixo do pedido);
+  // lista: a pessoa rola até a lista (as linhas de espera no meio da tela).
+  for (const [width, como] of [[360, 'toque'], [390, 'toque'], [412, 'toque'], [360, 'lista'], [390, 'lista']]) {
+    const { page, errors, context } = await newPage(browser, { slow: 300, width, geo: { estado: 'prompt', resposta: 'permitir', atraso: 2500 } });
+    await page.goto(BASE + 'index.html');
+    await page.waitForSelector('#reais[data-estado="aguardando"]');
+    await page.evaluate(() => document.fonts.ready);
+    if (como === 'toque') await page.click('#nearCta');
+    else await page.evaluate(() => document.querySelector('#realList').scrollIntoView({ block: 'center' }));
+    await page.waitForFunction(() => document.querySelector('#reais').dataset.estado === 'lista', null, { timeout: 20000 });
+    await page.waitForFunction(() => document.querySelector('#addrTxt').textContent === 'São Paulo - SP');
+    await settle(page);
+    // A pessoa vê a tela (ou a lista) enquanto a resposta chega.
+    const alvo = como === 'toque' ? '#reais' : '#realList li';
+    assert.ok(await page.$eval(alvo, (e) => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; }), `${como} (${width}px): ${alvo} na tela`);
+    const { cls, shifts } = await clsAfterFonts(page);
+    console.log(`  ${como} (${width} px): CLS ${cls.toFixed(4)}`);
+    assert.ok(cls < 0.05, `${como} (${width}px): CLS ${cls.toFixed(4)} — ${shifts.join(' | ')}`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('início numa cidade de nome comprido (Nossa Senhora do Socorro): a linha da fonte cabe no espaço guardado, sem pular', async () => {
+  for (const [mobile, width] of [[true, 360], [true, 390], [false, 1280]]) {
+    const { page, errors, context } = await newPage(browser, { mobile, width, slow: 500, longa: true, leve: !mobile, geo: { estado: 'granted' } });
+    await page.goto(BASE + 'index.html');
+    await page.waitForFunction(() => /Nossa Senhora do Socorro/.test(document.querySelector('#heroSrc').textContent), null, { timeout: 20000 });
+    await settle(page);
+    const linhas = await page.$eval('#heroSrc', (e) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).fontSize) / 1.2));
+    assert.ok(linhas <= (mobile ? 2 : 1), `${width}px: a linha da fonte ocupa ${linhas} linha(s): ${await page.textContent('#heroSrc')}`);
+    assert.match(await page.textContent('#heroSrc'), /^Fonte: CNES\/Ministério da Saúde, dados de Nossa Senhora do Socorro atualizados em (27 de outubro de 2026|27\/10\/2026)$/);
+    const { cls, shifts } = await clsAfterFonts(page);
+    console.log(`  nome comprido (${width} px): CLS ${cls.toFixed(4)}, ${linhas} linha(s): ${await page.textContent('#heroSrc')}`);
+    assert.ok(cls < 0.005, `${width}px: CLS ${cls.toFixed(4)} — ${shifts.join(' | ')}`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await scenario('busca: a explicação já vem no HTML, igual à do perto.js, e não é redesenhada', async () => {

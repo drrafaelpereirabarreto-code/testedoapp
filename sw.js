@@ -9,7 +9,7 @@ const CORE = [
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html',
   './termos.html', './como-funciona.html', './acessibilidade.html', './contato.html', './para-medicos.html', './teleconsulta.html', './medico.html',
   './termo-teleconsulta.html', './documento.html', './manifest.webmanifest', './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js',
-  './assets/js/db.js', './assets/js/visitas.js', './assets/js/inicio.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js',
+  './assets/js/db.js', './assets/js/visitas.js', './assets/js/inicio.js', './assets/js/inicio-core.js', './assets/js/inicio-perto.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js',
   './assets/js/painel.js', './assets/js/estatisticas.js', './assets/js/reivindicar.js', './assets/js/cidade.js', './assets/js/local.js', './assets/js/geo-core.js',
   './assets/js/perto.js', './assets/js/parceiros.js', './assets/js/confianca.js', './assets/js/contato.js', './assets/js/teleconsulta.js', './assets/js/medico.js',
   './assets/js/tele-core.js', './assets/js/tele-docs.js', './assets/js/documento.js', './assets/css/conta.css', './assets/css/clinica.css', './assets/css/cidade.css',
