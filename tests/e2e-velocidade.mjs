@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { simularGeo } from './geo-simulado.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -52,11 +53,14 @@ const CITY_ROWS = Array.from({ length: 12 }, (_, i) => ({ cnes: String(8000001 +
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS' };
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // slow: atraso das respostas do banco (ms), para ver o que a tela faz enquanto os dados chegam.
-async function newPage(browser, { mobile = true, width = 390, height = 844, slow = 0, js = true, date = '2026-10-27' } = {}) {
+// geo: permissão e localização simuladas (tests/geo-simulado.mjs); sem ela, o Chromium recusa sem perguntar e a
+// página inicial cai em "naoapareceu" (exemplo da Av. Paulista).
+async function newPage(browser, { mobile = true, width = 390, height = 844, slow = 0, js = true, date = '2026-10-27', geo = null } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width, height } : { width: 1280, height: 800 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile,
     locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', javaScriptEnabled: js,
   });
+  if (geo) await simularGeo(context, geo);
   const requests = [];
   context.on('request', (r) => requests.push(r.url()));
   await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (r) => r.abort());
@@ -166,6 +170,9 @@ await scenario('sem pulos na tela enquanto os dados chegam (CLS): início, busca
     await page.waitForSelector(ready);
     await settle(page);
     if (url === 'index.html') {
+      // Sem localização (o Chromium recusa sem perguntar): "o navegador não mostrou o pedido" e o exemplo da Paulista.
+      assert.equal(await page.evaluate(() => document.querySelector('#reais').dataset.estado), 'naoapareceu');
+      assert.equal(await page.textContent('#heroLite h2'), 'Exemplo: perto da Av. Paulista');
       assert.equal(await page.textContent('#heroSrc'), 'Fonte: CNES/Ministério da Saúde, dados de São Paulo atualizados em 27 de outubro de 2026');
       assert.equal(await page.locator('#heroLite li.ph').count(), 0);
     }
@@ -182,6 +189,31 @@ await scenario('sem pulos na tela enquanto os dados chegam (CLS): início, busca
   const { cls } = await clsAfterFonts(page);
   assert.ok(cls < 0.01, `início no computador: CLS ${cls.toFixed(4)}`);
   await context.close();
+});
+
+await scenario('início com a localização já permitida (celular, 390 e 412 px): sem pulos enquanto o #nearCta e o #addrBtn mudam de texto e sem Leaflet antes do toque', async () => {
+  for (const width of [390, 412]) {
+    const { page, requests, errors, context } = await newPage(browser, { slow: 500, width, geo: { estado: 'granted' } });
+    await page.goto(BASE + 'index.html');
+    // Os textos do topo mudam com a localização: o local mais perto de verdade e a região da pessoa.
+    await page.waitForFunction(() => /^Mais perto:/.test(document.querySelector('#nearCta small')?.textContent || ''));
+    await page.waitForFunction(() => document.querySelector('#addrTxt').textContent === 'São Paulo - SP');
+    await page.waitForSelector('#heroLite li a');
+    await settle(page);
+    assert.equal(await page.evaluate(() => document.querySelector('#reais').dataset.estado), 'lista');
+    assert.equal(await page.textContent('#nearCta small'), 'Mais perto: Local Teste 1, a 60 m');
+    assert.equal(await page.textContent('#addrSmall'), 'Sua região');
+    assert.equal(await page.textContent('#heroLite h2'), 'Perto da sua localização');
+    const { cls, shifts } = await clsAfterFonts(page);
+    assert.ok(cls < 0.005, `início com localização (${width}px): CLS ${cls.toFixed(4)} — ${shifts.join(' | ')}`);
+    // Celular: o mapa (Leaflet, imagens e pontos) só vem no toque em "Ver no mapa", nem rolando até a tela.
+    await page.locator('#reais').scrollIntoViewIfNeeded();
+    await page.waitForSelector('#realList li b');
+    await page.waitForTimeout(600);
+    assert.deepEqual(requests.filter((u) => /leaflet\.(js|css)$|tile\.openstreetmap|establishment_points/.test(u)), [], `${width}px: nada do mapa antes do toque`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await scenario('busca: a explicação já vem no HTML, igual à do perto.js, e não é redesenhada', async () => {

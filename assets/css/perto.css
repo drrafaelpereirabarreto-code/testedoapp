@@ -299,6 +299,29 @@ img{display:block;max-width:100%}
 .note.demo{background:var(--purple-s);color:#4b32a6}
 .note.demo i{color:var(--purple)}
 
+/* "Antes de ir: o que perguntar ao ligar" (quem não é parceiro): fechada até o toque, na ficha e na página do local */
+.cq{margin-top:14px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.cq>summary{display:flex;align-items:center;gap:10px;min-height:48px;padding:10px 14px;border-radius:13px;cursor:pointer;list-style:none;font-weight:700;font-size:14.5px;line-height:1.35;color:var(--ink)}
+.cq>summary::-webkit-details-marker{display:none}
+.cq>summary:hover{background:var(--bg2)}
+.cq>summary>i{flex-shrink:0;color:var(--primary);font-size:16px}
+.cq>summary>span{flex:1;min-width:0}
+.cq>summary>.cq-chev{color:var(--muted);font-size:13px;transition:transform .2s var(--ease)}
+.cq[open]>summary{border-radius:13px 13px 0 0;border-bottom:1px solid var(--line)}
+.cq[open]>summary>.cq-chev{transform:rotate(180deg)}
+.cq-body{padding:12px 14px 14px}
+.cq-body>p{font-size:14px;line-height:1.55;color:var(--text)}
+.cq-body>p.src{font-size:12.5px;color:var(--muted);margin-top:10px}
+.cq-list{display:grid;gap:7px;margin:10px 0 0;padding-left:24px;font-size:14.5px;line-height:1.5;color:var(--ink)}
+.cq-list li{padding-left:2px}
+.cq-list li::marker{font-weight:700;color:var(--primary-d)}
+.cq-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.cq-txt{display:block;width:100%;margin-top:10px;padding:10px 12px;border:1px solid #d5e1e7;border-radius:12px;background:var(--bg2);color:var(--ink);font-size:16px;line-height:1.45;resize:vertical}
+.cq-txt[hidden]{display:none}
+.cq .cq-msg{margin-top:10px;font-size:13.5px;font-weight:600;line-height:1.45;color:#145F3A}
+.cq .cq-msg:empty{margin:0}
+.cq .cq-msg.warn{color:#9b3a22}
+
 /* formulário de agendamento */
 .bk-place{display:flex;gap:12px;align-items:center;padding:12px 14px;border-radius:16px;background:var(--bg2)}
 .bk-place .pc-ic{width:42px;height:42px;font-size:16px;border-radius:13px;flex-shrink:0}

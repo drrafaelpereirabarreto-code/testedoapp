@@ -1,17 +1,20 @@
 #!/usr/bin/env node
-// Gera as páginas por cidade (cidades/**), o sitemap.xml e o robots.txt a partir de scripts/cidades.json
+// Gera as páginas por cidade (cidades/**), o sitemap.xml, o robots.txt e o llms.txt a partir de scripts/cidades.json
 // (a saída da função imported_cities() do banco). Sem dependências: rode com
 //   node scripts/gerar-cidades.mjs                 (usa o siteUrl de assets/js/config.js)
 //   node scripts/gerar-cidades.mjs --base=https://meudominio.com.br/
 // Opções para testes: --out=pasta (onde gravar; padrão: raiz do site) e --date=AAAA-MM-DD.
 // Os números vêm só do JSON (cadastro oficial CNES importado no IMED). Nada é inventado:
 // sem preço, sem nota, sem horário. A lista de cada cidade é carregada no navegador por assets/js/cidade.js.
+// As perguntas frequentes das páginas de cidade e de tipo usam só as regras já publicadas (como-funciona.html,
+// sobre.html e termos.html) e os números da cidade: mudou a regra lá, mude aqui (faqItems) e gere de novo.
 import { readFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rodapeHtml } from './rodape.mjs';
 import { tagVisitas } from './aplicar-visitas.mjs';
 import { headFontes } from './fontes.mjs';
+import { deCidade } from '../assets/js/confianca.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -22,12 +25,13 @@ export const UF_NAMES = {
   RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins',
 };
 
-// Tipos de estabelecimento: arquivo da página, campo no JSON e textos (plural e singular).
+// Tipos de estabelecimento: arquivo da página, campo no JSON e textos (plural e singular; "os/as" e "quantos/quantas"
+// para as perguntas frequentes).
 export const TYPES = [
-  { file: 'diagnostico-por-imagem', kind: 'imagem', plural: 'centros de diagnóstico por imagem', singular: 'centro de diagnóstico por imagem', short: 'Diagnóstico por imagem', icon: 'fa-x-ray' },
-  { file: 'laboratorios', kind: 'laboratorio', plural: 'laboratórios', singular: 'laboratório', short: 'Laboratórios', icon: 'fa-flask' },
-  { file: 'clinicas', kind: 'clinica', plural: 'clínicas', singular: 'clínica', short: 'Clínicas', icon: 'fa-stethoscope' },
-  { file: 'hospitais', kind: 'hospital', plural: 'hospitais', singular: 'hospital', short: 'Hospitais', icon: 'fa-hospital' },
+  { file: 'diagnostico-por-imagem', kind: 'imagem', plural: 'centros de diagnóstico por imagem', singular: 'centro de diagnóstico por imagem', short: 'Diagnóstico por imagem', icon: 'fa-x-ray', art: 'os', quant: 'Quantos' },
+  { file: 'laboratorios', kind: 'laboratorio', plural: 'laboratórios', singular: 'laboratório', short: 'Laboratórios', icon: 'fa-flask', art: 'os', quant: 'Quantos' },
+  { file: 'clinicas', kind: 'clinica', plural: 'clínicas', singular: 'clínica', short: 'Clínicas', icon: 'fa-stethoscope', art: 'as', quant: 'Quantas' },
+  { file: 'hospitais', kind: 'hospital', plural: 'hospitais', singular: 'hospital', short: 'Hospitais', icon: 'fa-hospital', art: 'os', quant: 'Quantos' },
 ];
 
 export const slugify = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -71,8 +75,18 @@ const API = 'https://pyoqiecupxhdzigjudyd.supabase.co';
 // Letras do próprio site (scripts/fontes.mjs), com os mesmos pesos de antes.
 const FONTES = 'Sora:wght@600;700;800&family=Inter:wght@400;500;600;700';
 
+// Estilo do bloco de perguntas frequentes (só nas páginas de cidade e de tipo), com as cores de assets/css/cidade.css.
+const FAQ_CSS = '.cd-faq{margin:4px 0 30px}.cd-faq>h2{font-size:22px;margin-bottom:12px}'
+  + '.cd-faq-list{display:grid;gap:10px;max-width:860px}'
+  + '.cd-faq-item{padding:16px 18px;border-radius:18px;background:#fff;border:1px solid var(--line);min-width:0}'
+  + '.cd-faq-item h3{font-size:16.5px;overflow-wrap:anywhere}'
+  + '.cd-faq-item p{margin-top:6px;font-size:15px;line-height:1.6;overflow-wrap:anywhere}'
+  + '.cd-faq-src{margin-top:12px;max-width:860px;font-size:13.5px;color:var(--muted)}'
+  + '.cd-faq-src a{color:var(--primary-d);font-weight:600;text-decoration:underline;text-underline-offset:2px}';
+
 // api: a página busca a lista no banco ao abrir (cidade.js), então a conexão com ele já começa no <head>.
-function head({ title, description, canonical, rel, base, ld, api = false }) {
+// faq: a página tem o bloco de perguntas frequentes (o estilo dele vai no <head>).
+function head({ title, description, canonical, rel, base, ld, api = false, faq = false }) {
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
@@ -101,7 +115,7 @@ ${api ? `<link rel="preconnect" href="${API}" crossorigin>\n` : ''}${headFontes(
 <link rel="stylesheet" href="${rel}assets/vendor/fa/css/icones.min.css">
 <link rel="stylesheet" href="${rel}assets/css/cidade.css">
 <link rel="stylesheet" href="${rel}assets/css/rodape.css">
-${ld.map((o) => `<script type="application/ld+json">${ldJson(o)}</script>`).join('\n')}
+${faq ? `<style>${FAQ_CSS}</style>\n` : ''}${ld.map((o) => `<script type="application/ld+json">${ldJson(o)}</script>`).join('\n')}
 </head>`;
 }
 
@@ -153,6 +167,72 @@ function countsSentence(c) {
   return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} e ${parts.at(-1)}`;
 }
 
+// "no Rio de Janeiro (RJ)", "em Campinas (São Paulo)": a mesma regra do "do/de" de assets/js/confianca.js.
+const naCidade = (c) => `${deCidade(c.name).startsWith('do ') ? 'no' : 'em'} ${where(c)}`;
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// Perguntas frequentes da página da cidade (t = null) e da página de um tipo (t). Devolve [{ q, a }] em texto
+// simples: o mesmo texto vai para a página e para o JSON-LD (FAQPage). As respostas saem só de:
+// - os números da cidade em scripts/cidades.json, com a data ("Números atualizados em");
+// - as regras publicadas: como-funciona.html (pedido, custo, selos, dados), sobre.html e termos.html (itens 1, 3 e 4).
+// Custo: só buscar, pedir e cancelar pelo IMED são sem custo para o paciente (há cobranças previstas em outros
+// serviços), então nunca "sempre grátis" nem "o IMED é gratuito" sem dizer o quê.
+export function faqItems(c, t, date) {
+  const quando = `Números atualizados em ${dateLong(date)}.`;
+  const total = `${fmt(c.total)} ${Number(c.total) === 1 ? 'estabelecimento' : 'estabelecimentos'} de saúde`;
+  const fonte = 'do cadastro oficial do Ministério da Saúde (CNES)';
+  let count;
+  if (t) {
+    const n = c[t.kind];
+    const others = TYPES.some((o) => o !== t && Number(c[o.kind]) > 0);
+    count = {
+      q: `${t.quant} ${t.plural} ${deCidade(c.name)} aparecem no IMED?`,
+      a: `O IMED mostra ${fmt(n)} ${typeLabel(t, n)} ${naCidade(c)}, ${fonte}.`
+        + `${others ? ` Na cidade toda, são ${total} no IMED: ${countsSentence(c)}.` : ''} ${quando}`,
+    };
+  } else {
+    count = {
+      q: `Quantos locais de saúde ${deCidade(c.name)} aparecem no IMED?`,
+      a: `O IMED mostra ${total} ${naCidade(c)}, ${fonte}: ${countsSentence(c)}. ${quando}`,
+    };
+  }
+  return [
+    count,
+    {
+      q: 'O IMED é plano de saúde ou cartão de desconto?',
+      a: `Não. O IMED é uma plataforma on-line de busca e de pedido de agendamento: mostra os estabelecimentos de saúde ${deCidade(c.name)} e encaminha o seu pedido ao local escolhido, que faz o atendimento. O pedido é para atendimento particular ou pelo seu convênio, nas condições de cada local.`,
+    },
+    {
+      q: 'Buscar e pedir agendamento pelo IMED é grátis?',
+      a: 'Para o paciente, sim: buscar, pedir e cancelar o pedido pelo IMED não têm custo. Se houver cobrança pelo exame, pela consulta ou por falta, ela segue as regras do local, e o pagamento é feito direto lá. O IMED nunca pede Pix, depósito, senha ou código por telefone ou WhatsApp.',
+    },
+    {
+      q: 'O horário já fica marcado quando faço o pedido?',
+      a: 'Só quando o pedido aparece como Confirmado em “Meus pedidos”. Nas clínicas parceiras com agenda on-line, o horário escolhido já fica reservado e o pedido aparece como Confirmado. Nos outros locais, você diz o dia e o período que prefere, e a clínica ou a equipe do IMED entra em contato para combinar o horário.',
+    },
+    {
+      q: `${t ? cap1(`${t.art} ${t.plural}`) : 'Os locais'} ${deCidade(c.name)} atendem pelo SUS?`,
+      a: 'Depende de cada local. A marca “Atende SUS” da lista vem do cadastro oficial (CNES) e pode estar desatualizada: confirme com o local. O pedido pelo IMED é para atendimento particular ou por convênio: unidades públicas do SUS não agendam pelo IMED. Para marcar pelo SUS, procure a sua Unidade Básica de Saúde (UBS).',
+    },
+  ];
+}
+
+export const faqLd = (items) => ({
+  '@context': 'https://schema.org', '@type': 'FAQPage', inLanguage: 'pt-BR',
+  mainEntity: items.map((it) => ({ '@type': 'Question', name: it.q, acceptedAnswer: { '@type': 'Answer', text: it.a } })),
+});
+
+// Bloco visível (as respostas ficam abertas, sem clicar), com a fonte das regras.
+function faqSection(items, rel) {
+  return `<section class="cd-faq" aria-labelledby="faqTitle">
+      <h2 id="faqTitle">Perguntas frequentes</h2>
+      <div class="cd-faq-list">
+        ${items.map((it) => `<div class="cd-faq-item"><h3>${esc(it.q)}</h3><p>${esc(it.a)}</p></div>`).join('\n        ')}
+      </div>
+      <p class="cd-faq-src">As respostas seguem as regras publicadas em <a href="${rel}como-funciona.html">Como funciona</a>, <a href="${rel}sobre.html">Quem somos</a> e <a href="${rel}termos.html">Termos de uso</a>.</p>
+    </section>`;
+}
+
 function listSection({ c, kind, rel, tabs }) {
   const tabBtns = tabs ? `<div class="cd-tabs" role="group" aria-label="Filtrar por tipo">
         <button type="button" class="cd-tab" data-kind="" aria-pressed="true">Todos <span>${fmt(c.total)}</span></button>
@@ -183,13 +263,14 @@ export function renderCity(c, { base, date }) {
     { name: `${c.name} - ${c.uf}`, href: './', url },
   ];
   const types = TYPES.filter((t) => Number(c[t.kind]) > 0);
+  const faq = faqItems(c, null, date);
   const ld = [crumbsLd(crumbs), {
     '@context': 'https://schema.org', '@type': 'CollectionPage', name: title.replace(/ \| IMED$/, ''), description, url, inLanguage: 'pt-BR',
     dateModified: date, isPartOf: { '@type': 'WebSite', name: 'IMED', url: base },
     about: { '@type': 'City', name: c.name, containedInPlace: { '@type': 'State', name: ufName(c.uf) } },
     mainEntity: { '@type': 'ItemList', numberOfItems: types.length, itemListElement: types.map((t, i) => ({ '@type': 'ListItem', position: i + 1, name: `${t.short} em ${c.name}`, url: base + typePath(c, t) })) },
-  }];
-  return `${head({ title, description, canonical: url, rel, base, ld, api: true })}
+  }, faqLd(faq)];
+  return `${head({ title, description, canonical: url, rel, base, ld, api: true, faq: true })}
 <body>
 ${topbar(rel, false)}
 <main id="main" class="cd">
@@ -207,6 +288,7 @@ ${topbar(rel, false)}
     </ul>
     <noscript><p class="cd-noscript">${esc(c.name)} tem ${fmt(c.total)} estabelecimentos no IMED: ${sentence}. <a href="${rel}perto.html">Ver no mapa perto de mim</a>.</p></noscript>
     ${listSection({ c, kind: '', rel, tabs: true })}
+    ${faqSection(faq, rel)}
     <aside class="cd-claim">
       <h2>Sua clínica está nesta lista?</h2>
       <p>Assuma o cadastro, sem custo, para receber pedidos de agendamento e informar exames, preços e convênios.</p>

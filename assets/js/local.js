@@ -257,6 +257,9 @@ function mapHTML(p) {
 const section = (id, icon, title, body, extra = '') => `<section class="lc-card dt-sec" id="${id}" aria-labelledby="h-${id}"${extra}>
   <h2 id="h-${id}"><i class="fa-solid ${icon}" aria-hidden="true"></i>${title}</h2>${body}</section>`;
 
+// Exame escolhido na busca (?exame=), para as perguntas "Antes de ir: o que perguntar ao ligar".
+const askExam = () => (Object.hasOwn(G.EXAMS, params.get('exame') ?? '') ? params.get('exame') : '');
+
 // Código CNES (7 dígitos) do local: o do cadastro oficial ou o do parceiro que assumiu o cadastro.
 const cnesCode = (p) => (p.source === 'cnes' ? p.id.slice(5) : p.cnes);
 
@@ -356,6 +359,7 @@ function render() {
           ${verifiedHTML(p)}
         </div></div>
       ${actionsHTML(p)}
+      ${p.source === 'imed' ? '' : G.callQuestionsHTML(p, askExam())}
       ${G.sosHTML()}
     </section>
     <aside class="lc-card lc-book" id="agendar" aria-labelledby="h-agendar" tabindex="-1"></aside>
@@ -816,6 +820,7 @@ document.addEventListener('click', (e) => {
   if (!act) return;
   if (act === 'reload') load();
   else if (act === 'share') share();
+  else if (act === 'copy-questions') G.copyCallQuestions(e.target.closest('.cq'));
   else if (act === 'reload-slots') loadSlots();
   else if (act === 'change-slot') { const f = $('#bookForm'); if (f) S.draft = draftOf(f); S.chosen = ''; renderBooking(); $('.sl-t, .sl-day.on')?.focus(); }
   else if (act === 'pedido') { S.mode = 'pedido'; S.notice = ''; renderBooking(); $('#bkExam')?.focus(); }

@@ -598,3 +598,126 @@ test('área inteira: páginas de 50 e texto do botão "Ver mais"', () => {
   assert.equal(G.moreLabel(50, 3158), 'Ver mais 50 (de 3.158)');
   assert.equal(G.moreLabel(8, null), 'Ver mais 8');
 });
+
+/* ======================= "Antes de ir: o que perguntar ao ligar" (L1) ======================= */
+const cnesPlace = (o = {}) => G.normalizeCnes({
+  cnes: '6543210', name: 'Laboratório Análise Paulista', kind: 'laboratorio', address_line: 'Alameda Santos, 200', city: 'São Paulo', uf: 'SP',
+  lat: -23.5655, lng: -46.652, phone: '(11) 3000-2000', sus: false, services: ['lab'], specialties: [], ...o,
+}, PAULISTA);
+const ids = (list) => list.map((q) => q.id);
+const textOf = (list, id) => list.find((q) => q.id === id)?.text ?? '';
+
+test('perguntas ao ligar: "Vocês fazem…?" sempre primeiro; laboratório pergunta jejum, prazo e coleta em casa', () => {
+  const lab = G.callQuestions(cnesPlace());
+  assert.equal(lab[0].id, 'faz', 'o cadastro oficial deduz o serviço pelo nome: primeiro pergunta se faz');
+  assert.equal(lab[0].text, 'Vocês fazem todos os exames do meu pedido médico?');
+  assert.deepEqual(ids(lab), ['faz', 'agenda', 'preparo', 'convenio', 'preco', 'documentos', 'resultado', 'coleta', 'acesso']);
+  assert.equal(textOf(lab, 'agenda'), 'Precisa agendar ou é por ordem de chegada?');
+  assert.match(textOf(lab, 'preparo'), /jejum/);
+  assert.equal(textOf(lab, 'resultado'), 'Em quantos dias sai o resultado?');
+  assert.equal(textOf(lab, 'coleta'), 'Fazem coleta em casa?');
+  assert.match(textOf(lab, 'convenio'), /^Aceitam o meu convênio\?/);
+  assert.match(textOf(lab, 'preco'), /no particular\?$/);
+  assert.match(textOf(lab, 'documentos'), /documentos.*pedido médico/);
+  // Exame de laboratório num hospital: mesmas perguntas, sem a coleta em casa (é do laboratório).
+  const hosp = G.callQuestions(cnesPlace({ kind: 'hospital', name: 'Hospital Santa Exemplo' }), 'lab');
+  assert.equal(hosp[0].text, 'Vocês fazem todos os exames do meu pedido médico?');
+  assert.ok(ids(hosp).includes('resultado') && !ids(hosp).includes('coleta'));
+});
+
+test('perguntas ao ligar: o exame escolhido entra no texto; imagem pergunta o pedido médico', () => {
+  const img = cnesPlace({ kind: 'imagem', name: 'Centro de Imagem', services: ['rm', 'tc'] });
+  const rm = G.callQuestions(img, 'rm');
+  assert.equal(rm[0].text, 'Vocês fazem ressonância magnética?');
+  assert.equal(textOf(rm, 'preparo'), 'Precisa de jejum ou de outro preparo para a ressonância magnética?');
+  assert.equal(textOf(rm, 'preco'), 'Quanto custa a ressonância magnética no particular?');
+  assert.match(textOf(rm, 'documentos'), /Precisa do pedido médico\?/);
+  assert.ok(ids(rm).includes('resultado') && !ids(rm).includes('coleta'));
+  assert.equal(G.callQuestions(img, 'rx')[0].text, 'Vocês fazem raio-X?');
+  assert.equal(textOf(G.callQuestions(img, 'rx'), 'preco'), 'Quanto custa o raio-X no particular?');
+  // Imagem sem exame escolhido: pergunta pelo exame do pedido, e o pedido médico continua.
+  const any = G.callQuestions(img);
+  assert.equal(any[0].text, 'Vocês fazem o exame do meu pedido médico?');
+  assert.match(textOf(any, 'documentos'), /pedido médico/);
+  // Todo exame da busca tem nome na pergunta (nada de "undefined" nem do código).
+  for (const code of Object.keys(G.EXAMS)) {
+    const list = G.callQuestions(img, code);
+    assert.ok(list.every((q) => !/undefined|null/.test(q.text)), code);
+    if (code !== 'lab') assert.match(list[0].text, new RegExp(`^Vocês fazem ${G.EXAMS[code].n.split(' ')[0].slice(0, 5)}`, 'i'), code);
+  }
+  // Clínica ou hospital sem exame: consulta ou exame, sem as perguntas próprias de exame.
+  const geral = G.callQuestions(cnesPlace({ kind: 'clinica', name: 'Clínica Bela Vista', services: [] }));
+  assert.equal(geral[0].text, 'Vocês fazem o exame ou a consulta de que eu preciso?');
+  assert.equal(textOf(geral, 'documentos'), 'Que documentos preciso levar?');
+  assert.ok(!ids(geral).includes('resultado') && !ids(geral).includes('coleta'));
+  // Código desconhecido conta como nenhum exame.
+  assert.deepEqual(G.callQuestions(img, '<b>x</b>'), any);
+  assert.deepEqual(G.callQuestions(img, 'consulta'), any);
+});
+
+test('perguntas ao ligar: "Atendem pelo SUS?" só com sus=true do cadastro oficial; parceiro não tem roteiro', () => {
+  assert.equal(textOf(G.callQuestions(cnesPlace({ sus: true })), 'sus'), 'Atendem pelo SUS? Precisa de encaminhamento do posto de saúde?');
+  assert.ok(!ids(G.callQuestions(cnesPlace({ sus: false }))).includes('sus'), 'não atende SUS');
+  assert.ok(!ids(G.callQuestions(cnesPlace({ sus: null }))).includes('sus'), 'sem a informação');
+  const sus = G.callQuestions(cnesPlace({ sus: true }));
+  assert.ok(ids(sus).indexOf('sus') > ids(sus).indexOf('convenio') && ids(sus).indexOf('sus') < ids(sus).indexOf('preco'));
+  // Local do mapa público (sem o dado do SUS): perguntas sem o SUS.
+  const osm = G.parseOverpass({ elements: [{ type: 'node', id: 102, lat: -23.559, lon: -46.66, tags: { name: 'Laboratório Vida', healthcare: 'laboratory', phone: '+55 11 3333-4444' } }] }, PAULISTA)[0];
+  assert.equal(osm.source, 'osm');
+  assert.deepEqual(ids(G.callQuestions(osm)), ['faz', 'agenda', 'preparo', 'convenio', 'preco', 'documentos', 'resultado', 'coleta', 'acesso']);
+  // Parceiro: preço e agenda vêm da própria clínica.
+  const partner = G.normalizeImedRow(imedRow, PAULISTA);
+  assert.deepEqual(G.callQuestions(partner, 'rm'), []);
+  assert.equal(G.callQuestionsText(partner, 'rm'), '');
+  assert.equal(G.callQuestionsHTML(partner, 'rm'), '');
+  assert.deepEqual(G.callQuestions(null), []);
+});
+
+test('perguntas ao ligar: só perguntas, sem preço, nota, horário nem número inventado', () => {
+  const places = [cnesPlace({ sus: true }), cnesPlace({ kind: 'imagem' }), cnesPlace({ kind: 'hospital', sus: true }), cnesPlace({ kind: 'clinica', phone: null })];
+  for (const p of places) {
+    for (const exam of ['', ...Object.keys(G.EXAMS)]) {
+      const list = G.callQuestions(p, exam);
+      assert.ok(list.length >= 7 && list.length <= 10, `${p.kind}/${exam}: ${list.length} perguntas`);
+      assert.equal(new Set(ids(list)).size, list.length, 'sem pergunta repetida');
+      for (const { text } of list) {
+        assert.match(text, /\?$/, `"${text}" termina em pergunta`);
+        assert.ok(!/R\$|\d|nota|estrela|hor[aá]rio/i.test(text), `"${text}": sem preço, número, nota ou horário`);
+      }
+      const html = G.callQuestionsHTML(p, exam);
+      assert.ok(!/R\$|\b\d{1,2}[:h]\d{2}\b|\bnota\b/i.test(html.replace(/rows="\d+"/, '')), 'a caixa também não traz preço, nota nem horário');
+    }
+  }
+});
+
+test('perguntas ao ligar: texto para copiar e a caixa fechada até o toque', () => {
+  const p = cnesPlace({ name: 'Laboratório <img src=x onerror=alert(1)> & Cia', sus: true });
+  const text = G.callQuestionsText(p, 'lab');
+  const lines = text.split('\n');
+  assert.equal(lines[0], 'Laboratório <img src=x onerror=alert(1)> & Cia · (11) 3000-2000', 'nome e telefone do local');
+  assert.equal(lines[1], 'O que perguntar ao ligar:');
+  assert.equal(lines[2], '1. Vocês fazem todos os exames do meu pedido médico?');
+  assert.equal(lines.length, 2 + G.callQuestions(p, 'lab').length);
+  assert.ok(lines.slice(2).every((l, i) => l.startsWith(`${i + 1}. `)), 'numeradas');
+  assert.equal(G.callQuestionsText({ ...p, phone: null, name: 'Sem Telefone' }, '').split('\n')[0], 'Sem Telefone', 'sem telefone, só o nome');
+
+  const html = G.callQuestionsHTML(p, 'lab');
+  assert.match(html, /^<details class="cq">/, 'caixa <details>');
+  assert.ok(!/<details[^>]*\bopen\b/.test(html), 'fechada até o toque');
+  assert.match(html, /<summary>.*<span>Antes de ir: o que perguntar ao ligar<\/span>.*<\/summary>/s);
+  assert.equal((html.match(/<li data-q=/g) ?? []).length, G.callQuestions(p, 'lab').length);
+  assert.match(html, /<button class="btn btn-ghost btn-sm" type="button" data-act="copy-questions">.*Copiar as perguntas<\/button>/);
+  assert.ok(!/tel:|data-act="share"|Compartilhar/.test(html), 'sem repetir Ligar e Compartilhar (já estão nas ações do local)');
+  assert.match(html, /<textarea class="cq-txt" readonly hidden rows="\d+" aria-label="Perguntas para copiar">/, 'texto para selecionar quando não dá para copiar');
+  assert.match(html, /<p class="cq-msg" role="status"><\/p>/, 'aviso lido pelo leitor de tela');
+  assert.ok(!html.includes('<img src=x'), 'nome do local escapado');
+  assert.ok(html.includes('Laboratório &lt;img src=x onerror=alert(1)&gt; &amp; Cia'));
+  assert.match(html, /Ligue antes de ir, com o pedido médico em mãos, e pergunte:/);
+  assert.match(html, /siga também a orientação do seu médico/, 'saúde: siga o seu médico');
+  assert.match(html, /Se preferir, peça ao IMED para agendar por você\./);
+  assert.ok(!/telefone deste local não foi informado/.test(html));
+  const noPhone = G.callQuestionsHTML(cnesPlace({ kind: 'clinica', phone: null }));
+  assert.match(noPhone, /Antes de ir, pergunte:/);
+  assert.match(noPhone, /O telefone deste local não foi informado\. Se preferir, peça ao IMED para agendar por você\./);
+  assert.ok(!/pedido médico em mãos/.test(noPhone), 'consulta: sem pedir o pedido médico');
+});

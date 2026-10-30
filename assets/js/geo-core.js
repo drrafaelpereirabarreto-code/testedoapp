@@ -944,6 +944,116 @@ export function localJsonLd(p, url, rating = null) {
   return ld;
 }
 
+/* ======================= "Antes de ir: o que perguntar ao ligar" (locais que não são parceiros) ======================= */
+// Para quem não é parceiro, o IMED não tem o preparo, o prazo nem o preço: em vez de inventar a resposta, ensina a
+// pergunta. Só perguntas, nunca respostas (nada de preço, nota, horário ou orientação de saúde). Os serviços do
+// cadastro oficial são deduzidos pelo nome do local, por isso a primeira pergunta é sempre se ele faz o exame.
+// Nome do exame na pergunta e o artigo dele ("Quanto custa a tomografia...").
+const CALL_EXAM = {
+  rx: ['raio-X', 'o'], usg: ['ultrassom', 'o'], tc: ['tomografia', 'a'], rm: ['ressonância magnética', 'a'],
+  mamo: ['mamografia', 'a'], dens: ['densitometria óssea', 'a'], ecg: ['eletrocardiograma', 'o'], eco: ['ecocardiograma', 'o'],
+};
+export const CALL_TITLE = 'Antes de ir: o que perguntar ao ligar';
+export const CALL_MSG = {
+  ok: 'Perguntas copiadas. É só colar onde quiser.',
+  manual: 'Não foi possível copiar sozinho. As perguntas estão selecionadas no quadro acima: toque e segure e escolha Copiar (no computador, Ctrl+C).',
+};
+const escHTML = (s) => String(s ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+// Que roteiro usar: exame de laboratório, outro exame (imagem, coração) ou consulta/exame sem tipo definido.
+// O exame escolhido manda; sem ele, vale o tipo do local.
+function callKind(p, exam) {
+  if (exam === 'lab') return 'lab';
+  if (exam) return 'exame';
+  if (p.kind === 'laboratorio') return 'lab';
+  return p.kind === 'imagem' ? 'exame' : 'geral';
+}
+
+// Perguntas para o local p (cadastro oficial ou mapa público), conforme o tipo dele e o exame escolhido (código de
+// EXAMS; outro valor conta como nenhum). Parceiro (source 'imed'): nenhuma, porque ele mesmo informa preço e agenda.
+// "Atendem pelo SUS?" só quando o cadastro oficial diz que o local atende pelo SUS (p.sus === true).
+export function callQuestions(p, exam = '') {
+  if (!p || p.source === 'imed') return [];
+  const ex = Object.hasOwn(EXAMS, exam ?? '') ? exam : '';
+  const kind = callKind(p, ex);
+  const [name, art] = CALL_EXAM[ex] ?? [];
+  const exams = kind !== 'geral';
+  const q = [];
+  const add = (id, text) => q.push({ id, text });
+  if (kind === 'lab') add('faz', 'Vocês fazem todos os exames do meu pedido médico?');
+  else if (name) add('faz', `Vocês fazem ${name}?`);
+  else add('faz', exams ? 'Vocês fazem o exame do meu pedido médico?' : 'Vocês fazem o exame ou a consulta de que eu preciso?');
+  add('agenda', 'Precisa agendar ou é por ordem de chegada?');
+  if (kind === 'lab') add('preparo', 'Precisa de jejum? De quantas horas?');
+  else add('preparo', name ? `Precisa de jejum ou de outro preparo para ${art} ${name}?` : 'Precisa de jejum ou de outro preparo?');
+  add('convenio', exams ? 'Aceitam o meu convênio? Precisa pedir autorização ao plano antes?' : 'Aceitam o meu convênio?');
+  if (p.sus === true) add('sus', 'Atendem pelo SUS? Precisa de encaminhamento do posto de saúde?');
+  if (kind === 'lab') add('preco', 'Quanto custam os exames no particular?');
+  else add('preco', name ? `Quanto custa ${art} ${name} no particular?` : 'Quanto custa no particular?');
+  add('documentos', exams ? 'Que documentos preciso levar? Precisa do pedido médico?' : 'Que documentos preciso levar?');
+  if (exams) add('resultado', 'Em quantos dias sai o resultado?');
+  if (kind === 'lab' && p.kind === 'laboratorio') add('coleta', 'Fazem coleta em casa?');
+  add('acesso', 'Tem acesso para cadeira de rodas?');
+  return q;
+}
+
+// Texto do botão "Copiar as perguntas": o local (nome e telefone, se houver) e as perguntas numeradas.
+export function callQuestionsText(p, exam = '') {
+  const list = callQuestions(p, exam);
+  if (!list.length) return '';
+  const who = [p.name, p.phone].map((v) => String(v ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ');
+  return [who, 'O que perguntar ao ligar:', ...list.map((x, i) => `${i + 1}. ${x.text}`)].filter(Boolean).join('\n');
+}
+
+// Caixa fechada até o toque (<details>), na página do local e na ficha da busca. O botão "Copiar as perguntas"
+// (data-act="copy-questions") chama copyCallQuestions. Ligar e Compartilhar já ficam nas ações do local.
+export function callQuestionsHTML(p, exam = '') {
+  const list = callQuestions(p, exam);
+  if (!list.length) return '';
+  const ex = Object.hasOwn(EXAMS, exam ?? '') ? exam : '';
+  const exams = callKind(p, ex) !== 'geral';
+  const phone = !!telHref(p.phone);
+  const text = callQuestionsText(p, ex);
+  const hand = exams ? ', com o pedido médico em mãos,' : '';
+  const intro = `Este local ainda não é parceiro do IMED: não temos o preparo, o prazo nem o preço dele. ${phone ? `Ligue antes de ir${hand} e pergunte:` : `Antes de ir${hand || ','} pergunte:`}`;
+  const foot = `Só perguntas: as respostas vêm do próprio local. Sobre o preparo, siga também a orientação do seu médico. ${phone ? '' : 'O telefone deste local não foi informado. '}Se preferir, peça ao IMED para agendar por você.`;
+  return `<details class="cq">
+      <summary><i class="fa-solid fa-list-check" aria-hidden="true"></i><span>${CALL_TITLE}</span><i class="fa-solid fa-chevron-down cq-chev" aria-hidden="true"></i></summary>
+      <div class="cq-body">
+        <p>${intro}</p>
+        <ol class="cq-list">${list.map((x) => `<li data-q="${x.id}">${escHTML(x.text)}</li>`).join('')}</ol>
+        <p class="src">${foot}</p>
+        <div class="cq-acts"><button class="btn btn-ghost btn-sm" type="button" data-act="copy-questions"><i class="fa-solid fa-copy" aria-hidden="true"></i>Copiar as perguntas</button></div>
+        <textarea class="cq-txt" readonly hidden rows="${text.split('\n').length}" aria-label="Perguntas para copiar">${escHTML(text)}</textarea>
+        <p class="cq-msg" role="status"></p>
+      </div>
+    </details>`;
+}
+
+// "Copiar as perguntas" (box: a caixa de callQuestionsHTML). Sem a área de transferência (navegador antigo,
+// aplicativo que bloqueia, permissão negada), mostra o texto já selecionado para a pessoa copiar.
+export async function copyCallQuestions(box) {
+  const txt = box?.querySelector('.cq-txt');
+  const msg = box?.querySelector('.cq-msg');
+  if (!txt || !msg) return false;
+  msg.textContent = '';
+  msg.classList.remove('warn');
+  try {
+    await navigator.clipboard.writeText(txt.value);
+    txt.hidden = true;
+    msg.textContent = CALL_MSG.ok;
+    return true;
+  } catch {
+    txt.hidden = false;
+    txt.focus();
+    txt.select();
+    txt.setSelectionRange?.(0, txt.value.length);
+    msg.classList.add('warn');
+    msg.textContent = CALL_MSG.manual;
+    return false;
+  }
+}
+
 /* ======================= contador de visitas próprio (assets/js/visitas.js) ======================= */
 // Cidade da busca para o contador, como no cadastro do IBGE: "UF/Cidade" (ex.: "SP/São Paulo"). Vem da situação
 // da cidade que o servidor devolve (coverage) ou, sem ela, do estabelecimento mais próximo da lista.

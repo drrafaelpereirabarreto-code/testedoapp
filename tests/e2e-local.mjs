@@ -721,6 +721,123 @@ await scenario('celular (390px): ficha e agenda sem rolagem lateral', async () =
   await context.close();
 });
 
+/* ======================= "Antes de ir: o que perguntar ao ligar" (quem não é parceiro) ======================= */
+const COPY_OK = () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: (t) => { window.__copied = t; return Promise.resolve(); } } });
+const questions = (page) => page.$$eval('.cq-list li', (els) => els.map((e) => e.textContent));
+
+await scenario('antes de ir: perguntas ao ligar no cadastro oficial (fechada até o toque, exame da busca, Copiar) e nada no parceiro', async () => {
+  const { page, errors, context } = await newPage(browser, { initScript: COPY_OK });
+  await page.goto(`${BASE}local.html?cnes=2077485&exame=rm`);
+  await page.waitForSelector('#lcName');
+  const box = page.locator('.lc-head details.cq');
+  assert.equal(await box.count(), 1, 'uma caixa, no topo da ficha');
+  assert.equal(await box.getAttribute('open'), null, 'fechada até o toque');
+  assert.equal(await page.locator('.cq-list').isVisible(), false);
+  assert.equal((await page.textContent('.cq summary')).trim(), 'Antes de ir: o que perguntar ao ligar');
+  // Ligar e Compartilhar continuam só nas ações do local (sem repetir dentro da caixa).
+  assert.equal(await page.locator('.lc-head a:has-text("Ligar")').count(), 1);
+  assert.equal(await page.locator('[data-act="share"]').count(), 1);
+  assert.equal(await page.locator('.cq a[href^="tel:"], .cq [data-act="share"]').count(), 0);
+  await page.click('.cq summary');
+  assert.equal(await box.getAttribute('open'), '');
+  const qs = await questions(page);
+  assert.equal(qs[0], 'Vocês fazem ressonância magnética?', 'exame da busca (?exame=rm), sempre a primeira pergunta');
+  assert.ok(qs.includes('Precisa agendar ou é por ordem de chegada?'));
+  assert.ok(qs.includes('Precisa de jejum ou de outro preparo para a ressonância magnética?'));
+  assert.ok(qs.includes('Atendem pelo SUS? Precisa de encaminhamento do posto de saúde?'), 'o cadastro oficial diz que atende SUS');
+  assert.ok(qs.includes('Quanto custa a ressonância magnética no particular?'));
+  assert.ok(qs.includes('Que documentos preciso levar? Precisa do pedido médico?'));
+  const text = await page.textContent('.cq');
+  assert.ok(!/R\$|\d{1,2}:\d{2}/.test(text), 'só perguntas: sem preço nem horário');
+  assert.match(text, /Ligue antes de ir, com o pedido médico em mãos, e pergunte:/);
+  assert.match(text, /siga também a orientação do seu médico\. Se preferir, peça ao IMED para agendar por você\./);
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForFunction(() => document.querySelector('.cq-msg').textContent);
+  assert.equal(await page.textContent('.cq-msg'), 'Perguntas copiadas. É só colar onde quiser.');
+  const copied = (await page.evaluate(() => window.__copied)).split('\n');
+  assert.deepEqual(copied.slice(0, 3), ['Hospital Santa Exemplo · (11) 3141-1000', 'O que perguntar ao ligar:', '1. Vocês fazem ressonância magnética?']);
+  assert.equal(copied.length, 2 + qs.length, 'todas as perguntas, numeradas');
+  assert.equal(await page.locator('.cq-txt').isVisible(), false, 'copiou: o quadro de seleção não aparece');
+  await shot(page, 'l08-perguntas-ao-ligar');
+  // Teclado: Enter no título fecha e abre a caixa.
+  await page.focus('.cq summary');
+  await page.keyboard.press('Enter');
+  assert.equal(await box.getAttribute('open'), null);
+  await page.keyboard.press('Enter');
+  assert.equal(await box.getAttribute('open'), '');
+  // O pedido ao IMED já vem com o exame da busca.
+  await page.click('#agendar [data-act="pedido"]');
+  assert.equal(await page.inputValue('#bkExam'), 'rm');
+  // Parceiro: preço, exames e agenda vêm da própria clínica; sem roteiro de perguntas.
+  await page.goto(`${BASE}local.html?id=${PARTNER_ID}&exame=rm`);
+  await page.waitForSelector('.sl-t');
+  assert.equal(await page.locator('.cq').count(), 0, 'parceiro com agenda');
+  await page.goto(`${BASE}local.html?id=${NOSCHED_ID}`);
+  await page.waitForSelector('#agendar [data-act="pedido"]');
+  assert.equal(await page.locator('.cq').count(), 0, 'parceiro sem agenda');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('antes de ir: laboratório sem telefone e sem dado do SUS; sem copiar sozinho, o texto fica selecionado', async () => {
+  const deny = () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new DOMException('negado', 'NotAllowedError')) } });
+  const { page, errors, context } = await newPage(browser, { initScript: deny });
+  await page.goto(`${BASE}local.html?cnes=6543210&exame=xyz`);
+  await page.waitForSelector('#lcName');
+  assert.equal(await page.locator('.lc-acts a:has-text("Ligar")').count(), 0, 'sem telefone, sem Ligar');
+  await page.click('.cq summary');
+  const qs = await questions(page);
+  assert.equal(qs[0], 'Vocês fazem todos os exames do meu pedido médico?', 'exame desconhecido na URL: vale o tipo do local');
+  assert.ok(qs.includes('Precisa de jejum? De quantas horas?'), 'laboratório: jejum');
+  assert.ok(qs.includes('Em quantos dias sai o resultado?'), 'laboratório: prazo');
+  assert.ok(qs.includes('Fazem coleta em casa?'));
+  assert.ok(!qs.some((q) => /SUS/.test(q)), 'sem o dado do SUS, sem a pergunta');
+  assert.match(await page.textContent('.cq'), /Antes de ir, com o pedido médico em mãos, pergunte:.*O telefone deste local não foi informado\./s);
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForSelector('.cq-txt:not([hidden])');
+  assert.match(await page.textContent('.cq-msg'), /^Não foi possível copiar sozinho\. As perguntas estão selecionadas no quadro acima/);
+  const sel = await page.evaluate(() => {
+    const t = document.querySelector('.cq-txt');
+    return { focused: document.activeElement === t, start: t.selectionStart, end: t.selectionEnd, len: t.value.length, lines: t.value.split('\n') };
+  });
+  assert.ok(sel.focused, 'o foco vai para o texto');
+  assert.deepEqual([sel.start, sel.end], [0, sel.len], 'o texto todo fica selecionado');
+  assert.deepEqual(sel.lines.slice(0, 3), ['Laboratório Sem Mapa', 'O que perguntar ao ligar:', '1. Vocês fazem todos os exames do meu pedido médico?']);
+  assert.equal(sel.lines.length, 2 + qs.length);
+  await shot(page, 'l09-perguntas-selecionar');
+  // Navegador sem a área de transferência: também mostra o texto selecionado.
+  await context.addInitScript(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined }));
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.click('.cq summary');
+  await page.click('[data-act="copy-questions"]');
+  await page.waitForSelector('.cq-txt:not([hidden])');
+  assert.equal(await page.evaluate(() => document.activeElement?.className), 'cq-txt');
+  assert.match(await page.evaluate(() => document.querySelector('.cq-txt').value), /^Hospital Santa Exemplo · \(11\) 3141-1000\nO que perguntar ao ligar:\n1\. Vocês fazem o exame ou a consulta de que eu preciso\?/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('celular (390px): caixa de perguntas aberta sem rolagem lateral e com alvos de toque grandes', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true });
+  await page.goto(`${BASE}local.html?cnes=2077485&exame=usg`);
+  await page.waitForSelector('#avaliacoes:not([hidden]) li');
+  const summary = await page.$eval('.cq summary', (el) => el.getBoundingClientRect().height);
+  assert.ok(summary >= 44, `título da caixa com ${summary}px de altura`);
+  await page.click('.cq summary');
+  assert.equal((await questions(page))[0], 'Vocês fazem ultrassom?');
+  const btn = await page.$eval('[data-act="copy-questions"]', (el) => el.getBoundingClientRect().height);
+  assert.ok(btn >= 44, `"Copiar as perguntas" com ${btn}px de altura`);
+  assert.ok(await overflow(page) <= 0, `sem rolagem lateral (${await overflow(page)}px)`);
+  // A caixa fica logo abaixo das ações do local, antes do aviso de emergência.
+  assert.ok(await page.evaluate(() => {
+    const acts = document.querySelector('.lc-head .lc-acts'), cq = document.querySelector('.lc-head .cq'), sos = document.querySelector('.lc-head .sos');
+    return acts.nextElementSibling === cq && cq.nextElementSibling === sos;
+  }), 'ordem: ações, perguntas, emergência');
+  await shot(page, 'l10-celular-perguntas');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter(([s]) => s !== 'ok');
