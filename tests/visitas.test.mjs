@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as G from '../assets/js/geo-core.js';
 import * as V from '../assets/js/estatisticas.js';
-import { comVisitas, tagVisitas, paginasComContador, paginasCidades, OUTRAS_FRENTES, paginasFixas, sqlVisitPath } from '../scripts/aplicar-visitas.mjs';
+import { comVisitas, tagVisitas, paginasComContador, paginasCidades, OUTRAS_FRENTES, SEM_CONTADOR, paginasFixas, sqlVisitPath } from '../scripts/aplicar-visitas.mjs';
 import { relDe, paginas } from '../scripts/aplicar-rodape.mjs';
 import { generate, slugify } from '../scripts/gerar-cidades.mjs';
 
@@ -321,6 +321,9 @@ test('o contador está em todas as páginas, logo depois do config.js (404 com o
   assert.match(read('sobre.html'), /<script src="assets\/js\/config\.js" defer><\/script>\n<script src="assets\/js\/visitas\.js" defer><\/script>\n/);
   // Nenhuma página fica de fora: a teleconsulta e os documentos também contam visitas.
   assert.deepEqual(OUTRAS_FRENTES, []);
+  // Só o painel de gestão (da equipe) fica sem o contador.
+  assert.deepEqual(SEM_CONTADOR, ['gestao.html']);
+  assert.ok(!read('gestao.html').includes('visitas.js'));
   // comVisitas: põe uma vez, troca a versão antiga e põe o config.js quando a página não tem.
   const sem = '<html><body><main></main>\n</body></html>';
   const com = comVisitas(sem, '../');

@@ -45,6 +45,7 @@
       <span class="tl-kicker"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i>Teleconsulta do IMED</span>
       <h1 id="mdTitle">Área do médico</h1>
       <p>Atenda pacientes por vídeo, peça exames, emita documentos para assinar com o seu certificado ICP-Brasil e registre a consulta. Só atende médico com cadastro aprovado pela equipe do IMED, que confere o CRM e o RQE na busca do Conselho Federal de Medicina e a identidade do médico.</p>
+      <p class="md-howto"><a href="para-medicos.html"><i class="fa-solid fa-circle-question" aria-hidden="true"></i>Como funciona para o médico</a></p>
     </div>
   </section>
 
@@ -126,12 +127,16 @@
     <!-- Situação do cadastro -->
     <section class="tl-card" id="meCard" aria-labelledby="meTitle" hidden>
       <h2 id="meTitle" tabindex="-1">Seu cadastro de médico</h2>
+      <!-- Etapas: Conta criada → Envio do cadastro → Conferência do CRM → Aprovado → Disponível (medico.js, renderSteps) -->
+      <div class="md-steps" id="meSteps" hidden></div>
       <div id="meBox"></div>
     </section>
 
     <!-- Cadastro / edição -->
     <section class="tl-card" id="regCard" aria-labelledby="regTitle" hidden>
       <h2 id="regTitle" tabindex="-1">Cadastro de médico</h2>
+      <!-- Etapas para quem ainda não tem cadastro (quem já tem vê as etapas no quadro acima) -->
+      <div class="md-steps" id="regSteps" hidden></div>
       <p class="tl-muted">Antes de liberar a fila, a equipe do IMED confere o CRM e o RQE na <a class="link" href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">busca de médicos do CFM<span class="sr"> (abre em outra aba)</span></a> e a sua identidade: por chamada de vídeo (documento oficial com foto e carteira do CRM) ou por um documento assinado com o seu certificado ICP-Brasil. A conferência vale 12 meses. O paciente vê o seu nome, CRM/UF e, só com RQE, a especialidade.</p>
       <form id="regForm" novalidate>
         <div class="fld"><label for="rName">Nome completo (como está no CRM)</label><input id="rName" maxlength="120" autocomplete="name" required aria-describedby="erName"><span class="err" id="erName"></span></div>
@@ -329,11 +334,12 @@
         </ul>
       </div>
       <div class="rd-col">
-        <p class="rd-h" id="rd-g2">Clínicas</p>
+        <p class="rd-h" id="rd-g2">Clínicas e médicos</p>
         <ul aria-labelledby="rd-g2">
           <li><a href="parceiros.html">Para clínicas</a></li>
           <li><a href="reivindicar.html">Assumir o cadastro</a></li>
           <li><a href="painel.html">Área da clínica</a></li>
+          <li><a href="para-medicos.html">Para médicos</a></li>
         </ul>
       </div>
     </nav>

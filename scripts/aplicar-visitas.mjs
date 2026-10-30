@@ -20,6 +20,10 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // Para tirar uma página: ponha o nome aqui e rode o comando de novo.
 export const OUTRAS_FRENTES = [];
 
+// Páginas só da equipe, sem o contador de visitas (as visitas da equipe não entram nos números do site).
+// A lista do banco (paginasFixas) continua com elas: o banco aceita a página, mas ela nunca manda visita.
+export const SEM_CONTADOR = ['gestao.html'];
+
 const VISITAS_RE = /\n?<script src="[^"]*assets\/js\/visitas\.js"[^>]*><\/script>/g;
 const CONFIG_RE = /<script src="[^"]*assets\/js\/config\.js"[^>]*><\/script>/;
 
@@ -60,7 +64,7 @@ export function paginasCidades(root = ROOT) {
 
 // Todas as páginas que devem contar visitas (sem as de outras frentes).
 export function paginasComContador(root = ROOT) {
-  return [...paginas(root), ...paginasCidades(root)].filter((f) => !OUTRAS_FRENTES.includes(f));
+  return [...paginas(root), ...paginasCidades(root)].filter((f) => !OUTRAS_FRENTES.includes(f) && !SEM_CONTADOR.includes(f));
 }
 
 /* ---------- lista fechada de páginas do banco (private.visit_path) ---------- */

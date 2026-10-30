@@ -138,7 +138,7 @@ test('app instalado (manifest): texto sem nota, preço ou horário e atalhos par
 });
 
 test('páginas de texto com título, descrição e imagem de compartilhamento', () => {
-  for (const f of ['sobre.html', 'termos.html', 'privacidade.html', 'como-funciona.html', 'acessibilidade.html', 'parceiros.html', 'contato.html']) {
+  for (const f of ['sobre.html', 'termos.html', 'privacidade.html', 'como-funciona.html', 'acessibilidade.html', 'parceiros.html', 'contato.html', 'para-medicos.html']) {
     const html = read(f);
     for (const re of [/<title>[^<]+\| IMED<\/title>/, /<meta name="description" content="[^"]{40,}">/, /<meta property="og:title" content="[^"]+">/,
       /<meta property="og:description" content="[^"]+">/, /<meta property="og:image" content="https:\/\/[^"]+\/assets\/img\/og\.jpg(\?v=\d+)?">/,

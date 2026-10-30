@@ -43,12 +43,15 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
 - Também no ar: página de cada local (`local.html`), agenda com horário (aba Agenda no painel; reserva já confirmada), "Quem somos" e "Termos". O Dr. Rafael é admin (`admin_emails`) e aprova cadastros no `painel.html`.
 - Noite de 30/10 (no ar): busca na área inteira (até 50 km); mapa da página inicial com todos os locais em 2 km; segurança do banco; testes automáticos no GitHub; 318 cidades (`scripts/cidades.json`, páginas geradas).
 - 30/10 de manhã (no ar): **teleconsulta** por vídeo (`teleconsulta.html` paciente, `medico.html` médico/admin, `termo-teleconsulta.html`), com **documentos médicos** (pedido de exames, receita simples, atestado, comparecimento, encaminhamento, relatório, orientações; PDF com QR → `documento.html`; o médico assina com ICP-Brasil e envia o PDF); **confiança** (rodapé único com médico responsável em todas as páginas — `scripts/rodape.mjs` + `aplicar-rodape.mjs`; faxina do inventado; `como-funciona.html`, `acessibilidade.html`, `contato.html` "Fale com o IMED"; cancelar pedido; "Algo errado? Avise"; conferência de clínica no painel); **contador de visitas** próprio sem cookies (`assets/js/visitas.js`, aba Visitas no painel); acessibilidade (axe) e velocidade (fontes e ícones do próprio site — `scripts/fontes.mjs`).
-- Migrações aplicadas: `..._seguranca`, `..._teleconsulta`, `..._tele_documentos`, `..._confianca`, `..._visitas` (nomes iguais às versões do banco).
-- **Próximo:** vídeo de divulgação; nova análise dos concorrentes; Turnstile (anti-robô) e TURN para o vídeo; domínio próprio antes do 1º documento real.
+- Migrações aplicadas: `..._seguranca`, `..._teleconsulta`, `..._tele_documentos`, `..._confianca`, `..._visitas`, `20261030163758_gestao` (nomes iguais às versões do banco).
+- Tarde de 30/10: **vídeo de divulgação** gravado no GitHub (`scripts/gravar-video.mjs`, Actions → "Vídeo de divulgação", ramo `video/execucao-N`); correção da lista do mapa em celular de 360 px; análise dos concorrentes (`memory/projects/concorrentes-2026-10-30.md`, melhorias L1–L16).
+- Noite de 30/10 (no ar): **painel de gestão** `gestao.html` (só admin, `noindex`, sem contador de visitas; dados só pelas funções `admin_gestao` e `admin_cobranca_*` da migração `..._gestao`, que conferem `is_imed_admin`; cobranças registradas pela equipe em `private.billing_charges`, com histórico) e **"Para médicos"** `para-medicos.html` (fluxograma da inscrição até o atendimento) + etapas do cadastro na área do médico.
+- **Próximo:** nova página inicial (pedir localização ao abrir, clínicas mais próximas, seletor de cidade); plataforma do médico (números da fila, cadastro pela teleconsulta); melhorias dos concorrentes (L1, L6, L7, L11); Turnstile e TURN; domínio próprio antes do 1º documento real.
 
 ## Pendências que dependem do Dr. Rafael
 - Razão social e CNPJ do IMED → `sobre.html` (hoje "em atualização"). Termos de uso: pedir revisão de um advogado.
 - Comprar domínio (ex.: imed.com.br; dá para ver na Hostinger) → trocar `siteUrl` em `assets/js/config.js`.
+- Cobrança pelo site: abrir conta num meio de pagamento (Mercado Pago, Asaas…); até lá, o painel de gestão registra as cobranças feitas por fora.
 - Número de WhatsApp do IMED → `whatsapp` em `assets/js/config.js`.
 - Conectar **Resend** (e-mail) → SMTP no Supabase Auth; e Auth → URL Configuration com o endereço do site.
 - Aprovar quando o Supabase pedir confirmação de SQL (o tempo esgota se ninguém responde).

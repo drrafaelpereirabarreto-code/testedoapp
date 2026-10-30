@@ -336,6 +336,7 @@ const PAGES = [
   { name: 'Como funciona', url: 'como-funciona.html' },
   { name: 'Acessibilidade', url: 'acessibilidade.html' },
   { name: 'Fale com o IMED', url: 'contato.html' },
+  { name: 'Para médicos', url: 'para-medicos.html' },
   { name: 'Teleconsulta', url: 'teleconsulta.html', open: async (p) => { await p.waitForSelector('#tlTitle'); await p.waitForFunction(() => !document.querySelector('.tl-load:not([hidden])')); await waitIdle(p); } },
   { name: 'Termo da teleconsulta', url: 'termo-teleconsulta.html' },
   { name: 'Área do médico', url: 'medico.html', open: async (p) => { await p.waitForFunction(() => !document.querySelector('#authBox .tl-load')); await waitIdle(p); } },
