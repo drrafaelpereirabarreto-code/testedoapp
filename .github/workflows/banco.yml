@@ -263,7 +263,7 @@ jobs:
             node tests/banco/anotar.mjs cauda "Volta + reaplicação mudaram o banco (diferenças da impressão digital)" "$RUNNER_TEMP/catalogo.diff"
             exit 1
           fi
-          echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(printf '%s ' "${voltas[@]##*/}")); o banco ficou igual ($(wc -l < "$RUNNER_TEMP/catalogo-antes.txt") objetos conferidos)" \
+          echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(printf '%s\n' "${voltas[@]##*/}" | paste -sd ' ' -)); o banco ficou igual ($(wc -l < "$RUNNER_TEMP/catalogo-antes.txt") objetos conferidos)" \
             | tee "$IMED_RESUMO_DIR/40-volta.txt"
 
       # Só à mão (workflow_dispatch com impressao=...): as linhas da impressão digital em notas, para achar o objeto

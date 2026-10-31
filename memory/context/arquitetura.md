@@ -111,7 +111,10 @@ node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
   as que têm volta. Para conferir a produção: rodar no conector o SELECT de resumo
   (`select split_part(linha,' ',1), count(*), left(md5(string_agg(linha, chr(10) order by linha collate "C")),12)
   from (<catalogo.sql sem o order by do fim>) z group by 1`) e comparar; para achar o objeto que difere, rodar o
-  banco.yml à mão com `-f 'inputs[impressao]=funcao,tabela'` (linhas em notas).
+  banco.yml à mão com `-f 'inputs[impressao]=funcao,tabela'` (linhas em notas). Conferido em 31/10/2026: sem a
+  migração de preparo, o banco do CI deu o MESMO resumo da produção nos 10 tipos (527 objetos, inclusive extensões e
+  privilégios padrão); depois que o preparo for aplicado lá, o resumo da produção tem de bater com a linha "com todas
+  as migrações" do banco.yml.
 - Função nova em `public`: acrescente a linha com quem pode executar em `supabase/tests/000_catalogo.sql` (senão reprova).
   Migração nova a partir da 3.0: escreva também a volta em `supabase/volta/` com o mesmo nome.
 - **Laço rápido do banco (sem Docker, segundos):** `npm i --no-save pg` e `node tests/banco/local/rodar.mjs`
