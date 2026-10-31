@@ -575,6 +575,25 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   await context.close();
 });
 
+await scenario('cabeçalho: transparente no topo e com fundo escuro ao rolar dentro do topo (o texto não passa por baixo das letras)', async () => {
+  for (const mobile of [true, false]) {
+    const { page, errors, context } = await newPage(browser, { mobile, device: { memory: 1, cores: 8 } });
+    await page.goto(BASE);
+    await page.waitForSelector('#hero');
+    const fundo = () => page.evaluate(() => getComputedStyle(document.querySelector('.top')).backgroundColor);
+    assert.equal(await fundo(), 'rgba(0, 0, 0, 0)', 'no topo: cabeçalho transparente sobre o fundo escuro');
+    await page.evaluate(() => window.scrollTo(0, 160));
+    await page.waitForFunction(() => document.body.classList.contains('rolou') && document.body.classList.contains('at-hero'));
+    await page.waitForTimeout(450); // transição de 0,35 s
+    assert.match(await fundo(), /^rgba\(5, 22, 30, 0\.8/, `rolando dentro do topo: fundo escuro (${mobile ? 'celular' : 'computador'})`);
+    await shot(page, `inicio-cabecalho-rolando-${mobile ? 'celular' : 'computador'}`);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => !document.body.classList.contains('rolou'));
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
 await scenario('aparelho normal: baixa o 3D só depois do H1 aparecer', async () => {
   const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 } });
   await page.goto(BASE);
