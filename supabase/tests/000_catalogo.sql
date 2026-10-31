@@ -4,7 +4,7 @@
 -- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir (as da 3.1 já valem); o que
 -- já se sabe que falta e depende de decisão fica como pendência (TODO: aparece no resumo do banco.yml, mas não reprova).
 begin;
-select plan(27);
+select plan(28);
 
 /* ===================== Tabelas e views ===================== */
 
