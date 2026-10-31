@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptedKeys, callerAllowed, clampRadius, geocode, hasKey, haversine, isCep, isValidCoord, keyHeaders, keyKind, namedKeys, parseGoogle,
+  acceptedKeys, callerAllowed, callerKeys, clampRadius, geocode, hasKey, haversine, isCep, isValidCoord, keyHeaders, keyKind, namedKeys, parseGoogle,
   PUBLISHABLE_VARS, publishableKey, roundCoord, sameKey, searchGoogle, SECRET_VARS, secretKey, type Fetch,
 } from './lib.ts';
 
@@ -195,8 +195,9 @@ test('chaves: cabeçalhos do servidor — a nova só em apikey; a antiga (JWT) e
 
 test('chaves: quem pode chamar a busca (verify_jwt=false) — a publishable no apikey ou a anon antiga', () => {
   const env = envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB, web: PUB_WEB }), SUPABASE_ANON_KEY: ANTIGA_ANON, SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC }) });
-  const keys = acceptedKeys(env, PUBLISHABLE_VARS);
+  const keys = callerKeys(env);
   assert.deepEqual(keys, [PUB, PUB_WEB, ANTIGA_ANON], 'todas as publishable e a anon antiga; a secreta não entra');
+  assert.deepEqual(acceptedKeys(env, PUBLISHABLE_VARS), keys);
   assert.deepEqual(acceptedKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ a: PUB, b: PUB }) }), PUBLISHABLE_VARS), [PUB], 'sem repetir');
   assert.deepEqual(acceptedKeys(envDe({}), SECRET_VARS), []);
   // Site novo: só a publishable no apikey, sem Authorization.
@@ -209,7 +210,13 @@ test('chaves: quem pode chamar a busca (verify_jwt=false) — a publishable no a
   assert.equal(callerAllowed(cabecalhos({ apikey: 'sb_publishable_outro_projeto' }), keys), false);
   assert.equal(callerAllowed(cabecalhos({ authorization: `Bearer ${PUB}` }), keys), false);
   assert.equal(callerAllowed(cabecalhos({ apikey: SEC }), keys), false, 'a secreta não é chave de visitante');
-  // Ambiente sem nenhuma chave publishable (configuração faltando): não barra (origem, limite e validação continuam).
+  // Ambiente sem a lista das publishable novas (só a anon antiga, ou nada): não dá para reconhecer a chave do site, e
+  // a função não barra ninguém (origem, limite e validação continuam valendo).
+  assert.equal(callerKeys(envDe({ SUPABASE_ANON_KEY: ANTIGA_ANON })), null);
+  assert.equal(callerKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: 'quebrado', SUPABASE_ANON_KEY: ANTIGA_ANON })), null);
+  assert.equal(callerKeys(envDe({})), null);
+  assert.equal(callerAllowed(cabecalhos({ apikey: PUB }), null), true);
+  assert.equal(callerAllowed(cabecalhos({}), null), true);
   assert.equal(callerAllowed(cabecalhos({}), []), true);
 });
 

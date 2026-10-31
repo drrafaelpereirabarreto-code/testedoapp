@@ -9,7 +9,7 @@
 // conferido aqui:
 //   - origem: só os sites de ALLOWED_ORIGINS (outro site no navegador recebe 403);
 //   - chave: o "apikey" precisa ser uma chave publishable do projeto (ou a anon antiga, do site antigo ainda em
-//     cache), senão 401;
+//     cache), senão 401 (só quando o ambiente tem SUPABASE_PUBLISHABLE_KEYS, como deve ser);
 //   - limite: 40 chamadas por minuto por IP; e os dados da busca são validados (coordenadas, raio, texto).
 // O banco é consultado com a chave publishable da PRÓPRIA função (como visitante, sujeito às regras do banco),
 // e o importador com a chave secreta (SUPABASE_SECRET_KEYS), que nunca sai do servidor.
@@ -38,8 +38,8 @@
 // busca e nunca são gravadas nem enviadas aos logs.
 
 import {
-  acceptedKeys, callerAllowed, clampRadius, geocode, isValidCoord, keyHeaders, keyKind, PUBLISHABLE_VARS, publishableKey,
-  roundCoord, searchGoogle, secretKey, type GeoResult, type MapPlace,
+  callerAllowed, callerKeys, clampRadius, geocode, isValidCoord, keyHeaders, keyKind, publishableKey, roundCoord, searchGoogle,
+  secretKey, type GeoResult, type MapPlace,
 } from './lib.ts';
 
 const env = (name: string) => Deno.env.get(name);
@@ -49,9 +49,10 @@ const SUPABASE_URL = env('SUPABASE_URL') ?? '';
 const PUBLIC_KEY = publishableKey(env);
 // Chave secreta (nova; sem ela, a service_role antiga): só para chamar o importador.
 const SECRET_KEY = secretKey(env);
-// Chaves aceitas de quem chama a busca: as publishable do projeto e a anon antiga, enquanto existir.
-const CALLER_KEYS = acceptedKeys(env, PUBLISHABLE_VARS);
-if (!CALLER_KEYS.length) console.error('nenhuma chave publishable no ambiente: a chave de quem chama não está sendo conferida');
+// Chaves aceitas de quem chama a busca: as publishable do projeto e a anon antiga, enquanto existir (null: o ambiente
+// não tem SUPABASE_PUBLISHABLE_KEYS e a chave de quem chama não é conferida).
+const CALLER_KEYS = callerKeys(env);
+if (!CALLER_KEYS) console.error('sem SUPABASE_PUBLISHABLE_KEYS no ambiente: a chave de quem chama não está sendo conferida');
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ??
   'https://drrafaelpereirabarreto-code.github.io,http://localhost:8765,http://127.0.0.1:8765')
   .split(',').map((s) => s.trim()).filter(Boolean);

@@ -313,10 +313,15 @@ export function hasKey(headers: { get(name: string): string | null }, keys: stri
 }
 /* ===== Chaves do Supabase: fim ===== */
 
-// Quem pode chamar a busca (a função é publicada com verify_jwt=false e confere no código): quem traz no "apikey" a
-// chave publishable do projeto, ou a anon antiga (site antigo ainda guardado no aparelho). Sem nenhuma chave
-// publishable no ambiente (configuração faltando), não barra ninguém: a chave é pública de qualquer jeito, e a origem
-// permitida, o limite por IP e a validação dos dados continuam valendo.
-export function callerAllowed(headers: { get(name: string): string | null }, keys: string[]): boolean {
-  return keys.length === 0 || hasKey(headers, keys);
+// Quem pode chamar a busca (a função é publicada com verify_jwt=false e confere no código): quem traz no "apikey" uma
+// chave publishable do projeto, ou a anon antiga (site antigo ainda guardado no aparelho).
+// callerKeys devolve as chaves aceitas, ou null quando o ambiente não tem a lista das chaves publishable novas
+// (SUPABASE_PUBLISHABLE_KEYS): sem ela não dá para reconhecer a chave do site, e a função não barra ninguém (a chave
+// é pública de qualquer jeito; a origem permitida, o limite por IP e a validação dos dados continuam valendo).
+export function callerKeys(env: EnvGet): string[] | null {
+  if (!Object.keys(namedKeys(env(PUBLISHABLE_VARS.novas))).length) return null;
+  return acceptedKeys(env, PUBLISHABLE_VARS);
+}
+export function callerAllowed(headers: { get(name: string): string | null }, keys: string[] | null): boolean {
+  return !keys || !keys.length || hasKey(headers, keys);
 }

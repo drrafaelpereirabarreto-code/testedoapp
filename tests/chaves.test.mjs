@@ -193,7 +193,8 @@ test('clinicas-proximas: não depende do token de quem chama e confere a chave n
   // Ordem das travas: origem, método, limite por IP, chave e só então o corpo da busca.
   const pos = ['origin_not_allowed', 'method_not_allowed', 'rate_limited', 'unauthorized', 'invalid_json'].map((s) => t.indexOf(`'${s}'`));
   assert.ok(pos.every((p, i) => p > 0 && (i === 0 || p > pos[i - 1])), `travas na ordem: ${pos.join(', ')}`);
-  assert.match(t, /const CALLER_KEYS = acceptedKeys\(env, PUBLISHABLE_VARS\);/, 'aceita só as publishable (e a anon antiga)');
+  assert.match(t, /const CALLER_KEYS = callerKeys\(env\);/, 'aceita só as publishable (e a anon antiga)');
+  assert.match(read('supabase/functions/clinicas-proximas/lib.ts'), /return acceptedKeys\(env, PUBLISHABLE_VARS\);/);
   const imp = read('supabase/functions/importar-clinicas/index.ts');
   assert.match(imp, /if \(hasKey\(req\.headers, SERVER_KEYS\)\) return true;/, 'importador: chave secreta (ou a service_role antiga)');
   assert.match(imp, /const SERVER_KEYS = acceptedKeys\(env, SECRET_VARS\);/);
