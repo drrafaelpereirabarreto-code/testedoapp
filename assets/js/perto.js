@@ -61,6 +61,7 @@ const S = {
   moreCtrl: null,
   pointCtrl: null,
   f: { ...G.DEFAULT_FILTERS, exam: Object.hasOwn(G.EXAMS, params.get('exame') ?? '') ? params.get('exame') : '' },
+  exameNome: '', // exame de laboratório escrito na busca ("Hemograma"), para o aviso da lista
   ratings: new Map(), // id do local → { rating, reviews }, só o que veio do banco
   ratingsAsked: new Set(),
   scheduled: new Set(), // parceiros com agenda online (horários livres para escolher)
@@ -705,34 +706,140 @@ function geoFail(code) {
   render();
 }
 
+/* ======================= exame escrito na busca ======================= */
+// Nomes de exames do dia a dia (exames-nomes.js): "ressonância em Campinas" liga o filtro do exame e procura só
+// "Campinas"; "hemograma" sozinho liga o filtro e usa a área que já está na tela (ou a localização). Nome que serve
+// para mais de um exame ("eco": ecocardiograma ou ultrassom) e doença sozinha ("dengue": exame ou atendimento) mostram
+// as opções: o site não escolhe sozinho. Baixado quando a pessoa toca na caixa de busca.
+let N = null, nomesP = null;
+const loadNomes = () => (nomesP ||= import('./exames-nomes.js').then((m) => (N = m), () => { nomesP = null; return null; }));
+// O nome como a pessoa escreveu (com uma letra errada, o nome certo).
+const nomeEscrito = (a) => (a.erro ? a.nome : a.digitado);
+// Exame de laboratório com nome ("hemograma", "HIV"), para o aviso da lista; grupo ("exame de sangue") não conta.
+const nomeLab = (a) => (a.codigos[0] === 'lab' && a.tipo === 'e' ? nomeEscrito(a) : '');
+const DICA_EM = (a) => `Para buscar em outra cidade, escreva “em” antes do nome dela, por exemplo “${a.digitado} em Campinas”.`;
+
+// O que o texto ligou, para a pessoa conferir. O IMED não sabe quais exames cada local faz: exame de laboratório ou
+// exame específico ("Doppler", "Angiotomografia") vem com "confirme se o local faz este exame". Doença ou substância
+// ("hepatite", "colesterol") não é chamada de exame: a frase diz só o que foi buscado.
+function exameMsg(a) {
+  const k = a.codigos[0];
+  if (k === 'lab') {
+    return nomeLab(a) ? `Você buscou “${nomeLab(a)}”: a lista mostra os laboratórios. Confirme se o local faz este exame.`
+      : `${a.tipo === 'n' ? 'Exames de laboratório' : a.nome}: a lista mostra os laboratórios. Confirme se o local faz o exame que você precisa.`;
+  }
+  const nota = a.erro ? ` (você escreveu “${a.digitado}”)` : a.tipo === 'a' ? ` (também chamado de ${N.minusculo(a.nome)})` : a.tipo === 'e' ? ` (${a.nome})` : '';
+  return `Filtro de exame: ${G.EXAMS[k].n}${nota}.${a.tipo === 'e' ? ' Confirme se o local faz este exame.' : ''}`;
+}
+// Liga o filtro do exame ('' = todos os locais). nome: o exame de laboratório escrito ("hemograma"), para o aviso da lista.
+function aplicarExame(codigo, nome = '') {
+  S.exameNome = nome;
+  if (S.f.exam === codigo) return render();
+  if (S.phase === 'results') changeFilters(() => { S.f.exam = codigo; });
+  else { S.f.exam = codigo; render(); }
+}
+// Texto só com o exame: a área que já está na tela ou, sem ela, a localização do aparelho.
+function exameAqui(msg) {
+  if (!S.origin) locate();
+  setQMsg(msg, false, true);
+}
+
+// "eco", "dengue" ou mais de um exame escrito: botões com as opções. Com o lugar, a busca do lugar segue sem trocar o
+// exame. O foco vai para a pergunta (não para a 1ª opção: dois Enter seguidos escolheriam sozinhos).
+function mostrarEscolha(s, semLugar) {
+  const box = $('#qEsc');
+  const amb = s.achados.find((a) => a.codigos.length > 1);
+  const doe = s.achados.find((a) => a.doenca);
+  const titulo = doe ? `“${doe.digitado}”: você procura o exame ou atendimento?` : amb ? `“${N.minusculo(amb.nome)}” pode ser:` : 'Você escreveu mais de um exame. Qual buscar?';
+  const opcoes = doe ? [['lab', 'Exame (laboratórios)'], ['todos', 'Atendimento (todos os locais)']] : s.exames.map((k) => [k, G.EXAMS[k].n]);
+  box.innerHTML = `<p id="qEscT" tabindex="-1">${esc(titulo)}</p>`
+    + `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${opcoes.map(([k, n]) => `<button class="pt-loc" style="margin-top:0;min-height:44px" type="button" data-exame="${esc(k)}">${esc(n)}</button>`).join('')}</div>`;
+  box.setAttribute('aria-labelledby', 'qEscT');
+  box.hidden = false;
+  box._lugar = !semLugar;
+  box._achado = doe || null;
+  $('#qEscT').focus({ preventScroll: true });
+  box.scrollIntoView({ block: 'nearest' });
+}
+function hideEscolha() { const box = $('#qEsc'); box.hidden = true; box.innerHTML = ''; }
+// viaTeclado: o foco volta para a caixa de busca; no toque, vai para o aviso (o teclado do celular não reabre).
+function escolherExame(k, viaTeclado) {
+  const box = $('#qEsc');
+  const comLugar = box._lugar, doe = box._achado;
+  hideEscolha();
+  const todos = k === 'todos';
+  aplicarExame(todos ? '' : k, doe && k === 'lab' ? doe.digitado : '');
+  const msg = todos ? 'Mostrando todos os locais, sem filtro de exame.'
+    : doe && k === 'lab' ? `Você buscou “${doe.digitado}”: a lista mostra os laboratórios. Confirme se o local faz este exame.`
+      : `Filtro de exame: ${G.EXAMS[k].n}.`;
+  if (comLugar || S.origin) setQMsg(msg, false, true);
+  else exameAqui(msg);
+  if (viaTeclado) $('#q').focus({ preventScroll: true });
+  else $('#qMsg').focus({ preventScroll: true });
+}
+
 /* ======================= busca por CEP, cidade ou endereço ======================= */
-let geoCtrl = null;
-async function onSearchSubmit(e) {
+let geoCtrl = null, buscaSeq = 0;
+function onSearchSubmit(e) {
   e.preventDefault();
-  const q = $('#q').value.replace(/\s+/g, ' ').trim();
-  const digits = q.replace(/\D/g, '');
-  if (q.length < 3) return setQMsg('Digite um CEP, uma cidade ou um endereço.', true);
-  if (/^[\d\s.-]+$/.test(q) && digits.length !== 8) return setQMsg('O CEP tem 8 números, por exemplo 01310-100.', true);
-  setQMsg('');
-  geoCtrl?.abort();
-  geoCtrl = new AbortController();
+  buscarTexto($('#q').value);
+}
+// comDicionario: separa o exame do lugar (a busca digitada); o lugar que veio da página inicial vai direto.
+async function buscarTexto(texto, comDicionario = true) {
+  const seq = ++buscaSeq;
+  const raw = String(texto).replace(/\s+/g, ' ').trim();
   const btn = $('#goBtn');
+  hideEscolha();
+  // "Buscando…" desde o Enter, também enquanto o dicionário chega (no máximo 1 s; sem ele, o texto vai inteiro).
   btn.disabled = true;
   btn.textContent = 'Buscando…';
   try {
-    const g = await callFn({ action: 'geocode', q }, geoCtrl.signal, 15000);
-    const o = { lat: G.roundCoord(g.lat), lng: G.roundCoord(g.lng) };
-    if (g.precision === 'cidade' || g.precision === 'estado') setQMsg(`Mostrando a partir do centro de ${g.label}. Para resultados mais perto de você, use o CEP ou o endereço.`, false, true);
-    runSearch(o, g.label, 'busca', g.precision);
-    if (!desktop.matches) $('#count').scrollIntoView({ behavior: SMOOTH, block: 'start' });
-  } catch (err) {
-    if (err.name === 'AbortError') return;
-    if (err.code === 'not_found') setQMsg('Não encontramos esse endereço. Confira o CEP ou tente com cidade e bairro.', true);
-    else if (err.status === 429) setQMsg('Muitas buscas seguidas. Espere um minuto e tente de novo.', true);
-    else setQMsg('Não foi possível localizar o endereço agora. Verifique sua internet e tente de novo.', true);
+    // O exame escrito junto ("ressonância em Campinas", "hemograma perto de mim"): liga o filtro e procura só o lugar.
+    // CEP (só números) não passa pelo dicionário. Sem o dicionário (sem internet), o texto vai inteiro, como antes.
+    let q = raw, ex = null, msg = '';
+    if (comDicionario && raw.length >= 2 && /\p{L}/u.test(raw)) {
+      if (!N) await Promise.race([loadNomes(), new Promise((r) => setTimeout(r, 1000))]);
+      if (seq !== buscaSeq) return;
+      const s = N?.separar(raw);
+      if (s) { q = s.lugar; if (s.exames.length) ex = s; }
+    }
+    if (ex) {
+      const a = ex.achados[0];
+      if (ex.exames.length > 1 || a.doenca) mostrarEscolha(ex, !q);
+      else {
+        // O que ficou de fora sem ser lugar ("ultrassom Braço do Norte" sem o "em"): a área atual, com a dica.
+        msg = exameMsg(a) + (!q && ex.sobra ? ` ${DICA_EM(a)}` : '');
+        if (!q) { aplicarExame(ex.exames[0], nomeLab(a)); return exameAqui(msg); }
+      }
+      if (!q) return setQMsg('');
+    }
+    const digits = q.replace(/\D/g, '');
+    const so1 = ex?.exames.length === 1 && !ex.achados[0].doenca;
+    if (q.length < 3) { if (so1) aplicarExame(ex.exames[0], nomeLab(ex.achados[0])); return setQMsg('Digite um CEP, uma cidade ou um endereço.', true); }
+    if (/^[\d\s.-]+$/.test(q) && digits.length !== 8) { if (so1) aplicarExame(ex.exames[0], nomeLab(ex.achados[0])); return setQMsg('O CEP tem 8 números, por exemplo 01310-100.', true); }
+    setQMsg('');
+    geoCtrl?.abort();
+    geoCtrl = new AbortController();
+    try {
+      const g = await callFn({ action: 'geocode', q }, geoCtrl.signal, 15000);
+      const o = { lat: G.roundCoord(g.lat), lng: G.roundCoord(g.lng) };
+      const centro = g.precision === 'cidade' || g.precision === 'estado' ? `Mostrando a partir do centro de ${g.label}. Para resultados mais perto de você, use o CEP ou o endereço.` : '';
+      if (msg || centro) setQMsg([msg, centro].filter(Boolean).join(' '), false, true);
+      // O filtro do exame entra junto com a busca nova (sem buscar a área antiga de novo).
+      if (so1) { S.exameNome = nomeLab(ex.achados[0]); S.f.exam = ex.exames[0]; }
+      runSearch(o, g.label, 'busca', g.precision);
+      // No celular, a lista sobe para a tela; com as opções de exame abertas ("eco"), elas ficam à vista.
+      if (!desktop.matches && $('#qEsc').hidden) $('#count').scrollIntoView({ behavior: SMOOTH, block: 'start' });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      // O lugar não deu certo, mas o exame vale: o filtro liga na área que já está na tela.
+      if (so1) aplicarExame(ex.exames[0], nomeLab(ex.achados[0]));
+      if (err.code === 'not_found') setQMsg('Não encontramos esse endereço. Confira o CEP ou tente com cidade e bairro.', true);
+      else if (err.status === 429) setQMsg('Muitas buscas seguidas. Espere um minuto e tente de novo.', true);
+      else setQMsg('Não foi possível localizar o endereço agora. Verifique sua internet e tente de novo.', true);
+    }
   } finally {
-    btn.disabled = false;
-    btn.textContent = 'Buscar';
+    if (seq === buscaSeq) { btn.disabled = false; btn.textContent = 'Buscar'; }
   }
 }
 
@@ -1049,8 +1156,12 @@ function badgesHTML(p) {
   return b.join('');
 }
 
+// Exame de laboratório escrito na busca ("hemograma"): o preço que a clínica informa é um só para o laboratório, não o
+// desse exame. Para não parecer o preço do exame, a lista não o mostra.
+const semPrecoLab = () => S.f.exam === 'lab' && !!S.exameNome;
 function priceHTML(p) {
   if (p.source !== 'imed') return '';
+  if (semPrecoLab()) return '<span class="pc-price muted">Preço do exame sob consulta</span>';
   const v = S.f.exam ? G.priceFor(p, S.f.exam) : G.minPrice(p);
   if (v == null) return '<span class="pc-price muted">Preço sob consulta</span>';
   return `<span class="pc-price">${S.f.exam ? `${esc(G.EXAMS[S.f.exam].n)}: ` : 'a partir de '}${G.formatPrice(v)}</span>`;
@@ -1088,7 +1199,7 @@ function cardLabel(p) {
   if (r) parts.push(`Nota ${G.formatRating(r.rating)} de 5, ${plural(r.reviews, 'avaliação', 'avaliações')}`);
   if (p.source === 'imed') {
     const v = S.f.exam ? G.priceFor(p, S.f.exam) : G.minPrice(p);
-    parts.push(v == null ? 'Preço sob consulta' : `${S.f.exam ? `${G.EXAMS[S.f.exam].n}: ` : 'a partir de '}${G.formatPrice(v)}`);
+    parts.push(semPrecoLab() ? 'Preço do exame sob consulta' : v == null ? 'Preço sob consulta' : `${S.f.exam ? `${G.EXAMS[S.f.exam].n}: ` : 'a partir de '}${G.formatPrice(v)}`);
   }
   return `${parts.join(', ')}. Ver detalhes`;
 }
@@ -1248,6 +1359,7 @@ function countHTML(shown, total) {
 // Usa só raio e exame: filtros como "Atende SUS" tiram os parceiros da lista, mas não apagam os preços da região.
 function priceBandHTML(all) {
   if (S.phase !== 'results' || !S.f.exam || !Object.hasOwn(G.EXAMS, S.f.exam) || allFailed()) return '';
+  if (semPrecoLab()) return '<p class="pt-band none"><i class="fa-solid fa-tag" aria-hidden="true"></i><span>O preço de cada exame de laboratório não está no IMED: confirme com o laboratório.</span></p>';
   const name = G.EXAMS[S.f.exam].n;
   const r = G.priceRange(G.filterPlaces(all, { ...G.DEFAULT_FILTERS, radius: S.f.radius, exam: S.f.exam }), S.f.exam);
   if (!r) {
@@ -1354,7 +1466,9 @@ function render(fit = false) {
     if (S.f.insurance) html += '<p class="pt-note"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Convênios informados pelas clínicas parceiras. Confirme a cobertura com a clínica e com o seu plano.</p>';
     else if (S.f.sus) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>"Atende SUS" vem do cadastro oficial (CNES). As clínicas parceiras ainda não informam esse dado, por isso ficam de fora deste filtro.</p>';
     const official = S.base.length || cnesRows().length;
-    if (S.f.exam && !S.f.onlyImed && (official || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
+    // Exame de laboratório: o IMED não sabe quais exames cada laboratório faz (nem os parceiros informam cada um).
+    if (S.f.exam === 'lab') html += `<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>${S.exameNome ? `Você buscou “${esc(S.exameNome)}”: a lista mostra os laboratórios. ` : ''}O IMED não sabe quais exames cada laboratório faz: confirme se o local faz este exame.</p>`;
+    else if (S.f.exam && !S.f.onlyImed && (official || S.places.length)) html += '<p class="pt-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>Para quem ainda não é parceiro do IMED, o exame é reconhecido pelo nome do estabelecimento. Confirme com o local.</p>';
     if (!S.demo && S.imedState === 'ok' && !S.imed.length && S.placesState !== 'loading') {
       const fonte = official ? 'do cadastro oficial do Ministério da Saúde (CNES)' : 'de mapas públicos';
       html += `<p class="pt-note"><i class="fa-solid fa-handshake" aria-hidden="true"></i>Ainda não há clínicas parceiras do IMED nesta região. Os resultados vêm ${fonte}. Tem uma clínica? <a class="link" href="parceiros.html">Seja parceira</a>.</p>`;
@@ -1739,6 +1853,11 @@ function bookingDone(p, v, id, logged) {
 /* ======================= eventos ======================= */
 function bind() {
   $('#searchForm').addEventListener('submit', onSearchSubmit);
+  $('#q').addEventListener('focus', () => { loadNomes(); });
+  // e.detail 0: botão acionado pelo teclado (Enter ou espaço), não pelo toque ou clique.
+  $('#qEsc').addEventListener('click', (e) => { const b = e.target.closest('[data-exame]'); const k = b?.dataset.exame; if (k && (k === 'todos' || Object.hasOwn(G.EXAMS, k))) escolherExame(k, e.detail === 0); });
+  // Exame escolhido na lista de filtros: as opções do "eco" e o nome escrito na busca saem.
+  $('#fExam').addEventListener('change', () => { S.exameNome = ''; hideEscolha(); });
   $('#locBtn').addEventListener('click', locate);
   $('#areaBtn').addEventListener('click', searchMapArea);
   $('#viewToggle').addEventListener('click', () => setMapView(!document.body.classList.contains('show-map')));
@@ -1822,7 +1941,7 @@ function trackSearch(rows = []) {
   const city = G.searchCity(S.coverage, rows);
   if (city) track('busca_cidade', city);
 }
-const clearFilters = () => changeFilters(() => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; });
+const clearFilters = () => changeFilters(() => { S.f = { ...G.DEFAULT_FILTERS, radius: S.f.radius, sort: S.f.sort }; S.exameNome = ''; });
 
 function onAction(el) {
   const a = el.dataset.act;
@@ -1837,6 +1956,19 @@ function onAction(el) {
 }
 
 /* ======================= início ======================= */
+// Lugar vindo da página inicial: ?onde= (cidade ou bairro, sem número) ou, com número (CEP, endereço), guardado só
+// na aba (sessionStorage), lido uma vez e apagado. O ?onde= sai do endereço depois de lido (como o ?usar=).
+function lerOnde() {
+  let onde = (params.get('onde') || '').trim();
+  if (onde) {
+    params.delete('onde');
+    const rest = params.toString();
+    history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  } else {
+    try { onde = (sessionStorage.getItem('imed_onde') || '').trim(); sessionStorage.removeItem('imed_onde'); } catch { onde = ''; }
+  }
+  return onde.slice(0, 140);
+}
 async function init() {
   initMap();
   bind();
@@ -1849,6 +1981,10 @@ async function init() {
   }
   const localRef = G.parseLocalRef(params.get('local'));
   if (localRef) return openLocal(localRef);
+  // Lugar escrito na página inicial junto com o exame ("ressonância em Campinas"): a busca vai direto para lá, sem
+  // pedir a localização.
+  const onde = lerOnde();
+  if (onde) { $('#q').value = onde; buscarTexto(onde, false); return; }
   const state = await permissionState();
   // Só pede a localização quando a pessoa tocou em "Encontrar clínicas perto de mim"
   // ou quando ela já tinha permitido antes; senão, mostra a explicação e espera o toque.

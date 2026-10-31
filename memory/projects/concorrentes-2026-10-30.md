@@ -3,6 +3,8 @@
 **Para:** Dr. Rafael Pereira Barreto Silva (CRM-SP 266930)
 **O que é:** o IMED de hoje, conferido no código do site e do banco, ao lado de 18 serviços de saúde. São 6 marketplaces de consulta e exame, 6 laboratórios e 6 de telemedicina.
 
+> **Situação (31/10/2026):** no ar L1, L2, L6, L7 e L11 (L2 = busca por nome popular, sigla e erro de digitação: `assets/js/exames-nomes.js`).
+
 ## Como foi feito
 
 - **Concorrentes:** a pesquisa foi feita por busca na internet. A rede desta sessão bloqueou os sites deles, então nada foi visto "ao vivo". Tudo vem de páginas achadas na busca, de lojas de aplicativos e de reportagens. Preços e números podem estar velhos: as fontes vão de 2016 a 2026.

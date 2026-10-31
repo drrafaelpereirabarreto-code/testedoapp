@@ -1343,9 +1343,14 @@ function renderCatalog() {
     </details>`).join('') + '<p class="tl-muted md-nohit" id="exNone" hidden>Nenhum exame encontrado. Use “Outro exame”, logo abaixo.</p>';
   $('#exOtherType').insertAdjacentHTML('beforeend', Object.entries(T.SEARCH).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join(''));
 }
+// Nomes do dia a dia e uma letra errada na busca de exames ("USG", "tomo", "hemogrma"): o dicionário da busca do site
+// (exames-nomes.js), baixado só quando o médico usa a busca. Sem ele (ainda chegando ou sem internet), a busca de sempre.
+let nomes = null, nomesP = null;
+const loadNomes = () => (nomesP ||= import('./exames-nomes.js').then((m) => (nomes = m), () => { nomesP = null; return null; }));
 function filterCatalog(q) {
   const query = T.fold(q);
-  const hits = new Set(query ? T.searchCatalog(q).map((it) => it.id) : []);
+  if (query && !nomes) loadNomes().then((m) => { if (m && T.fold($('#exSearch').value) === query) filterCatalog(q); });
+  const hits = new Set(query ? T.searchCatalog(q, nomes).map((it) => it.id) : []);
   let n = 0;
   for (const g of $$('#exCatalog .md-group')) {
     let any = false;
@@ -1434,6 +1439,7 @@ async function sendExams({ quiet = false } = {}) {
 function setupExams() {
   renderCatalog();
   $('#exSearch').addEventListener('input', (e) => filterCatalog(e.target.value));
+  $('#exSearch').addEventListener('focus', loadNomes);
   $('#exCatalog').addEventListener('change', (e) => { const i = e.target.closest('input[data-ex]'); if (i) toggleExam(i.dataset.ex, i.checked); });
   $('#exChosen').addEventListener('click', (e) => {
     const b = e.target.closest('[data-remove]');

@@ -3,13 +3,13 @@
 // A cidade 3D (hero3d.js e three.module.min.js) fica fora do CORE: aparelhos fracos não a baixam;
 // nos demais ela entra no cache no primeiro uso. O mesmo vale para o pdf-lib e o gerador de QR (só o médico usa)
 // e para o Font Awesome completo (só baixa se faltar algum ícone no recorte icones.min.css).
-const VERSION = 'imed-v19';
+const VERSION = 'imed-v20';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html',
   './termos.html', './como-funciona.html', './acessibilidade.html', './contato.html', './para-medicos.html', './teleconsulta.html', './medico.html',
   './termo-teleconsulta.html', './documento.html', './manifest.webmanifest', './assets/js/config.js', './assets/js/aviso.js', './assets/js/data.js',
-  './assets/js/db.js', './assets/js/visitas.js', './assets/js/inicio.js', './assets/js/inicio-core.js', './assets/js/inicio-perto.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js',
+  './assets/js/db.js', './assets/js/visitas.js', './assets/js/inicio.js', './assets/js/inicio-core.js', './assets/js/inicio-perto.js', './assets/js/exames-nomes.js', './assets/js/auth.js', './assets/js/conta.js', './assets/js/clinica.js',
   './assets/js/painel.js', './assets/js/estatisticas.js', './assets/js/reivindicar.js', './assets/js/cidade.js', './assets/js/local.js', './assets/js/geo-core.js',
   './assets/js/perto.js', './assets/js/parceiros.js', './assets/js/confianca.js', './assets/js/contato.js', './assets/js/teleconsulta.js', './assets/js/medico.js',
   './assets/js/tele-core.js', './assets/js/tele-docs.js', './assets/js/documento.js', './assets/css/conta.css', './assets/css/clinica.css', './assets/css/cidade.css',

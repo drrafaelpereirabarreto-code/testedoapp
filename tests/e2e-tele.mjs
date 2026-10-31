@@ -918,6 +918,8 @@ await scenario('consulta completa: fila, vídeo nos dois lados, mensagens, exame
   await visible(doc.page, '#consult');
   assert.match(await text(doc.page, '#cTitle'), /Complementar/);
   assert.equal(await doc.page.isVisible('#cVideoCard'), false, 'sem vídeo no complemento');
+  // O registro anterior chega depois de abrir o complemento (com a máquina ocupada, alguns décimos depois).
+  await doc.page.waitForFunction(() => /Conduta: exames e retorno/.test(document.querySelector('#cOldNotes')?.innerText || ''), null, { timeout: 10000 });
   assert.match(await text(doc.page, '#cOldNotes'), /Conduta: exames e retorno/);
   await doc.page.fill('#cNotes', 'Paciente ligou de volta: sem febre.');
   await doc.page.click('#cEnd');
