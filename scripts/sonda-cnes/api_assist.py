@@ -265,7 +265,50 @@ def outras_rotas(info: dict) -> None:
     anotar('notice', 'A11 API: cnes-estabelecimentos e cnes-servicos-especializados', '\n'.join(linhas))
 
 
+def historico() -> None:
+    """3ª rodada: a rota cnes-equipamentos devolveu poucos registros e só de 2008-2012. Quais competências existem,
+    como a paginação funciona (o swagger diz que offset é o número da PÁGINA) e se o filtro vem antes do limit."""
+    rota = ROTAS[0]
+    linhas = []
+    # 1) Um estabelecimento que tem ressonância segundo o FTP (Hospital Vera Cruz, Campinas): que meses a API tem?
+    for r_ in ROTAS:
+        r, recs, _ = chamar(r_, {'co_cnes': '2078376', 'limit': 1000, 'offset': 0}, timeout=120)
+        comps = sorted({str(x.get('nu_comp')) for x in recs})
+        resson = [x for x in recs if 'RESSON' in str(x.get('ds_equipamento', '')).upper()]
+        linhas.append(f"{r_.split('/')[-1]} co_cnes=2078376: {resumo_http(r)}; {len(recs)} registros; competências: "
+                      f"{', '.join(comps[:3])}{' ... ' + ', '.join(comps[-3:]) if len(comps) > 6 else ', '.join(comps[3:])} ({len(comps)})"
+                      + (f"; ressonância: {seguro(resson[-1])}" if resson else ''))
+    # 2) Campinas por competência (do mais novo ao mais velho).
+    achados = []
+    for comp in ('202609', '202608', '202606', '202603', '202601', '202512', '202506', '202501', '202412', '202406',
+                 '202401', '202312', '202306', '202212', '202112', '202012', '201912', '201812', '201512', '201212'):
+        r, recs, _ = chamar(rota, {'co_ibge': mun6(CAMPINAS), 'nu_comp': comp, 'limit': 1000, 'offset': 0}, timeout=120)
+        achados.append(f'{comp}={len(recs) if r.get("status") == 200 else r.get("status")}')
+    linhas.append('Campinas por competência (registros na 1ª página de 1000): ' + ', '.join(achados))
+    # 3) Paginação: offset = página? O filtro de município vem antes do limit?
+    pags = []
+    for off in (0, 1, 2, 3, 1000):
+        r, recs, _ = chamar(rota, {'co_ibge': mun6(CAMPINAS), 'limit': 1000, 'offset': off}, timeout=120)
+        comps = sorted({str(x.get('nu_comp')) for x in recs})
+        pags.append(f"offset={off}: {len(recs)} ({', '.join(comps[:2])}{'..' + comps[-1] if len(comps) > 2 else ''})")
+    linhas.append('Campinas, limit=1000, sem competência: ' + '; '.join(pags))
+    # 4) Sem filtro nenhum: como a base está ordenada e de que tamanho.
+    for params in ({'limit': 1000, 'offset': 0}, {'limit': 1000, 'offset': 1}, {'limit': 1000, 'offset': 5000},
+                   {'nu_comp': '202609', 'limit': 1000, 'offset': 0}, {'nu_comp': '202501', 'limit': 1000, 'offset': 0}):
+        r, recs, _ = chamar(rota, params, timeout=120)
+        comps = Counter(str(x.get('nu_comp')) for x in recs)
+        muns = len({x.get('co_ibge') for x in recs})
+        linhas.append(f'{params}: {resumo_http(r)}; {len(recs)} registros; competências {dict(comps.most_common(3))}; {muns} municípios')
+    anotar('notice', 'A13 API cnes-equipamentos: competências, paginação e ordem da base', '\n'.join(linhas))
+
+
 def main() -> None:
+    if sys.argv[1:] == ['historico']:
+        try:
+            historico()
+        except Exception as e:  # noqa: BLE001
+            anotar('error', 'API: histórico quebrou', f'{type(e).__name__}: {e}')
+        return
     for parte in (documento,):
         try:
             parte()

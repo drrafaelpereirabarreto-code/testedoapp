@@ -10,7 +10,8 @@
 #   B  a base completa mensal do CNES (BASE_DE_DADOS_CNES_AAAAMM.ZIP, CSV), com estabelecimento x equipamento;
 #   F  os arquivos mensais por UF do FTP do DATASUS (CNES/200508_/Dados/EQ/EQ<UF><AAMM>.dbc);
 #   O  outras: portais de dados abertos (CKAN), o serviço da ficha do site do CNES e o TabNet.
-# Quais fontes rodam: as letras de scripts/sonda-cnes/fontes.txt (para não repetir à toa as pesadas).
+# Quais fontes rodam: as letras de scripts/sonda-cnes/fontes.txt (para não repetir à toa as pesadas);
+# H = só as competências e a paginação da rota cnes-equipamentos da API (3ª rodada).
 # Para B e F: tempo e tamanho do download, colunas, códigos oficiais dos aparelhos, quantos estabelecimentos de
 # Campinas (3509502) e São Paulo (3550308) têm ressonância em uso, com exemplos (CNES, quantidade; nome só de pessoa
 # jurídica) e a conferência com o que o site do IMED mostra hoje (só leitura, pela API pública do site, com a mesma
@@ -56,7 +57,7 @@ jobs:
           persist-credentials: false
       - name: Ler a lista
         id: ler
-        run: echo "fontes=$(tr -cd 'RABFO' < scripts/sonda-cnes/fontes.txt)" >> "$GITHUB_OUTPUT"
+        run: echo "fontes=$(tr -cd 'RABFOH' < scripts/sonda-cnes/fontes.txt)" >> "$GITHUB_OUTPUT"
 
   rede:
     name: R - Rede (de onde sai e o que alcança)
@@ -106,6 +107,23 @@ jobs:
       - name: Publicar avisos (4)
         if: always()
         run: python3 -I "$PUBLICAR" 3 --ultimo
+
+  api_historico:
+    name: H - API cnes-equipamentos (competências e paginação)
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'H')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Competências, paginação e ordem da base
+        run: python3 -I scripts/sonda-cnes/api_assist.py historico
+      - name: Publicar avisos
+        if: always()
+        run: python3 -I "$PUBLICAR" 0 --ultimo
 
   base:
     name: B - Base completa do CNES (ZIP com CSV)
