@@ -7,6 +7,8 @@
 <title>Fale com o IMED | IMED</title>
 <meta name="description" content="Fale com o IMED: dúvidas, cancelamento de pedido, pedidos sobre seus dados pessoais (LGPD) e contato de clínicas. A mensagem fica gravada e você recebe um número de protocolo na hora.">
 <meta name="theme-color" content="#05161e">
+<script src="assets/js/tema.js"></script>
+<link rel="stylesheet" href="assets/css/tema.css">
 <link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/contato.html">
 <meta property="og:title" content="Fale com o IMED">
 <meta property="og:description" content="Dúvidas, cancelamentos, seus dados (LGPD) e contato de clínicas, com número de protocolo na hora.">
@@ -45,7 +47,7 @@
 .hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
 .ct-done{outline:none}
 .ct-done .ic{display:grid;place-items:center;width:52px;height:52px;border-radius:16px;background:var(--green-s);color:var(--green);font-size:24px;margin-bottom:12px}
-.ct-proto{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 4px;padding:12px 14px;border-radius:14px;background:var(--bg2);border:1px dashed #b9cdd6}
+.ct-proto{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:10px 0 4px;padding:12px 14px;border-radius:14px;background:var(--bg2);border:1px dashed var(--conta-campo-borda,#b9cdd6)}
 .ct-proto b{font:800 clamp(18px,5vw,22px) Sora,Inter,sans-serif;letter-spacing:.02em;color:var(--ink);overflow-wrap:anywhere}
 .ct-done p{margin-top:8px;font-size:15px;line-height:1.55}
 .ct-done .cl-actions{margin-top:18px}
@@ -156,6 +158,14 @@
       <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
       <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
       <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+      <div class="rd-tema" role="group" aria-labelledby="rd-tema-h">
+        <p class="rd-h" id="rd-tema-h">Tema</p>
+        <div class="rd-tema-op">
+          <button type="button" data-tema-opcao="auto" aria-pressed="true">Automático</button>
+          <button type="button" data-tema-opcao="claro" aria-pressed="false">Claro</button>
+          <button type="button" data-tema-opcao="escuro" aria-pressed="false">Escuro</button>
+        </div>
+      </div>
     </div>
     <nav class="rd-nav" aria-label="Rodapé">
       <div class="rd-col">

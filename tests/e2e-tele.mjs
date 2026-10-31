@@ -3,7 +3,7 @@
 // e duas páginas no mesmo Chromium (paciente e médico). O vídeo conecta de verdade (câmera e microfone falsos do
 // Chromium, conexão direta só pela máquina: iceServers vazio).
 // Rodar com: node tests/e2e-tele.mjs   (precisa do pacote "playwright" instalado)
-// Opcional: SHOTS=pasta node tests/e2e-tele.mjs  salva capturas de tela nessa pasta. E2E_PORT muda a porta.
+// Opcional: TEMA=escuro (aparelho no escuro). SHOTS=pasta node tests/e2e-tele.mjs  salva capturas de tela nessa pasta. E2E_PORT muda a porta.
 // ONLY="trecho" roda só os cenários cujo nome tem esse trecho.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -436,6 +436,7 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 // primeiras vezes e depois funciona). window.__gum conta os pedidos de câmera.
 async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 60000, rtcFail = false, failRpc = null, gum = null, painelMs = undefined } = {}) {
   const context = await browser.newContext({
+    ...(process.env.TEMA === 'escuro' ? { colorScheme: 'dark' } : {}), // TEMA=escuro: aparelho no escuro (o Automático do site segue), para as capturas
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block', permissions: ['camera', 'microphone'],

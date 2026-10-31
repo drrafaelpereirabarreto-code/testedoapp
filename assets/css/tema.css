@@ -1,0 +1,150 @@
+/* =====================================================================================================================
+   Tema do IMED: claro (o de sempre) e escuro (azul-petróleo profundo, que conversa com o topo escuro da cidade 3D).
+   Vai no <head> de TODAS as páginas, logo depois de assets/js/tema.js (node scripts/aplicar-tema.mjs; as páginas das
+   cidades recebem pelo gerador). Quem escolhe: assets/js/tema.js (Automático = segue o aparelho, o padrão; Claro;
+   Escuro), pelos botões do rodapé (todas as páginas) e do cabeçalho (páginas principais).
+
+   COMO FUNCIONA
+   - Os valores CLAROS continuam no :root de cada página (index.html, perto.css, clinica.css, guia.css, cidade.css),
+     como hoje. Aqui (bloco 1) há só uma reserva com especificidade zero (:where(:root)) para o token que a página não
+     declarou e para os tokens novos: o :root da página sempre vale mais. Nada muda no modo claro.
+   - O ESCURO (bloco 2) redefine os MESMOS tokens, em dois blocos iguais (tests/tema.test.mjs confere):
+       @media screen and (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { … } }   Automático
+       @media screen { :root[data-theme="dark"] { … } }                                          Escuro escolhido
+     Só na tela (@media screen): a impressão e os PDFs saem sempre claros. Com color-scheme: dark (barras de
+     rolagem, campos e caixas de marcar do navegador também ficam escuros).
+   - A página não precisa de regra própria de tema escuro: basta usar os tokens.
+
+   COMO UMA PÁGINA ADERE (próxima etapa: converter cada página)
+   1. Toda cor fixa vira token. Fundo da página (o do body SEMPRE por token): var(--bg) ou var(--bg2). Cartão:
+      var(--card). Janela, menu, sugestões, balão do mapa: var(--elev). Campo de formulário: var(--field). Borda e
+      divisória: var(--line); borda de campo, aba e botão de opção: var(--line2). Texto: var(--ink) (títulos),
+      var(--text) (corrido), var(--muted) (secundário). Link, ícone e destaque: var(--primary).
+   2. Fundo sólido da cor principal com texto branco: background:var(--primary-bg);color:#fff (no escuro, --primary
+      fica claro para ser lido sobre fundo escuro e não serve de fundo para texto branco).
+      Fundo var(--ink) (aba marcada, chip escuro): texto var(--bg) (no escuro vira chip claro com texto escuro).
+      Selo suave: fundo var(--x-s) com texto var(--x-d) (ou var(--green)/var(--purple)), x = primary, coral, gold.
+      Fundo suave por tipo de local (--ks em perto.css e clinica.css): os valores de hoje já são os tokens
+      --primary-s (imagem), --purple-s (laboratório), --green-s (clínica) e --coral-s (hospital); use os tokens.
+   3. Fundo translúcido (cabeçalho de vidro): a linha de hoje e, logo depois, a mesma cor por token:
+        background:rgba(255,255,255,.84);background:color-mix(in srgb,var(--bg) 84%,transparent)
+   4. Foco: outline:3px solid var(--focus);box-shadow:0 0 0 2px var(--focus-halo). Fundo atrás de janela: var(--scrim).
+   5. Sombras: var(--sh1) (cartão), var(--sh2) (cartão em destaque), var(--sh3) (janela).
+   6. O que já é escuro nos dois temas (topo da página inicial, cabeçalhos .pt-top, rodapé, página 404) fica como
+      está: --navy, --navy2, --navy3, --aqua e --aqua2 são iguais nos dois temas.
+   7. Imagens e fotos ficam como estão. Ícone ou SVG de cor fixa que some no escuro: cor por token (currentColor,
+      var(--ink), var(--muted)...).
+   8. Mapa (Leaflet): os ladrilhos escurecem sozinhos (bloco 3, filtro no painel dos ladrilhos); os marcadores não
+      mudam. Controles, balões e o fundo do mapa: tokens, como o resto.
+   9. Regra que não dá para fazer só com token (raro): repita os dois seletores do bloco 2, cada um no seu @media.
+      Com o tema.js funcionando, [data-theme="dark"] sempre diz o tema que vale (também no Automático).
+  10. Botão do cabeçalho (início, perto, local, conta, painel, teleconsulta e médico), no fim da barra do topo:
+        <button type="button" class="tema-btn" data-tema></button>
+      O tema.js liga sozinho: rótulo "Tema: automático" / "Tema: claro" / "Tema: escuro" e alterna Automático →
+      Claro → Escuro. Herda a cor do texto do cabeçalho (na página inicial, junte a classe icon-btn).
+  11. Confira o contraste nos dois temas (AA: texto 4,5:1; texto grande e ícones 3:1) e o foco visível.
+      Os scripts podem ouvir a troca: document.addEventListener('imed:tema', e => e.detail.tema) ('claro'/'escuro').
+
+   TOKENS (claro → escuro). Todos os textos abaixo passam de 4,5:1 sobre --bg, --bg2, --card e --elev nos dois temas.
+     --bg          #fff     → #0A1C25   fundo da página e superfície principal
+     --bg2         #F4F8FA  → #0E2430   fundo suave: seção alternada, poço, hover, botão fantasma; página cinza
+     --card        #fff     → #122C39   cartão (novo)
+     --elev        #fff     → #173544   janela, menu, sugestões, balão (novo)
+     --field       #fff     → #0A1C25   campo de formulário (novo)
+     --line        #E6EDF1  → #223F4D   borda e divisória
+     --line2       #CFDDE4  → #5B8090   borda de campo, aba e opção (novo; 3:1 sobre os fundos escuros)
+     --ink         #0F1F28  → #EAF3F6   títulos e texto forte
+     --text        #2B3A44  → #C5D5DC   texto corrido
+     --muted       #566874  → #95ABB6   texto secundário
+     --primary     #0B7290  → #5BC2DB   link, ícone, borda de destaque
+     --primary-d   #0A5C76  → #9EDDEC   texto da cor principal sobre --primary-s
+     --primary-s   #E6F4F8  → #0F3A4B   fundo suave da cor principal
+     --primary-bg  #0B7290  → #0B7290   fundo sólido da cor principal, com texto #fff (novo)
+     --coral-d     #BF3B20  → #FF9A80   texto coral, erro
+     --coral-s     #FFF0EC  → #3B1E17   fundo suave coral
+     --gold-d      #7A4A00  → #F7C76A   texto sobre --gold-s (novo)
+     --gold-s      #FFF6E3  → #33280F   fundo suave dourado
+     --green       #137A44  → #5DD39A   texto e selo verde
+     --green-s     #E7F6EE  → #12301F   fundo suave verde
+     --purple      #6C4BD8  → #B3A1FF   texto roxo (laboratório)
+     --purple-s    #F1ECFF  → #231C40   fundo suave roxo
+     --sh1 --sh2 --sh3                  sombras (no escuro, pretas e mais fortes)
+     --focus       #0B7290  → #7FF0E4   contorno do foco (novo)
+     --focus-halo  #fff     → #05161e   anel entre o elemento e o contorno do foco (novo)
+     --scrim       rgba(5,22,30,.55) → rgba(1,8,12,.7)   fundo atrás das janelas (novo)
+     --mapa-filtro none     → invert(…)  filtro dos ladrilhos do mapa (novo): mapa escuro azul-petróleo, de uma cor
+                                        só (os marcadores coloridos aparecem mais), com os nomes das ruas claros
+     Iguais nos dois temas: --navy #05161e, --navy2 #082431, --navy3 #0c3343, --aqua #2EE6D6, --aqua2 #7FF0E4,
+     --coral #FF6B4A, --gold #F5A524 (ícones e pontos; 3:1 sobre os fundos escuros).
+   ===================================================================================================================== */
+
+/* ---------- 1) Claro: reserva com especificidade zero (o :root de cada página vale mais) ---------- */
+:where(:root){
+  --navy:#05161e; --navy2:#082431; --navy3:#0c3343; --aqua:#2EE6D6; --aqua2:#7FF0E4;
+  --bg:#fff; --bg2:#F4F8FA; --card:#fff; --elev:#fff; --field:#fff; --line:#E6EDF1; --line2:#CFDDE4;
+  --ink:#0F1F28; --text:#2B3A44; --muted:#566874;
+  --primary:#0B7290; --primary-d:#0A5C76; --primary-s:#E6F4F8; --primary-bg:#0B7290;
+  --coral:#FF6B4A; --coral-d:#BF3B20; --coral-s:#FFF0EC;
+  --gold:#F5A524; --gold-d:#7A4A00; --gold-s:#FFF6E3;
+  --green:#137A44; --green-s:#E7F6EE; --purple:#6C4BD8; --purple-s:#F1ECFF;
+  --sh1:0 1px 2px rgba(15,31,40,.05),0 8px 24px rgba(15,31,40,.06);
+  --sh2:0 2px 6px rgba(15,31,40,.05),0 24px 60px rgba(15,31,40,.13);
+  --sh3:0 40px 100px rgba(5,22,30,.35);
+  --focus:#0B7290; --focus-halo:#fff; --scrim:rgba(5,22,30,.55);
+  --mapa-filtro:none;
+}
+
+/* ---------- 2) Escuro: os mesmos tokens, só na tela. Os dois blocos têm de ficar IGUAIS. ---------- */
+@media screen and (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0A1C25; --bg2:#0E2430; --card:#122C39; --elev:#173544; --field:#0A1C25; --line:#223F4D; --line2:#5B8090;
+    --ink:#EAF3F6; --text:#C5D5DC; --muted:#95ABB6;
+    --primary:#5BC2DB; --primary-d:#9EDDEC; --primary-s:#0F3A4B; --primary-bg:#0B7290;
+    --coral-d:#FF9A80; --coral-s:#3B1E17;
+    --gold-d:#F7C76A; --gold-s:#33280F;
+    --green:#5DD39A; --green-s:#12301F; --purple:#B3A1FF; --purple-s:#231C40;
+    --sh1:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
+    --sh2:0 2px 6px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.5);
+    --sh3:0 40px 100px rgba(0,0,0,.6);
+    --focus:#7FF0E4; --focus-halo:#05161e; --scrim:rgba(1,8,12,.7);
+    --mapa-filtro:invert(1) grayscale(1) sepia(1) hue-rotate(160deg) saturate(1.5) brightness(.9) contrast(.9);
+  }
+}
+@media screen{
+  :root[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#0A1C25; --bg2:#0E2430; --card:#122C39; --elev:#173544; --field:#0A1C25; --line:#223F4D; --line2:#5B8090;
+    --ink:#EAF3F6; --text:#C5D5DC; --muted:#95ABB6;
+    --primary:#5BC2DB; --primary-d:#9EDDEC; --primary-s:#0F3A4B; --primary-bg:#0B7290;
+    --coral-d:#FF9A80; --coral-s:#3B1E17;
+    --gold-d:#F7C76A; --gold-s:#33280F;
+    --green:#5DD39A; --green-s:#12301F; --purple:#B3A1FF; --purple-s:#231C40;
+    --sh1:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3);
+    --sh2:0 2px 6px rgba(0,0,0,.4),0 24px 60px rgba(0,0,0,.5);
+    --sh3:0 40px 100px rgba(0,0,0,.6);
+    --focus:#7FF0E4; --focus-halo:#05161e; --scrim:rgba(1,8,12,.7);
+    --mapa-filtro:invert(1) grayscale(1) sepia(1) hue-rotate(160deg) saturate(1.5) brightness(.9) contrast(.9);
+  }
+}
+
+/* ---------- 3) Mapa (Leaflet): no escuro, só os ladrilhos escurecem; marcadores e balões ficam como estão ---------- */
+.leaflet-tile-pane{filter:var(--mapa-filtro,none)}
+
+/* ---------- 4) Na troca de tema, as cores mudam de uma vez (sem cada transição num tempo) ---------- */
+.tema-trocando,.tema-trocando *,.tema-trocando *::before,.tema-trocando *::after{transition:none!important}
+
+/* ---------- 5) Botão de tema do cabeçalho: <button type="button" class="tema-btn" data-tema></button> ----------
+   Ícone da escolha atual (meio círculo = automático, sol = claro, lua = escuro), já certo na primeira pintura (vem do
+   <html data-tema-escolha>). Sem o tema.js funcionando, o botão não aparece. */
+.tema-btn{--tema-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2.5a9.5 9.5 0 1 0 0 19a9.5 9.5 0 1 0 0-19zM12 4.7a7.3 7.3 0 0 1 0 14.6z'/%3E%3C/svg%3E");
+  position:relative;display:inline-grid;place-items:center;flex-shrink:0;width:44px;height:44px;margin:0;padding:0;border:0;border-radius:12px;
+  background:transparent;color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+:root[data-tema-escolha="claro"] .tema-btn{--tema-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4.2'/%3E%3Cpath d='M12 2.3v2.4M12 19.3v2.4M2.3 12h2.4M19.3 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M5.1 18.9l1.7-1.7M17.2 6.8l1.7-1.7'/%3E%3C/svg%3E")}
+:root[data-tema-escolha="escuro"] .tema-btn{--tema-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/%3E%3C/svg%3E")}
+.tema-btn::before{content:"";display:block;width:20px;height:20px;background:currentColor;
+  -webkit-mask:var(--tema-ic) center/contain no-repeat;mask:var(--tema-ic) center/contain no-repeat}
+.tema-btn:hover{background:rgba(127,127,127,.14)}
+:where(.tema-btn:focus-visible){outline:3px solid var(--focus);outline-offset:2px}
+:root:not([data-tema-escolha]) .tema-btn{display:none}
+@media (forced-colors:active){.tema-btn::before{forced-color-adjust:none;background:ButtonText}}

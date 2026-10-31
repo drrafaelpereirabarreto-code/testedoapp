@@ -7,6 +7,8 @@
 <title>Para clínicas, laboratórios e hospitais | IMED</title>
 <meta name="description" content="Sua clínica, laboratório ou hospital provavelmente já aparece no IMED pelo cadastro oficial (CNES). Assuma o cadastro sem custo para receber pedidos de agendamento e informar exames, preços, convênios e horários.">
 <meta name="theme-color" content="#05161e">
+<script src="assets/js/tema.js"></script>
+<link rel="stylesheet" href="assets/css/tema.css">
 <link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/parceiros.html">
 <meta property="og:title" content="Para clínicas | IMED">
 <meta property="og:description" content="Seja um dos primeiros parceiros do IMED: assuma o cadastro do seu estabelecimento, sem custo, para receber pedidos de agendamento.">
@@ -38,7 +40,7 @@
 .pc-num i{color:#7FF0E4;margin-top:3px}
 .pc-num b{color:#fff}
 .pc-steps{list-style:none;display:grid;gap:12px;counter-reset:st}
-.pc-steps li{position:relative;padding:14px 16px 14px 60px;border:1px solid var(--line);border-radius:16px;background:#fff;counter-increment:st}
+.pc-steps li{position:relative;padding:14px 16px 14px 60px;border:1px solid var(--line);border-radius:16px;background:var(--elev);counter-increment:st}
 .pc-steps li::before{content:counter(st);position:absolute;left:14px;top:13px;display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:linear-gradient(145deg,#C8442A,#B83A20);color:#fff;font:800 15px Sora,sans-serif}
 .pc-steps b{display:block;color:var(--ink);font-size:16px}
 .pc-steps p{color:var(--muted);font-size:14.5px;margin-top:4px}
@@ -201,6 +203,14 @@
       <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
       <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
       <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+      <div class="rd-tema" role="group" aria-labelledby="rd-tema-h">
+        <p class="rd-h" id="rd-tema-h">Tema</p>
+        <div class="rd-tema-op">
+          <button type="button" data-tema-opcao="auto" aria-pressed="true">Automático</button>
+          <button type="button" data-tema-opcao="claro" aria-pressed="false">Claro</button>
+          <button type="button" data-tema-opcao="escuro" aria-pressed="false">Escuro</button>
+        </div>
+      </div>
     </div>
     <nav class="rd-nav" aria-label="Rodapé">
       <div class="rd-col">

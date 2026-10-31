@@ -270,8 +270,9 @@ async function mockSupabase(context, { admin = false, member = false } = {}) {
 // geo: localização permitida pelo Playwright (false: o Chromium recusa sem perguntar). geoSim: no lugar dela, a
 // permissão e a localização simuladas (tests/geo-simulado.mjs), para a página inicial perguntar ({estado:'prompt'}),
 // ficar bloqueada ({estado:'denied'}) ou já ter a permissão ({estado:'granted'}), sempre no mesmo ponto.
-async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, appts = APPTS, geo = true, geoSim = null, lgpd = false } = {}) {
+async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false } = {}) {
   const context = await browser.newContext({
+    ...(escuro ? { colorScheme: 'dark' } : {}), // escuro: aparelho no tema escuro (o Automático do site segue)
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo',
     serviceWorkers: 'block', reducedMotion: motion, bypassCSP: true, acceptDownloads: true,
@@ -362,6 +363,20 @@ const PAGES = [
   { name: 'Cidade: São Paulo', url: 'cidades/sp/sao-paulo/', open: async (p) => { await waitIdle(p); } },
   { name: 'Tipo: Clínicas em São Paulo', url: 'cidades/sp/sao-paulo/clinicas.html', open: async (p) => { await waitIdle(p); } },
 ];
+// Tema escuro (grupo "conta"): as mesmas páginas com o aparelho no escuro (Automático do site segue o aparelho).
+for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Área da clínica', 'Área da clínica · pedidos', 'Área da clínica · agenda', 'Área da clínica · visitas', 'Reivindicar', 'Quem somos', 'Termos', 'Privacidade', 'Para clínicas', 'Como funciona', 'Acessibilidade', 'Fale com o IMED', 'Para médicos']) {
+  PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
+}
+
+// Tema escuro (grupo "tele"): teleconsulta, termo, área do médico e conferir documento, com o aparelho no escuro.
+for (const n of ['Teleconsulta', 'Termo da teleconsulta', 'Área do médico', 'Conferir documento']) {
+  PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
+}
+
+// Tema escuro (grupo "busca"): início, perto, local, guias, cidades e 404, com o aparelho no escuro.
+for (const n of ['Início', 'Início · janela da cidade', 'Início · localização bloqueada', 'Início · mapa', 'Perto de mim', 'Perto · ficha', 'Perto · pedido', 'Local (cadastro oficial)', 'Local (parceiro com agenda)', 'Local · pedido', 'Local · avisar erro', 'Página 404', 'Guias de exames', 'Guia: Raio-X', 'Cidades', 'Cidade: São Paulo']) {
+  PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
+}
 
 /* ======================= checagens ======================= */
 async function runAxe(page) {
@@ -668,7 +683,7 @@ const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, lgpd: def.lgpd, geoSim: def.geoSim });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);

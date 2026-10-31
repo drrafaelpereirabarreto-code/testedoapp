@@ -8,6 +8,8 @@
 <meta name="description" content="Área da clínica no IMED: veja os pedidos de agendamento dos pacientes, monte a agenda com horários e atualize dados, convênios, exames e preços.">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#05161e">
+<script src="assets/js/tema.js"></script>
+<link rel="stylesheet" href="assets/css/tema.css">
 <link rel="canonical" href="https://drrafaelpereirabarreto-code.github.io/testedoapp/painel.html">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
@@ -21,7 +23,7 @@
 <style data-fontes="Sora:600;700;800|Inter:400;500;600;700">@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Sora';font-style:normal;font-weight:600 800;font-display:swap;src:url(assets/fonts/sora-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(assets/fonts/inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C4,U+2113,U+2C60-2C7F,U+A720-A7FF}</style>
 <link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
 <link rel="stylesheet" href="assets/css/clinica.css">
-<style>.cl-err[data-check]{color:#7A4A00}</style>
+<style>.cl-err[data-check]{color:var(--gold-d)}</style>
 <link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body>
@@ -36,6 +38,7 @@
       <a href="parceiros.html" aria-current="true">Para clínicas</a>
     </nav>
     <a class="pt-partner" href="reivindicar.html">Assumir cadastro</a>
+    <button type="button" class="tema-btn" data-tema></button>
   </div>
 </header>
 
@@ -65,6 +68,14 @@
       <a class="rd-logo" href="./" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
       <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>Dr. Rafael Pereira Barreto Silva</b> — <span class="rd-nw">CRM-SP 266930</span> · <a href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
       <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+      <div class="rd-tema" role="group" aria-labelledby="rd-tema-h">
+        <p class="rd-h" id="rd-tema-h">Tema</p>
+        <div class="rd-tema-op">
+          <button type="button" data-tema-opcao="auto" aria-pressed="true">Automático</button>
+          <button type="button" data-tema-opcao="claro" aria-pressed="false">Claro</button>
+          <button type="button" data-tema-opcao="escuro" aria-pressed="false">Escuro</button>
+        </div>
+      </div>
     </div>
     <nav class="rd-nav" aria-label="Rodapé">
       <div class="rd-col">
