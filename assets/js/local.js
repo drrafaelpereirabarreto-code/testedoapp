@@ -36,12 +36,13 @@ const S = {
 };
 
 /* ======================= banco ======================= */
-const anonHeaders = () => ({ apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${CFG.supabaseAnonKey}` });
+// Como visitante: só a chave publishable (pedido com conta vai pelo auth.js, com o token da pessoa).
+const anonHeaders = (extra) => CFG.supabaseHeaders(null, extra);
 
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const res = await fetch(`${CFG.supabaseUrl}/rest/v1/${path}`, {
     method,
-    headers: { ...anonHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    headers: anonHeaders({ ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers }),
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000),
   });

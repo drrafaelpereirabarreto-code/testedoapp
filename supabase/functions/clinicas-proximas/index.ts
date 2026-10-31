@@ -1,6 +1,21 @@
 // Edge Function "clinicas-proximas": busca clínicas, laboratórios e centros de diagnóstico
 // perto de um ponto e converte CEP, cidade ou endereço em coordenadas.
 //
+// PUBLICAR SEMPRE COM verify_jwt=false (a conferência automática de token do Supabase desligada):
+//   supabase functions deploy clinicas-proximas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
+// O site chama esta função só com a chave publishable no cabeçalho "apikey" (sem "Authorization"). A chave nova não
+// é um token (JWT), e a conferência automática do Supabase (verify_jwt) só entende tokens: a documentação manda
+// desligá-la e conferir no código. A função não depende do token de quem chama para nada; quem pode chamar é
+// conferido aqui (travas em lib.ts, com testes):
+//   - origem (originAllowed): no navegador, só os sites de ALLOWED_ORIGINS (outro site recebe 403). Fora do
+//     navegador (sem cabeçalho Origin: curl, servidor) a origem não é conferida: entra quem tiver a chave pública;
+//   - chave (callerAllowed): o "apikey" precisa ser uma chave publishable do projeto (ou a anon antiga, do site
+//     antigo ainda em cache), senão 401 (só quando o ambiente tem a chave publishable nova, como deve ser);
+//   - limite (rateLimited): 40 chamadas por minuto por IP em cada instância; e os dados da busca são validados
+//     (coordenadas, raio, texto).
+// O banco é consultado com a chave publishable da PRÓPRIA função (como visitante, sujeito às regras do banco),
+// e o importador com a chave secreta (SUPABASE_SECRET_KEYS), que nunca sai do servidor.
+//
 // Ações (POST, JSON):
 //   search   { lat, lng, radius_m, include_demo }  ordenados por distância:
 //            - clínicas parceiras do IMED (banco);
@@ -10,24 +25,38 @@
 //            - com a chave do Google, os estabelecimentos do Google Places.
 //            Enquanto a cidade não está no banco, o site completa a lista com o OpenStreetMap.
 //   geocode  { q }  CEP (ViaCEP/BrasilAPI), cidade ou endereço (Google Geocoding ou Photon) para coordenadas.
-//   status   informa qual serviço de mapas está ativo.
+//   status   informa qual serviço de mapas está ativo e se as chaves do Supabase em uso são as novas
+//            (chaves: { publishable, secreta } = "nova" | "antiga" | "ausente"; nunca a chave em si).
+//            Com { importador: true }, pergunta também ao importador se ele aceita a chave secreta desta função
+//            (ação "ping", sem trabalho nenhum; resposta guardada por 30 s): importador: { http, resposta }.
 //
 // Variáveis de ambiente (segredos da função, nunca vão para o navegador):
 //   GOOGLE_MAPS_API_KEY  chave do Google Maps Platform (Places API New + Geocoding API). Opcional.
 //   ALLOWED_ORIGINS      sites que podem chamar a função, separados por vírgula.
 //   NOMINATIM_CONTACT    e-mail de contato enviado aos serviços do OpenStreetMap no User-Agent.
-// SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY são preenchidas automaticamente pelo
-// Supabase. A chave de serviço só é usada aqui dentro, para chamar o importador.
+// SUPABASE_URL, SUPABASE_PUBLISHABLE_KEYS e SUPABASE_SECRET_KEYS (e as antigas SUPABASE_ANON_KEY e
+// SUPABASE_SERVICE_ROLE_KEY, usadas só se as novas faltarem) são preenchidas automaticamente pelo Supabase
+// (leitura em lib.ts: publishableKey, secretKey). A chave secreta só é usada aqui dentro, para chamar o importador.
 //
 // Privacidade: as coordenadas recebidas são arredondadas (~11 m), usadas só para a
 // busca e nunca são gravadas nem enviadas aos logs.
 
-import { clampRadius, geocode, isValidCoord, roundCoord, searchGoogle, type GeoResult, type MapPlace } from './lib.ts';
+import {
+  callerAllowed, callerKeys, clampRadius, clientIp, geocode, importerAnswer, isValidCoord, keyHeaders, keyKind, originAllowed,
+  publishableKey, rateLimited, roundCoord, searchGoogle, secretKey, type GeoResult, type ImporterAnswer, type MapPlace,
+} from './lib.ts';
 
-const GOOGLE_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const env = (name: string) => Deno.env.get(name);
+const GOOGLE_KEY = env('GOOGLE_MAPS_API_KEY') ?? '';
+const SUPABASE_URL = env('SUPABASE_URL') ?? '';
+// Chave publishable da função (nova; sem ela, a anon antiga): consulta o banco como visitante.
+const PUBLIC_KEY = publishableKey(env);
+// Chave secreta (nova; sem ela, a service_role antiga): só para chamar o importador.
+const SECRET_KEY = secretKey(env);
+// Chaves aceitas de quem chama a busca: as publishable do projeto e a anon antiga, enquanto existir (null: o ambiente
+// não tem a chave publishable nova, SUPABASE_PUBLISHABLE_KEYS, e a chave de quem chama não é conferida).
+const CALLER_KEYS = callerKeys(env);
+if (!CALLER_KEYS) console.error('sem a chave publishable nova no ambiente: a chave de quem chama não está sendo conferida');
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ??
   'https://drrafaelpereirabarreto-code.github.io,http://localhost:8765,http://127.0.0.1:8765')
   .split(',').map((s) => s.trim()).filter(Boolean);
@@ -46,18 +75,6 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   if (cache.size > 300) cache.delete(cache.keys().next().value as string);
   cache.set(key, { exp: now + ttlMs, value });
   return value;
-}
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const h = hits.get(ip);
-  if (!h || h.reset < now) {
-    if (hits.size > 5000) hits.clear();
-    hits.set(ip, { n: 1, reset: now + 60_000 });
-    return false;
-  }
-  h.n += 1;
-  return h.n > 40;
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -80,11 +97,12 @@ function json(body: unknown, status: number, headers: Record<string, string>): R
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
-// Funções do banco (PostGIS) chamadas com a chave de quem fez a busca. Devolvem já ordenado por distância.
-async function rpcCall(fn: string, auth: string, apikey: string, params: Record<string, unknown>): Promise<unknown[]> {
+// Funções do banco (PostGIS) chamadas com a chave publishable da função, como visitante (nunca com o que veio de
+// quem chamou). Devolvem já ordenado por distância.
+async function rpcCall(fn: string, params: Record<string, unknown>): Promise<unknown[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: 'POST',
-    headers: { apikey, Authorization: auth, 'Content-Type': 'application/json' },
+    headers: { ...keyHeaders(PUBLIC_KEY), 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
     signal: AbortSignal.timeout(10000),
   });
@@ -96,15 +114,40 @@ interface CityStatus { ibge: number; city: string; uf: string; status: string }
 interface Coverage { status: 'done' | 'loading' | 'unavailable'; city: string | null; uf: string | null }
 
 // Pergunta ao importador a situação da cidade de cada ponto; ele começa a importação se precisar.
+// Chave secreta só no "apikey" (a service_role antiga, se for ela, vai também em Bearer, como antes).
 async function askImporter(pontos: { lat: number; lng: number }[], ms: number): Promise<(CityStatus | null)[]> {
   const res = await fetch(`${SUPABASE_URL}/functions/v1/importar-clinicas`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+    headers: { ...keyHeaders(SECRET_KEY), 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'garantir', pontos }),
     signal: AbortSignal.timeout(ms),
   });
   if (!res.ok) throw new Error(`importador ${res.status}`);
   return ((await res.json()) as { cidades?: (CityStatus | null)[] }).cidades ?? [];
+}
+
+// O importador aceita a chave secreta desta função? (status com "importador": true; ação "ping", sem trabalho.)
+// Guarda a resposta por 30 s nesta instância, para o "status" não virar uma chamada extra a cada pedido.
+interface ImporterCheck { http: number | null; resposta: ImporterAnswer | 'sem_resposta' | 'sem_chave' }
+let importerCheck: { exp: number; value: ImporterCheck } | null = null;
+async function checkImporter(): Promise<ImporterCheck> {
+  if (importerCheck && importerCheck.exp > Date.now()) return importerCheck.value;
+  let value: ImporterCheck = { http: null, resposta: 'sem_chave' };
+  if (SECRET_KEY) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/importar-clinicas`, {
+        method: 'POST',
+        headers: { ...keyHeaders(SECRET_KEY), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ping' }),
+        signal: AbortSignal.timeout(10000),
+      });
+      value = { http: res.status, resposta: importerAnswer(res.status, await res.json().catch(() => null)) };
+    } catch {
+      value = { http: null, resposta: 'sem_resposta' };
+    }
+  }
+  importerCheck = { exp: Date.now() + 30_000, value };
+  return value;
 }
 
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
@@ -142,7 +185,7 @@ async function coverage(origin: { lat: number; lng: number }, radius: number): P
   return value;
 }
 
-async function handleSearch(body: Record<string, unknown>, auth: string, apikey: string, h: Record<string, string>) {
+async function handleSearch(body: Record<string, unknown>, h: Record<string, string>) {
   const lat = Number(body.lat), lng = Number(body.lng);
   if (!isValidCoord(lat, lng)) return json({ ok: false, error: 'invalid_coordinates' }, 400, h);
   const radius = clampRadius(body.radius_m);
@@ -151,12 +194,12 @@ async function handleSearch(body: Record<string, unknown>, auth: string, apikey:
   const noCoverage: Coverage = { status: 'unavailable', city: null, uf: null };
 
   const [imedRes, cnesRes, placesRes, covRes] = await Promise.allSettled([
-    rpcCall('nearby_clinics', auth, apikey, { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_include_demo: includeDemo, p_limit: 100 }),
-    rpcCall('nearby_establishments', auth, apikey, { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_limit: 250 }),
+    rpcCall('nearby_clinics', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_include_demo: includeDemo, p_limit: 100 }),
+    rpcCall('nearby_establishments', { p_lat: origin.lat, p_lng: origin.lng, p_radius_m: radius, p_limit: 250 }),
     GOOGLE_KEY
       ? cached(`google:${origin.lat.toFixed(3)}:${origin.lng.toFixed(3)}:${radius}`, 10 * 60_000, () => searchGoogle(fetch, GOOGLE_KEY, origin, radius))
       : Promise.resolve([] as MapPlace[]),
-    SERVICE_KEY ? coverage(origin, radius) : Promise.resolve(noCoverage),
+    SECRET_KEY ? coverage(origin, radius) : Promise.resolve(noCoverage),
   ]);
 
   const warnings: string[] = [];
@@ -197,11 +240,12 @@ Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin');
   const h = corsHeaders(origin);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) return json({ ok: false, error: 'origin_not_allowed' }, 403, h);
+  if (!originAllowed(origin, ALLOWED_ORIGINS)) return json({ ok: false, error: 'origin_not_allowed' }, 403, h);
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405, h);
 
-  const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'desconhecido';
-  if (rateLimited(ip)) return json({ ok: false, error: 'rate_limited' }, 429, { ...h, 'Retry-After': '60' });
+  if (rateLimited(hits, clientIp(req.headers), Date.now())) return json({ ok: false, error: 'rate_limited' }, 429, { ...h, 'Retry-After': '60' });
+  // Publicada com verify_jwt=false: a chave de quem chama é conferida aqui (veja o começo do arquivo).
+  if (!callerAllowed(req.headers, CALLER_KEYS)) return json({ ok: false, error: 'unauthorized' }, 401, h);
 
   let body: Record<string, unknown>;
   try {
@@ -209,13 +253,16 @@ Deno.serve(async (req: Request) => {
   } catch {
     return json({ ok: false, error: 'invalid_json' }, 400, h);
   }
-  const apikey = req.headers.get('apikey') ?? ANON_KEY;
-  const auth = req.headers.get('authorization') ?? `Bearer ${ANON_KEY}`;
 
   try {
-    if (body?.action === 'search') return await handleSearch(body, auth, apikey, h);
+    if (body?.action === 'search') return await handleSearch(body, h);
     if (body?.action === 'geocode') return await handleGeocode(body, h);
-    if (body?.action === 'status') return json({ ok: true, provider: PROVIDER }, 200, h);
+    if (body?.action === 'status') {
+      return json({
+        ok: true, provider: PROVIDER, chaves: { publishable: keyKind(PUBLIC_KEY), secreta: keyKind(SECRET_KEY) },
+        ...(body.importador === true ? { importador: await checkImporter() } : {}),
+      }, 200, h);
+    }
     return json({ ok: false, error: 'unknown_action' }, 400, h);
   } catch (err) {
     console.error('erro inesperado:', err instanceof Error ? err.message : 'desconhecido');

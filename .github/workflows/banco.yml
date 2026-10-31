@@ -30,6 +30,8 @@ on:
       - 'supabase/**'
       - 'tests/banco/**'
       - 'assets/js/geo-core.js'
+      # A regra dos cabeçalhos do site (supabaseHeaders): tests/banco/pedido-do-site.mjs manda os pedidos com ela.
+      - 'assets/js/config.js'
       - '.github/workflows/banco.yml'
   workflow_dispatch:
     inputs:

@@ -12,6 +12,7 @@ import { createRequire } from 'node:module';
 import * as G from '../assets/js/geo-core.js';
 import { simularGeo, PAULISTA, contagemGeo, mudarGeo, responderGeo } from './geo-simulado.mjs';
 
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -253,7 +254,7 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !ONLY.test(name)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 5).join('\n  ')}`); }
 }
 // Rola a página inteira para carregar as seções que só aparecem ao rolar.
@@ -289,7 +290,7 @@ async function until(cond, ms = 5000) {
 // Duas caixas da tela se cobrem?
 const overlap = (a, b) => a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('só dados reais: sem preço, nota ou número inventado; pílula com número do banco', async () => {
   const { page, log, errors, context } = await newPage(browser);

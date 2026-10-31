@@ -5,8 +5,9 @@
 // Cada pedido é montado pelo próprio código do site (assets/js/geo-core.js): o local vem de normalizeImedRow (a
 // clínica parceira, buscada em nearby_clinics pelo PostgREST, como a busca faz) ou de normalizeCnes; o formulário
 // passa por validateBooking; a linha sai de bookingRow (com review_token_hash, como local.js e perto.js); e o envio é
-// o POST /rest/v1/appointment_requests com apikey + Authorization e Prefer: return=minimal, como visitante (anon) e
-// como paciente logado. Casos: local não parceiro sem horário, parceiro com horário, para outra pessoa adulta e
+// o POST /rest/v1/appointment_requests com Prefer: return=minimal e os cabeçalhos da regra do site
+// (IMED_CONFIG.supabaseHeaders, fase 0.1): como visitante, só a chave publishable no "apikey" (sem Authorization); como
+// paciente logado, a chave no "apikey" e o token dele em "Authorization: Bearer". Casos: local não parceiro sem horário, parceiro com horário, para outra pessoa adulta e
 // menor, e o horário já ocupado (409, que o site reconhece com isSlotTaken).
 // Confere: HTTP 201; cada coluna gravada igual à enviada; request_status e cancel_request com o código do pedido;
 // e que a lista "colunas do pedido do site" de supabase/tests/000_catalogo.sql é EXATAMENTE o que o bookingRow
@@ -19,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as G from '../../assets/js/geo-core.js';
 import {
-  afirmar, anotar, configLocal, conectar, descreverErro, estatisticas, postgrest, principal, resumir, tokenAnon,
+  afirmar, anotar, cabecalhosDoSite, configLocal, conectar, descreverErro, estatisticas, postgrest, principal, resumir,
   tokenUsuario,
 } from './lib.mjs';
 
@@ -76,7 +77,14 @@ await principal('pedido-do-site', async () => {
        values ('00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2, now(),
                '{"provider": "email", "providers": ["email"]}', '{}', now(), now())`, [USUARIO, EMAIL_USUARIO]);
 
-    const tokens = { anon: tokenAnon(cfg), usuario: tokenUsuario(cfg, { sub: USUARIO, email: EMAIL_USUARIO }) };
+    // Visitante: sem token (o site manda só a chave publishable no "apikey"); paciente logado: o token dele.
+    const tokens = { anon: null, usuario: tokenUsuario(cfg, { sub: USUARIO, email: EMAIL_USUARIO }) };
+    const hVisitante = cabecalhosDoSite(cfg, tokens.anon);
+    const hPaciente = cabecalhosDoSite(cfg, tokens.usuario);
+    afirmar(hVisitante.apikey === cfg.publishableKey && !('Authorization' in hVisitante)
+      && hPaciente.apikey === cfg.publishableKey && hPaciente.Authorization === `Bearer ${tokens.usuario}`,
+      'cabeçalhos do site (fase 0.1): visitante só com a chave publishable no apikey; paciente com a chave e o token dele em Bearer',
+      `visitante: ${Object.keys(hVisitante).join(', ')}; paciente: ${Object.keys(hPaciente).join(', ')}`);
 
     // O local parceiro como a busca do site recebe (nearby_clinics) e normaliza; o local do CNES, como normalizeCnes.
     const busca = await postgrest(cfg, 'rpc/nearby_clinics', {

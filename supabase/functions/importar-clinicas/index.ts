@@ -2,25 +2,40 @@
 // diagnóstico e hospitais reais de um município, a partir do CNES (Cadastro Nacional de
 // Estabelecimentos de Saúde, do Ministério da Saúde).
 //
-// Só o próprio servidor chama esta função, com a chave de serviço. A busca "clinicas-proximas" manda
+// Só o próprio servidor chama esta função, com a chave secreta do projeto. A busca "clinicas-proximas" manda
 // os pontos onde o paciente está procurando; aqui se descobre o município de cada ponto (Photon +
 // IBGE) e, se ele ainda não foi importado (ou se a importação tem mais de 30 dias), a importação roda
 // em segundo plano. Estabelecimentos sem coordenada confiável no CNES são localizados pelo endereço
 // aos poucos, um por segundo, para respeitar o serviço público do Photon.
 //
-// Ações (POST, JSON, Authorization: Bearer <chave de serviço>):
+// Ações (POST, JSON):
 //   garantir   { pontos: [{ lat, lng }] }  situação do município de cada ponto (e começa a importação)
 //   localizar  { ibge }                   localiza pelo endereço mais um lote de estabelecimentos
 //   importar   { fila, uf, cidade }        importa uma cidade da fila de pré-carga (chamada pelo pg_cron do
 //                                          banco, com o token interno no cabeçalho x-imed-token)
+//   ping       {}                         só responde { ok: true } a quem passou da conferência: a busca usa para
+//                                          provar que a chave secreta dela é aceita aqui (nada é lido nem gravado)
+//
+// PUBLICAR COM verify_jwt=false (como sempre foi):
+//   supabase functions deploy importar-clinicas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
+// Quem chama é conferido aqui no código (authorized): a chave secreta do projeto no cabeçalho "apikey"
+// (SUPABASE_SECRET_KEYS, qualquer nome), a service_role antiga em "apikey" ou "Authorization: Bearer" (enquanto
+// existir; é como a clinicas-proximas antiga chama) ou o token interno da fila no cabeçalho x-imed-token.
+// O banco é chamado com a chave secreta só no "apikey" (a service_role antiga, se for ela, vai também em Bearer).
 
-import { addressQuery, CNES_TYPES, cityFromReverse, mapCnesRows, nameKey, pickAddressResult, type CnesRow } from './lib.ts';
+import {
+  acceptedKeys, addressQuery, CNES_TYPES, cityFromReverse, hasKey, keyHeaders, mapCnesRows, nameKey, pickAddressResult,
+  SECRET_VARS, secretKey, type CnesRow,
+} from './lib.ts';
 
 declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const CONTACT = Deno.env.get('NOMINATIM_CONTACT') ?? 'contato@imed.com.br';
+const env = (name: string) => Deno.env.get(name);
+const SUPABASE_URL = env('SUPABASE_URL') ?? '';
+// Chave secreta (nova; sem ela, a service_role antiga) para o banco, e as chaves aceitas de quem chama.
+const SECRET_KEY = secretKey(env);
+const SERVER_KEYS = acceptedKeys(env, SECRET_VARS);
+const CONTACT = env('NOMINATIM_CONTACT') ?? 'contato@imed.com.br';
 const UA = `IMED/1.0 (+https://drrafaelpereirabarreto-code.github.io/testedoapp/; ${CONTACT})`;
 const CNES_API = 'https://apidadosabertos.saude.gov.br/cnes/estabelecimentos';
 
@@ -36,7 +51,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function db(path: string, init: RequestInit = {}): Promise<unknown> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
-    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json', ...(init.headers as Record<string, string> ?? {}) },
+    headers: { ...keyHeaders(SECRET_KEY), 'Content-Type': 'application/json', ...(init.headers as Record<string, string> ?? {}) },
     signal: AbortSignal.timeout(30000),
   });
   const text = await res.text();
@@ -195,7 +210,7 @@ async function importQueued(id: number, uf: string, cidade: string) {
 
 let tokenOk = '';
 async function authorized(req: Request): Promise<boolean> {
-  if (SERVICE_KEY && req.headers.get('authorization') === `Bearer ${SERVICE_KEY}`) return true;
+  if (hasKey(req.headers, SERVER_KEYS)) return true;
   const tok = req.headers.get('x-imed-token') ?? '';
   if (!/^[0-9a-f]{64}$/.test(tok)) return false;
   if (tok === tokenOk) return true;
@@ -217,6 +232,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: 'invalid_json' }, 400);
   }
   try {
+    if (body.action === 'ping') return json({ ok: true });
     if (body.action === 'garantir') {
       const pts = (Array.isArray(body.pontos) ? body.pontos : [])
         .map((p: { lat?: unknown; lng?: unknown }) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))

@@ -1,7 +1,11 @@
 // Testes da função de busca. Rodar com: node --experimental-strip-types --test supabase/functions/clinicas-proximas/lib.test.ts
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampRadius, geocode, haversine, isCep, isValidCoord, parseGoogle, roundCoord, searchGoogle, type Fetch } from './lib.ts';
+import {
+  acceptedKeys, callerAllowed, callerKeys, clampRadius, clientIp, geocode, hasKey, haversine, importerAnswer, isCep, isValidCoord, keyHeaders,
+  keyKind, namedKeys, newKeys, originAllowed, parseGoogle, PUBLISHABLE_VARS, publishableKey, rateLimited, roundCoord, sameKey, searchGoogle,
+  SECRET_VARS, secretKey, type Fetch,
+} from './lib.ts';
 
 const PAULISTA = { lat: -23.565, lng: -46.652 };
 const UA = 'IMED-test';
@@ -138,4 +142,137 @@ test('valida e arredonda coordenadas e raio', () => {
   assert.equal(isCep('01310-100'), true);
   assert.equal(isCep('Campinas'), false);
   assert.ok(Math.abs(haversine(PAULISTA, { lat: -23.5614, lng: -46.6559 }) - 563) < 5);
+});
+
+/* ---------------- chaves do Supabase (publishable/secret novas, com volta para as antigas) ---------------- */
+// Valores de mentira (nenhuma chave de verdade nos testes). As antigas são tokens (JWT) no formato "a.b.c".
+const PUB = 'sb_publishable_falsa_1';
+const PUB_WEB = 'sb_publishable_falsa_web';
+const SEC = 'sb_secret_falsa_1';
+const ANTIGA_ANON = 'cabecalho-falso.anon-falso.assinatura-falsa';
+const ANTIGA_SERVICO = 'cabecalho-falso.servico-falso.assinatura-falsa';
+const envDe = (vars: Record<string, string>) => (name: string): string | undefined => vars[name];
+const cabecalhos = (h: Record<string, string>) => new Headers(h);
+
+test('chaves: lê o JSON por nome das variáveis novas (SUPABASE_PUBLISHABLE_KEYS / SUPABASE_SECRET_KEYS)', () => {
+  assert.deepEqual(namedKeys(JSON.stringify({ default: PUB })), { default: PUB });
+  assert.deepEqual(namedKeys(JSON.stringify({ default: ` ${PUB} `, web: PUB_WEB })), { default: PUB, web: PUB_WEB }, 'espaços em volta saem');
+  assert.deepEqual(namedKeys(JSON.stringify({ default: PUB, vazio: '', numero: 7, nulo: null })), { default: PUB }, 'só textos não vazios');
+  // Ausente, vazio, quebrado ou fora do formato: nenhuma chave, sem derrubar a função.
+  for (const raw of [undefined, null, '', '   ', '{quebrado', '"sb_publishable_solta"', '[1,2]', 'null', '42']) {
+    assert.deepEqual(namedKeys(raw), {}, `entrada: ${String(raw)}`);
+  }
+});
+
+test('chaves: a nova "default" vem primeiro; sem ela, a primeira da lista; sem lista, a antiga', () => {
+  const nova = envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ web: PUB_WEB, default: PUB }), SUPABASE_ANON_KEY: ANTIGA_ANON });
+  assert.deepEqual(publishableKey(nova), { key: PUB, legacy: false }, 'nova "default" ganha da antiga');
+  assert.deepEqual(publishableKey(nova, 'web'), { key: PUB_WEB, legacy: false }, 'outra chave pelo nome');
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ web: PUB_WEB }) })), { key: PUB_WEB, legacy: false }, 'sem "default": a primeira da lista');
+  // Antiga: só quando a nova falta (variável ausente, vazia ou quebrada).
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_ANON_KEY: ANTIGA_ANON })), { key: ANTIGA_ANON, legacy: true });
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: '{}', SUPABASE_ANON_KEY: ANTIGA_ANON })), { key: ANTIGA_ANON, legacy: true });
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: 'quebrado', SUPABASE_ANON_KEY: ANTIGA_ANON })), { key: ANTIGA_ANON, legacy: true });
+  assert.equal(publishableKey(envDe({})), null, 'nenhuma chave: null (a função segue sem a chave, não quebra)');
+  // A secreta funciona igual, com a service_role antiga de volta.
+  assert.deepEqual(secretKey(envDe({ SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC }), SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO })), { key: SEC, legacy: false });
+  assert.deepEqual(secretKey(envDe({ SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO })), { key: ANTIGA_SERVICO, legacy: true });
+  assert.equal(secretKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }) })), null, 'a publishable nunca vira secreta');
+});
+
+test('chaves: o "status" da função diz qual chave está em uso (nova, antiga ou ausente), nunca a chave', () => {
+  assert.equal(keyKind(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }), SUPABASE_ANON_KEY: ANTIGA_ANON }))), 'nova');
+  assert.equal(keyKind(secretKey(envDe({ SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO }))), 'antiga');
+  assert.equal(keyKind(secretKey(envDe({}))), 'ausente');
+});
+
+test('chaves: cabeçalhos do servidor — a nova só em apikey; a antiga (JWT) em apikey e Bearer, como antes', () => {
+  assert.deepEqual(keyHeaders({ key: PUB, legacy: false }), { apikey: PUB });
+  assert.deepEqual(keyHeaders({ key: SEC, legacy: false }), { apikey: SEC });
+  assert.deepEqual(keyHeaders({ key: ANTIGA_ANON, legacy: true }), { apikey: ANTIGA_ANON, Authorization: `Bearer ${ANTIGA_ANON}` });
+  assert.deepEqual(keyHeaders({ key: SEC, legacy: true }), { apikey: SEC }, 'chave "sb_" nunca vai em Bearer');
+  assert.deepEqual(keyHeaders(null), {});
+});
+
+test('chaves: quem pode chamar a busca (verify_jwt=false) — a publishable no apikey ou a anon antiga', () => {
+  const env = envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB, web: PUB_WEB }), SUPABASE_ANON_KEY: ANTIGA_ANON, SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC }) });
+  const keys = callerKeys(env);
+  assert.deepEqual(keys, [PUB, PUB_WEB, ANTIGA_ANON], 'todas as publishable e a anon antiga; a secreta não entra');
+  assert.deepEqual(acceptedKeys(env, PUBLISHABLE_VARS), keys);
+  assert.deepEqual(acceptedKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ a: PUB, b: PUB }) }), PUBLISHABLE_VARS), [PUB], 'sem repetir');
+  assert.deepEqual(acceptedKeys(envDe({}), SECRET_VARS), []);
+  // Site novo: só a publishable no apikey, sem Authorization.
+  assert.equal(callerAllowed(cabecalhos({ apikey: PUB }), keys), true);
+  assert.equal(callerAllowed(cabecalhos({ apikey: PUB_WEB }), keys), true);
+  // Site antigo (ainda em cache no aparelho): anon antiga no apikey e no Bearer.
+  assert.equal(callerAllowed(cabecalhos({ apikey: ANTIGA_ANON, authorization: `Bearer ${ANTIGA_ANON}` }), keys), true);
+  // Sem chave, chave errada ou a chave nova em Bearer (o Supabase recusa esse formato; aqui também não vale).
+  assert.equal(callerAllowed(cabecalhos({}), keys), false);
+  assert.equal(callerAllowed(cabecalhos({ apikey: 'sb_publishable_outro_projeto' }), keys), false);
+  assert.equal(callerAllowed(cabecalhos({ authorization: `Bearer ${PUB}` }), keys), false);
+  assert.equal(callerAllowed(cabecalhos({ apikey: SEC }), keys), false, 'a secreta não é chave de visitante');
+  // Ambiente sem a lista das publishable novas (só a anon antiga, ou nada): não dá para reconhecer a chave do site, e
+  // a função não barra ninguém (origem, limite e validação continuam valendo).
+  assert.equal(callerKeys(envDe({ SUPABASE_ANON_KEY: ANTIGA_ANON })), null);
+  assert.equal(callerKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: 'quebrado', SUPABASE_ANON_KEY: ANTIGA_ANON })), null);
+  assert.equal(callerKeys(envDe({})), null);
+  assert.equal(callerAllowed(cabecalhos({ apikey: PUB }), null), true);
+  assert.equal(callerAllowed(cabecalhos({}), null), true);
+  assert.equal(callerAllowed(cabecalhos({}), []), true);
+});
+
+test('chaves: comparação sem atalho e cabeçalhos de quem chama', () => {
+  assert.equal(sameKey(PUB, PUB), true);
+  assert.equal(sameKey(PUB, PUB.slice(0, -1)), false, 'tamanho diferente');
+  assert.equal(sameKey(PUB, PUB.slice(0, -1) + 'X'), false, 'última letra diferente');
+  assert.equal(sameKey('', ''), false, 'vazio nunca vale');
+  assert.equal(sameKey(undefined, PUB), false);
+  assert.equal(hasKey(cabecalhos({ apikey: PUB }), [PUB]), true);
+  assert.equal(hasKey(cabecalhos({ Authorization: `Bearer ${ANTIGA_ANON}` }), [ANTIGA_ANON]), true, 'antiga também em Bearer');
+  assert.equal(hasKey(cabecalhos({ Authorization: `Bearer ${PUB}` }), [PUB]), false, 'nova em Bearer não vale');
+  assert.equal(hasKey(cabecalhos({ apikey: PUB }), []), false);
+});
+
+test('chaves: a chave única sem JSON (SUPABASE_PUBLISHABLE_KEY / SUPABASE_SECRET_KEY) vale como "default" se o JSON faltar', () => {
+  const uma = envDe({ SUPABASE_PUBLISHABLE_KEY: ` ${PUB} `, SUPABASE_SECRET_KEY: SEC, SUPABASE_ANON_KEY: ANTIGA_ANON });
+  assert.deepEqual(newKeys(uma, PUBLISHABLE_VARS), { default: PUB });
+  assert.deepEqual(publishableKey(uma), { key: PUB, legacy: false }, 'a única nova ganha da antiga');
+  assert.deepEqual(secretKey(uma), { key: SEC, legacy: false });
+  assert.deepEqual(callerKeys(uma), [PUB, ANTIGA_ANON], 'confere a chave de quem chama também com a chave única');
+  // O JSON, quando existe, manda (a única fica de lado).
+  const ambos = envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB_WEB }), SUPABASE_PUBLISHABLE_KEY: PUB });
+  assert.deepEqual(newKeys(ambos, PUBLISHABLE_VARS), { default: PUB_WEB });
+  assert.deepEqual(publishableKey(ambos), { key: PUB_WEB, legacy: false });
+  // JSON quebrado ou vazio: a única; sem nenhuma das duas: a antiga.
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: 'quebrado', SUPABASE_PUBLISHABLE_KEY: PUB })), { key: PUB, legacy: false });
+  assert.deepEqual(newKeys(envDe({ SUPABASE_PUBLISHABLE_KEY: '   ' }), PUBLISHABLE_VARS), {});
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEY: '', SUPABASE_ANON_KEY: ANTIGA_ANON })), { key: ANTIGA_ANON, legacy: true });
+  // A secreta única nunca vira publishable (e vice-versa).
+  assert.equal(publishableKey(envDe({ SUPABASE_SECRET_KEY: SEC })), null);
+  assert.equal(secretKey(envDe({ SUPABASE_PUBLISHABLE_KEY: PUB })), null);
+});
+
+test('travas: origem só no navegador, IP do primeiro item de X-Forwarded-For e limite de 40 por minuto', () => {
+  const SITES = ['https://drrafaelpereirabarreto-code.github.io'];
+  assert.equal(originAllowed('https://drrafaelpereirabarreto-code.github.io', SITES), true);
+  assert.equal(originAllowed('https://exemplo.com', SITES), false, 'outro site no navegador: 403');
+  assert.equal(originAllowed(null, SITES), true, 'sem Origin (fora do navegador): não confere a origem');
+  assert.equal(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.1' })), '203.0.113.9');
+  assert.equal(clientIp(new Headers({})), 'desconhecido');
+  const hits = new Map<string, { n: number; reset: number }>();
+  const t0 = 1_000_000;
+  for (let i = 1; i <= 40; i++) assert.equal(rateLimited(hits, '203.0.113.9', t0 + i), false, `chamada ${i} passa`);
+  assert.equal(rateLimited(hits, '203.0.113.9', t0 + 41), true, 'a 41ª no mesmo minuto: 429');
+  assert.equal(rateLimited(hits, '198.51.100.7', t0 + 42), false, 'outro IP conta à parte');
+  assert.equal(rateLimited(hits, '203.0.113.9', t0 + 60_002), false, 'minuto novo: conta do zero');
+});
+
+test('importador: a resposta ao "ping" diz se ele aceita a chave secreta da busca (sem mostrar chave)', () => {
+  assert.equal(importerAnswer(200, { ok: true }), 'ok');
+  assert.equal(importerAnswer(400, { ok: false, error: 'unknown_action' }), 'antigo', 'versão sem "ping", mas aceitou a chave');
+  assert.equal(importerAnswer(403, { ok: false, error: 'forbidden' }), 'recusou');
+  assert.equal(importerAnswer(401, null), 'recusou');
+  assert.equal(importerAnswer(500, { ok: false, error: 'internal' }), 'erro');
+  assert.equal(importerAnswer(200, { ok: false }), 'erro');
+  assert.equal(importerAnswer(200, 'texto'), 'erro');
 });

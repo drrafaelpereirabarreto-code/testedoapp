@@ -10,12 +10,12 @@
   // Números reais do cadastro oficial importado no IMED (imported_cities).
   function numeros() {
     var box = $('#numeros');
-    if (!box || !C.supabaseUrl || !C.supabaseAnonKey) return;
+    if (!box || !C.supabaseUrl || !C.supabaseKey || typeof C.supabaseHeaders !== 'function') return;
     var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     var timer = ctrl && setTimeout(function () { ctrl.abort(); }, 15000);
     fetch(C.supabaseUrl + '/rest/v1/rpc/imported_cities', {
       method: 'POST',
-      headers: { apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'Content-Type': 'application/json' },
+      headers: C.supabaseHeaders(null, { 'Content-Type': 'application/json' }),
       body: '{}',
       signal: ctrl ? ctrl.signal : undefined
     }).then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); }).then(function (rows) {

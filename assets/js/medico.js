@@ -675,7 +675,7 @@ function offOnLeave() {
   try {
     fetch(`${C.supabaseUrl}/rest/v1/rpc/tele_set_available`, {
       method: 'POST', keepalive: true,
-      headers: { apikey: C.supabaseAnonKey, Authorization: `Bearer ${s.access_token}`, 'Content-Type': 'application/json' },
+      headers: C.supabaseHeaders(s.access_token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ p_on: false }),
     }).catch(() => {});
   } catch { /* ignora */ }

@@ -30,6 +30,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -365,10 +366,10 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 const F30 = gestao(30, CHARGES);
 const F7 = gestao(7, CHARGES);
 

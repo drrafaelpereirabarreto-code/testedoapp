@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addressQuery, cityFromReverse, classify, cleanPhone, mapCnesRows, nameKey, pickAddressResult, shiftInfo, titleCase,
-  validLocations, type CnesRow,
+  acceptedKeys, addressQuery, cityFromReverse, classify, cleanPhone, hasKey, keyHeaders, mapCnesRows, nameKey, namedKeys, newKeys,
+  pickAddressResult, PUBLISHABLE_VARS, publishableKey, SECRET_VARS, secretKey, shiftInfo, titleCase, validLocations, type CnesRow,
 } from './lib.ts';
 
 const base = (o: Partial<CnesRow>): CnesRow => ({
@@ -125,4 +125,56 @@ test('localiza pelo endereço só dentro do município certo', () => {
   assert.equal(pickAddressResult({ features: [json.features[0]] }, 'sao paulo', 'SP'), null);
   assert.equal(addressQuery({ address_line: 'Av Angelica, 916', neighborhood: 'Santa Cecilia' }, 'São Paulo', 'SP'), 'Av Angelica, 916, Santa Cecilia, São Paulo, SP');
   assert.equal(addressQuery({ address_line: null, neighborhood: 'Centro' }, 'São Paulo', 'SP'), null);
+});
+
+/* ---------------- chaves do Supabase: quem pode chamar o importador e como ele chama o banco ---------------- */
+// Valores de mentira (nenhuma chave de verdade nos testes). A antiga é um token (JWT) no formato "a.b.c".
+const SEC = 'sb_secret_falsa_1';
+const SEC2 = 'sb_secret_falsa_2';
+const PUB = 'sb_publishable_falsa_1';
+const ANTIGA_SERVICO = 'cabecalho-falso.servico-falso.assinatura-falsa';
+const envDe = (vars: Record<string, string>) => (name: string): string | undefined => vars[name];
+
+test('chaves: a secreta vem de SUPABASE_SECRET_KEYS (JSON por nome), com volta para a service_role antiga', () => {
+  const ambos = envDe({ SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC }), SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO });
+  assert.deepEqual(secretKey(ambos), { key: SEC, legacy: false }, 'a nova ganha');
+  assert.deepEqual(keyHeaders(secretKey(ambos)), { apikey: SEC }, 'nova: só no apikey, nunca em Bearer');
+  const antiga = envDe({ SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO });
+  assert.deepEqual(secretKey(antiga), { key: ANTIGA_SERVICO, legacy: true }, 'sem a nova (ausente): a antiga');
+  assert.deepEqual(keyHeaders(secretKey(antiga)), { apikey: ANTIGA_SERVICO, Authorization: `Bearer ${ANTIGA_SERVICO}` }, 'antiga: como antes');
+  assert.deepEqual(secretKey(envDe({ SUPABASE_SECRET_KEYS: 'não é JSON', SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO })), { key: ANTIGA_SERVICO, legacy: true }, 'JSON quebrado: a antiga');
+  assert.equal(secretKey(envDe({})), null, 'nenhuma: null');
+  assert.deepEqual(namedKeys(JSON.stringify({ default: SEC, fila: SEC2 })), { default: SEC, fila: SEC2 });
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }) })), { key: PUB, legacy: false });
+});
+
+test('chaves: o importador aceita a secreta no apikey, a service_role antiga (Bearer) e mais nada', () => {
+  const keys = acceptedKeys(envDe({
+    SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC, fila: SEC2 }), SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO,
+    SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }),
+  }), SECRET_VARS);
+  assert.deepEqual(keys, [SEC, SEC2, ANTIGA_SERVICO], 'as secretas de qualquer nome e a antiga; a publishable não entra');
+  const h = (o: Record<string, string>) => new Headers(o);
+  assert.equal(hasKey(h({ apikey: SEC }), keys), true, 'clinicas-proximas nova');
+  assert.equal(hasKey(h({ apikey: SEC2 }), keys), true, 'outra chave secreta do projeto');
+  assert.equal(hasKey(h({ Authorization: `Bearer ${ANTIGA_SERVICO}` }), keys), true, 'clinicas-proximas antiga (até ser publicada de novo)');
+  assert.equal(hasKey(h({ apikey: ANTIGA_SERVICO, Authorization: `Bearer ${ANTIGA_SERVICO}` }), keys), true, 'nova, na volta para a antiga');
+  assert.equal(hasKey(h({ Authorization: `Bearer ${SEC}` }), keys), false, 'secreta nova em Bearer não vale');
+  assert.equal(hasKey(h({ apikey: PUB }), keys), false, 'chave pública não chama o importador');
+  assert.equal(hasKey(h({ apikey: SEC + 'x' }), keys), false);
+  assert.equal(hasKey(h({}), keys), false);
+  assert.deepEqual(acceptedKeys(envDe({}), SECRET_VARS), [], 'sem chave no ambiente: só o token interno da fila (x-imed-token) passa');
+  assert.deepEqual(acceptedKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }) }), PUBLISHABLE_VARS), [PUB]);
+});
+
+test('chaves: a secreta única sem JSON (SUPABASE_SECRET_KEY) vale como "default" e é aceita de quem chama', () => {
+  const env = envDe({ SUPABASE_SECRET_KEY: SEC, SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO });
+  assert.deepEqual(newKeys(env, SECRET_VARS), { default: SEC });
+  assert.deepEqual(secretKey(env), { key: SEC, legacy: false });
+  assert.deepEqual(keyHeaders(secretKey(env)), { apikey: SEC });
+  const keys = acceptedKeys(env, SECRET_VARS);
+  assert.deepEqual(keys, [SEC, ANTIGA_SERVICO]);
+  assert.equal(hasKey(new Headers({ apikey: SEC }), keys), true);
+  // O JSON, quando existe, manda.
+  assert.deepEqual(acceptedKeys(envDe({ SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC2 }), SUPABASE_SECRET_KEY: SEC }), SECRET_VARS), [SEC2]);
 });

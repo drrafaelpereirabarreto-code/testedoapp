@@ -1,18 +1,18 @@
 // Envio dos formulários para o banco do IMED (Supabase).
 // A chave usada (assets/js/config.js) é pública: as regras do banco só permitem inserir
 // cadastros e pedidos, e só administradores conseguem ler o que foi enviado.
+// Sempre como visitante: só a chave publishable, no cabeçalho "apikey" (IMED_CONFIG.supabaseHeaders sem token).
 (function () {
   var CFG = window.IMED_CONFIG || {};
   var URL = CFG.supabaseUrl;
-  var KEY = CFG.supabaseAnonKey;
 
   window.imedInsert = function (table, row) {
-    if (!URL || !KEY) return Promise.reject(new Error('IMED_CONFIG ausente: carregue assets/js/config.js antes de db.js'));
+    if (!URL || !CFG.supabaseKey || typeof CFG.supabaseHeaders !== 'function') return Promise.reject(new Error('IMED_CONFIG ausente: carregue assets/js/config.js antes de db.js'));
     var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
     var timer = ctrl && setTimeout(function () { ctrl.abort(); }, 15000);
     return fetch(URL + '/rest/v1/' + table, {
       method: 'POST',
-      headers: { apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+      headers: CFG.supabaseHeaders(null, { 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
       body: JSON.stringify(row),
       signal: ctrl ? ctrl.signal : undefined
     }).then(function (r) {

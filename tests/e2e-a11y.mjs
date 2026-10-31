@@ -23,6 +23,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import { simularGeo } from './geo-simulado.mjs';
 
 const require = createRequire(import.meta.url);
@@ -659,11 +660,11 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !ONLY.test(name)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 6).join('\n  ')}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {

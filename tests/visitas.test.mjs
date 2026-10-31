@@ -1,6 +1,7 @@
 // Testes do contador de visitas próprio (sem cookies e sem dados pessoais):
-// - assets/js/visitas.js num navegador de mentira (node:vm): caminho certo, chave pública, nada no aparelho,
-//   quando não conta (testes, robôs, Não rastrear/GPC) e window.IMED_TRACK;
+// - assets/js/visitas.js num navegador de mentira (node:vm): caminho certo, chave pública (a publishable, só no
+//   cabeçalho "apikey", pela regra de assets/js/config.js), nada no aparelho, quando não conta (testes, robôs,
+//   Não rastrear/GPC) e window.IMED_TRACK;
 // - a regra do banco (supabase/migrations/20261030143839_visitas.sql) aceita todas as páginas do site e os
 //   eventos que o site manda; track e admin_stats com as travas certas;
 // - o contador em todas as páginas (scripts/aplicar-visitas.mjs e o gerador das cidades);
@@ -23,7 +24,15 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const read = (f) => readFileSync(join(ROOT, f), 'utf8');
 const CODE = read('assets/js/visitas.js');
 const SQL = read('supabase/migrations/20261030143839_visitas.sql');
-const CFG = { supabaseUrl: 'https://pyoqiecupxhdzigjudyd.supabase.co', supabaseAnonKey: 'chave-publica-anon' };
+// A configuração de verdade (assets/js/config.js), com a chave publishable e a regra dos cabeçalhos (supabaseHeaders).
+function realConfig() {
+  const g = {};
+  g.window = g;
+  vm.createContext(g);
+  vm.runInContext(read('assets/js/config.js'), g);
+  return g.IMED_CONFIG;
+}
+const CFG = realConfig();
 const SITE = 'https://drrafaelpereirabarreto-code.github.io/testedoapp/';
 const PHONE_UA = 'Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36';
 
@@ -81,7 +90,9 @@ test('visita: manda só o caminho da página (sem "?", "#" nem index.html), com 
     assert.equal(c.url, 'https://pyoqiecupxhdzigjudyd.supabase.co/rest/v1/rpc/track');
     assert.deepEqual(c.body, { p_path: path }, url);
     assert.equal(c.o.method, 'POST');
-    assert.deepEqual({ ...c.o.headers }, { 'Content-Type': 'application/json', apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${CFG.supabaseAnonKey}` });
+    // Chave publishable só no "apikey" e sem "Authorization" (a chave nova não é um token: nunca vai em Bearer).
+    assert.deepEqual({ ...c.o.headers }, { 'Content-Type': 'application/json', apikey: CFG.supabaseKey });
+    assert.match(CFG.supabaseKey, /^sb_publishable_/);
     assert.equal(c.o.keepalive, true);
     assert.equal(c.o.credentials, 'omit', 'sem cookie');
     assert.equal(c.o.referrerPolicy, 'no-referrer', 'o banco não recebe o endereço completo da página');
@@ -191,6 +202,10 @@ test('IMED_TRACK: evento sem dado pessoal, cada busca uma vez por página, e nun
   const noCfg = browser({ config: null });
   assert.equal(noCfg.calls.length, 0);
   assert.equal(noCfg.g.IMED_TRACK('busca_exame', 'rm'), false);
+  // config.js antigo (sem a regra dos cabeçalhos) ou sem a chave: não manda nada (nunca uma chamada sem chave).
+  const oldCfg = browser({ config: { supabaseUrl: CFG.supabaseUrl, supabaseKey: CFG.supabaseKey } });
+  assert.equal(oldCfg.calls.length, 0);
+  assert.equal(browser({ config: { ...CFG, supabaseKey: '' } }).calls.length, 0);
 });
 
 /* ------------------------- banco: a migração ------------------------- */
