@@ -367,6 +367,11 @@ for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Área da 
   PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
 }
 
+// Tema escuro (grupo "busca"): início, perto, local, guias, cidades e 404, com o aparelho no escuro.
+for (const n of ['Início', 'Início · janela da cidade', 'Início · localização bloqueada', 'Início · mapa', 'Perto de mim', 'Perto · ficha', 'Perto · pedido', 'Local (cadastro oficial)', 'Local (parceiro com agenda)', 'Local · pedido', 'Local · avisar erro', 'Página 404', 'Guias de exames', 'Guia: Raio-X', 'Cidades', 'Cidade: São Paulo']) {
+  PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
+}
+
 /* ======================= checagens ======================= */
 async function runAxe(page) {
   await page.addScriptTag({ path: AXE });

@@ -8,13 +8,13 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%;scroll-padding-top:90px}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);background:#fff;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased;overflow-x:hidden}
 h1,h2,h3,h4{font-family:'Sora','Inter',sans-serif;color:var(--ink);letter-spacing:-.02em;line-height:1.15}
 a{color:inherit;text-decoration:none}
 img{display:block;max-width:100%}
 button{font:inherit;cursor:pointer;border:0;background:none}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:#fff;color:var(--ink);font-weight:700;box-shadow:var(--sh2)}
+.skip{position:absolute;left:12px;top:-60px;z-index:100;padding:10px 14px;border-radius:10px;background:var(--elev);color:var(--ink);font-weight:700;box-shadow:var(--sh2)}
 .skip:focus{top:12px}
 .wrap{max-width:1200px;margin:0 auto;padding:0 20px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:14px 22px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .25s var(--ease),box-shadow .25s;white-space:nowrap}
@@ -25,11 +25,11 @@ button{font:inherit;cursor:pointer;border:0;background:none}
 .btn-glass:hover{background:rgba(255,255,255,.2)}
 
 /* topo */
-.g-top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.88);-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);border-bottom:1px solid var(--line)}
+.g-top{position:sticky;top:0;z-index:30;background:var(--bu-vidro,rgba(255,255,255,.88));-webkit-backdrop-filter:saturate(1.6) blur(16px);backdrop-filter:saturate(1.6) blur(16px);border-bottom:1px solid var(--line)}
 .g-top .wrap{display:flex;align-items:center;gap:18px;height:68px}
 .logo{display:flex;align-items:center;gap:9px;font-family:'Sora','Inter',system-ui,-apple-system,sans-serif;font-weight:800;font-size:21px;color:var(--ink)}
 .logo-mk{position:relative;display:grid;place-items:center;width:34px;height:34px;border-radius:11px;background:linear-gradient(145deg,#16A6C9,#0E7C9C);color:#fff;font-size:14px;box-shadow:0 6px 16px rgba(14,124,156,.35)}
-.logo-mk::after{content:"";position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--coral);border:2px solid #fff}
+.logo-mk::after{content:"";position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--coral);border:2px solid var(--bg)}
 .g-top nav{display:flex;gap:4px;margin-left:auto}
 .g-top nav a{padding:9px 12px;border-radius:10px;font-weight:600;font-size:14px;color:var(--muted)}
 .g-top nav a:hover,.g-top nav a.on{color:var(--primary);background:var(--primary-s)}
@@ -73,7 +73,7 @@ button{font:inherit;cursor:pointer;border:0;background:none}
 .prep{list-style:none;display:grid;gap:10px}
 .prep li{display:flex;gap:12px;align-items:flex-start;line-height:1.55;font-size:16px}
 .prep li i{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--green-s);color:var(--green);font-size:12px;flex-shrink:0;margin-top:1px}
-.warn{display:flex;gap:14px;align-items:flex-start;margin-top:18px;padding:16px 18px;border-radius:18px;background:var(--coral-s);color:#8a2f1a;line-height:1.55}
+.warn{display:flex;gap:14px;align-items:flex-start;margin-top:18px;padding:16px 18px;border-radius:18px;background:var(--coral-s);color:var(--bu-coral-d,#8a2f1a);line-height:1.55}
 .warn i{color:var(--coral-d);font-size:18px;margin-top:2px}
 details{border-bottom:1px solid var(--line);padding:18px 0}
 summary{cursor:pointer;font-weight:600;color:var(--ink);list-style:none;display:flex;justify-content:space-between;gap:12px;font-size:16.5px}
@@ -86,15 +86,15 @@ details p{color:var(--muted);margin-top:10px;font-size:15.5px!important}
 /* lateral */
 .g-side{position:sticky;top:90px;display:grid;gap:16px}
 @media (max-width:980px){.g-side{position:static}}
-.card{border:1px solid var(--line);border-radius:22px;padding:20px;background:#fff}
+.card{border:1px solid var(--line);border-radius:22px;padding:20px;background:var(--card)}
 .card h3{font-size:16px;margin-bottom:12px}
 .where-card{background:linear-gradient(145deg,#0B7290,#0A5C76);color:#fff;border:0;box-shadow:0 24px 50px rgba(14,124,156,.3);display:grid;gap:10px}
 .where-card h3{color:#fff;font-family:'Inter',system-ui,-apple-system,sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:0}
 .where-card p{color:rgba(255,255,255,.95);font-size:14.5px;line-height:1.55;margin-bottom:4px}
-.where-card .btn{width:100%;background:#fff;color:var(--primary-d);white-space:normal;text-align:center;line-height:1.3}
+.where-card .btn{width:100%;background:#fff;color:var(--bu-sobre-branco,var(--primary-d));white-space:normal;text-align:center;line-height:1.3}
 .where-card .btn-line{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.7)}
 .where-card .btn-line:hover{background:rgba(255,255,255,.12)}
-:focus-visible{outline:3px solid #0B7290;outline-offset:2px;box-shadow:0 0 0 2px #fff}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 2px var(--focus-halo)}
 main[tabindex="-1"]:focus{outline:none}
 .g-hero :focus-visible,.where-card :focus-visible{outline-color:#7FF0E4;box-shadow:0 0 0 2px #05161e}
 .others{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
@@ -107,7 +107,7 @@ main[tabindex="-1"]:focus{outline:none}
 .hub{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:48px 0 72px}
 @media (max-width:1000px){.hub{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:520px){.hub{grid-template-columns:1fr}}
-.hub a{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:24px;padding:20px;transition:transform .4s var(--ease),box-shadow .4s,border-color .3s;background:linear-gradient(180deg,#F7FBFC,#fff 45%)}
+.hub a{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:24px;padding:20px;transition:transform .4s var(--ease),box-shadow .4s,border-color .3s;background:linear-gradient(180deg,var(--bu-cat1,#F7FBFC),var(--card) 45%)}
 .hub a:hover{transform:translateY(-6px);box-shadow:var(--sh2);border-color:transparent}
 .hub img{width:110px;height:110px;object-fit:contain;margin-bottom:8px;transition:transform .5s var(--ease)}
 .hub a:hover img{transform:translateY(-6px) rotate(-6deg)}
@@ -129,3 +129,18 @@ main[tabindex="-1"]:focus{outline:none}
 }
 /* "Reduzir movimento" ligado no aparelho: nada se mexe sozinho (animações e transições param) e a rolagem não desliza. */
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* ==== Tema escuro do grupo "busca" (tokens --bu-*, páginas de busca): início ==== */
+/* Tokens --bu-* só existem no escuro: no claro vale a cor de reserva do var(), a de hoje (nada muda no claro).
+   Os dois blocos têm de ficar iguais (Automático e Escuro escolhido), só na tela, como os de assets/css/tema.css. */
+@media screen and (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bu-vidro:rgba(10,28,37,.9); --bu-cat1:#163646; --bu-coral-d:var(--coral-d); --bu-sobre-branco:#0A5C76;
+  }
+}
+@media screen{
+  :root[data-theme="dark"]{
+    --bu-vidro:rgba(10,28,37,.9); --bu-cat1:#163646; --bu-coral-d:var(--coral-d); --bu-sobre-branco:#0A5C76;
+  }
+}
+/* ==== Tema escuro do grupo "busca": fim ==== */

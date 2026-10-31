@@ -104,7 +104,7 @@ const FONTES = 'Sora:wght@600;700;800&family=Inter:wght@400;500;600;700';
 // aí tire o <style> de head() e ajuste o teste do estilo em tests/cidades.test.mjs.
 const FAQ_CSS = '.cd-faq{margin:4px 0 30px}.cd-faq>h2{font-size:22px;margin-bottom:12px}'
   + '.cd-faq-list{display:grid;gap:10px;max-width:860px}'
-  + '.cd-faq-item{padding:16px 18px;border-radius:18px;background:#fff;border:1px solid var(--line);min-width:0}'
+  + '.cd-faq-item{padding:16px 18px;border-radius:18px;background:var(--card);border:1px solid var(--line);min-width:0}'
   + '.cd-faq-item h3{font-size:16.5px;overflow-wrap:anywhere}'
   + '.cd-faq-item p{margin-top:6px;font-size:15px;line-height:1.6;overflow-wrap:anywhere}'
   + '.cd-faq-src{margin-top:12px;max-width:860px;font-size:13.5px;color:var(--muted)}'
