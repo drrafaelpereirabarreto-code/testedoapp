@@ -90,7 +90,7 @@ test('visita: manda só o caminho da página (sem "?", "#" nem index.html), com 
     assert.equal(c.url, 'https://pyoqiecupxhdzigjudyd.supabase.co/rest/v1/rpc/track');
     assert.deepEqual(c.body, { p_path: path }, url);
     assert.equal(c.o.method, 'POST');
-    // Chave publishable só no "apikey" e sem "Authorization" (a chave nova em Bearer é recusada pelo Supabase).
+    // Chave publishable só no "apikey" e sem "Authorization" (a chave nova não é um token: nunca vai em Bearer).
     assert.deepEqual({ ...c.o.headers }, { 'Content-Type': 'application/json', apikey: CFG.supabaseKey });
     assert.match(CFG.supabaseKey, /^sb_publishable_/);
     assert.equal(c.o.keepalive, true);

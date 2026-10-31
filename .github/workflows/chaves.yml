@@ -3,13 +3,18 @@
 # Por quê: as chaves antigas "anon" e "service_role" param de funcionar no fim de 2026. O site passou a usar a chave
 # publishable (sb_publishable_..., só no cabeçalho "apikey") e as Edge Functions, as chaves novas do ambiente.
 # Quando roda: a cada envio para o ramo ci/chaves e à mão (Actions → "Chaves do Supabase" → Run workflow; o botão
-# aparece quando este arquivo estiver na main). Rode à mão de novo depois de publicar as Edge Functions.
+# aparece quando este arquivo estiver na main). Depois de publicar as Edge Functions, rode à mão marcando
+# "depois_do_deploy": aí toda pendência "aguardando o deploy" vira erro (a execução só fica verde com tudo novo no ar).
 # O que faz (scripts/verificar-chaves.mjs):
-#   a) chama a API do Supabase com a chave publishable só no apikey, em funções públicas de leitura;
-#   b) chama a Edge Function clinicas-proximas do jeito novo (enquanto ela estiver com verify_jwt=true, vira AVISO
-#      "aguardando o deploy", sem reprovar);
-#   c) abre o site deste ramo num Chromium de verdade, sem simulação de rede, e confere os dados reais na tela.
-# Só lê a produção: nada é gravado no banco (as escritas do site ficam bloqueadas no navegador).
+#   a) chama a API do Supabase com a chave publishable só no apikey, em funções públicas de leitura, e o login
+#      (respostas do serviço de login, sem mandar e-mail);
+#   b) chama a Edge Function clinicas-proximas do jeito novo, pergunta se o importador aceita a chave secreta dela
+#      ("ping", sem trabalho) e chama do jeito do site publicado (enquanto ele for o antigo). Recusa do portão do
+#      Supabase (verify_jwt ainda ligado) vira AVISO "aguardando o deploy"; recusa da própria função é ERRO;
+#   c) abre o site deste ramo num Chromium de verdade, sem simulação de rede, e confere os dados reais na tela;
+#   d) abre o site publicado (github.io) do mesmo jeito: o site antigo com as funções novas, ou o site novo no ar.
+# Escritas do site bloqueadas no navegador (contador de visitas, pedidos). A busca faz o mesmo que a de um paciente:
+# o importador pode atualizar a cidade (importação com mais de 30 dias) e localizar endereços pendentes.
 # O resultado fica nas anotações da execução (falha = erro, pendência = aviso, resumo = nota) e no resumo da página.
 name: Chaves do Supabase
 
@@ -17,6 +22,11 @@ on:
   push:
     branches: [ci/chaves]
   workflow_dispatch:
+    inputs:
+      depois_do_deploy:
+        description: 'Já publiquei as Edge Functions desta fase: toda pendência "aguardando o deploy" vira erro'
+        type: boolean
+        default: false
 
 # Só leitura: a conferência não escreve nada no repositório.
 permissions:
@@ -50,11 +60,41 @@ jobs:
           node-version: '22'
           package-manager-cache: false
 
-      # Sem internet: a regra das chaves no código (site e Edge Functions). Falhou aqui, nem vale ir à produção.
+      # Sem internet: a regra das chaves no código (site, Edge Functions e testes do banco). Cada cenário que falhar
+      # vira anotação com as linhas do erro (o mesmo jeito do testes.yml), porque o registro não é lido daqui.
       - name: Testes das chaves (sem internet)
         run: |
-          node --test --test-reporter=spec tests/chaves.test.mjs
-          node --experimental-strip-types --test --test-reporter=spec supabase/functions/*/lib.test.ts
+          set -o pipefail
+          falhou=0
+          # teste NOME COMANDO...: roda o comando; se falhar, cada cenário que falhou vira "::error" com até 14
+          # linhas do erro (a mensagem, a diferença entre o esperado e o que veio, e onde aconteceu).
+          teste() {
+            local nome=$1; shift
+            local saida codigo=0
+            saida=$(mktemp)
+            echo "::group::$nome"
+            "$@" 2>&1 | tee "$saida" || codigo=$?
+            echo "::endgroup::"
+            if [ "$codigo" -ne 0 ]; then
+              falhou=1
+              echo "::error title=Teste falhou::$nome: FALHOU (código $codigo)"
+              awk '
+                function limpa(s) { gsub(/\r/, "", s); gsub(/%/, "%25", s); return s }
+                /^[[:space:]]*(FALHOU|✖)/ && !/failing tests:/ { if (m != "") print m; m = limpa($0); n = 0; next }
+                /^(ok|not ok) |^[0-9]+\/[0-9]+ / { if (m != "") print m; m = ""; next }
+                m != "" && !NF { next }
+                m != "" && n < 14 { m = m "%0A" limpa($0); n++; next }
+                m != "" { print m; m = "" }
+                END { if (m != "") print m }
+              ' "$saida" | awk '!visto[$0]++' | head -n 8 | while IFS= read -r linha; do
+                echo "::error title=Cenário que falhou::$nome → $linha"
+              done || true
+            fi
+            rm -f "$saida"
+          }
+          teste "tests/chaves.test.mjs" node --test --test-reporter=spec tests/chaves.test.mjs
+          teste "supabase/functions/*/lib.test.ts" node --experimental-strip-types --test --test-reporter=spec supabase/functions/*/lib.test.ts
+          exit $falhou
 
       - name: Instalar o Playwright
         run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
@@ -68,5 +108,7 @@ jobs:
       - name: Instalar o Chromium e as bibliotecas do sistema
         run: npx playwright install --with-deps chromium
 
-      - name: Conferir na produção (a, b, c)
+      - name: Conferir na produção (a, b, c, d)
+        env:
+          IMED_DEPOIS_DO_DEPLOY: ${{ inputs.depois_do_deploy && '1' || '' }}
         run: node scripts/verificar-chaves.mjs

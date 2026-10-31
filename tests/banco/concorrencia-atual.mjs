@@ -17,7 +17,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   afirmar, anotar, configLocal, conectar, descreverErro, estatisticas, postgrest, principal, resumir, rodarJuntos, textoCodigos,
-  tokenAnon,
 } from './lib.mjs';
 
 const CLINICA = 'cc000000-0000-4000-8000-0000000000c1';
@@ -88,10 +87,10 @@ await principal('concorrencia-atual', async () => {
          values ($1, $2, $3, $4, $5, $6::date, $7, $8, $9, $10::timestamptz)`,
         [r.id, r.clinic_id, r.place_source, r.place_name, r.exam_code, r.preferred_date, r.patient_name, r.patient_phone, r.consent, r.slot_start]);
     };
-    // O mesmo pelo PostgREST, como o site (POST /rest/v1/appointment_requests, return=minimal).
-    const token = tokenAnon(cfg);
+    // O mesmo pelo PostgREST, como o site (POST /rest/v1/appointment_requests, return=minimal), como visitante: só a
+    // chave publishable no "apikey", sem token (fase 0.1).
     const pedirHttp = async (hora, nome) => {
-      const r = await postgrest(cfg, 'appointment_requests', { token, corpo: linha(hora, nome) });
+      const r = await postgrest(cfg, 'appointment_requests', { corpo: linha(hora, nome) });
       return r.status === 201 ? { ok: true, ms: r.ms } : { ok: false, code: r.code ?? `HTTP ${r.status}`, message: r.message, ms: r.ms };
     };
     const confirmados = async (horas) => (await db.query(

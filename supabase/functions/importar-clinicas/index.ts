@@ -13,6 +13,8 @@
 //   localizar  { ibge }                   localiza pelo endereço mais um lote de estabelecimentos
 //   importar   { fila, uf, cidade }        importa uma cidade da fila de pré-carga (chamada pelo pg_cron do
 //                                          banco, com o token interno no cabeçalho x-imed-token)
+//   ping       {}                         só responde { ok: true } a quem passou da conferência: a busca usa para
+//                                          provar que a chave secreta dela é aceita aqui (nada é lido nem gravado)
 //
 // PUBLICAR COM verify_jwt=false (como sempre foi):
 //   supabase functions deploy importar-clinicas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
@@ -230,6 +232,7 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: 'invalid_json' }, 400);
   }
   try {
+    if (body.action === 'ping') return json({ ok: true });
     if (body.action === 'garantir') {
       const pts = (Array.isArray(body.pontos) ? body.pontos : [])
         .map((p: { lat?: unknown; lng?: unknown }) => ({ lat: Number(p?.lat), lng: Number(p?.lng) }))

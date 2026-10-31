@@ -1,15 +1,17 @@
 // Chaves do Supabase (fase 0.1 do iMed Agenda): as chaves antigas "anon" e "service_role" (tokens JWT) param de
 // funcionar no fim de 2026. As novas são a publishable (sb_publishable_..., pública, no site) e a secreta
-// (sb_secret_..., só no servidor), e as duas vão SÓ no cabeçalho "apikey": em "Authorization: Bearer" o Supabase
-// tenta ler a chave como token e recusa ("Invalid JWT").
+// (sb_secret_..., só no servidor), e as duas vão SÓ no cabeçalho "apikey": não são tokens, e a documentação do
+// Supabase manda nunca pô-las em "Authorization: Bearer" (onde ele espera um token, recusa: "Invalid JWT").
 // Este teste confere, sem internet:
 // - o site usa só a chave publishable, em assets/js/config.js (supabaseKey), e nenhum módulo lê supabaseAnonKey;
-// - nenhum arquivo do site, das Edge Functions, dos scripts ou do GitHub tem chave JWT do Supabase ou chave secreta,
-//   e a chave publishable de verdade mora num lugar só (config.js), para trocar com uma edição;
+// - nenhum arquivo do site (páginas, guias, cidades), das Edge Functions, dos scripts ou do GitHub tem chave JWT do
+//   Supabase ou chave secreta, e a chave publishable de verdade mora num lugar só (config.js), para trocar com uma
+//   edição; no repositório INTEIRO (memória, migrações, testes...), nenhuma chave secreta nem token service_role;
 // - a chave pública nunca vai em "Bearer": só a regra dos cabeçalhos (IMED_CONFIG.supabaseHeaders, em config.js)
-//   escreve "Authorization", e só com o token de quem entrou na conta; nenhum outro módulo monta "apikey" à mão;
-// - as Edge Functions leem SUPABASE_PUBLISHABLE_KEYS e SUPABASE_SECRET_KEYS com volta para as antigas, e a
-//   clinicas-proximas não depende do token de quem chama (publicada com verify_jwt=false).
+//   escreve "Authorization", e só com o token de quem entrou na conta; nenhum outro módulo monta "apikey" à mão
+//   (nem os testes do banco de verdade, tests/banco, que usam a mesma regra);
+// - as Edge Functions leem SUPABASE_PUBLISHABLE_KEYS e SUPABASE_SECRET_KEYS com volta para as antigas, a
+//   clinicas-proximas não depende do token de quem chama e todas ficam com verify_jwt = false (supabase/config.toml).
 // O comportamento das funções (JSON, ausente, antiga) está em supabase/functions/*/lib.test.ts; a conferência na
 // produção, em scripts/verificar-chaves.mjs (GitHub Actions → "Chaves do Supabase").
 // Rodar com: node --test tests/chaves.test.mjs
@@ -46,8 +48,10 @@ const SITE_JS = readdirSync(join(ROOT, 'assets/js')).filter((f) => f.endsWith('.
 // ficam de fora: os testes usam chaves de mentira.)
 const VARRIDOS = [
   ...arquivos('assets'), ...arquivos('supabase/functions'), ...arquivos('scripts'), ...arquivos('.github'),
-  ...arquivos('exames'), ...PAGINAS, 'README.md', 'llms.txt', 'sw.js', 'manifest.webmanifest',
+  ...arquivos('exames'), ...arquivos('cidades'), ...PAGINAS, 'README.md', 'llms.txt', 'sw.js', 'manifest.webmanifest',
 ];
+// O repositório inteiro (é público): para as chaves que dão acesso total ao banco.
+const TUDO = arquivos('', { fora: ['.git', 'node_modules', 'tests/banco/node_modules'] });
 
 // Configuração de verdade num navegador de mentira (node:vm).
 function config() {
@@ -101,11 +105,69 @@ test('nenhuma chave JWT do Supabase (anon/service_role) nem chave secreta no sit
     if (SECRETA.test(t)) ruins.push(`${f}: chave secreta (sb_secret_...)`);
     if (f !== 'assets/js/config.js' && PUBLICA.test(t)) ruins.push(`${f}: chave publishable fora do config.js (leia de lá)`);
     if (/Bearer\s+sb_/.test(t)) ruins.push(`${f}: chave nova em "Bearer"`);
-    if (/supabaseAnonKey/.test(t)) ruins.push(`${f}: supabaseAnonKey (a propriedade agora é supabaseKey)`);
+    // A conferência na produção lê o config.js PUBLICADO, que pode ainda ser o antigo (supabaseAnonKey), para provar
+    // que o site antigo continua funcionando com as funções novas: só ali, e só para ler.
+    const leituraDoPublicado = f === 'scripts/verificar-chaves.mjs' && t.match(/supabaseAnonKey/g)?.length === 1 && /pega\(t, 'supabaseAnonKey'\)/.test(t);
+    if (/supabaseAnonKey/.test(t) && !leituraDoPublicado) ruins.push(`${f}: supabaseAnonKey (a propriedade agora é supabaseKey)`);
   }
   assert.deepEqual(ruins, []);
   assert.ok(VARRIDOS.length > 100, `varreu ${VARRIDOS.length} arquivos`);
   assert.ok(VARRIDOS.includes('assets/js/config.js') && VARRIDOS.includes('supabase/functions/clinicas-proximas/index.ts'));
+  assert.ok(VARRIDOS.includes('cidades/sp/sao-paulo/index.html'), 'as páginas das cidades também');
+});
+
+// Papel de um token JWT (o campo "role" do meio), ou null se não for um JWT legível.
+function papel(token) {
+  try { return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'))?.role ?? null; } catch { return null; }
+}
+
+test('repositório inteiro (é público): nenhuma chave secreta (sb_secret_...) nem token service_role', () => {
+  const SECRETA = /sb_secret_[A-Za-z0-9_-]{20,}/;
+  const JWTS = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+  const ruins = [];
+  for (const f of TUDO) {
+    const t = read(f);
+    if (SECRETA.test(t)) ruins.push(`${f}: chave secreta (sb_secret_...)`);
+    for (const [jwt] of t.matchAll(JWTS)) {
+      const r = papel(jwt);
+      if (r === 'service_role' || r === 'supabase_admin') ruins.push(`${f}: token JWT com papel ${r}`);
+    }
+  }
+  assert.deepEqual(ruins, []);
+  for (const f of ['memory/projects/imed-agenda-arquitetura.md', 'CLAUDE.md', 'supabase/config.toml', 'tests/banco/lib.mjs']) {
+    assert.ok(TUDO.includes(f), `varreu ${f}`);
+  }
+  assert.ok(TUDO.some((f) => f.startsWith('supabase/migrations/') && f.endsWith('.sql')), 'varreu as migrações');
+  // O detector reconhece um token service_role (montado aqui, nunca escrito em arquivo).
+  const falso = ['eyJhbGciOiJIUzI1NiJ9', Buffer.from(JSON.stringify({ role: 'service_role', iss: 'supabase' })).toString('base64url'), 'assinatura-falsa'].join('.');
+  assert.equal(papel(falso), 'service_role');
+});
+
+test('supabase/config.toml: toda Edge Function com verify_jwt = false (a função confere quem chama)', () => {
+  const toml = read('supabase/config.toml');
+  const secoes = [...toml.matchAll(/^\[functions\.([a-z0-9-]+)\][^\n]*\n((?:(?!\[)[^\n]*\n?)*)/gm)].map((m) => ({ nome: m[1], corpo: m[2] }));
+  const nomes = secoes.map((x) => x.nome);
+  for (const f of ['clinicas-proximas', 'importar-clinicas']) assert.ok(nomes.includes(f), `[functions.${f}] no config.toml`);
+  for (const { nome, corpo } of secoes) {
+    assert.match(corpo, /^verify_jwt = false\s*$/m, `[functions.${nome}]: verify_jwt = false`);
+    assert.doesNotMatch(corpo, /^verify_jwt = true/m, `[functions.${nome}]: nada de verify_jwt = true`);
+  }
+  assert.doesNotMatch(toml, /^\s*verify_jwt\s*=\s*true/m);
+});
+
+test('tests/banco (banco de verdade no GitHub): pedidos com a regra dos cabeçalhos do site', () => {
+  const lib = read('tests/banco/lib.mjs');
+  assert.match(lib, /PUBLISHABLE_KEY/, 'usa a chave publishable do Supabase local');
+  assert.match(lib, /regraDoSite\.supabaseHeaders\(token \?\? null, extra\)/, 'cabecalhosDoSite chama a regra do config.js');
+  assert.match(lib, /headers: cabecalhosDoSite\(cfg, token, /, 'postgrest() manda os cabeçalhos do site');
+  const ruins = [];
+  for (const f of arquivos('tests/banco', { fora: ['tests/banco/node_modules'] }).filter((x) => /\.m?js$/.test(x))) {
+    const t = read(f);
+    if (/[{,]\s*['"]?apikey['"]?\s*:/i.test(t)) ruins.push(`${f}: monta "apikey" (use cabecalhosDoSite)`);
+    if (/[{,]\s*['"]?Authorization['"]?\s*:/i.test(t)) ruins.push(`${f}: monta "Authorization" (use cabecalhosDoSite)`);
+    if (/tokenAnon\(cfg\)/.test(t)) ruins.push(`${f}: token de visitante (o site não manda mais: visitante vai sem token)`);
+  }
+  assert.deepEqual(ruins, []);
 });
 
 test('"Authorization" e "apikey" só na regra dos cabeçalhos (config.js): nenhum módulo monta à mão', () => {
@@ -166,7 +228,7 @@ const bloco = (f) => {
 test('Edge Functions: leem as chaves novas (JSON por nome) com volta para as antigas, no mesmo bloco nas duas', () => {
   const [a, b] = LIBS.map(bloco);
   assert.equal(a, b, 'o bloco das chaves é igual em clinicas-proximas/lib.ts e importar-clinicas/lib.ts');
-  for (const v of ['SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_SECRET_KEYS', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']) {
+  for (const v of ['SUPABASE_PUBLISHABLE_KEYS', 'SUPABASE_SECRET_KEYS', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']) {
     assert.match(a, new RegExp(`'${v}'`), `lê ${v}`);
   }
   assert.match(a, /JSON\.parse\(raw\)/, 'as novas são JSON por nome');
@@ -176,7 +238,7 @@ test('Edge Functions: leem as chaves novas (JSON por nome) com volta para as ant
   for (const f of ['supabase/functions/clinicas-proximas/index.ts', 'supabase/functions/importar-clinicas/index.ts']) {
     const t = read(f);
     // As variáveis das chaves só são lidas pelo bloco (nada de Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') solto).
-    assert.doesNotMatch(t, /['"]SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY|PUBLISHABLE_KEYS|SECRET_KEYS)['"]/, `${f}: lê as chaves pelo lib.ts`);
+    assert.doesNotMatch(t, /['"]SUPABASE_(ANON_KEY|SERVICE_ROLE_KEY|PUBLISHABLE_KEYS?|SECRET_KEYS?)['"]/, `${f}: lê as chaves pelo lib.ts`);
     assert.doesNotMatch(t, /Bearer \$\{|['"]Bearer ['"]\s*\+/, `${f}: Bearer só pelo keyHeaders (chave antiga)`);
     assert.match(t, /keyHeaders\((PUBLIC_KEY|SECRET_KEY)\)/, `${f}: chama o Supabase com keyHeaders`);
     assert.match(t, /--no-verify-jwt --project-ref pyoqiecupxhdzigjudyd/, `${f}: o comando de publicação está no topo`);
@@ -190,6 +252,9 @@ test('clinicas-proximas: não depende do token de quem chama e confere a chave n
   assert.doesNotMatch(t, /headers\.get\(['"]authorization['"]\)/i, 'não lê o Authorization de quem chama');
   assert.doesNotMatch(t, /headers\.get\(['"]apikey['"]\)/i, 'não repassa a chave de quem chama ao banco');
   assert.match(t, /if \(!callerAllowed\(req\.headers, CALLER_KEYS\)\) return json\(\{ ok: false, error: 'unauthorized' \}, 401, h\);/);
+  // As travas são as de lib.ts (com testes em lib.test.ts): origem no navegador e limite por IP.
+  assert.match(t, /if \(!originAllowed\(origin, ALLOWED_ORIGINS\)\) return json\(\{ ok: false, error: 'origin_not_allowed' \}, 403, h\);/);
+  assert.match(t, /if \(rateLimited\(hits, clientIp\(req\.headers\), Date\.now\(\)\)\) return json\(\{ ok: false, error: 'rate_limited' \}, 429/);
   // Ordem das travas: origem, método, limite por IP, chave e só então o corpo da busca.
   const pos = ['origin_not_allowed', 'method_not_allowed', 'rate_limited', 'unauthorized', 'invalid_json'].map((s) => t.indexOf(`'${s}'`));
   assert.ok(pos.every((p, i) => p > 0 && (i === 0 || p > pos[i - 1])), `travas na ordem: ${pos.join(', ')}`);
@@ -199,4 +264,8 @@ test('clinicas-proximas: não depende do token de quem chama e confere a chave n
   assert.match(imp, /if \(hasKey\(req\.headers, SERVER_KEYS\)\) return true;/, 'importador: chave secreta (ou a service_role antiga)');
   assert.match(imp, /const SERVER_KEYS = acceptedKeys\(env, SECRET_VARS\);/);
   assert.match(imp, /x-imed-token/, 'e o token interno da fila (pg_cron)');
+  // O "ping" (a busca prova que a chave secreta dela é aceita) só responde depois da conferência de quem chama.
+  const auth = imp.indexOf("if (!await authorized(req)) return json({ ok: false, error: 'forbidden' }, 403);");
+  const ping = imp.indexOf("if (body.action === 'ping') return json({ ok: true });");
+  assert.ok(auth > 0 && ping > auth, 'ping depois da conferência');
 });

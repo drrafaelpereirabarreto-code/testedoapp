@@ -19,8 +19,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.E2E_PORT) || 8779; // E2E_PORT: outra porta para rodar em paralelo
 const SUPA = 'https://pyoqiecupxhdzigjudyd.supabase.co';
 const TRACK = `${SUPA}/rest/v1/rpc/track`;
-// Chave publishable do site: o contador manda só ela, no "apikey", sem "Authorization" (a chave nova em Bearer é
-// recusada pelo Supabase, e a sessão de quem entrou na conta nunca vai para o contador).
+// Chave publishable do site: o contador manda só ela, no "apikey", sem "Authorization" (a chave nova não é um token:
+// nunca vai em Bearer; e a sessão de quem entrou na conta nunca vai para o contador).
 const PUBLISHABLE = readFileSync(join(ROOT, 'assets/js/config.js'), 'utf8').match(/supabaseKey:\s*'([^']+)'/)[1];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 const UA_DESKTOP = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -176,7 +176,12 @@ await scenario('com a conta aberta: a visita vai com a chave pública, nunca com
   assert.equal(t.headers.authorization, undefined, 'nunca a sessão da pessoa (nem a chave em Bearer)');
   assert.ok(!t.body.includes('paciente') && !JSON.stringify(t.headers).includes('tok-da-pessoa'));
   // As outras chamadas da página (a conta da pessoa) vão com o token dela em Bearer e a chave publishable no apikey.
-  assert.ok(log.otherHeaders.some((o) => o.authorization === 'Bearer tok-da-pessoa' && o.apikey === PUBLISHABLE), 'a conta usa o token da pessoa');
+  // A conta só chama o banco depois de alguns passos (e a visita pode chegar antes, com a máquina ocupada): espera
+  // até 8 s, como o waitTrack.
+  const daPessoa = (o) => o.authorization === 'Bearer tok-da-pessoa' && o.apikey === PUBLISHABLE;
+  const fim = Date.now() + 8000;
+  while (!log.otherHeaders.some(daPessoa) && Date.now() < fim) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(log.otherHeaders.some(daPessoa), 'a conta usa o token da pessoa');
   await context.close();
 });
 

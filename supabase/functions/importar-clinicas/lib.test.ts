@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptedKeys, addressQuery, cityFromReverse, classify, cleanPhone, hasKey, keyHeaders, mapCnesRows, nameKey, namedKeys,
+  acceptedKeys, addressQuery, cityFromReverse, classify, cleanPhone, hasKey, keyHeaders, mapCnesRows, nameKey, namedKeys, newKeys,
   pickAddressResult, PUBLISHABLE_VARS, publishableKey, SECRET_VARS, secretKey, shiftInfo, titleCase, validLocations, type CnesRow,
 } from './lib.ts';
 
@@ -165,4 +165,16 @@ test('chaves: o importador aceita a secreta no apikey, a service_role antiga (Be
   assert.equal(hasKey(h({}), keys), false);
   assert.deepEqual(acceptedKeys(envDe({}), SECRET_VARS), [], 'sem chave no ambiente: só o token interno da fila (x-imed-token) passa');
   assert.deepEqual(acceptedKeys(envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB }) }), PUBLISHABLE_VARS), [PUB]);
+});
+
+test('chaves: a secreta única sem JSON (SUPABASE_SECRET_KEY) vale como "default" e é aceita de quem chama', () => {
+  const env = envDe({ SUPABASE_SECRET_KEY: SEC, SUPABASE_SERVICE_ROLE_KEY: ANTIGA_SERVICO });
+  assert.deepEqual(newKeys(env, SECRET_VARS), { default: SEC });
+  assert.deepEqual(secretKey(env), { key: SEC, legacy: false });
+  assert.deepEqual(keyHeaders(secretKey(env)), { apikey: SEC });
+  const keys = acceptedKeys(env, SECRET_VARS);
+  assert.deepEqual(keys, [SEC, ANTIGA_SERVICO]);
+  assert.equal(hasKey(new Headers({ apikey: SEC }), keys), true);
+  // O JSON, quando existe, manda.
+  assert.deepEqual(acceptedKeys(envDe({ SUPABASE_SECRET_KEYS: JSON.stringify({ default: SEC2 }), SUPABASE_SECRET_KEY: SEC }), SECRET_VARS), [SEC2]);
 });

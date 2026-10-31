@@ -310,15 +310,18 @@ export function addressQuery(e: { address_line: string | null; neighborhood: str
 /* ===== Chaves do Supabase: início (bloco igual em clinicas-proximas/lib.ts e importar-clinicas/lib.ts) ===== */
 // O Supabase põe as chaves do projeto nas variáveis de ambiente de toda Edge Function:
 // - novas: SUPABASE_PUBLISHABLE_KEYS e SUPABASE_SECRET_KEYS, um JSON com as chaves por nome
-//   ({"default":"sb_publishable_..."}). Vão SÓ no cabeçalho "apikey": em "Authorization: Bearer" o Supabase tenta
-//   ler a chave como token (JWT) e recusa ("Invalid JWT").
+//   ({"default":"sb_publishable_..."}). Vão SÓ no cabeçalho "apikey": não são tokens (JWT), e a documentação do
+//   Supabase manda nunca pô-las em "Authorization: Bearer" (onde o Supabase espera um token, como nas funções com
+//   verify_jwt, ele tenta ler a chave como token e recusa: "Invalid JWT").
+// - nova sem JSON: SUPABASE_PUBLISHABLE_KEY e SUPABASE_SECRET_KEY (uma chave só), o formato que a documentação cita
+//   para o desenvolvimento local. Vale como a "default" quando o JSON falta.
 // - antigas (tokens JWT, que param de funcionar no fim de 2026): SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY.
 //   Só são usadas se a nova faltar, e vão como sempre foram (apikey e Authorization: Bearer).
 // Nada aqui usa APIs do Deno: quem chama passa a leitura do ambiente (env), e os testes rodam no Node.
 export type EnvGet = (name: string) => string | undefined;
 export interface ProjectKey { key: string; legacy: boolean }
-export const PUBLISHABLE_VARS = { novas: 'SUPABASE_PUBLISHABLE_KEYS', antiga: 'SUPABASE_ANON_KEY' } as const;
-export const SECRET_VARS = { novas: 'SUPABASE_SECRET_KEYS', antiga: 'SUPABASE_SERVICE_ROLE_KEY' } as const;
+export const PUBLISHABLE_VARS = { novas: 'SUPABASE_PUBLISHABLE_KEYS', uma: 'SUPABASE_PUBLISHABLE_KEY', antiga: 'SUPABASE_ANON_KEY' } as const;
+export const SECRET_VARS = { novas: 'SUPABASE_SECRET_KEYS', uma: 'SUPABASE_SECRET_KEY', antiga: 'SUPABASE_SERVICE_ROLE_KEY' } as const;
 type KeyVars = typeof PUBLISHABLE_VARS | typeof SECRET_VARS;
 
 // Chaves de um JSON por nome. Faltando, vazio, quebrado ou fora do formato: nenhuma (nunca derruba a função).
@@ -334,9 +337,17 @@ export function namedKeys(raw: string | undefined | null): Record<string, string
   return out;
 }
 
+// As chaves novas do ambiente, por nome: o JSON ou, sem ele, a chave única (como "default").
+export function newKeys(env: EnvGet, vars: KeyVars): Record<string, string> {
+  const list = namedKeys(env(vars.novas));
+  if (Object.keys(list).length) return list;
+  const uma = (env(vars.uma) ?? '').trim();
+  return uma ? { default: uma } : {};
+}
+
 // A chave nova de nome `name` ("default"; sem ela, a primeira da lista) ou, sem nenhuma nova, a antiga.
 function pickKey(env: EnvGet, vars: KeyVars, name: string): ProjectKey | null {
-  const list = namedKeys(env(vars.novas));
+  const list = newKeys(env, vars);
   const nova = list[name] ?? Object.values(list)[0];
   if (nova) return { key: nova, legacy: false };
   const antiga = (env(vars.antiga) ?? '').trim();
@@ -360,7 +371,7 @@ export function keyHeaders(k: ProjectKey | null): Record<string, string> {
 // Todas as chaves aceitas de quem chama (função publicada com verify_jwt=false confere no código): as novas, de
 // qualquer nome, e a antiga enquanto existir.
 export function acceptedKeys(env: EnvGet, vars: KeyVars): string[] {
-  const out = Object.values(namedKeys(env(vars.novas)));
+  const out = Object.values(newKeys(env, vars));
   const antiga = (env(vars.antiga) ?? '').trim();
   if (antiga) out.push(antiga);
   return [...new Set(out)];

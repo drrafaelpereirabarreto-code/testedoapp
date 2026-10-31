@@ -2,8 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptedKeys, callerAllowed, callerKeys, clampRadius, geocode, hasKey, haversine, isCep, isValidCoord, keyHeaders, keyKind, namedKeys, parseGoogle,
-  PUBLISHABLE_VARS, publishableKey, roundCoord, sameKey, searchGoogle, SECRET_VARS, secretKey, type Fetch,
+  acceptedKeys, callerAllowed, callerKeys, clampRadius, clientIp, geocode, hasKey, haversine, importerAnswer, isCep, isValidCoord, keyHeaders,
+  keyKind, namedKeys, newKeys, originAllowed, parseGoogle, PUBLISHABLE_VARS, publishableKey, rateLimited, roundCoord, sameKey, searchGoogle,
+  SECRET_VARS, secretKey, type Fetch,
 } from './lib.ts';
 
 const PAULISTA = { lat: -23.565, lng: -46.652 };
@@ -230,4 +231,48 @@ test('chaves: comparação sem atalho e cabeçalhos de quem chama', () => {
   assert.equal(hasKey(cabecalhos({ Authorization: `Bearer ${ANTIGA_ANON}` }), [ANTIGA_ANON]), true, 'antiga também em Bearer');
   assert.equal(hasKey(cabecalhos({ Authorization: `Bearer ${PUB}` }), [PUB]), false, 'nova em Bearer não vale');
   assert.equal(hasKey(cabecalhos({ apikey: PUB }), []), false);
+});
+
+test('chaves: a chave única sem JSON (SUPABASE_PUBLISHABLE_KEY / SUPABASE_SECRET_KEY) vale como "default" se o JSON faltar', () => {
+  const uma = envDe({ SUPABASE_PUBLISHABLE_KEY: ` ${PUB} `, SUPABASE_SECRET_KEY: SEC, SUPABASE_ANON_KEY: ANTIGA_ANON });
+  assert.deepEqual(newKeys(uma, PUBLISHABLE_VARS), { default: PUB });
+  assert.deepEqual(publishableKey(uma), { key: PUB, legacy: false }, 'a única nova ganha da antiga');
+  assert.deepEqual(secretKey(uma), { key: SEC, legacy: false });
+  assert.deepEqual(callerKeys(uma), [PUB, ANTIGA_ANON], 'confere a chave de quem chama também com a chave única');
+  // O JSON, quando existe, manda (a única fica de lado).
+  const ambos = envDe({ SUPABASE_PUBLISHABLE_KEYS: JSON.stringify({ default: PUB_WEB }), SUPABASE_PUBLISHABLE_KEY: PUB });
+  assert.deepEqual(newKeys(ambos, PUBLISHABLE_VARS), { default: PUB_WEB });
+  assert.deepEqual(publishableKey(ambos), { key: PUB_WEB, legacy: false });
+  // JSON quebrado ou vazio: a única; sem nenhuma das duas: a antiga.
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEYS: 'quebrado', SUPABASE_PUBLISHABLE_KEY: PUB })), { key: PUB, legacy: false });
+  assert.deepEqual(newKeys(envDe({ SUPABASE_PUBLISHABLE_KEY: '   ' }), PUBLISHABLE_VARS), {});
+  assert.deepEqual(publishableKey(envDe({ SUPABASE_PUBLISHABLE_KEY: '', SUPABASE_ANON_KEY: ANTIGA_ANON })), { key: ANTIGA_ANON, legacy: true });
+  // A secreta única nunca vira publishable (e vice-versa).
+  assert.equal(publishableKey(envDe({ SUPABASE_SECRET_KEY: SEC })), null);
+  assert.equal(secretKey(envDe({ SUPABASE_PUBLISHABLE_KEY: PUB })), null);
+});
+
+test('travas: origem só no navegador, IP do primeiro item de X-Forwarded-For e limite de 40 por minuto', () => {
+  const SITES = ['https://drrafaelpereirabarreto-code.github.io'];
+  assert.equal(originAllowed('https://drrafaelpereirabarreto-code.github.io', SITES), true);
+  assert.equal(originAllowed('https://exemplo.com', SITES), false, 'outro site no navegador: 403');
+  assert.equal(originAllowed(null, SITES), true, 'sem Origin (fora do navegador): não confere a origem');
+  assert.equal(clientIp(new Headers({ 'x-forwarded-for': '203.0.113.9, 10.0.0.1' })), '203.0.113.9');
+  assert.equal(clientIp(new Headers({})), 'desconhecido');
+  const hits = new Map<string, { n: number; reset: number }>();
+  const t0 = 1_000_000;
+  for (let i = 1; i <= 40; i++) assert.equal(rateLimited(hits, '203.0.113.9', t0 + i), false, `chamada ${i} passa`);
+  assert.equal(rateLimited(hits, '203.0.113.9', t0 + 41), true, 'a 41ª no mesmo minuto: 429');
+  assert.equal(rateLimited(hits, '198.51.100.7', t0 + 42), false, 'outro IP conta à parte');
+  assert.equal(rateLimited(hits, '203.0.113.9', t0 + 60_002), false, 'minuto novo: conta do zero');
+});
+
+test('importador: a resposta ao "ping" diz se ele aceita a chave secreta da busca (sem mostrar chave)', () => {
+  assert.equal(importerAnswer(200, { ok: true }), 'ok');
+  assert.equal(importerAnswer(400, { ok: false, error: 'unknown_action' }), 'antigo', 'versão sem "ping", mas aceitou a chave');
+  assert.equal(importerAnswer(403, { ok: false, error: 'forbidden' }), 'recusou');
+  assert.equal(importerAnswer(401, null), 'recusou');
+  assert.equal(importerAnswer(500, { ok: false, error: 'internal' }), 'erro');
+  assert.equal(importerAnswer(200, { ok: false }), 'erro');
+  assert.equal(importerAnswer(200, 'texto'), 'erro');
 });

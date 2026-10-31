@@ -71,11 +71,16 @@ enabled = false
 enabled = false
 
 # ---------------- Edge Functions ----------------
-# verify_jwt = false: a própria função confere quem chama (chave de serviço ou token interno).
-# Mesmos valores da produção (conferidos em 31/10/2026: clinicas-proximas true, importar-clinicas false).
+# verify_jwt = false em TODAS: a conferência automática de token do Supabase só entende tokens (JWT), e as chaves
+# novas (sb_publishable_... e sb_secret_..., fase 0.1) não são tokens. Cada função confere quem chama no próprio
+# código: clinicas-proximas aceita a chave publishable no "apikey" (ou a anon antiga); importar-clinicas aceita a
+# chave secreta no "apikey" (ou a service_role antiga) e o token interno da fila (x-imed-token).
+# Na produção, publique cada uma com --no-verify-jwt (veja o topo do index.ts de cada função e o README). Até a
+# fase 0.1 ser publicada, a produção ainda tem clinicas-proximas com verify_jwt = true (conferido em 31/10/2026).
+# tests/chaves.test.mjs reprova se alguma função daqui voltar a ter verify_jwt = true.
 
 [functions.clinicas-proximas]
-verify_jwt = true
+verify_jwt = false
 
 [functions.importar-clinicas]
 verify_jwt = false

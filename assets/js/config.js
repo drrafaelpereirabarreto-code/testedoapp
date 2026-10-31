@@ -28,7 +28,8 @@ window.IMED_CONFIG = {
 //   - "apikey": sempre a chave publishable (supabaseKey);
 //   - "Authorization: Bearer <token>": só com o token de quem entrou na conta (auth.js). Visitante não manda
 //     Authorization: com a chave publishable sozinha, o Supabase atende como visitante (o papel "anon" do banco).
-// A chave publishable nunca vai em Authorization: o Supabase tenta ler como token (JWT) e recusa ("Invalid JWT").
+// A chave publishable nunca vai em Authorization: ela não é um token (JWT), e a documentação do Supabase manda pô-la
+// só no "apikey" (onde o Supabase espera um token, como nas funções com verify_jwt, recusa: "Invalid JWT").
 // Uso: IMED_CONFIG.supabaseHeaders()                                  visitante
 //      IMED_CONFIG.supabaseHeaders(token)                             pessoa logada
 //      IMED_CONFIG.supabaseHeaders(token, { 'Content-Type': ... })    com outros cabeçalhos (Content-Type, Prefer...)

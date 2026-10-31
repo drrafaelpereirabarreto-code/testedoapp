@@ -6,11 +6,13 @@
 // O site chama esta função só com a chave publishable no cabeçalho "apikey" (sem "Authorization"). A chave nova não
 // é um token (JWT), e a conferência automática do Supabase (verify_jwt) só entende tokens: a documentação manda
 // desligá-la e conferir no código. A função não depende do token de quem chama para nada; quem pode chamar é
-// conferido aqui:
-//   - origem: só os sites de ALLOWED_ORIGINS (outro site no navegador recebe 403);
-//   - chave: o "apikey" precisa ser uma chave publishable do projeto (ou a anon antiga, do site antigo ainda em
-//     cache), senão 401 (só quando o ambiente tem SUPABASE_PUBLISHABLE_KEYS, como deve ser);
-//   - limite: 40 chamadas por minuto por IP; e os dados da busca são validados (coordenadas, raio, texto).
+// conferido aqui (travas em lib.ts, com testes):
+//   - origem (originAllowed): no navegador, só os sites de ALLOWED_ORIGINS (outro site recebe 403). Fora do
+//     navegador (sem cabeçalho Origin: curl, servidor) a origem não é conferida: entra quem tiver a chave pública;
+//   - chave (callerAllowed): o "apikey" precisa ser uma chave publishable do projeto (ou a anon antiga, do site
+//     antigo ainda em cache), senão 401 (só quando o ambiente tem a chave publishable nova, como deve ser);
+//   - limite (rateLimited): 40 chamadas por minuto por IP em cada instância; e os dados da busca são validados
+//     (coordenadas, raio, texto).
 // O banco é consultado com a chave publishable da PRÓPRIA função (como visitante, sujeito às regras do banco),
 // e o importador com a chave secreta (SUPABASE_SECRET_KEYS), que nunca sai do servidor.
 //
@@ -25,6 +27,8 @@
 //   geocode  { q }  CEP (ViaCEP/BrasilAPI), cidade ou endereço (Google Geocoding ou Photon) para coordenadas.
 //   status   informa qual serviço de mapas está ativo e se as chaves do Supabase em uso são as novas
 //            (chaves: { publishable, secreta } = "nova" | "antiga" | "ausente"; nunca a chave em si).
+//            Com { importador: true }, pergunta também ao importador se ele aceita a chave secreta desta função
+//            (ação "ping", sem trabalho nenhum; resposta guardada por 30 s): importador: { http, resposta }.
 //
 // Variáveis de ambiente (segredos da função, nunca vão para o navegador):
 //   GOOGLE_MAPS_API_KEY  chave do Google Maps Platform (Places API New + Geocoding API). Opcional.
@@ -38,8 +42,8 @@
 // busca e nunca são gravadas nem enviadas aos logs.
 
 import {
-  callerAllowed, callerKeys, clampRadius, geocode, isValidCoord, keyHeaders, keyKind, publishableKey, roundCoord, searchGoogle,
-  secretKey, type GeoResult, type MapPlace,
+  callerAllowed, callerKeys, clampRadius, clientIp, geocode, importerAnswer, isValidCoord, keyHeaders, keyKind, originAllowed,
+  publishableKey, rateLimited, roundCoord, searchGoogle, secretKey, type GeoResult, type ImporterAnswer, type MapPlace,
 } from './lib.ts';
 
 const env = (name: string) => Deno.env.get(name);
@@ -50,9 +54,9 @@ const PUBLIC_KEY = publishableKey(env);
 // Chave secreta (nova; sem ela, a service_role antiga): só para chamar o importador.
 const SECRET_KEY = secretKey(env);
 // Chaves aceitas de quem chama a busca: as publishable do projeto e a anon antiga, enquanto existir (null: o ambiente
-// não tem SUPABASE_PUBLISHABLE_KEYS e a chave de quem chama não é conferida).
+// não tem a chave publishable nova, SUPABASE_PUBLISHABLE_KEYS, e a chave de quem chama não é conferida).
 const CALLER_KEYS = callerKeys(env);
-if (!CALLER_KEYS) console.error('sem SUPABASE_PUBLISHABLE_KEYS no ambiente: a chave de quem chama não está sendo conferida');
+if (!CALLER_KEYS) console.error('sem a chave publishable nova no ambiente: a chave de quem chama não está sendo conferida');
 const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ??
   'https://drrafaelpereirabarreto-code.github.io,http://localhost:8765,http://127.0.0.1:8765')
   .split(',').map((s) => s.trim()).filter(Boolean);
@@ -71,18 +75,6 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   if (cache.size > 300) cache.delete(cache.keys().next().value as string);
   cache.set(key, { exp: now + ttlMs, value });
   return value;
-}
-
-function rateLimited(ip: string): boolean {
-  const now = Date.now();
-  const h = hits.get(ip);
-  if (!h || h.reset < now) {
-    if (hits.size > 5000) hits.clear();
-    hits.set(ip, { n: 1, reset: now + 60_000 });
-    return false;
-  }
-  h.n += 1;
-  return h.n > 40;
 }
 
 function corsHeaders(origin: string | null): Record<string, string> {
@@ -132,6 +124,30 @@ async function askImporter(pontos: { lat: number; lng: number }[], ms: number): 
   });
   if (!res.ok) throw new Error(`importador ${res.status}`);
   return ((await res.json()) as { cidades?: (CityStatus | null)[] }).cidades ?? [];
+}
+
+// O importador aceita a chave secreta desta função? (status com "importador": true; ação "ping", sem trabalho.)
+// Guarda a resposta por 30 s nesta instância, para o "status" não virar uma chamada extra a cada pedido.
+interface ImporterCheck { http: number | null; resposta: ImporterAnswer | 'sem_resposta' | 'sem_chave' }
+let importerCheck: { exp: number; value: ImporterCheck } | null = null;
+async function checkImporter(): Promise<ImporterCheck> {
+  if (importerCheck && importerCheck.exp > Date.now()) return importerCheck.value;
+  let value: ImporterCheck = { http: null, resposta: 'sem_chave' };
+  if (SECRET_KEY) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/importar-clinicas`, {
+        method: 'POST',
+        headers: { ...keyHeaders(SECRET_KEY), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'ping' }),
+        signal: AbortSignal.timeout(10000),
+      });
+      value = { http: res.status, resposta: importerAnswer(res.status, await res.json().catch(() => null)) };
+    } catch {
+      value = { http: null, resposta: 'sem_resposta' };
+    }
+  }
+  importerCheck = { exp: Date.now() + 30_000, value };
+  return value;
 }
 
 const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
@@ -224,11 +240,10 @@ Deno.serve(async (req: Request) => {
   const origin = req.headers.get('origin');
   const h = corsHeaders(origin);
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: h });
-  if (origin && !ALLOWED_ORIGINS.includes(origin)) return json({ ok: false, error: 'origin_not_allowed' }, 403, h);
+  if (!originAllowed(origin, ALLOWED_ORIGINS)) return json({ ok: false, error: 'origin_not_allowed' }, 403, h);
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405, h);
 
-  const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'desconhecido';
-  if (rateLimited(ip)) return json({ ok: false, error: 'rate_limited' }, 429, { ...h, 'Retry-After': '60' });
+  if (rateLimited(hits, clientIp(req.headers), Date.now())) return json({ ok: false, error: 'rate_limited' }, 429, { ...h, 'Retry-After': '60' });
   // Publicada com verify_jwt=false: a chave de quem chama é conferida aqui (veja o começo do arquivo).
   if (!callerAllowed(req.headers, CALLER_KEYS)) return json({ ok: false, error: 'unauthorized' }, 401, h);
 
@@ -242,7 +257,12 @@ Deno.serve(async (req: Request) => {
   try {
     if (body?.action === 'search') return await handleSearch(body, h);
     if (body?.action === 'geocode') return await handleGeocode(body, h);
-    if (body?.action === 'status') return json({ ok: true, provider: PROVIDER, chaves: { publishable: keyKind(PUBLIC_KEY), secreta: keyKind(SECRET_KEY) } }, 200, h);
+    if (body?.action === 'status') {
+      return json({
+        ok: true, provider: PROVIDER, chaves: { publishable: keyKind(PUBLIC_KEY), secreta: keyKind(SECRET_KEY) },
+        ...(body.importador === true ? { importador: await checkImporter() } : {}),
+      }, 200, h);
+    }
     return json({ ok: false, error: 'unknown_action' }, 400, h);
   } catch (err) {
     console.error('erro inesperado:', err instanceof Error ? err.message : 'desconhecido');

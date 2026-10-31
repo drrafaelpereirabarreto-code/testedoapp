@@ -2,8 +2,9 @@
 // "service_role" param no fim de 2026; o site usa a chave publishable nova).
 // Toda chamada do site ao Supabase (banco, funções do banco, login e a função do servidor) leva a chave publishable
 // do site (assets/js/config.js) só no cabeçalho "apikey". "Authorization: Bearer" vai só com o token de quem entrou
-// na conta (nos testes, sempre "tok-..."). A chave nunca vai em Bearer: o Supabase tenta lê-la como token e recusa
-// ("Invalid JWT"). Visitante não manda Authorization.
+// na conta (nos testes, sempre "tok-..."). A chave nunca vai em Bearer: não é um token (JWT), e a documentação do
+// Supabase manda pô-la só no "apikey" (onde ele espera um token, recusa: "Invalid JWT"). Visitante não manda
+// Authorization.
 // Uso num teste e2e (não é um teste: o nome não começa com "e2e-"):
 //   const browser = vigiarChaves(await chromium.launch());   todo contexto aberto depois disso é vigiado
 //   await comChaves(fn)                                        roda o cenário e o reprova se alguma chamada fugiu da regra
