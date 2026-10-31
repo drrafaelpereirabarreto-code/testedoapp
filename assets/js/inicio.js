@@ -120,6 +120,7 @@ function headerState() {
   const h = $('#hero');
   const at = S.view === 'inicio' && h && window.scrollY < h.offsetHeight - 90;
   document.body.classList.toggle('at-hero', !!at);
+  document.body.classList.toggle('rolou', window.scrollY > 8);
 }
 addEventListener('scroll', headerState, { passive: true });
 

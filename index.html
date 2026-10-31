@@ -79,6 +79,8 @@ img{display:block;max-width:100%}
 .top{position:fixed;top:0;left:0;right:0;z-index:50;--hc:var(--ink);--hm:var(--muted);transition:background .35s,border-color .35s,box-shadow .35s;border-bottom:1px solid transparent}
 body:not(.at-hero) .top{background:rgba(255,255,255,.84);-webkit-backdrop-filter:saturate(1.6) blur(18px);backdrop-filter:saturate(1.6) blur(18px);border-color:var(--line)}
 body.at-hero .top{--hc:#fff;--hm:rgba(255,255,255,.66)}
+/* Dentro do topo escuro, mas já rolando: fundo escuro translúcido, para o texto do topo não passar por baixo das letras do cabeçalho. */
+body.at-hero.rolou .top{background:rgba(5,22,30,.82);-webkit-backdrop-filter:saturate(1.4) blur(14px);backdrop-filter:saturate(1.4) blur(14px);border-color:rgba(255,255,255,.08)}
 .top-row{display:flex;align-items:center;gap:14px;height:72px}
 .logo{display:flex;align-items:center;gap:9px;font-family:var(--fh);font-weight:800;font-size:22px;color:var(--hc);flex-shrink:0;letter-spacing:-.02em}
 .logo-mk{position:relative;display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:linear-gradient(145deg,#16A6C9,#0E7C9C);color:#fff;font-size:15px;box-shadow:0 6px 16px rgba(14,124,156,.4),inset 0 1px 0 rgba(255,255,255,.3)}
