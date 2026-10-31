@@ -76,3 +76,8 @@
   .rd-nav li a{min-height:44px}
   .rd-logo{min-height:44px}
 }
+
+/* Tema escuro: o rodapé continua o mesmo (escuro nos dois temas); só ganha uma linha fina em cima, para não se
+   misturar com o fundo escuro da página. Os dois seletores do tema escuro, cada um no seu @media (só na tela). */
+@media screen and (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rodape{box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}}
+@media screen{:root[data-theme="dark"] .rodape{box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}}
