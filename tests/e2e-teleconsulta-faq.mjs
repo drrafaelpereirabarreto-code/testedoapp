@@ -32,6 +32,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import * as D from '../assets/js/tele-docs.js';
 import { TCLE_VERSION } from '../assets/js/tele-core.js';
 import { aplicar, temMarcadores } from '../scripts/aplicar-rodape.mjs';
@@ -295,7 +296,7 @@ const results = [];
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
-  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
+  try { await comChaves(fn); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 6).join('\n  ')}`); }
 }
 const visible = (page, sel, timeout = 15000) => page.waitForSelector(sel, { state: 'visible', timeout });
@@ -408,7 +409,7 @@ await scenario('rodapé no disco: teleconsulta.html e para-medicos.html com o ro
   for (const f of PAGINAS_RODAPE) assert.ok(!rodapeVelho(f), `${f}: rodapé desatualizado no disco (rode node scripts/aplicar-rodape.mjs)`);
 });
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 /* ======================= cenários no navegador ======================= */
 await scenario('perguntas frequentes antes do pedido: para que serve, quando não usar, receitas e atestado (frases do termo e dos documentos)', async () => {

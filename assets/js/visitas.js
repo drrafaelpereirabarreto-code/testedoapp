@@ -65,15 +65,17 @@
     return p;
   }
 
-  // Sempre com a chave pública (nunca a sessão de quem entrou na conta), sem cookie e sem o endereço da página
-  // de origem (referrerPolicy). keepalive: o envio termina mesmo se a pessoa sair da página na hora.
+  // Sempre como visitante: só a chave publishable no cabeçalho "apikey" (IMED_CONFIG.supabaseHeaders sem token; nunca
+  // a sessão de quem entrou na conta), sem cookie e sem o endereço da página de origem (referrerPolicy).
+  // keepalive: o envio termina mesmo se a pessoa sair da página na hora (o fetch com keepalive leva os cabeçalhos;
+  // o sendBeacon não levaria).
   function envia(corpo) {
     var c = w.IMED_CONFIG;
-    if (!c || !c.supabaseUrl || !c.supabaseAnonKey || typeof w.fetch !== 'function') return false;
+    if (!c || !c.supabaseUrl || !c.supabaseKey || typeof c.supabaseHeaders !== 'function' || typeof w.fetch !== 'function') return false;
     try {
       var r = w.fetch(c.supabaseUrl + '/rest/v1/rpc/track', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: c.supabaseAnonKey, Authorization: 'Bearer ' + c.supabaseAnonKey },
+        headers: c.supabaseHeaders(null, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(corpo),
         keepalive: true,
         credentials: 'omit',

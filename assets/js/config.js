@@ -1,10 +1,12 @@
 // Configuração pública do site. Tudo aqui pode ficar no navegador:
-// a chave "anon" do Supabase é pública por natureza e só faz o que as regras do banco (RLS) permitem.
-// Chaves secretas, como a do Google Maps Platform, ficam só no servidor, como segredo da
-// Edge Function "clinicas-proximas" (veja o README).
+// a chave "publishable" do Supabase (sb_publishable_...) é pública por natureza, como a antiga "anon", e só faz o que
+// as regras do banco (RLS) permitem. Chaves secretas, como a chave secreta do Supabase e a do Google Maps Platform,
+// ficam só no servidor, como segredos das Edge Functions (veja o README).
 window.IMED_CONFIG = {
   supabaseUrl: 'https://pyoqiecupxhdzigjudyd.supabase.co',
-  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5b3FpZWN1cHhoZHppZ2p1ZHlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMxODMwNjAsImV4cCI6MjEwODc1OTA2MH0.a0tD8O7CASKLr50kEkEaBIHDSiuySqPNfyVvQ3fzq7Q',
+  // Chave publishable "default" do projeto (Supabase → Settings → API Keys). Vai só no cabeçalho "apikey":
+  // toda chamada monta os cabeçalhos com IMED_CONFIG.supabaseHeaders, logo abaixo.
+  supabaseKey: 'sb_publishable_Ei-J3FK8Dl9wqsAou3sQlw_RAiPO_Xf',
   functionsUrl: 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1',
   // Endereço público do site, usado nos links de login e nas páginas para o Google. Ao ligar o domínio
   // próprio (veja o README), troque aqui e rode de novo scripts/gerar-cidades.mjs.
@@ -19,6 +21,31 @@ window.IMED_CONFIG = {
   },
   // Servidores públicos do OpenStreetMap (Overpass) usados quando o Google Places não está ativo no servidor.
   overpass: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
+};
+
+// Cabeçalhos de TODA chamada ao Supabase (banco, funções do banco, login e funções do servidor). A regra das chaves
+// mora só aqui, para o site inteiro:
+//   - "apikey": sempre a chave publishable (supabaseKey);
+//   - "Authorization: Bearer <token>": só com o token de quem entrou na conta (auth.js). Visitante não manda
+//     Authorization: com a chave publishable sozinha, o Supabase atende como visitante (o papel "anon" do banco).
+// A chave publishable nunca vai em Authorization: o Supabase tenta ler como token (JWT) e recusa ("Invalid JWT").
+// Uso: IMED_CONFIG.supabaseHeaders()                                  visitante
+//      IMED_CONFIG.supabaseHeaders(token)                             pessoa logada
+//      IMED_CONFIG.supabaseHeaders(token, { 'Content-Type': ... })    com outros cabeçalhos (Content-Type, Prefer...)
+// "apikey" e "Authorization" vindos em extra são ignorados: só esta função decide os dois.
+window.IMED_CONFIG.supabaseHeaders = function (token, extra) {
+  var cfg = window.IMED_CONFIG || {};
+  var h = {};
+  if (extra) {
+    for (var k in extra) {
+      if (Object.prototype.hasOwnProperty.call(extra, k) && !/^(apikey|authorization)$/i.test(k)) h[k] = extra[k];
+    }
+  }
+  h.apikey = cfg.supabaseKey;
+  if (typeof token === 'string' && token && token !== cfg.supabaseKey && token.indexOf('sb_') !== 0) {
+    h.Authorization = 'Bearer ' + token;
+  }
+  return h;
 };
 
 // iPhone com iOS 15 (e outros navegadores antigos) não tem AbortSignal.timeout, usado nas chamadas ao banco.

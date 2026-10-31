@@ -113,7 +113,11 @@ Coloque o número (só dígitos, com 55 e DDD) em `whatsapp` em `assets/js/confi
 
 ## Chaves e variáveis de ambiente
 
-O site só usa a chave pública `anon` do Supabase (`assets/js/config.js`). Ela é pública por natureza: as regras de segurança do banco (RLS) só deixam o público ver clínicas publicadas e inserir pedidos. Ninguém de fora consegue ler os pedidos.
+O site só usa a chave **publishable** do Supabase (`sb_publishable_...`, em `supabaseKey` no `assets/js/config.js`). Ela é pública por natureza, como a antiga `anon`: as regras de segurança do banco (RLS) só deixam o público ver clínicas publicadas e inserir pedidos. Ninguém de fora consegue ler os pedidos.
+
+Regra das chaves (as antigas `anon` e `service_role` param de funcionar no fim de 2026): a chave publishable vai **só** no cabeçalho `apikey`; `Authorization: Bearer` leva só o token de quem entrou na conta. A chave em `Bearer` é recusada pelo Supabase ("Invalid JWT"). A regra mora num lugar só, `IMED_CONFIG.supabaseHeaders` (em `config.js`), usada por todas as chamadas do site; `tests/chaves.test.mjs` confere.
+
+As Edge Functions leem as chaves que o próprio Supabase põe no ambiente delas: `SUPABASE_PUBLISHABLE_KEYS` e `SUPABASE_SECRET_KEYS` (JSON com as chaves por nome; usam a `default`), com volta para as antigas `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` enquanto existirem. A chave secreta nunca sai do servidor e também vai só no `apikey`.
 
 As chaves secretas ficam só no servidor, como segredos da Edge Function (modelo em `supabase/functions/.env.example`):
 
@@ -190,14 +194,16 @@ delete from public.clinics where is_demo;
 ## Publicar
 
 - Site: faça o push para a branch `main`. O GitHub Pages publica sozinho. Ao mudar arquivos do site, aumente `VERSION` em `sw.js` para os celulares baixarem a nova versão.
-- Edge Function:
+- Edge Functions: as duas são publicadas com `verify_jwt` desligado (`--no-verify-jwt`), porque a conferência automática do Supabase só entende tokens (JWT) e as chaves novas não são tokens. Cada função confere quem chama no próprio código. Publique primeiro a `importar-clinicas` e depois a `clinicas-proximas`, e só então o site:
 
 ```bash
-supabase functions deploy clinicas-proximas --project-ref pyoqiecupxhdzigjudyd
 supabase functions deploy importar-clinicas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
+supabase functions deploy clinicas-proximas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
 ```
 
-`importar-clinicas` confere a chamada por conta própria: aceita a chave `service_role` (usada pela `clinicas-proximas`) ou o token interno da fila (cabeçalho `x-imed-token`, guardado em `private.app_tokens`).
+`importar-clinicas` aceita a chave secreta no `apikey` (usada pela `clinicas-proximas`), a `service_role` antiga enquanto existir, ou o token interno da fila (cabeçalho `x-imed-token`, guardado em `private.app_tokens`, usado pelo pg_cron). `clinicas-proximas` aceita a chave publishable no `apikey` (ou a `anon` antiga, do site antigo ainda guardado no aparelho), só dos sites de `ALLOWED_ORIGINS`, com limite por IP.
+
+- Conferência na produção: Actions → **Chaves do Supabase** → Run workflow (`.github/workflows/chaves.yml` e `scripts/verificar-chaves.mjs`). Chama a API com a chave publishable, a função `clinicas-proximas` do jeito novo e abre o site num navegador de verdade, sem gravar nada. O resultado aparece nas anotações da execução.
 
 - Banco: aplique as novas migrações de `supabase/migrations`, por exemplo com `supabase db push`.
 

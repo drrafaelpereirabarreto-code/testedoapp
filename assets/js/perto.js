@@ -86,7 +86,8 @@ function linkedSignal(parent, ms) {
   return { signal: ctrl.signal, done() { clearTimeout(timer); parent?.removeEventListener('abort', stop); } };
 }
 
-const authHeaders = () => ({ 'Content-Type': 'application/json', apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${CFG.supabaseAnonKey}` });
+// Busca e leitura como visitante: só a chave publishable (o pedido com conta vai pelo auth.js, com o token da pessoa).
+const authHeaders = () => CFG.supabaseHeaders(null, { 'Content-Type': 'application/json' });
 
 async function callFn(body, parent, ms = 20000) {
   const t = linkedSignal(parent, ms);

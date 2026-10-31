@@ -12,6 +12,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, PUBLISHABLE, vigiarChaves } from './regra-chaves.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -479,7 +480,7 @@ async function newPage(browser, db, { mobile = false, planBMs = 25000, slowMs = 
     if (u.pathname === '/auth/v1/user') return USERS[auth] ? json(route, USERS[auth]) : json(route, { msg: 'invalid' }, 401);
     if (u.pathname === '/auth/v1/otp') { db.otp.push({ body: JSON.parse(req.postData() || '{}'), redirect: u.searchParams.get('redirect_to') }); return json(route, {}); }
     if (u.pathname === '/auth/v1/logout') return route.fulfill({ status: 204, headers: cors });
-    if (u.pathname === '/rest/v1/app_waitlist') { db.waitlist.push({ body: JSON.parse(req.postData() || '{}'), auth }); return route.fulfill({ status: 201, body: '', headers: cors }); }
+    if (u.pathname === '/rest/v1/app_waitlist') { db.waitlist.push({ body: JSON.parse(req.postData() || '{}'), auth, apikey: req.headers().apikey }); return route.fulfill({ status: 201, body: '', headers: cors }); }
     const m = u.pathname.match(/^\/rest\/v1\/rpc\/([a-z_]+)$/);
     if (!m || !RPC[m[1]]) return json(route, { message: 'não simulado' }, 404);
     const fn = m[1];
@@ -525,7 +526,7 @@ const results = [];
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
-  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
+  try { await comChaves(fn); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 6).join('\n  ')}`); }
 }
 const visible = (page, sel, timeout = 15000) => page.waitForSelector(sel, { state: 'visible', timeout });
@@ -576,9 +577,9 @@ async function doctorOnDuty(page, tok = 'tok-doc') {
 }
 const videoReady = (page, sel) => page.waitForFunction((s) => { const v = document.querySelector(s); return v && v.videoWidth > 0 && v.readyState >= 2; }, sel, { timeout: 30000 });
 
-const browser = await chromium.launch({
+const browser = vigiarChaves(await chromium.launch({
   args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--disable-features=WebRtcHideLocalIpsWithMdns'],
-});
+}));
 
 /* ======================= cenários ======================= */
 await scenario('sem médico atendendo: texto honesto, lista de espera e fila "mesmo assim"', async () => {
@@ -598,7 +599,8 @@ await scenario('sem médico atendendo: texto honesto, lista de espera e fila "me
   await page.click('#wlBtn');
   await page.waitForSelector('#wlMsg.ok');
   assert.deepEqual(db.waitlist.map((w) => w.body), [{ email: 'maria@exemplo.com', city: 'Recife', interest: 'teleconsulta' }]);
-  assert.ok(db.waitlist[0].auth.startsWith('eyJ'), 'lista de espera com a chave pública (como na página inicial)');
+  assert.equal(db.waitlist[0].auth, '', 'lista de espera como visitante (como na página inicial): sem Authorization');
+  assert.equal(db.waitlist[0].apikey, PUBLISHABLE, 'lista de espera com a chave publishable no apikey');
   await shot(page, 'tele-01-sem-medico');
   await page.click('#anywayBtn');
   await visible(page, '#formCard');

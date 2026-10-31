@@ -74,10 +74,10 @@ function toast(m, { falar = true } = {}) {
   t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2800);
 }
 
-// Chamada a uma função do banco com a chave pública (anon). signal: cancela a chamada (a origem mudou);
+// Chamada a uma função do banco como visitante (só a chave publishable). signal: cancela a chamada (a origem mudou);
 // o limite de 15 s continua.
 async function rpc(fn, args = {}, { signal } = {}) {
-  if (!C.supabaseUrl || !C.supabaseAnonKey) throw new Error('config ausente');
+  if (!C.supabaseUrl || !C.supabaseKey || typeof C.supabaseHeaders !== 'function') throw new Error('config ausente');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15000);
   const parar = () => ctrl.abort();
@@ -85,7 +85,7 @@ async function rpc(fn, args = {}, { signal } = {}) {
   try {
     const res = await fetch(`${C.supabaseUrl}/rest/v1/rpc/${fn}`, {
       method: 'POST', signal: ctrl.signal,
-      headers: { apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'Content-Type': 'application/json' },
+      headers: C.supabaseHeaders(null, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(args),
     });
     if (!res.ok) throw new Error('http ' + res.status);
@@ -483,7 +483,7 @@ async function geocode(q) {
   try {
     const res = await fetch(`${C.functionsUrl}/clinicas-proximas`, {
       method: 'POST', signal: ctrl.signal,
-      headers: { apikey: C.supabaseAnonKey, Authorization: 'Bearer ' + C.supabaseAnonKey, 'Content-Type': 'application/json' },
+      headers: C.supabaseHeaders(null, { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ action: 'geocode', q }),
     });
     const g = await res.json().catch(() => null);

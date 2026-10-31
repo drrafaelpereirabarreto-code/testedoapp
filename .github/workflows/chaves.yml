@@ -1,0 +1,72 @@
+# Conferência de verdade das chaves novas do Supabase (fase 0.1 do iMed Agenda), contra a PRODUÇÃO.
+#
+# Por quê: as chaves antigas "anon" e "service_role" param de funcionar no fim de 2026. O site passou a usar a chave
+# publishable (sb_publishable_..., só no cabeçalho "apikey") e as Edge Functions, as chaves novas do ambiente.
+# Quando roda: a cada envio para o ramo ci/chaves e à mão (Actions → "Chaves do Supabase" → Run workflow; o botão
+# aparece quando este arquivo estiver na main). Rode à mão de novo depois de publicar as Edge Functions.
+# O que faz (scripts/verificar-chaves.mjs):
+#   a) chama a API do Supabase com a chave publishable só no apikey, em funções públicas de leitura;
+#   b) chama a Edge Function clinicas-proximas do jeito novo (enquanto ela estiver com verify_jwt=true, vira AVISO
+#      "aguardando o deploy", sem reprovar);
+#   c) abre o site deste ramo num Chromium de verdade, sem simulação de rede, e confere os dados reais na tela.
+# Só lê a produção: nada é gravado no banco (as escritas do site ficam bloqueadas no navegador).
+# O resultado fica nas anotações da execução (falha = erro, pendência = aviso, resumo = nota) e no resumo da página.
+name: Chaves do Supabase
+
+on:
+  push:
+    branches: [ci/chaves]
+  workflow_dispatch:
+
+# Só leitura: a conferência não escreve nada no repositório.
+permissions:
+  contents: read
+
+concurrency:
+  group: chaves-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # A mesma versão dos testes e do vídeo.
+  PLAYWRIGHT_VERSION: '1.63.0'
+
+jobs:
+  conferir:
+    name: Conferir as chaves na produção
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Instalar o Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+
+      # Sem internet: a regra das chaves no código (site e Edge Functions). Falhou aqui, nem vale ir à produção.
+      - name: Testes das chaves (sem internet)
+        run: |
+          node --test --test-reporter=spec tests/chaves.test.mjs
+          node --experimental-strip-types --test --test-reporter=spec supabase/functions/*/lib.test.ts
+
+      - name: Instalar o Playwright
+        run: npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+
+      - name: Recuperar o navegador do cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ env.PLAYWRIGHT_VERSION }}
+
+      - name: Instalar o Chromium e as bibliotecas do sistema
+        run: npx playwright install --with-deps chromium
+
+      - name: Conferir na produção (a, b, c)
+        run: node scripts/verificar-chaves.mjs

@@ -10,6 +10,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, PUBLISHABLE, vigiarChaves } from './regra-chaves.mjs';
 import { createHash } from 'node:crypto';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -238,11 +239,11 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !ONLY.test(name)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 4).join('\n  ')}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('localização permitida: parceiros IMED do banco + mapa, sem guardar coordenadas', async () => {
   const { page, log, errors, context } = await newPage(browser);
@@ -380,7 +381,9 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   assert.match(log.insert[0].headers.prefer, /return=minimal/);
   assert.match(await page.textContent('.ok .code'), /^IMED-[0-9A-F]{8}$/);
   assert.match(row.review_token_hash, /^[0-9a-f]{64}$/, 'manda só o resumo (SHA-256) do código do pedido');
-  assert.equal(log.insert[0].headers.authorization, `Bearer ${(await page.evaluate(() => window.IMED_CONFIG.supabaseAnonKey))}`, 'sem conta, usa a chave pública');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE, 'sem conta, usa a chave publishable');
+  assert.equal(log.insert[0].headers.authorization, undefined, 'sem conta, sem Authorization (a chave não vai em Bearer)');
+  assert.equal(await page.evaluate(() => window.IMED_CONFIG.supabaseKey), PUBLISHABLE);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
   assert.equal(saved[0].type, 'pedido');
   assert.equal(saved[0].status, 'pendente');
@@ -470,7 +473,8 @@ await scenario('pedido com conta: grava pelo login e não oferece criar conta', 
   await page.click('#bkBtn');
   await page.waitForSelector('.ok h3');
   assert.equal(log.insert.length, 1);
-  assert.equal(log.insert[0].headers.authorization, 'Bearer tok-paciente');
+  assert.equal(log.insert[0].headers.authorization, 'Bearer tok-paciente', 'com conta: o token da pessoa em Bearer');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE, 'e a chave publishable no apikey');
   assert.match(log.insert[0].body.review_token_hash, /^[0-9a-f]{64}$/);
   assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 0);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
@@ -493,6 +497,8 @@ await scenario('sessão vencida que não renova: pedido vai sem conta e oferece 
   await page.waitForSelector('.ok h3');
   assert.equal(log.insert.length, 1);
   assert.notEqual(log.insert[0].headers.authorization, 'Bearer tok-velho', 'não usa o token vencido');
+  assert.equal(log.insert[0].headers.authorization, undefined, 'vai como visitante: sem Authorization');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE);
   assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 1, 'oferece criar conta');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
   assert.equal(saved[0].exam, 'consulta', 'guarda o código da consulta para o preparo nas outras páginas');
@@ -976,7 +982,8 @@ await scenario('contador de visitas (?visitas=teste): a busca conta exame, tipo 
   assert.ok(!/Ana Teste|98765|2077485|Hospital|-23\.|-46\./.test(all), 'nenhum dado da pessoa, do local ou da posição');
   for (const t of log.track) {
     assert.deepEqual(Object.keys(t.body).filter((k) => !['p_path', 'p_event', 'p_detail'].includes(k)), []);
-    assert.equal(t.headers.authorization, `Bearer ${await page.evaluate(() => window.IMED_CONFIG.supabaseAnonKey)}`);
+    assert.equal(t.headers.apikey, PUBLISHABLE, 'contador: só a chave publishable');
+    assert.equal(t.headers.authorization, undefined, 'contador: sem Authorization');
     assert.equal(t.headers.referer, undefined);
   }
   assert.deepEqual(errors, []);
