@@ -1,0 +1,64 @@
+{
+  "url": "https://drrafaelpereirabarreto-code.github.io/testedoapp/",
+  "feitos": [
+    {
+      "nome": "celular-01-inicio",
+      "desc": "Página inicial: topo",
+      "arquivo": "celular-01-inicio.png"
+    },
+    {
+      "nome": "celular-02-perto-de-voce",
+      "desc": "Clínicas perto de você (localização na Av. Paulista)",
+      "arquivo": "celular-02-perto-de-voce.png"
+    },
+    {
+      "nome": "celular-03-escolher-cidade",
+      "desc": "Escolher a cidade (seletor)",
+      "arquivo": "celular-03-escolher-cidade.png"
+    },
+    {
+      "nome": "celular-04-busca-hemograma",
+      "desc": "Busca pelo nome popular: \"hemograma\" leva aos laboratórios",
+      "arquivo": "celular-04-busca-hemograma.png"
+    },
+    {
+      "nome": "celular-05-busca-eco",
+      "desc": "\"eco\" pode ser ecocardiograma ou ultrassom: o site pergunta",
+      "arquivo": "celular-05-busca-eco.png"
+    },
+    {
+      "nome": "celular-campinas",
+      "erro": "locator.waitFor: Timeout 30000ms exceeded."
+    },
+    {
+      "nome": "computador-01-inicio",
+      "desc": "Página inicial: topo",
+      "arquivo": "computador-01-inicio.png"
+    },
+    {
+      "nome": "computador-02-perto-de-voce",
+      "desc": "Clínicas perto de você (localização na Av. Paulista)",
+      "arquivo": "computador-02-perto-de-voce.png"
+    },
+    {
+      "nome": "computador-03-escolher-cidade",
+      "desc": "Escolher a cidade (seletor)",
+      "arquivo": "computador-03-escolher-cidade.png"
+    },
+    {
+      "nome": "computador-04-busca-hemograma",
+      "desc": "Busca pelo nome popular: \"hemograma\" leva aos laboratórios",
+      "arquivo": "computador-04-busca-hemograma.png"
+    },
+    {
+      "nome": "computador-05-busca-eco",
+      "desc": "\"eco\" pode ser ecocardiograma ou ultrassom: o site pergunta",
+      "arquivo": "computador-05-busca-eco.png"
+    },
+    {
+      "nome": "computador-06-ressonancia-em-campinas",
+      "desc": "Busca \"ressonância em Campinas\": filtro do exame e o mapa em Campinas",
+      "arquivo": "computador-06-ressonancia-em-campinas.png"
+    }
+  ]
+}

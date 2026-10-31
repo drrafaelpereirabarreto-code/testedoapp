@@ -1,0 +1,13 @@
+ok  celular-01-inicio: Página inicial: topo
+ok  celular-02-perto-de-voce: Clínicas perto de você (localização na Av. Paulista)
+ok  celular-03-escolher-cidade: Escolher a cidade (seletor)
+ok  celular-04-busca-hemograma: Busca pelo nome popular: "hemograma" leva aos laboratórios
+ok  celular-05-busca-eco: "eco" pode ser ecocardiograma ou ultrassom: o site pergunta
+ERRO celular-campinas: locator.waitFor: Timeout 30000ms exceeded.
+ok  computador-01-inicio: Página inicial: topo
+ok  computador-02-perto-de-voce: Clínicas perto de você (localização na Av. Paulista)
+ok  computador-03-escolher-cidade: Escolher a cidade (seletor)
+ok  computador-04-busca-hemograma: Busca pelo nome popular: "hemograma" leva aos laboratórios
+ok  computador-05-busca-eco: "eco" pode ser ecocardiograma ou ultrassom: o site pergunta
+ok  computador-06-ressonancia-em-campinas: Busca "ressonância em Campinas": filtro do exame e o mapa em Campinas
+11 capturas, 1 erros
