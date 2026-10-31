@@ -157,15 +157,17 @@ async function parteA() {
   try {
     const bearer = await chama('/rest/v1/rpc/cnes_last_update', { corpo: {}, cabecalhos: { Authorization: `Bearer ${CHAVE}` } });
     const sem = await fetch(`${SUPABASE}/rest/v1/rpc/cnes_last_update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(20000) });
-    registra(P, 'registro: chave em Bearer e chamada sem chave', 'ok',
+    registra(P, 'registro: chave também no Authorization, e chamada sem chave', 'ok',
       `chave publishable também em "Authorization: Bearer" → HTTP ${bearer.status}${bearer.status >= 400 ? ` (${curto(bearer.dados, 80)})` : ''}; sem chave → HTTP ${sem.status}. O site não usa nenhuma das duas.`);
   } catch (e) {
-    registra(P, 'registro: chave em Bearer e chamada sem chave', 'ok', `não deu para registrar: ${motivoRede(e)}`);
+    registra(P, 'registro: chave também no Authorization, e chamada sem chave', 'ok', `não deu para registrar: ${motivoRede(e)}`);
   }
 }
 
 /* ======================= (b) Edge Function clinicas-proximas do jeito novo ======================= */
-let funcaoNova = null; // true: publicada com verify_jwt=false (atende só com o apikey); false: ainda a antiga
+// true: a função atende com a chave publishable sozinha no apikey (a parte c trata erro dela como falha);
+// false: recusou (401), e na parte c os erros dela viram "aguardando o deploy"; null: a parte b não rodou.
+let funcaoAceita = null;
 async function funcao(corpo, { chave = CHAVE, origem = ORIGEM } = {}) {
   const inicio = Date.now();
   const res = await fetch(`${FUNCOES}/clinicas-proximas`, {
@@ -179,7 +181,7 @@ async function funcao(corpo, { chave = CHAVE, origem = ORIGEM } = {}) {
   try { dados = texto ? JSON.parse(texto) : null; } catch { dados = texto; }
   return { status: res.status, dados, ms: Date.now() - inicio, cors: res.headers.get('access-control-allow-origin') };
 }
-const AGUARDA = 'aguardando o deploy: a função ainda está publicada com verify_jwt=true e recusa a chave nova antes de rodar';
+const AGUARDA = 'aguardando o deploy: a função recusou a chave publishable sozinha no apikey (a conferência automática verify_jwt=true não entende a chave nova)';
 
 async function parteB() {
   const P = 'b';
@@ -191,17 +193,17 @@ async function parteB() {
     return;
   }
   if (st.status === 401) {
-    funcaoNova = false;
+    funcaoAceita = false;
     registra(P, 'clinicas-proximas com a chave nova', 'aguardando', `${AGUARDA} (HTTP 401: ${curto(st.dados, 120)}). Publique com --no-verify-jwt e rode esta conferência de novo.`);
     return;
   }
-  funcaoNova = true;
+  funcaoAceita = true;
   registra(P, 'status (só a publishable no apikey)', st.status === 200 && st.dados?.ok === true ? 'ok' : 'falhou',
     st.status === 200 ? `ok: serviço de mapas ${st.dados?.provider} (${st.ms} ms); CORS ${st.cors ?? 'sem cabeçalho'}` : `HTTP ${st.status}: ${curto(st.dados)}`);
   // Que chaves a própria função usa (a função nova diz "nova", "antiga" ou "ausente"; nunca a chave).
   const ch = st.dados?.chaves;
   if (!ch) {
-    registra(P, 'chaves em uso na função', 'aguardando', 'a função publicada ainda não diz quais chaves usa: publique a versão deste ramo');
+    registra(P, 'versão publicada da função', 'aguardando', 'aguardando o deploy: a função no ar ainda é a antiga (o "status" não diz quais chaves usa). Ela já atendeu a chave publishable sozinha mesmo com verify_jwt=true, mas a documentação manda publicar com --no-verify-jwt: publique a versão deste ramo');
   } else {
     const novas = ch.publishable === 'nova' && ch.secreta === 'nova';
     registra(P, 'chaves em uso na função', novas ? 'ok' : 'aviso', novas
@@ -355,13 +357,22 @@ async function parteC() {
     const aguardando = []; // falhas da clinicas-proximas enquanto ela não foi publicada de novo
     const terceiros = []; // erros de serviços de fora (mapa)
     const erros = []; // erros no console e da página
+    const chamadas = { total: 0, comAuthorization: 0, chaveErrada: 0 }; // cabeçalhos das chamadas ao supabase.co
     const supa = (url) => url.startsWith(SUPABASE);
     const daFuncao = (url) => url.startsWith(`${FUNCOES}/clinicas-proximas`);
+    // A regra das chaves no navegador de verdade: só a publishable no apikey e, sem conta, nada no Authorization.
+    page.on('request', (req) => {
+      if (!supa(req.url()) || req.method() === 'OPTIONS') return;
+      const h = req.headers();
+      chamadas.total += 1;
+      if (h.apikey !== CHAVE) chamadas.chaveErrada += 1;
+      if (h.authorization !== undefined) chamadas.comAuthorization += 1;
+    });
     page.on('response', (r) => {
       const url = r.url();
       if (!supa(url) || r.status() < 400 || r.request().method() === 'OPTIONS') return;
       const item = `${r.request().method()} ${new URL(url).pathname} → HTTP ${r.status()}`;
-      if (daFuncao(url) && funcaoNova !== true) aguardando.push(item);
+      if (daFuncao(url) && funcaoAceita !== true) aguardando.push(item);
       else falhas.push(item);
     });
     page.on('requestfailed', (req) => {
@@ -369,7 +380,7 @@ async function parteC() {
       const erro = req.failure()?.errorText || '';
       if (/ERR_ABORTED/.test(erro)) return; // cancelada pelo próprio site (busca nova) ou ao fechar a página
       const item = `${req.method()} ${url.split('?')[0]} → ${erro}`;
-      if (daFuncao(url) && funcaoNova !== true) aguardando.push(item);
+      if (daFuncao(url) && funcaoAceita !== true) aguardando.push(item);
       else if (supa(url)) falhas.push(item);
       else if (!url.startsWith(ORIGEM)) terceiros.push(item);
       else falhas.push(item);
@@ -379,7 +390,7 @@ async function parteC() {
       if (m.type() !== 'error') return;
       const onde = m.location()?.url || '';
       const texto = `${m.text().split('\n')[0]}${onde ? ` (${onde.split('?')[0]})` : ''}`;
-      if ((daFuncao(onde) || /clinicas-proximas/.test(m.text())) && funcaoNova !== true) aguardando.push(`console: ${texto}`);
+      if ((daFuncao(onde) || /clinicas-proximas/.test(m.text())) && funcaoAceita !== true) aguardando.push(`console: ${texto}`);
       else if (onde && !onde.startsWith(ORIGEM) && !supa(onde)) terceiros.push(`console: ${texto}`);
       else erros.push(`console: ${texto}`);
     });
@@ -395,8 +406,12 @@ async function parteC() {
     }
     await page.close();
     const problemas = [...new Set([...falhas.map((f) => `supabase.co: ${f}`), ...erros])];
+    if (!chamadas.total) problemas.push('nenhuma chamada ao supabase.co');
+    if (chamadas.chaveErrada) problemas.push(`${chamadas.chaveErrada} chamada(s) sem a chave publishable no apikey`);
+    if (chamadas.comAuthorization) problemas.push(`${chamadas.comAuthorization} chamada(s) com Authorization (visitante não manda)`);
     const ok = motivo.startsWith('ok') && !problemas.length;
-    registra(P, pg.nome, ok ? 'ok' : 'falhou', [motivo, ...problemas].join(' | '));
+    const regra = `${chamadas.total} chamada(s) ao Supabase, todas com a chave publishable só no apikey`;
+    registra(P, pg.nome, ok ? 'ok' : 'falhou', ok ? `${motivo}; ${regra}` : [motivo, ...problemas].join(' | '));
     if (aguardando.length) registra(P, `${pg.nome}: clinicas-proximas`, 'aguardando', `${AGUARDA}; o site usou o plano B (o banco direto). ${[...new Set(aguardando)].slice(0, 3).join(' | ')}`);
     if (terceiros.length) registra(P, `${pg.nome}: serviços de fora`, 'aviso', [...new Set(terceiros)].slice(0, 3).join(' | '));
   }

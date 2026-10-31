@@ -3,9 +3,10 @@
 //
 // PUBLICAR SEMPRE COM verify_jwt=false (a conferência automática de token do Supabase desligada):
 //   supabase functions deploy clinicas-proximas --no-verify-jwt --project-ref pyoqiecupxhdzigjudyd
-// O site chama esta função só com a chave publishable no cabeçalho "apikey" (sem "Authorization"), e a chave nova
-// não é um token (JWT): com verify_jwt=true o Supabase recusaria toda busca antes de chegar aqui. A função não depende
-// do token de quem chama para nada; quem pode chamar é conferido aqui no código:
+// O site chama esta função só com a chave publishable no cabeçalho "apikey" (sem "Authorization"). A chave nova não
+// é um token (JWT), e a conferência automática do Supabase (verify_jwt) só entende tokens: a documentação manda
+// desligá-la e conferir no código. A função não depende do token de quem chama para nada; quem pode chamar é
+// conferido aqui:
 //   - origem: só os sites de ALLOWED_ORIGINS (outro site no navegador recebe 403);
 //   - chave: o "apikey" precisa ser uma chave publishable do projeto (ou a anon antiga, do site antigo ainda em
 //     cache), senão 401;
