@@ -72,11 +72,14 @@
 -- migração desiste em 5 s com erro 55P03 e NADA é aplicado: é só rodar de novo. Sem isso, ela esperaria para sempre e
 -- toda leitura do site entraria na fila atrás dela (o visitante levaria erro em 3 s). As travas são pegas de uma vez e
 -- na mesma ordem do INSERT do site (primeiro o pedido, depois a clínica), para não haver impasse (40P01) com um pedido
--- feito durante a aplicação. LOCK TABLE só funciona dentro de uma transação: se o arquivo não rodar numa transação
--- só, ele para aqui, antes de mudar qualquer coisa.
+-- feito durante a aplicação. (O LOCK fica num bloco DO porque a CLI do Supabase manda o arquivo como uma transação
+-- implícita, onde LOCK TABLE solto é recusado; as travas valem até o fim da transação, como as dos ALTER.)
 select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '120s', true);
-lock table public.appointment_requests, public.clinics, public.clinic_members, public.clinic_schedules,
-  public.clinic_blocks in access exclusive mode;
+do $$
+begin
+  lock table public.appointment_requests, public.clinics, public.clinic_members, public.clinic_schedules,
+    public.clinic_blocks in access exclusive mode;
+end $$;
 
 /* ===================== 1. Extensão e schema ===================== */
 -- btree_gist: "=" em uuid dentro do índice GiST da restrição de exclusão. No schema extensions (fora da API).
