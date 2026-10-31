@@ -92,6 +92,23 @@ node --experimental-strip-types --test supabase/functions/*/lib.test.ts
 node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
 ```
 - `E2E_PORT=<porta>` roda um e2e em outra porta (para rodar em paralelo); `ONLY="trecho"` no e2e-perto roda só alguns cenários.
+- **Banco de verdade (iMed Agenda 3.0):** `.github/workflows/banco.yml` (separado do `testes.yml`; roda em envio para a
+  `main` ou `ci/**` que mude `supabase/**`, `tests/banco/**` ou o próprio arquivo, e à mão pela API:
+  `gh api -X POST repos/<repo>/actions/workflows/banco.yml/dispatches -f ref=<ramo>`). Sobe o Supabase local da CLI
+  2.121.0 (`supabase/config.toml`: Postgres 17, Auth, PostgREST, Realtime e Edge Runtime; sem studio, storage, imgproxy,
+  logflare, vector, mailpit, postgres-meta e supavisor), aplica TODAS as migrações num banco novo, desliga o pg_cron,
+  fecha a saída dos contêineres para a internet e roda: laço local, `supabase test db` (pgTAP em `supabase/tests/`:
+  `000_catalogo` guardas de RLS/search_path/permissões de cada função, `005_preparo`, `010_pedidos_atuais`), os scripts
+  `tests/banco/*.mjs` (conexão direta e HTTP no PostgREST local com tokens assinados pelo segredo local; `lib.mjs`) e a
+  volta (`supabase/volta/<mesmo nome da migração>.sql`) com reaplicação, conferida pela impressão digital
+  `tests/banco/catalogo.sql`. Falhas viram avisos com as linhas do erro (`tests/banco/anotar.mjs`) e o fim deixa a nota
+  "Resumo do banco" (p95, 40P01, 57014): leia com `gh api repos/<repo>/check-runs/<job>/annotations`.
+- Função nova em `public`: acrescente a linha com quem pode executar em `supabase/tests/000_catalogo.sql` (senão reprova).
+  Migração nova a partir da 3.0: escreva também a volta em `supabase/volta/` com o mesmo nome.
+- **Laço rápido do banco (sem Docker, segundos):** `npm i --no-save pg` e `node tests/banco/local/rodar.mjs`
+  (`--concorrencia` para 40 e 100 ao mesmo tempo, com e sem trava por recurso; `--sem-limite` tira os 3 s do anon).
+  Usa o PostgreSQL 16 da máquina (initdb numa pasta temporária, porta livre; como root roda como o usuário `postgres`).
+  Detalhes em `tests/banco/local/README.md`.
 - Celular: no modo celular do Playwright, quando algo passa da tela o navegador afasta o zoom e o `innerWidth` cresce
   junto; para conferir rolagem lateral, medir contra a largura configurada (ex.: 360), não contra `innerWidth`.
 - GitHub Actions (`.github/workflows/testes.yml`) roda tudo a cada envio para a main; veja com `gh run list`.

@@ -1,0 +1,4 @@
+# Pastas que a CLI do Supabase cria ao rodar "supabase start" (nada para versionar)
+.branches
+.temp
+snippets
