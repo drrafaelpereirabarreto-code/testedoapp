@@ -5,10 +5,12 @@
 # "ressonância em Campinas" deu 0 locais em 5 km. Esta sonda testa de verdade, de uma máquina do GitHub (a do Claude
 # não alcança os servidores do governo), as fontes candidatas:
 #   R  a rede: de onde a máquina sai e quais servidores do governo respondem;
-#   A  a API de dados abertos do Ministério (apidadosabertos.saude.gov.br): tem equipamentos?
+#   A  a API de dados abertos do Ministério (apidadosabertos.saude.gov.br): tem equipamentos? (inclui as rotas
+#      "Assistência à Saúde", /assistencia-a-saude/cnes-equipamentos, achadas na 1ª execução);
 #   B  a base completa mensal do CNES (BASE_DE_DADOS_CNES_AAAAMM.ZIP, CSV), com estabelecimento x equipamento;
 #   F  os arquivos mensais por UF do FTP do DATASUS (CNES/200508_/Dados/EQ/EQ<UF><AAMM>.dbc);
 #   O  outras: portais de dados abertos (CKAN), o serviço da ficha do site do CNES e o TabNet.
+# Quais fontes rodam: as letras de scripts/sonda-cnes/fontes.txt (para não repetir à toa as pesadas).
 # Para B e F: tempo e tamanho do download, colunas, códigos oficiais dos aparelhos, quantos estabelecimentos de
 # Campinas (3509502) e São Paulo (3550308) têm ressonância em uso, com exemplos (CNES, quantidade; nome só de pessoa
 # jurídica) e a conferência com o que o site do IMED mostra hoje (só leitura, pela API pública do site, com a mesma
@@ -29,9 +31,10 @@ on:
 permissions:
   contents: read
 
+# Cada envio roda inteiro (um envio novo não cancela o anterior, que pode estar baixando a base completa).
 concurrency:
-  group: sonda-cnes-${{ github.ref }}
-  cancel-in-progress: true
+  group: sonda-cnes-${{ github.sha }}
+  cancel-in-progress: false
 
 env:
   PYTHONUNBUFFERED: '1'
@@ -40,8 +43,25 @@ env:
   PUBLICAR: scripts/sonda-cnes/publicar.py
 
 jobs:
+  plano:
+    name: Quais fontes testar (scripts/sonda-cnes/fontes.txt)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      fontes: ${{ steps.ler.outputs.fontes }}
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Ler a lista
+        id: ler
+        run: echo "fontes=$(tr -cd 'RABFO' < scripts/sonda-cnes/fontes.txt)" >> "$GITHUB_OUTPUT"
+
   rede:
     name: R - Rede (de onde sai e o que alcança)
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'R')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -57,8 +77,10 @@ jobs:
 
   api:
     name: A - API de dados abertos do Ministério
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'A')
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Baixar o código
         uses: actions/checkout@v7
@@ -66,15 +88,29 @@ jobs:
           persist-credentials: false
       - name: Documentação, fichas reais e rotas de equipamentos
         run: python3 -I scripts/sonda-cnes/api.py
+      - name: Rotas "Assistência à Saúde" (cnes-equipamentos) em Campinas e São Paulo
+        if: always()
+        run: python3 -I scripts/sonda-cnes/api_assist.py
+      - name: Conferir com o banco do IMED (só leitura, chave pública do site)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/banco_imed.py api
       - name: Publicar avisos (1)
         if: always()
         run: python3 -I "$PUBLICAR" 0
       - name: Publicar avisos (2)
         if: always()
-        run: python3 -I "$PUBLICAR" 1 --ultimo
+        run: python3 -I "$PUBLICAR" 1
+      - name: Publicar avisos (3)
+        if: always()
+        run: python3 -I "$PUBLICAR" 2
+      - name: Publicar avisos (4)
+        if: always()
+        run: python3 -I "$PUBLICAR" 3 --ultimo
 
   base:
     name: B - Base completa do CNES (ZIP com CSV)
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'B')
     runs-on: ubuntu-24.04
     timeout-minutes: 85
     steps:
@@ -111,6 +147,8 @@ jobs:
 
   ftp:
     name: F - FTP do DATASUS, equipamentos por UF (DBC)
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'F')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
@@ -169,8 +207,8 @@ jobs:
 
   outras:
     name: O - Outras fontes (portais, site do CNES, TabNet)
-    needs: ftp
-    if: always()
+    needs: [plano, ftp]
+    if: always() && contains(needs.plano.outputs.fontes, 'O')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

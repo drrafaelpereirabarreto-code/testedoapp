@@ -1,6 +1,6 @@
 """Confere os estabelecimentos com aparelho (de uma fonte da sonda) com o que o site do IMED mostra hoje.
 
-  python3 -I banco_imed.py base|eq
+  python3 -I banco_imed.py base|eq|api
 
 Só LÊ, pela mesma API pública que o site usa (a chave pública de assets/js/config.js, que qualquer visitante
 recebe; o banco só mostra o que as regras de acesso deixam): estabelecimentos de Campinas e de São Paulo,
@@ -50,8 +50,7 @@ def do_banco(url: str, chave: str, ibge: int) -> tuple[dict, str]:
 def main() -> None:
     fonte = sys.argv[1]
     res = ler_json(DADOS / f'{fonte}-resumo.json')
-    titulo = 'Base completa' if fonte == 'base' else 'FTP EQ'
-    cod = 'B18' if fonte == 'base' else 'F10'
+    titulo, cod = {'base': ('Base completa', 'B18'), 'eq': ('FTP EQ', 'F10'), 'api': ('API dados abertos', 'A12')}[fonte]
     if not res:
         anotar('warning', f'{cod} {titulo} x banco do IMED: sem resumo da fonte', 'A análise da fonte não terminou.')
         return

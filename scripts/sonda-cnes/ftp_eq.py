@@ -187,20 +187,30 @@ def descricoes_auxiliar(aux: dict | None) -> tuple[dict, dict, str]:
     _, _, nome, texto = cands[0]
     por2, por3 = {}, {}
     linhas_cnv = texto.splitlines()
+    tabela_cnv = []
     for l in linhas_cnv[1:]:
-        m = re.match(r'^\s*\d+\s+(.*?)\s{2,}([0-9A-Za-z,\-]+)\s*$', l)
+        m = re.match(r'^\s*\d+\s+(.*\S)\s+(\d{2,4}(?:,\d{2,4})*)\s*$', l)
         if not m:
             continue
-        desc, codigos = m.group(1).strip(), m.group(2)
-        for cod in codigos.split(','):
-            if '-' in cod or not cod:
-                continue
-            if len(cod) == 2:
-                por2[cod] = desc
+        desc = re.sub(r'^\d{3,4}\s*-\s*', '', m.group(1).strip())
+        for cod in m.group(2).split(','):
+            if len(cod) == 4:
+                par = (cod[:2].lstrip('0') or '0', cod[2:])
             elif len(cod) == 3:
-                por3[(cod[0], cod[1:])] = desc
-    exemplo = '\n'.join(dict.fromkeys(linhas_cnv[:2] + [x for x in linhas_cnv if re.search(r'RESSON|TOMOG|MAMOG|DENSIT|ULTRA|ELETROC|ECOC|RAIO', sem_acento(x))][:26]))
-    return por2, por3, f'{resumo}\nUsado: {nome} ({len(linhas_cnv)} linhas; {len(por2)} códigos de 2 dígitos, {len(por3)} de 3)\n{exemplo}'
+                par = (cod[0], cod[1:])
+            else:
+                por2[cod] = desc
+                continue
+            por3[par] = desc
+            tabela_cnv.append(f'{par[0]}/{par[1]} {desc}')
+    # Tabela completa dos tipos 1 (imagem) e 4 (métodos gráficos), mais o que falar de ecocardiograma.
+    escolhidos = [x for x in tabela_cnv if x.split('/')[0] in ('1', '4') or 'ECOC' in sem_acento(x)]
+    tipos_txt = ''
+    for i in z.infolist():
+        if re.search(r'equip_?tp|tp_?equip', i.filename, re.I):
+            tipos_txt = f"\n{i.filename}: " + '; '.join(re.sub(r'\s+', ' ', x).strip() for x in z.read(i).decode('latin-1', 'replace').splitlines()[1:30])
+    return por2, por3, (f'{resumo}\nUsado: {nome} ({len(linhas_cnv)} linhas; {len(por3)} códigos tipo+código, {len(por2)} de 2 dígitos)'
+                        f'{tipos_txt}\nTipos 1 (imagem) e 4 (gráficos), código e descrição oficial:\n' + '\n'.join(escolhidos))
 
 
 def analisar() -> None:

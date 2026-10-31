@@ -148,7 +148,7 @@ def main() -> None:
         out.append([p, resumo_http(r), uma_linha(r.get('corpo'), 90)])
     anotar('notice', 'A05 API: rotas prováveis de equipamentos', tabela(out, ['rota', 'resposta', 'começo']))
     resumo['palpites'] = out
-    salvar_json(DADOS / 'api-resumo.json', resumo)
+    salvar_json(DADOS / 'api-doc.json', resumo)
 
 
 if __name__ == '__main__':

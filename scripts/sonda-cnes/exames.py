@@ -16,16 +16,17 @@ from comum import (CAMPINAS, PONTOS, SAO_PAULO, TIPOS_HOSPITAL, TIPOS_IMED, dist
 EXAMES = ['rm', 'tc', 'mamo', 'rx', 'dens', 'usg', 'ecg', 'eco']
 NOMES = {'rm': 'Ressonância', 'tc': 'Tomografia', 'mamo': 'Mamografia', 'rx': 'Raio-X', 'dens': 'Densitometria',
          'usg': 'Ultrassom', 'ecg': 'Eletro (ECG)', 'eco': 'Ecocardiograma'}
-# Regra pela descrição oficial do aparelho (sem acento, maiúsculas).
+# Regra pela descrição oficial do aparelho (sem acento, maiúsculas) e pelo tipo de equipamento do CNES
+# (1 = diagnóstico por imagem, 4 = métodos gráficos): (inclui, exclui, tipos aceitos ou None = qualquer tipo).
 REGRA = {
-    'rm': (r'RESSON', None),
-    'tc': (r'TOMOGRAF', None),
-    'mamo': (r'MAMOGRAF', r'PROCESSADORA'),
-    'rx': (r'RAIO.?X', r'DENT|DENSITOM|HEMODIN|FLUOROSC|MAMOGRAF'),
-    'dens': (r'DENSITOM', None),
-    'usg': (r'ULTRA.?SS?OM|ECOGRAF|ULTRASSONOGRAF', None),
-    'ecg': (r'ELETROCARDIOGRAF', None),
-    'eco': (r'ECOCARDIOGRAF', None),
+    'rm': (r'RESSON', None, {'1'}),
+    'tc': (r'TOMOGRAF', r'COERENCIA|OPTIC', {'1'}),
+    'mamo': (r'MAMOGRAF', r'PROCESSADORA', {'1'}),
+    'rx': (r'RAIO.?X', r'ODONTO|DENT|PANORAM|INTRAORAL|DENSITOM|HEMODIN|MAMOGRAF|MOVEL|ARCO', {'1'}),
+    'dens': (r'DENSITOM', None, {'1'}),
+    'usg': (r'ULTRA.?SS?OM|ECOGRAF|ULTRASSONOGRAF', r'OFTALM|TERAP', {'1'}),
+    'ecg': (r'ELETROCARDIOGRAF', None, {'4'}),
+    'eco': (r'ECOCARDIOGRAF', None, None),
 }
 # Tabela de equipamentos do CNES como costuma ser (tipo 1 = diagnóstico por imagem, 4 = métodos gráficos).
 CODIGOS_PADRAO = {'rm': [('1', '12')], 'tc': [('1', '11')], 'mamo': [('1', '02'), ('1', '03'), ('1', '17')],
@@ -51,9 +52,10 @@ def codigos_por_exame(descricoes: dict[tuple[str, str], str]) -> tuple[dict, str
                 'PADRÃO (a fonte não trouxe a tabela de códigos)')
     out = {}
     for e in EXAMES:
-        inc, exc = REGRA[e]
+        inc, exc, tipos = REGRA[e]
         out[e] = sorted((t, c, d) for (t, c), d in descricoes.items()
-                        if re.search(inc, sem_acento(d)) and not (exc and re.search(exc, sem_acento(d))))
+                        if (tipos is None or t in tipos) and re.search(inc, sem_acento(d))
+                        and not (exc and re.search(exc, sem_acento(d))))
     return out, 'descrição oficial da própria fonte'
 
 
@@ -120,11 +122,12 @@ class Analise:
             uso = self.com(e, m)
             exist = self.com(e, m, em_uso=False)
             sus = [c for c in uso if self.por[c][e][2]]
-            imed = [c for c in uso if self.tipo(c) in TIPOS_IMED]
-            hosp = [c for c in uso if self.tipo(c) in TIPOS_HOSPITAL]
+            sabe_tipo = any(self.tipo(c) is not None for c in uso) or not uso
+            imed = len([c for c in uso if self.tipo(c) in TIPOS_IMED]) if sabe_tipo else '?'
+            hosp = len([c for c in uso if self.tipo(c) in TIPOS_HOSPITAL]) if sabe_tipo else '?'
             aparelhos = sum(self.por[c][e][1] for c in uso)
             hoje = sum(1 for c in uso if self.site_acha_hoje(c, e)) if com_nome else '-'
-            linhas.append([e, len(exist), len(uso), aparelhos, len(sus), len(imed), len(hosp), hoje])
+            linhas.append([e, len(exist), len(uso), aparelhos, len(sus), imed, hosp, hoje])
         return tabela(linhas, ['exame', 'estab c/ aparelho', 'em uso', 'aparelhos em uso', 'em uso+SUS',
                                'tipo que o IMED importa', 'hospitais', 'o site acha hoje pelo nome'])
 
