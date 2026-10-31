@@ -132,6 +132,8 @@ jobs:
     if: contains(needs.plano.outputs.fontes, 'B')
     runs-on: ubuntu-24.04
     timeout-minutes: 85
+    outputs:
+      rm: ${{ steps.listas.outputs.rm }}
     steps:
       - name: Baixar o código
         uses: actions/checkout@v7
@@ -148,6 +150,22 @@ jobs:
       - name: Conferir com o banco do IMED (só leitura, chave pública do site)
         if: always()
         run: python3 -I scripts/sonda-cnes/banco_imed.py base
+      - name: Guardar as listas de ressonância (para comparar as fontes)
+        id: listas
+        if: always()
+        env:
+          RESUMO: base-resumo.json
+        run: |
+          python3 -I - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'sonda' / 'dados' / os.environ['RESUMO']
+          try:
+              d = json.loads(p.read_text(encoding='utf-8'))
+              out = {'mes': d.get('mes'), 'rm': d['exames']['rm'], 'uso': d['em_uso']['rm']}
+          except Exception:
+              out = {}
+          print('rm=' + json.dumps(out, separators=(',', ':')))
+          PY
       - name: Publicar avisos (1)
         if: always()
         run: python3 -I "$PUBLICAR" 0
@@ -290,7 +308,7 @@ jobs:
 
   comparar:
     name: C - Comparar FTP EQ com a base completa (ressonância)
-    needs: [plano, ftp, zip]
+    needs: [plano, ftp, zip, base]
     if: always() && contains(needs.plano.outputs.fontes, 'C')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -302,7 +320,7 @@ jobs:
       - name: Comparar as listas
         env:
           RM_FTP: ${{ needs.ftp.outputs.rm }}
-          RM_ZIP: ${{ needs.zip.outputs.rm }}
+          RM_ZIP: ${{ needs.base.outputs.rm || needs.zip.outputs.rm }}
         run: python3 -I scripts/sonda-cnes/comparar.py
       - name: Publicar avisos
         if: always()

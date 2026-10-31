@@ -428,9 +428,12 @@ def secao_cidades(z: zipfile.ZipFile, estado: dict) -> None:
     salvar_json(DADOS / 'base-resumo.json', an.resumo('Base completa', estado.get('mes')))
 
 
-REGRA_SERV = {'lab': r'LABORAT|ANALISES CLINICAS|PATOLOGIA CLINICA', 'ecg': r'ELETROCARDIO', 'eco': r'ECOCARDIO',
+# Exame -> serviço especializado/classificação, pela descrição oficial (sem acento, maiúsculas). Laboratório é
+# só o serviço 145 (diagnóstico de laboratório clínico); coleta (144) aparece à parte. Radiologia odontológica e
+# intervencionista não contam como raio-X.
+REGRA_SERV = {'lab': r'^145 ', 'coleta': r'^144 ', 'ecg': r'ELETROCARDIO', 'eco': r'ECOCARDIO',
               'rm': r'RESSON', 'tc': r'TOMOGRAF', 'mamo': r'MAMOGRAF', 'dens': r'DENSITOM',
-              'usg': r'ULTRA.?SS?ON|ULTRA.?SOM|ECOGRAF', 'rx': r'RADIOLOG|RAIO.?X|RADIOGRAF'}
+              'usg': r'ULTRA.?SS?ON|ULTRA.?SOM|ECOGRAF', 'rx': r'^121 .*/ RADIOLOGIA( POR TELEMEDICINA)?$'}
 
 
 def secao_servicos(z: zipfile.ZipFile, estado: dict) -> None:
@@ -456,7 +459,7 @@ def secao_servicos(z: zipfile.ZipFile, estado: dict) -> None:
     c.fechar()
     alvo: dict[tuple[str, str], list[str]] = defaultdict(list)
     for (s, k), d in clas.items():
-        texto = sem_acento(f'{serv.get(s, "")} / {d}')
+        texto = sem_acento(f'{s} {serv.get(s, "")} / {d}')
         for e, rx in REGRA_SERV.items():
             if re.search(rx, texto):
                 alvo[(s, k)].append(e)
@@ -467,6 +470,7 @@ def secao_servicos(z: zipfile.ZipFile, estado: dict) -> None:
     iu = c.col(r'CO_UNIDADE')
     isv = c.col(r'CO_SERVICO.*', evita='CLASS')
     icl = c.col(r'CO_CLASSIFICACAO.*', r'CO_CLASS.*')
+    iat = c.col(r'ST_ATIVO.*')
     unid = estado.get('unid_cnes') or {}
     estab = estado.get('estab') or {}
     alvo_mun = {mun6(CAMPINAS), mun6(SAO_PAULO)}
@@ -475,7 +479,7 @@ def secao_servicos(z: zipfile.ZipFile, estado: dict) -> None:
     for l in c:
         n += 1
         un = campo(l, iu)
-        if un[:6] not in alvo_mun:
+        if un[:6] not in alvo_mun or (iat is not None and campo(l, iat).upper() not in ('S', '')):
             continue
         chave = (campo(l, isv).zfill(3), campo(l, icl).zfill(3))
         for e in alvo.get(chave, []):
@@ -485,7 +489,7 @@ def secao_servicos(z: zipfile.ZipFile, estado: dict) -> None:
     c.fechar()
     an: Analise | None = estado.get('analise')
     linhas = []
-    for e in ['lab', 'ecg', 'eco'] + [x for x in EXAMES if x not in ('ecg', 'eco')]:
+    for e in ['lab', 'coleta', 'ecg', 'eco'] + [x for x in EXAMES if x not in ('ecg', 'eco')]:
         lin = [e]
         for ibge in (CAMPINAS, SAO_PAULO):
             s = por_exame[e][mun6(ibge)]
