@@ -14,8 +14,11 @@ port = 54321
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
-# Igual à produção: tabela e função nova do schema public nasce acessível por anon/authenticated e cada
-# migração fecha o que precisa (RLS e REVOKE). Com "false" o banco local ficaria diferente da produção.
+# Igual à produção: tabela, sequência e função nova do schema public nascem com permissão para anon,
+# authenticated e service_role (é o padrão "antigo", que o projeto de produção mantém; conferido em 31/10/2026)
+# e cada migração fecha o que precisa (RLS, REVOKE). Sem esta linha, a CLI 2.121.0 cria o banco local com o padrão
+# novo (nada exposto) e ele fica diferente da produção. A CLI marcou o campo como obsoleto: numa versão nova ele
+# pode sumir; a guarda "privilégios padrão do schema public" (supabase/tests/000_catalogo.sql) avisa se isso mudar.
 auto_expose_new_tables = true
 
 [db]
@@ -59,7 +62,7 @@ enabled = false
 
 # ---------------- Edge Functions ----------------
 # verify_jwt = false: a própria função confere quem chama (chave de serviço ou token interno).
-# Mesmos valores da produção (conferidos em 31/10/2026).
+# Mesmos valores da produção (conferidos em 31/10/2026: clinicas-proximas true, importar-clinicas false).
 
 [functions.clinicas-proximas]
 verify_jwt = true
@@ -67,9 +70,10 @@ verify_jwt = true
 [functions.importar-clinicas]
 verify_jwt = false
 
-# Funções que ainda não existem: nascem nas fases do iMed Agenda (memory/projects/imed-agenda-arquitetura.md).
-# Ficam declaradas com verify_jwt = false, mas DESLIGADAS (enabled = false): a CLI 2.121.0 não sobe o Edge Runtime
-# se uma função declarada aqui não tiver a pasta supabase/functions/<nome>. Quem criar a pasta troca para true.
+# Funções que ainda não existem: nascem nas fases do iMed Agenda (memory/projects/imed-agenda-arquitetura.md,
+# §13). Já ficam declaradas com verify_jwt = false (cada uma confere quem chama por conta própria), mas DESLIGADAS
+# (enabled = false) enquanto a pasta supabase/functions/<nome> não existir: assim o Edge Runtime local não procura
+# código que ainda não foi escrito. Quem criar a função troca para enabled = true.
 
 [functions.agenda-reservar]   # fase 5.1 (só se o Turnstile existir)
 enabled = false

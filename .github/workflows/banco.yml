@@ -7,6 +7,8 @@
 #   3. os scripts de tests/banco/*.mjs (conexão direta e HTTP no PostgREST local, com tokens assinados pelo
 #      segredo do banco local);
 #   4. a volta (supabase/volta/*.sql) e a reaplicação das migrações que têm volta: o banco tem de ficar igual.
+# E tira a "impressão digital" do banco (tests/banco/catalogo.sql), com e sem as migrações que têm volta: o resumo
+# por tipo é comparável com o da produção (a mesma consulta, só leitura, rodada lá).
 #
 # Nada aqui fala com o Supabase de produção: o banco é criado do zero, os contêineres ficam sem saída para a
 # internet, a fila de importação não tem o endereço das funções (private.app_settings vazia) e os jobs do pg_cron
@@ -14,6 +16,8 @@
 #
 # O registro desta execução fica num lugar que o Claude não lê: cada falha vira aviso (anotação) no topo da página,
 # com as linhas úteis do erro (tests/banco/anotar.mjs), e o último passo deixa uma nota "Resumo do banco".
+# À mão (pela API): gh api -X POST repos/<repo>/actions/workflows/banco.yml/dispatches -f ref=<ramo>
+#   [-f 'inputs[impressao]=funcao,tabela' -f 'inputs[impressao_base]=sem-volta'] para ver a impressão linha a linha.
 name: Banco
 
 on:
@@ -24,6 +28,17 @@ on:
       - 'tests/banco/**'
       - '.github/workflows/banco.yml'
   workflow_dispatch:
+    inputs:
+      impressao:
+        description: 'Impressão digital linha a linha: tipos separados por vírgula (funcao,tabela,...) ou "todos"; vazio = só o resumo'
+        required: false
+        default: ''
+      impressao_base:
+        description: 'De qual banco: sem-volta (sem as migrações que têm volta) ou todas (com todas as migrações)'
+        required: false
+        default: 'sem-volta'
+        type: choice
+        options: [sem-volta, todas]
 
 # Só leitura: os testes não escrevem nada no repositório.
 permissions:
@@ -35,7 +50,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # CLI do Supabase em versão FIXA (2.121.0, publicada em 14/10/2026). Trocar só depois de testar aqui.
+  # CLI do Supabase em versão FIXA: 2.121.0, publicada em 14/10/2026 (estável; a 2.122.0 é de 23/10). Aceita no
+  # "supabase start -x": gotrue, realtime, storage-api, imgproxy, kong, mailpit, postgrest, postgres-meta, studio,
+  # edge-runtime, logflare, vector, supavisor. Trocar só depois de testar aqui (e conferir config.toml).
   SUPABASE_CLI_VERSION: '2.121.0'
   PG_NODE_VERSION: '8.23.1'
   SUPABASE_TELEMETRY_DISABLED: '1'
@@ -75,7 +92,7 @@ jobs:
           set -o pipefail
           trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
           log="$RUNNER_TEMP/laco-local.log"
-          if ! timeout -k 10s 5m node tests/banco/local/rodar.mjs --concorrencia=com-trava 2>&1 | tee "$log"; then
+          if ! timeout -k 10s 5m node tests/banco/local/rodar.mjs --concorrencia=com-trava,remarcacao,capacidade 2>&1 | tee "$log"; then
             grep -q '^::error' "$log" || node tests/banco/anotar.mjs cauda "Laço local quebrou" "$log"
             exit 1
           fi
@@ -90,6 +107,7 @@ jobs:
       # funcionando (quem baixa é o Docker da máquina, não os contêineres).
       - name: Fechar a saída dos contêineres para a internet
         run: |
+          set -o pipefail
           trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
           externa=$(ip -4 route show default | awk '{print $5; exit}')
           if [ -z "$externa" ] || ! sudo iptables -I DOCKER-USER 1 -o "$externa" -j REJECT; then
@@ -124,6 +142,20 @@ jobs:
           versao=$(psql "$db_url" -qAt -c "select current_setting('server_version')")
           echo "Supabase local de pé em $(( SECONDS - inicio )) s (Postgres $versao, CLI $(supabase --version)); migrações aplicadas num banco novo: $no_banco de $arquivos" \
             | tee "$IMED_RESUMO_DIR/10-supabase.txt"
+          # Quais serviços subiram (e de qual imagem): os excluídos com -x não podem aparecer.
+          docker ps --format '{{.Names}} {{.Image}}' | { grep '^supabase_' || true; } | sort > "$RUNNER_TEMP/conteineres.txt"
+          servicos=$(sed -E 's/^supabase_(.+)_imed-local [^ ]*\/([^/ ]+)$/\1 (\2)/' "$RUNNER_TEMP/conteineres.txt" | paste -sd ';' - | sed 's/;/; /g')
+          echo "Serviços de pé: $servicos" | tee "$IMED_RESUMO_DIR/11-servicos.txt"
+          if grep -E '^supabase_(studio|imgproxy|storage|analytics|vector|inbucket|pg_meta|pooler)_' "$RUNNER_TEMP/conteineres.txt"; then
+            echo "::error title=Serviço que devia estar desligado::$(grep -E '^supabase_(studio|imgproxy|storage|analytics|vector|inbucket|pg_meta|pooler)_' "$RUNNER_TEMP/conteineres.txt" | paste -sd ',' -)"
+            exit 1
+          fi
+          for s in db auth rest realtime kong; do
+            if ! grep -q "^supabase_${s}_" "$RUNNER_TEMP/conteineres.txt"; then
+              echo "::error title=Serviço faltando::o contêiner supabase_${s} não está de pé (o CI precisa de Postgres, Auth, PostgREST, Realtime e Kong)"
+              exit 1
+            fi
+          done
           if [ "$no_banco" != "$arquivos" ]; then
             echo "::error title=Migrações faltando::o banco local registrou $no_banco migrações, mas há $arquivos arquivos em supabase/migrations"
             exit 1
@@ -149,6 +181,17 @@ jobs:
             erros=$(psql "$DB_URL" -qAt -c "select string_agg(coalesce(error_msg, status_code::text), '; ') from net._http_response")
             echo "::warning title=O banco local tentou chamar a internet::$chamadas chamada(s) do pg_net durante as migrações (antes da migração de preparo valer); a trava de rede barrou: $erros"
           fi
+
+      # Impressão digital com TODAS as migrações, antes de qualquer teste (o pgTAP instala e tira a extensão pgtap).
+      # Depois que a produção recebe as migrações novas, o resumo por tipo tem de bater com o de lá.
+      - name: Impressão digital do banco (todas as migrações)
+        id: impressao
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-todas.txt" 2> "$RUNNER_TEMP/impressao.err" \
+            || { node tests/banco/anotar.mjs cauda "A impressão digital falhou (tests/banco/catalogo.sql)" "$RUNNER_TEMP/impressao.err"; exit 1; }
+          node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-todas.txt" "com todas as migrações"
 
       - name: Testes pgTAP (supabase test db)
         id: pgtap
@@ -181,7 +224,8 @@ jobs:
           exit $falhou
 
       # Toda migração com volta (supabase/volta/<mesmo nome>.sql) é desfeita e reaplicada: a volta tem de rodar sem
-      # erro e a reaplicação tem de deixar o banco exatamente como estava (impressão digital do catálogo).
+      # erro e a reaplicação tem de deixar o banco exatamente como estava (impressão digital do catálogo). No meio,
+      # sem as migrações que têm volta, o banco é o que a produção tem hoje (se elas ainda não foram aplicadas lá).
       - name: Volta e reaplicação das migrações
         id: volta
         run: |
@@ -203,6 +247,8 @@ jobs:
               exit 1
             fi
           done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-sem-volta.txt"
+          node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-sem-volta.txt" "sem as migrações com volta"
           # reaplica da mais velha para a mais nova
           for v in $(printf '%s\n' "${voltas[@]}" | sort); do
             m="supabase/migrations/$(basename "$v")"
@@ -220,19 +266,31 @@ jobs:
           echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(printf '%s ' "${voltas[@]##*/}")); o banco ficou igual ($(wc -l < "$RUNNER_TEMP/catalogo-antes.txt") objetos conferidos)" \
             | tee "$IMED_RESUMO_DIR/40-volta.txt"
 
+      # Só à mão (workflow_dispatch com impressao=...): as linhas da impressão digital em notas, para achar o objeto
+      # que difere da produção quando o resumo por tipo não bate.
+      - name: Impressão digital linha a linha (só à mão)
+        if: always() && inputs.impressao != '' && steps.impressao.outcome == 'success'
+        env:
+          IMPRESSAO: ${{ inputs.impressao }}
+          IMPRESSAO_BASE: ${{ inputs.impressao_base }}
+        run: |
+          arq="$RUNNER_TEMP/impressao-${IMPRESSAO_BASE:-sem-volta}.txt"
+          [ -s "$arq" ] || arq="$RUNNER_TEMP/impressao-todas.txt"
+          node tests/banco/anotar.mjs impressao-linhas "$arq" "$IMPRESSAO"
+
       - name: O que os contêineres registraram (só quando falha)
         if: failure() && steps.subir.outcome != 'skipped'
         run: |
-          docker ps -a --format '{{.Names}} {{.Status}}' | grep supabase_ > "$RUNNER_TEMP/conteineres.txt" || true
+          docker ps -a --format '{{.Names}} {{.Status}}' | grep supabase_ > "$RUNNER_TEMP/conteineres-estado.txt" || true
           db=$(docker ps -a --format '{{.Names}}' | grep '^supabase_db_' | head -n 1)
           if [ -n "$db" ]; then
             docker logs --tail 400 "$db" 2>&1 | grep -E 'ERROR|FATAL|PANIC' | tail -n 28 > "$RUNNER_TEMP/db-erros.txt" || true
             [ -s "$RUNNER_TEMP/db-erros.txt" ] && node tests/banco/anotar.mjs cauda "Erros no registro do Postgres local" "$RUNNER_TEMP/db-erros.txt"
           fi
-          node tests/banco/anotar.mjs cauda "Contêineres do Supabase local" "$RUNNER_TEMP/conteineres.txt"
+          node tests/banco/anotar.mjs cauda "Contêineres do Supabase local" "$RUNNER_TEMP/conteineres-estado.txt"
 
       - name: Resumo
         if: always()
         run: |
           node tests/banco/anotar.mjs resumo "$IMED_RESUMO_DIR" \
-            "laço local ${{ steps.laco.outcome }}; supabase start ${{ steps.subir.outcome }}; pg_cron ${{ steps.cron.outcome }}; pgTAP ${{ steps.pgtap.outcome }}; scripts ${{ steps.scripts.outcome }}; volta ${{ steps.volta.outcome }}"
+            "laço local ${{ steps.laco.outcome }}; supabase start ${{ steps.subir.outcome }}; pg_cron ${{ steps.cron.outcome }}; impressão ${{ steps.impressao.outcome }}; pgTAP ${{ steps.pgtap.outcome }}; scripts ${{ steps.scripts.outcome }}; volta ${{ steps.volta.outcome }}"

@@ -70,13 +70,15 @@ create trigger occupancy_bi before insert or update on prova.occupancy
 for each row execute function prova.occupancy_bi();
 
 -- Oráculo da regra fundamental, sem olhar a vaga: para cada recurso, o máximo de usos ativos ao mesmo tempo
--- (≤ capacidade) e quantos usos ativos cruzam um fechamento ativo (= 0).
+-- (≤ capacidade) e quantos usos ativos cruzam um fechamento ativo (= 0). O máximo de intervalos [início, fim)
+-- que se cruzam acontece sempre no início de algum deles: basta contar, em cada início (sem repetir o mesmo
+-- instante, senão dois usos que começam juntos seriam contados duas vezes), quantos usos o cobrem.
 create function prova.violacoes() returns table (resource_id uuid, capacidade smallint, maximo_simultaneo bigint, usos_em_fechamento bigint)
 language sql stable set search_path = '' as $$
   with usos as (
     select o.* from prova.occupancy o where o.active and o.kind <> 'bloqueio'
   ), pontos as (
-    select u.resource_id, lower(u.during) as t from usos u
+    select distinct u.resource_id, lower(u.during) as t from usos u
   ), simultaneos as (
     select p.resource_id, count(*) as n
     from pontos p join usos u on u.resource_id = p.resource_id and u.during @> p.t

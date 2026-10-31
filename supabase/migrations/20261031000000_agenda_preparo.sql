@@ -13,13 +13,17 @@
 --      passos, o mesmo token interno (private.app_tokens, nome 'importer', no cabeçalho x-imed-token), o mesmo
 --      corpo e o mesmo tempo-limite.
 --   3. Limpa todo dia o histórico do pg_cron (cron.job_run_details) com mais de 7 dias (job imed-limpeza-cron,
---      03:41 UTC = 00:41 em Brasília). Hoje são 1.400 linhas a mais por dia, sem limpeza nenhuma.
+--      03:41 UTC = 00:41 em Brasília). Hoje entram cerca de 1.600 linhas por dia (1.440 da fila, que roda a cada
+--      minuto, e 144 da teleconsulta), sem limpeza nenhuma.
 --
--- Na produção, logo depois de aplicar (não é segredo: é o endereço público das funções do projeto):
+-- Na produção, logo depois de aplicar (não é segredo: é o endereço público das funções do projeto, o mesmo que
+-- estava escrito no código):
 --   insert into private.app_settings (key, value)
 --   values ('functions_url', 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1')
 --   on conflict (key) do update set value = excluded.value, updated_at = now();
--- Enquanto o endereço não estiver lá, a fila só espera (nada se perde).
+-- Enquanto o endereço não estiver lá, a fila só espera (nada é marcado nem perdido; o job continua rodando).
+-- Conferir: select (select value from private.app_settings where key = 'functions_url') || '/importar-clinicas'
+--             = 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/importar-clinicas';   -- tem de dar true
 --
 -- Nada é apagado e tudo pode rodar de novo sem erro. Volta: supabase/volta/20261031000000_agenda_preparo.sql
 -- (testada no CI: volta, reaplica e o banco tem de ficar igual).

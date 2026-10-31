@@ -3,7 +3,7 @@
 -- Quando uma guarda reprova, a mensagem traz o que está fora da regra ("have" = o que existe, "want" = o certo).
 -- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir.
 begin;
-select plan(15);
+select plan(16);
 
 /* ===================== Tabelas ===================== */
 
@@ -40,6 +40,22 @@ select ok(
   and not has_schema_privilege('authenticated', 'private', 'USAGE')
   and not has_schema_privilege('service_role', 'private', 'USAGE'),
   'schema private sem USAGE para anon, authenticated e service_role (a API não alcança)'
+);
+
+-- Privilégios que objeto NOVO do schema public ganha sozinho (criado pelo postgres numa migração), iguais aos da
+-- produção (conferidos em 31/10/2026): tabela arwd para anon/authenticated (a migração de segurança tirou
+-- TRUNCATE, REFERENCES, TRIGGER e MAINTAIN), sequência só leitura e uso, função executável pelos três papéis.
+-- Se a CLI do Supabase mudar o padrão (config.toml, api.auto_expose_new_tables), o banco do CI deixa de ser igual
+-- ao da produção: esta guarda avisa. As migrações da agenda dão GRANT/REVOKE explícitos de qualquer forma.
+select is(
+  array(select d.defaclobjtype::text || ' ' || (select string_agg(a::text, ',' order by a::text collate "C") from unnest(d.defaclacl) a)
+        from pg_default_acl d
+        where d.defaclrole = 'postgres'::regrole and d.defaclnamespace = 'public'::regnamespace
+        order by d.defaclobjtype::text collate "C"),
+  array['S anon=rU/postgres,authenticated=rU/postgres,postgres=rwU/postgres,service_role=rwU/postgres',
+        'f anon=X/postgres,authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres',
+        'r anon=arwd/postgres,authenticated=arwd/postgres,postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres'],
+  'privilégios padrão do schema public iguais aos da produção (tabela, sequência e função nova)'
 );
 
 /* ===================== Funções ===================== */

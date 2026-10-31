@@ -6,10 +6,15 @@
 //   node tests/banco/anotar.mjs pgtap <registro>            cada teste pgTAP que falhou (com have/want) e erros de SQL
 //   node tests/banco/anotar.mjs cauda "<título>" <registro> as últimas linhas do registro
 //   node tests/banco/anotar.mjs resumo <pasta> "<passos>"   uma nota com o resumo de todos os passos
+//   node tests/banco/anotar.mjs impressao <arquivo> "<rótulo>"         resumo por tipo da impressão digital
+//   node tests/banco/anotar.mjs impressao-linhas <arquivo> "<tipos>"   as linhas da impressão, em notas
+//     (a impressão é a saída de tests/banco/catalogo.sql; o resumo por tipo é igual ao que a mesma consulta dá na
+//      produção, para conferir que o banco do CI é igual ao de lá)
 //
 // O GitHub mostra no máximo 10 avisos de erro por passo e 50 por execução: aqui são no máximo 8 por chamada.
 
-import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { anotar } from './lib.mjs';
 
@@ -95,11 +100,77 @@ function resumo(pasta, passos) {
   }
 }
 
+/* ===================== Impressão digital (tests/banco/catalogo.sql) ===================== */
+// Linhas "<tipo> <objeto> <hash>". O resumo de cada tipo é o MD5 (12 caracteres) das linhas do tipo em ordem de
+// bytes, unidas por "\n" — o mesmo que dá, rodada na produção, a consulta
+//   select split_part(linha, ' ', 1), count(*), left(md5(string_agg(linha, chr(10) order by linha collate "C")), 12)
+//   from (<tests/banco/catalogo.sql sem o "order by" do fim>) z group by 1 order by 1;
+const linhasImpressao = (arq) => linhasDe(ler(arq)).filter(util).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+
+function resumoImpressao(linhas) {
+  const porTipo = new Map();
+  for (const l of linhas) {
+    const tipo = l.split(' ', 1)[0];
+    if (!porTipo.has(tipo)) porTipo.set(tipo, []);
+    porTipo.get(tipo).push(l);
+  }
+  const md5 = (s) => createHash('md5').update(s, 'utf8').digest('hex').slice(0, 12);
+  return [...porTipo.keys()].sort().map((tipo) => ({ tipo, n: porTipo.get(tipo).length, hash: md5(porTipo.get(tipo).join('\n')) }));
+}
+
+function impressao(arq, rotulo) {
+  const linhas = linhasImpressao(arq);
+  if (!linhas.length) {
+    anotar('error', `Impressão digital vazia - ${rotulo}`, `nenhuma linha em ${arq}`);
+    process.exitCode = 1;
+    return;
+  }
+  const tipos = resumoImpressao(linhas);
+  const extensoes = linhas.filter((l) => l.startsWith('extensao ')).map((l) => l.split(' ').slice(1).join(' ')).join(', ');
+  const texto = `Impressão digital ${rotulo}: ${linhas.length} objetos; ${tipos.map((t) => `${t.tipo} ${t.n} ${t.hash}`).join(' · ')}`
+    + `\nExtensões ${rotulo}: ${extensoes || 'nenhuma'}`;
+  console.log(texto);
+  const dir = process.env.IMED_RESUMO_DIR;
+  if (dir) {
+    mkdirSync(dir, { recursive: true });
+    const nome = `45-impressao-${rotulo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').toLowerCase()}.txt`;
+    writeFileSync(path.join(dir, nome), `${texto}\n`);
+  }
+}
+
+// As linhas da impressão (de alguns tipos ou de todas), em notas de até ~3.500 caracteres, para comparar objeto a
+// objeto com a produção quando o resumo por tipo não bate. No máximo 9 notas (o GitHub mostra 10 por passo).
+function impressaoLinhas(arq, tiposTexto) {
+  const tipos = new Set(String(tiposTexto || 'todos').split(/[\s,]+/).filter(Boolean));
+  const linhas = linhasImpressao(arq).filter((l) => tipos.has('todos') || tipos.has(l.split(' ', 1)[0]));
+  const blocos = [];
+  let atual = [];
+  let tamanho = 0;
+  for (const l of linhas) {
+    if (atual.length && tamanho + l.length + 1 > 3500) { blocos.push(atual); atual = []; tamanho = 0; }
+    atual.push(l);
+    tamanho += l.length + 1;
+  }
+  if (atual.length) blocos.push(atual);
+  const MAX_NOTAS = 9;
+  blocos.slice(0, MAX_NOTAS).forEach((b, i) => {
+    anotar('notice', `Impressão digital (${[...tipos].join(',')}) ${i + 1}/${blocos.length}`, b.join('\n'),
+      { maxAvisos: 1, maxLinhas: b.length });
+  });
+  if (blocos.length > MAX_NOTAS) {
+    anotar('warning', 'Impressão digital cortada',
+      `${blocos.length} blocos; só os ${MAX_NOTAS} primeiros viraram nota. Peça menos tipos (impressao=funcao,tabela...).`);
+  }
+}
+
 if (modo === 'supabase-start') supabaseStart(ler(resto[0]));
 else if (modo === 'pgtap') pgtap(ler(resto[0]));
 else if (modo === 'cauda') cauda(resto[0], ler(resto[1]));
 else if (modo === 'resumo') resumo(resto[0], resto[1]);
+else if (modo === 'impressao') impressao(resto[0], resto[1] || 'do banco');
+else if (modo === 'impressao-linhas') impressaoLinhas(resto[0], resto[1]);
 else {
-  console.error('uso: node tests/banco/anotar.mjs supabase-start|pgtap <registro> | cauda "<título>" <registro> | resumo <pasta> "<passos>"');
+  console.error('uso: node tests/banco/anotar.mjs supabase-start|pgtap <registro> | cauda "<título>" <registro> | '
+    + 'resumo <pasta> "<passos>" | impressao <arquivo> "<rótulo>" | impressao-linhas <arquivo> "<tipos>"');
   process.exitCode = 2;
 }

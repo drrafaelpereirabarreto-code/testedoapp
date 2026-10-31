@@ -16,7 +16,8 @@
 
 import { randomUUID } from 'node:crypto';
 import {
-  afirmar, anotar, configLocal, conectar, estatisticas, postgrest, principal, resumir, rodarJuntos, textoCodigos, tokenAnon,
+  afirmar, anotar, configLocal, conectar, descreverErro, estatisticas, postgrest, principal, resumir, rodarJuntos, textoCodigos,
+  tokenAnon,
 } from './lib.mjs';
 
 const CLINICA = 'cc000000-0000-4000-8000-0000000000c1';
@@ -173,7 +174,7 @@ await principal('concorrencia-atual', async () => {
 
     resumir('concorrencia-atual', { rodadas, defeito }, notas);
   } finally {
-    await limpar(db).catch(() => {});
+    await limpar(db).catch((e) => anotar('warning', 'Não deu para apagar os dados de teste (concorrencia-atual)', descreverErro(e)));
     await db.end();
   }
 });

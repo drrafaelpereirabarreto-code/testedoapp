@@ -139,8 +139,8 @@ export function jwt(claims, segredo, { validadeS = 3600 } = {}) {
   return `${base}.${createHmac('sha256', segredo).update(base).digest('base64url')}`;
 }
 
-/** Visitante (o que o site manda hoje sem login). */
-export const tokenAnon = (cfg) => (cfg.jwtSecret ? jwt({ role: 'anon', iss: 'supabase' }, cfg.jwtSecret) : cfg.anonKey);
+/** Visitante (o que o site manda hoje sem login), assinado aqui com o segredo do Supabase local. */
+export const tokenAnon = (cfg) => jwt({ role: 'anon', iss: 'supabase' }, cfg.jwtSecret);
 
 /** Pessoa logada pelo link do e-mail (amr "otp"), como o Auth emite. */
 export const tokenUsuario = (cfg, { sub, email }) => jwt({
