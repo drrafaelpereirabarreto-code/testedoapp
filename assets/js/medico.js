@@ -405,7 +405,8 @@ function setupMenu() {
   // cobre o que recebeu o foco). Passou para a tela larga (menu na linha do topo): fecha também.
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen()) { setMenu(false); $('#menuBtn').focus(); } });
   document.addEventListener('click', (e) => { if (menuOpen() && !e.target.closest('#mdTop')) setMenu(false); });
-  $('#mdTop').addEventListener('focusout', (e) => { if (menuOpen() && e.relatedTarget && !$('#mdTop').contains(e.relatedTarget)) setMenu(false); });
+  // Fecha quando o foco sai do menu e do botão do menu (ex.: Tab de "Site do IMED" para o botão de tema).
+  $('#mdTop').addEventListener('focusout', (e) => { const t = e.relatedTarget; if (menuOpen() && t && !$('#mdMenu').contains(t) && t !== $('#menuBtn')) setMenu(false); });
   window.matchMedia?.('(min-width: 1040px)').addEventListener?.('change', () => setMenu(false));
   // Os quadros aparecem e somem (atributo hidden) por todo o código: o menu acompanha sozinho.
   new MutationObserver(syncMenu).observe($('#main'), { subtree: true, attributes: true, attributeFilter: ['hidden'] });

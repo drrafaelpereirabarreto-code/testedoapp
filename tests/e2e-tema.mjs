@@ -174,6 +174,8 @@ await scenario('sem piscar: o tema chega no <html> antes do <body>, do 1º quadr
     for (const url of ['sobre.html', 'exames/raio-x.html', 'cidades/sp/sao-paulo/clinicas.html', 'perto.html', 'nao-existe']) {
       await page.goto(SITE + url);
       await page.waitForLoadState('load');
+      // Com a máquina cheia, o 1º quadro pode vir depois do "load": espera ele acontecer (o valor é o que ele viu).
+      await page.waitForFunction(() => window.__tema && window.__tema.rafTema !== null, null, { timeout: 15000 });
       const t = await page.evaluate(() => {
         const fp = performance.getEntriesByType('paint').find((e) => e.name === 'first-paint');
         return { ...window.__tema, firstPaint: fp ? fp.startTime : null };
@@ -236,15 +238,8 @@ await scenario('botões pelo teclado e leitor de tela: grupo "Tema" do rodapé e
   await esperarTema(page, 'light');
   await page.waitForFunction(() => document.querySelector('.tema-fala')?.textContent === 'Tema claro');
   assert.equal(await page.locator('.tema-fala[role="status"]').count(), 1, 'uma região só para o leitor de tela');
-  // Botão do cabeçalho (o mesmo que as páginas principais vão usar), posto no topo da busca.
-  await page.evaluate(() => {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'tema-btn';
-    b.setAttribute('data-tema', '');
-    document.querySelector('.pt-top-in').appendChild(b);
-    window.IMED_TEMA.ligar();
-  });
+  // Botão do cabeçalho de verdade (o do topo da busca).
+  assert.equal(await page.locator('.pt-top .tema-btn').count(), 1, 'um botão de tema no topo');
   const cab = page.locator('.pt-top .tema-btn');
   const box = await cab.boundingBox();
   assert.ok(box.width >= 44 && box.height >= 44, `44 px (${box.width}x${box.height})`);

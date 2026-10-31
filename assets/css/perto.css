@@ -272,6 +272,8 @@ html .leaflet-container .leaflet-control-attribution a{color:var(--bu-mapa-link,
 .sh-ov.open{opacity:1;pointer-events:auto}
 .sh{position:relative;width:100%;max-width:640px;max-height:92vh;max-height:92dvh;overflow:auto;overscroll-behavior:contain;background:var(--elev);border-radius:26px 26px 0 0;transform:translateY(40px);transition:transform .35s var(--ease);outline:none}
 .sh-ov.open .sh{transform:none}
+/* O foco pelo Tab nunca fica escondido atrás do topo e da barra fixa da ficha (.sh-head e .sh-foot). */
+.sh{scroll-padding-top:76px;scroll-padding-bottom:150px}
 @media (min-width:900px){.sh-ov{align-items:center}.sh{border-radius:26px;max-height:88vh}}
 .sh-head{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:10px;padding:14px 18px;background:var(--bu-vidro-elev,rgba(255,255,255,.95));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .sh-head h2{flex:1;font-size:17px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
