@@ -1,6 +1,11 @@
 # Supabase LOCAL do IMED: o banco descartável que o GitHub sobe a cada envio (.github/workflows/banco.yml)
 # e que qualquer pessoa sobe com "supabase start" (precisa de Docker).
 #
+# !!! NUNCA use esta pasta com a produção: nada de "supabase link", "supabase config push", "supabase db push"
+# !!! nem "supabase migration up --linked". O "config push" gravaria na produção os valores de TESTE daqui (por
+# !!! exemplo o site_url de 127.0.0.1, que quebra os links de login) e o "db push" aplicaria migrações sem a
+# !!! conferência de quem as aprova. A produção recebe migração só pelo conector do Supabase, aprovada pelo dono.
+#
 # Nada aqui vale para a produção: o projeto de verdade (pyoqiecupxhdzigjudyd) é configurado pelo painel do
 # Supabase. Este arquivo só diz como montar a cópia local: Postgres 17 (o mesmo da produção), Auth, PostgREST,
 # Realtime e Edge Runtime, com TODAS as migrações de supabase/migrations aplicadas num banco novo.
@@ -16,9 +21,10 @@ extra_search_path = ["public", "extensions"]
 max_rows = 1000
 # Igual à produção: tabela, sequência e função nova do schema public nascem com permissão para anon,
 # authenticated e service_role (é o padrão "antigo", que o projeto de produção mantém; conferido em 31/10/2026)
-# e cada migração fecha o que precisa (RLS, REVOKE). Sem esta linha, a CLI 2.121.0 cria o banco local com o padrão
-# novo (nada exposto) e ele fica diferente da produção. A CLI marcou o campo como obsoleto: numa versão nova ele
-# pode sumir; a guarda "privilégios padrão do schema public" (supabase/tests/000_catalogo.sql) avisa se isso mudar.
+# e cada migração fecha o que precisa (RLS, REVOKE). Na CLI 2.121.0, sem esta linha o resultado é o mesmo (só
+# "false" tira as permissões); ela fica explícita porque o padrão já foi "nada exposto" em outras versões da CLI
+# e pode voltar a ser. A guarda "privilégios padrão do schema public" (supabase/tests/000_catalogo.sql) avisa se
+# o banco do CI deixar de ser igual à produção nisso.
 auto_expose_new_tables = true
 
 [db]
@@ -43,6 +49,10 @@ enabled = true
 [auth]
 enabled = true
 site_url = "http://127.0.0.1:3000"
+
+[auth.email]
+# Como na produção ("Confirm email" ligado). Os testes criam os usuários direto no banco, com o e-mail confirmado.
+enable_confirmations = true
 
 [edge_runtime]
 enabled = true

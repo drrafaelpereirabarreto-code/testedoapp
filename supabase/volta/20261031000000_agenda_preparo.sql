@@ -2,7 +2,13 @@
 -- Deixa o banco como estava antes dela: a fila de importação volta a ter o endereço da produção escrito no
 -- código (versão de 20261030021434_fila_importacao), sem a limpeza do histórico do pg_cron e sem
 -- private.app_settings. Tem o mesmo nome da migração; se a migração for renomeada, renomeie esta também.
--- Testada no CI (.github/workflows/banco.yml): volta, reaplica a migração e o banco tem de ficar igual.
+-- Testada no CI (.github/workflows/banco.yml): o banco depois da volta tem de ficar IGUAL ao banco que nasceu
+-- sem a migração (impressão digital), e a reaplicação, igual ao banco com ela.
+-- ATENÇÃO: a volta apaga private.app_settings JUNTO com o endereço das funções (functions_url). Se a migração
+-- for aplicada de novo depois, grave o functions_url de novo (comando no cabeçalho da migração); sem ele, a
+-- fila de importação não chama nada e, com cidade esperando, falha com "Fila de importação parada".
+-- Na produção, a versão da migração continua no histórico (supabase_migrations.schema_migrations) depois da
+-- volta; reaplicar pelo conector grava uma versão nova: renomeie os dois arquivos com ela.
 
 select cron.unschedule(jobid) from cron.job where jobname = 'imed-limpeza-cron';
 drop function if exists private.cron_limpar_historico(integer);

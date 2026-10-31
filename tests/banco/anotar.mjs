@@ -2,10 +2,12 @@
 // O registro completo das execuções fica num lugar que o Claude não consegue ler: só os avisos aparecem
 // (gh api .../check-runs/<job>/annotations). Cada aviso leva até 14 linhas úteis, sem linhas vazias.
 //
-//   node tests/banco/anotar.mjs supabase-start <registro>   migração que falhou (nome, erro, SQLSTATE, comando)
+//   node tests/banco/anotar.mjs migracoes <registro>        "supabase start" ou "supabase migration up" que falhou:
+//                                                           a migração culpada (nome, erro, SQLSTATE, comando) ou,
+//                                                           se o banco subiu, o fim do registro e o dos contêineres
 //   node tests/banco/anotar.mjs pgtap <registro>            cada teste pgTAP que falhou (com have/want) e erros de SQL
 //   node tests/banco/anotar.mjs cauda "<título>" <registro> as últimas linhas do registro
-//   node tests/banco/anotar.mjs resumo <pasta> "<passos>"   uma nota com o resumo de todos os passos
+//   node tests/banco/anotar.mjs resumo <pasta> "<passos>"   o resumo de todos os passos (até 3 notas de 40 linhas)
 //   node tests/banco/anotar.mjs impressao <arquivo> "<rótulo>"         resumo por tipo da impressão digital
 //   node tests/banco/anotar.mjs impressao-linhas <arquivo> "<tipos>"   as linhas da impressão, em notas
 //     (a impressão é a saída de tests/banco/catalogo.sql; o resumo por tipo é igual ao que a mesma consulta dá na
@@ -31,19 +33,46 @@ function cauda(titulo, texto, n = 42) {
   anotar('error', titulo, linhas.length ? linhas.join('\n') : '(registro vazio)', { maxAvisos: 3 });
 }
 
-function supabaseStart(texto) {
+// Saída de "supabase start" ou de "supabase migration up". A CLI aplica as migrações ANTES de escrever
+// "Starting containers..." e, quando uma falha, escreve no fim o erro do banco (com SQLSTATE e "At statement: N").
+// Só culpa uma migração se esse erro existe e o banco não chegou a subir os outros contêineres; senão, o título é
+// "O Supabase local não subiu", com o fim do registro e o registro de cada contêiner que a CLI mostrou
+// ("<contêiner> container logs:", quando um não fica de pé a tempo).
+function migracoes(texto) {
   const linhas = linhasDe(texto);
+  const iConteineres = linhas.findIndex((l) => /^Starting containers\.\.\./.test(l.trim()));
+  const fimMigracoes = iConteineres >= 0 ? iConteineres : linhas.length;
   let ultimaMig = -1;
-  linhas.forEach((l, i) => { if (/Applying migration /.test(l)) ultimaMig = i; });
-  const inicioBusca = ultimaMig >= 0 ? ultimaMig + 1 : 0;
-  const iErro = linhas.findIndex((l, i) => i >= inicioBusca && /(SQLSTATE|ERROR|error|failed|Error)/.test(l));
-  if (iErro < 0) return cauda('O Supabase local não subiu', texto);
-  const migracao = ultimaMig >= 0 ? linhas[ultimaMig].match(/Applying migration (\S+?)(\.\.\.)?$/)?.[1] : null;
-  const bloco = linhas.slice(iErro, iErro + 40).filter(util);
-  const aplicadas = linhas.filter((l) => /Applying migration /.test(l)).length;
-  const titulo = migracao ? `Migração falhou - ${migracao}` : 'O Supabase local não subiu';
-  const cab = migracao ? `${migracao} (${aplicadas}ª aplicada) falhou num banco novo:\n` : '';
-  anotar('error', titulo, cab + bloco.join('\n'), { maxAvisos: 3 });
+  for (let i = 0; i < fimMigracoes; i++) if (/Applying migration /.test(linhas[i])) ultimaMig = i;
+  const iErro = iConteineres < 0 && ultimaMig >= 0
+    ? linhas.findIndex((l, i) => i > ultimaMig && /(SQLSTATE|At statement:)/.test(l)) : -1;
+  if (iErro >= 0) {
+    const migracao = linhas[ultimaMig].match(/Applying migration (\S+?)(\.\.\.)?$/)?.[1] ?? '?';
+    const aplicadas = linhas.filter((l) => /Applying migration /.test(l)).length;
+    const bloco = linhas.slice(Math.max(ultimaMig + 1, iErro - 2), iErro + 40).filter(util);
+    anotar('error', `Migração falhou - ${migracao}`,
+      `${migracao} (${aplicadas}ª aplicada neste passo) falhou num banco novo:\n${bloco.join('\n')}`, { maxAvisos: 3 });
+    return;
+  }
+  // Registros dos contêineres que a CLI despejou (cada um até o próximo).
+  const secoes = [];
+  linhas.forEach((l, i) => {
+    const m = l.trim().match(/^(\S+) container logs:$/);
+    if (m) secoes.push({ nome: m[1], ini: i + 1 });
+  });
+  secoes.forEach((sec, k) => { sec.fim = k + 1 < secoes.length ? secoes[k + 1].ini - 1 : linhas.length; });
+  // O erro final da CLI vem depois do último registro de contêiner: as 6 últimas linhas do registro entram sempre.
+  const foraDasSecoes = linhas.filter((_, i) => !secoes.some((sec) => i >= sec.ini - 1 && i < sec.fim));
+  const fim = linhas.filter(util).slice(-6);
+  const visivel = secoes.length ? [...foraDasSecoes.filter(util).slice(-22), '(...)', ...fim] : linhas;
+  cauda(ultimaMig >= 0 && iConteineres < 0 ? 'O Supabase local não subiu (durante as migrações)' : 'O Supabase local não subiu',
+    visivel.join('\n'), 28);
+  for (const sec of secoes.slice(0, 2)) {
+    const corpo = linhas.slice(sec.ini, sec.fim).filter(util);
+    const erros = corpo.filter((l) => /(error|fatal|panic|fail|refused|denied|exception|timeout)/i.test(l));
+    anotar('error', `Registro do contêiner ${sec.nome}`, (erros.length ? erros : corpo).slice(-14).join('\n') || '(vazio)',
+      { maxAvisos: 1 });
+  }
 }
 
 function pgtap(texto) {
@@ -81,6 +110,8 @@ function pgtap(texto) {
   if (resultado.length) anotar('error', 'pgTAP - resultado', resultado.join('\n'), { maxAvisos: 1 });
 }
 
+// O resumo vai em até 3 notas de 40 linhas (o GitHub mostra no máximo 10 notas por passo). Se passar disso, um
+// aviso diz quantas linhas ficaram de fora; o resumo inteiro fica no resumo da execução (GITHUB_STEP_SUMMARY).
 function resumo(pasta, passos) {
   const linhas = [];
   if (passos) linhas.push(`Passos: ${passos}`);
@@ -94,7 +125,20 @@ function resumo(pasta, passos) {
     }
   }
   if (!linhas.length) linhas.push('nenhum passo deixou resumo');
-  anotar('notice', 'Resumo do banco', linhas.join('\n'), { maxAvisos: 1, maxLinhas: 40 });
+  const POR_NOTA = 40;
+  const MAX_NOTAS = 3;
+  const blocos = [];
+  for (let i = 0; i < linhas.length; i += POR_NOTA) blocos.push(linhas.slice(i, i + POR_NOTA));
+  const mostrados = blocos.slice(0, MAX_NOTAS);
+  mostrados.forEach((b, k) => {
+    anotar('notice', mostrados.length > 1 ? `Resumo do banco (${k + 1}/${mostrados.length})` : 'Resumo do banco', b.join('\n'),
+      { maxAvisos: 1, maxLinhas: POR_NOTA });
+  });
+  if (blocos.length > MAX_NOTAS) {
+    anotar('warning', 'Resumo do banco cortado',
+      `${linhas.length} linhas; as notas mostram as ${POR_NOTA * MAX_NOTAS} primeiras (o resto está no resumo da execução).`,
+      { maxAvisos: 1 });
+  }
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Resumo do banco\n\n${linhas.map((l) => `- ${l}`).join('\n')}\n`);
   }
@@ -142,7 +186,15 @@ function impressao(arq, rotulo) {
 // objeto com a produção quando o resumo por tipo não bate. No máximo 9 notas (o GitHub mostra 10 por passo).
 function impressaoLinhas(arq, tiposTexto) {
   const tipos = new Set(String(tiposTexto || 'todos').split(/[\s,]+/).filter(Boolean));
-  const linhas = linhasImpressao(arq).filter((l) => tipos.has('todos') || tipos.has(l.split(' ', 1)[0]));
+  const todas = linhasImpressao(arq);
+  const linhas = todas.filter((l) => tipos.has('todos') || tipos.has(l.split(' ', 1)[0]));
+  if (!linhas.length) {
+    const existentes = [...new Set(todas.map((l) => l.split(' ', 1)[0]))].sort().join(', ');
+    anotar('warning', 'Impressão digital: nenhum objeto com esses tipos',
+      `pedido: ${[...tipos].join(', ')}; tipos que existem: ${existentes || 'nenhum (impressão vazia)'} (ou "todos")`,
+      { maxAvisos: 1 });
+    return;
+  }
   const blocos = [];
   let atual = [];
   let tamanho = 0;
@@ -163,14 +215,14 @@ function impressaoLinhas(arq, tiposTexto) {
   }
 }
 
-if (modo === 'supabase-start') supabaseStart(ler(resto[0]));
+if (modo === 'migracoes' || modo === 'supabase-start') migracoes(ler(resto[0]));
 else if (modo === 'pgtap') pgtap(ler(resto[0]));
 else if (modo === 'cauda') cauda(resto[0], ler(resto[1]));
 else if (modo === 'resumo') resumo(resto[0], resto[1]);
 else if (modo === 'impressao') impressao(resto[0], resto[1] || 'do banco');
 else if (modo === 'impressao-linhas') impressaoLinhas(resto[0], resto[1]);
 else {
-  console.error('uso: node tests/banco/anotar.mjs supabase-start|pgtap <registro> | cauda "<título>" <registro> | '
+  console.error('uso: node tests/banco/anotar.mjs migracoes|pgtap <registro> | cauda "<título>" <registro> | '
     + 'resumo <pasta> "<passos>" | impressao <arquivo> "<rótulo>" | impressao-linhas <arquivo> "<tipos>"');
   process.exitCode = 2;
 }

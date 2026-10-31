@@ -1,41 +1,54 @@
 -- iMed Agenda, fase 3.0 (preparo do banco de verdade no GitHub), 31/10/2026.
 -- O número da versão (20261031000000) é provisório: ao aplicar na produção, renomeie o arquivo com a versão
--- que o Supabase gravar (e o da volta, em supabase/volta/, com o mesmo nome).
+-- que o Supabase gravar (e o da volta, em supabase/volta/, com o mesmo nome). Só junte o ramo na main DEPOIS
+-- disso: a main não pode ter migração com um número que não existe na produção.
 --
 -- Em linguagem simples, esta migração:
 --   1. Cria private.app_settings: configurações do servidor que NÃO são segredo (hoje, só o endereço das Edge
 --      Functions do projeto, chave 'functions_url'). Fica no schema private (a API não alcança), com RLS ligada
---      e sem nenhuma permissão para anon, authenticated e service_role.
+--      e sem nenhuma permissão para anon, authenticated e service_role. O endereço aceito é só
+--      https://<projeto>.supabase.co/functions/v1 (sem barra no fim); http:// só para endereço desta máquina
+--      (127.0.0.1, localhost, kong, host.docker.internal), que é o que os testes usam.
 --   2. A fila de importação (private.process_import_queue, que o pg_cron roda a cada minuto) deixa de ter o
---      endereço da produção escrito no código: lê de private.app_settings. SEM o endereço, não faz nada (a fila
---      fica parada, nada é marcado e nada é chamado). Assim o banco de testes do GitHub, uma cópia local ou
---      qualquer banco novo nunca chamam a produção. COM o endereço, faz exatamente o que fazia antes: os mesmos
---      passos, o mesmo token interno (private.app_tokens, nome 'importer', no cabeçalho x-imed-token), o mesmo
---      corpo e o mesmo tempo-limite.
+--      endereço da produção escrito no código: lê de private.app_settings. SEM o endereço, nada é chamado e a fila
+--      não muda; se houver cidade esperando, a execução FALHA com o aviso "Fila de importação parada: falta o
+--      endereço das funções" (aparece como "failed" no histórico do pg_cron, em vez de parar em silêncio).
+--      Assim o banco de testes do GitHub, uma cópia local ou qualquer banco novo nunca chamam a produção. COM o
+--      endereço, faz exatamente o que fazia antes: os mesmos passos, o mesmo token interno (private.app_tokens,
+--      nome 'importer', no cabeçalho x-imed-token), o mesmo corpo e o mesmo tempo-limite.
 --   3. Limpa todo dia o histórico do pg_cron (cron.job_run_details) com mais de 7 dias (job imed-limpeza-cron,
 --      03:41 UTC = 00:41 em Brasília). Hoje entram cerca de 1.600 linhas por dia (1.440 da fila, que roda a cada
 --      minuto, e 144 da teleconsulta), sem limpeza nenhuma.
 --
--- Na produção, logo depois de aplicar (não é segredo: é o endereço público das funções do projeto, o mesmo que
+-- Na produção, LOGO DEPOIS de aplicar (não é segredo: é o endereço público das funções do projeto, o mesmo que
 -- estava escrito no código):
 --   insert into private.app_settings (key, value)
 --   values ('functions_url', 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1')
 --   on conflict (key) do update set value = excluded.value, updated_at = now();
--- Enquanto o endereço não estiver lá, a fila só espera (nada é marcado nem perdido; o job continua rodando).
--- Conferir: select (select value from private.app_settings where key = 'functions_url') || '/importar-clinicas'
---             = 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/importar-clinicas';   -- tem de dar true
+-- Conferir (tem de dar true; false = o endereço não está lá, ou está diferente):
+--   select count(*) = 1 from private.app_settings
+--   where key = 'functions_url' and value = 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1';
+-- Se a migração for desfeita (supabase/volta/) e aplicada de novo, grave o functions_url de novo: a volta apaga
+-- a tabela junto com o endereço.
 --
 -- Nada é apagado e tudo pode rodar de novo sem erro. Volta: supabase/volta/20261031000000_agenda_preparo.sql
--- (testada no CI: volta, reaplica e o banco tem de ficar igual).
+-- (testada no CI: o banco depois da volta tem de ficar igual ao banco sem esta migração, e a reaplicação, igual
+-- ao banco com ela).
 
 /* ===================== 1. Configurações do servidor ===================== */
 create table if not exists private.app_settings (
   key text primary key check (key ~ '^[a-z][a-z0-9_]{1,62}$'),
   value text not null check (char_length(value) between 1 and 500),
-  updated_at timestamptz not null default now(),
-  -- O endereço das funções: http(s), sem espaço e sem barra no fim (a função monta '<endereço>/<nome da função>').
-  constraint app_settings_functions_url_ck
-    check (key <> 'functions_url' or value ~ '^https?://[^\s/?#]+(/[^\s?#]*[^\s?#/])?$')
+  updated_at timestamptz not null default now()
+);
+-- O endereço das funções (a fila monta '<endereço>/importar-clinicas'): https no endereço do projeto no Supabase,
+-- sem barra no fim. http só para endereço desta máquina (testes): o token interno nunca vai em texto aberto pela
+-- internet nem para outro servidor por causa de um erro de digitação.
+alter table private.app_settings drop constraint if exists app_settings_functions_url_ck;
+alter table private.app_settings add constraint app_settings_functions_url_ck check (
+  key <> 'functions_url'
+  or value ~ '^https://[a-z0-9]{20}\.supabase\.co/functions/v1$'
+  or value ~ '^http://(127\.0\.0\.1|localhost|kong|host\.docker\.internal)(:[0-9]{1,5})?/functions/v1$'
 );
 comment on table private.app_settings is
   'Configurações do servidor que não são segredo (ex.: functions_url, o endereço das Edge Functions do projeto). '
@@ -44,8 +57,8 @@ alter table private.app_settings enable row level security;
 revoke all on table private.app_settings from public, anon, authenticated, service_role;
 
 /* ===================== 2. Fila de importação lê o endereço de app_settings ===================== */
--- Igual à versão de 20261030021434_fila_importacao, com uma diferença: o endereço vem de private.app_settings e,
--- sem ele, a função sai antes de mexer na fila.
+-- Igual à versão de 20261030021434_fila_importacao, com uma diferença: o endereço vem de private.app_settings.
+-- Sem ele, nada é chamado nem marcado; com cidade esperando, a execução falha com o aviso (fila parada).
 create or replace function private.process_import_queue()
 returns void
 language plpgsql
@@ -58,9 +71,16 @@ declare
   running integer;
   base text;
 begin
-  -- Sem o endereço das funções (banco de testes, cópia local, banco novo): a fila fica parada e nada é chamado.
+  -- Sem o endereço das funções (banco de testes, cópia local, banco novo): nada é chamado e a fila não muda.
   select nullif(btrim(s.value), '') into base from private.app_settings s where s.key = 'functions_url';
-  if base is null then return; end if;
+  if base is null then
+    if exists (select 1 from public.import_queue where status in ('pending', 'sent')) then
+      raise exception 'Fila de importação parada: falta o endereço das funções (private.app_settings, chave functions_url)'
+        using errcode = '55000',
+              hint = 'Na produção, grave o endereço (veja o cabeçalho da migração agenda_preparo). Em banco de teste, é o esperado.';
+    end if;
+    return;
+  end if;
 
   -- cidades enviadas: terminam quando a importação delas termina
   update public.import_queue iq set status = case ei.status when 'done' then 'done' else 'error' end, error = ei.error

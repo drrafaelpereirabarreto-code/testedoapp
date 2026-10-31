@@ -3,10 +3,13 @@
 --   - o visitante (anon) grava o pedido direto na tabela, com consentimento (geo-core.js bookingRow, return=minimal);
 --   - na clínica com agenda, horário livre sai "confirmed" e horário ocupado ou fora da grade é recusado (23P01);
 --   - request_status e cancel_request com o código do pedido (o aparelho guarda o código; o banco, o SHA-256);
---   - set_request_status pela clínica (membro) e pela equipe do IMED (admin), com as regras de quem cancelou.
+--   - set_request_status pela clínica (membro) e pela equipe do IMED (admin), com as regras de quem cancelou;
+--   - o pedido COMPLETO (as 23 colunas do bookingRow: endereço e telefone do local, e-mail, observação e o pedido
+--     para outra pessoa, adulta ou menor), como visitante e como paciente logado. O mesmo pedido, montado pelo
+--     próprio assets/js/geo-core.js e enviado pelo PostgREST, é conferido em tests/banco/pedido-do-site.mjs.
 -- Todos os dados são criados aqui e desfeitos no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(46);
+select plan(50);
 
 -- Troca de papel como o PostgREST faz: role + request.jwt.claims (só até o fim da transação).
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
@@ -35,7 +38,7 @@ begin
     perform set_config('teste.h' || replace(h, ':', ''),
       ((current_setting('teste.dia')::date + h::time) at time zone 'America/Sao_Paulo')::text, true);
   end loop;
-  foreach c in array array['r1', 'r2', 'r4', 'r5', 'r6', 'r7'] loop
+  foreach c in array array['r1', 'r2', 'r4', 'r5', 'r6', 'r7', 'r8', 'r9'] loop
     perform set_config('teste.hash_' || c, encode(extensions.digest('codigo-' || c, 'sha256'), 'hex'), true);
   end loop;
 end $$;
@@ -275,6 +278,51 @@ select is((select s.status || '|' || s.reviewed from public.request_status(
              array['b1000000-0000-4000-8000-000000000001']::uuid[], array['codigo-r1']) s),
           'completed|true', 'request_status mostra concluído e avaliado');
 
+/* ===================== F. O pedido completo que o site manda (todas as colunas do bookingRow) ===================== */
+-- Visitante, local não parceiro (concierge), para outra pessoa adulta (com a confirmação de que ela concordou).
+select pg_temp.entrar('anon');
+select lives_ok($$
+  insert into public.appointment_requests (id, clinic_id, place_source, place_ref, place_name, place_address, place_phone,
+    exam_code, preferred_date, preferred_period, patient_name, patient_phone, patient_email, notes, consent,
+    for_other, other_name, relationship, other_minor, guardian_consent, other_consent, review_token_hash)
+  values ('b8000000-0000-4000-8000-000000000008', null, 'cnes', 'cnes:7654321', 'Laboratório Completo do Teste',
+    'Rua Completa, 1 · Centro · São Paulo - SP', '(11) 3141-1000', 'lab', current_setting('teste.dia')::date, 'tarde',
+    'Paciente Oito', '11999990008', 'paciente.oito@exemplo.test', 'Prefiro depois das 14h', true,
+    true, 'Mãe do Paciente Oito', 'Pai ou mãe', false, false, true, current_setting('teste.hash_r8'))
+$$, 'visitante pede para outra pessoa adulta, com todas as colunas que o site manda');
+
+-- Paciente logado, clínica parceira com horário (09:30, livre de novo), para um menor (com o responsável).
+select pg_temp.entrar('authenticated', 'a4000000-0000-4000-8000-000000000004', 'paciente.teste@exemplo.test');
+select lives_ok($$
+  insert into public.appointment_requests (id, clinic_id, place_source, place_ref, place_name, place_address, place_phone,
+    exam_code, preferred_date, preferred_period, patient_name, patient_phone, patient_email, notes, consent, slot_start,
+    for_other, other_name, relationship, other_minor, guardian_consent, other_consent, review_token_hash)
+  values ('b9000000-0000-4000-8000-000000000009', 'c1000000-0000-4000-8000-000000000001', 'imed', null,
+    'Clínica de Teste do CI', 'Rua do Teste, 100 · São Paulo - SP', '(11) 3000-0000', 'usg',
+    current_setting('teste.dia')::date, 'manha', 'Paciente Nove', '11999990009', null, null, true,
+    current_setting('teste.h0930')::timestamptz,
+    true, 'Filho do Paciente Nove', 'Filho ou filha', true, true, false, current_setting('teste.hash_r9'))
+$$, 'paciente logado marca horário para um menor de idade, com todas as colunas que o site manda');
+
 select pg_temp.entrar('postgres');
+select is(
+  (select concat_ws('|', status, coalesce(user_id::text, '-'), place_ref, place_address, place_phone, exam_code,
+                    preferred_period, patient_email, notes, for_other::text, other_name, relationship, other_minor::text,
+                    guardian_consent::text, other_consent::text, (review_token_hash = current_setting('teste.hash_r8'))::text)
+   from public.appointment_requests where id = 'b8000000-0000-4000-8000-000000000008'),
+  'pending|-|cnes:7654321|Rua Completa, 1 · Centro · São Paulo - SP|(11) 3141-1000|lab|tarde|paciente.oito@exemplo.test'
+    || '|Prefiro depois das 14h|true|Mãe do Paciente Oito|Pai ou mãe|false|false|true|true',
+  'pedido do visitante gravado como o site mandou (pendente, sem conta)');
+select is(
+  (select concat_ws('|', status, user_id::text, coalesce(place_ref, '-'), place_address, place_phone,
+                    (slot_start = current_setting('teste.h0930')::timestamptz)::text, preferred_period,
+                    coalesce(patient_email, '-'), coalesce(notes, '-'), for_other::text, other_name, relationship,
+                    other_minor::text, guardian_consent::text, other_consent::text,
+                    (review_token_hash = current_setting('teste.hash_r9'))::text)
+   from public.appointment_requests where id = 'b9000000-0000-4000-8000-000000000009'),
+  'confirmed|a4000000-0000-4000-8000-000000000004|-|Rua do Teste, 100 · São Paulo - SP|(11) 3000-0000|true|manha|-|-'
+    || '|true|Filho do Paciente Nove|Filho ou filha|true|true|false|true',
+  'pedido do paciente logado gravado como o site mandou (confirmado, ligado à conta)');
+
 select * from finish();
 rollback;

@@ -1,10 +1,11 @@
 // Ferramentas dos testes do banco de verdade (iMed Agenda, fase 3.0; arquitetura §13).
 // Usadas pelos scripts tests/banco/*.mjs (no GitHub: .github/workflows/banco.yml) e pelo laço local (tests/banco/local/).
-// Dependem só do Node 22 e do pacote "pg" (npm i --no-save pg).
+// Dependem só do Node 22 e do pacote "pg", com a versão travada em tests/banco/package-lock.json:
+//   npm ci --prefix tests/banco --ignore-scripts
 //
 //   configLocal()            endereços e segredo do Supabase LOCAL (nunca da produção)
 //   jwt(), tokenAnon(), ...  tokens assinados com o segredo do banco local, iguais aos do Auth
-//   conectar()               conexão direta com o Postgres
+//   conectar()               conexão direta com o Postgres (recusa banco com dados da produção)
 //   rodarJuntos()            N transações que partem juntas (barreira com pg_advisory_lock)
 //   estatisticas()           p50, p95, máximo e erros por código (23P01, 23505, 40P01, 57014...)
 //   postgrest()              chamada HTTP no PostgREST local, como o site faz
@@ -120,11 +121,24 @@ export function configLocal() {
   };
   if (!cfg.dbUrl) throw new Error('Supabase local não encontrado: rode "supabase start" (ou defina DB_URL).');
   for (const [k, v] of Object.entries({ dbUrl: cfg.dbUrl, apiUrl: cfg.apiUrl })) {
-    if (v && !/^[a-z]+:\/\/([^@/]*@)?(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/.test(v)) {
+    if (v && !ehDestaMaquina(v)) {
       throw new Error(`${k} não é desta máquina (${v.replace(/\/\/[^@/]*@/, '//***@')}): os testes do banco só rodam no Supabase local.`);
     }
   }
   return cfg;
+}
+
+/**
+ * Endereço desta máquina (127.0.0.1, localhost ou [::1]) e SEM parâmetro que troque o servidor de verdade: o pacote
+ * "pg" dá prioridade a host=, hostaddr= e service= da query (ex.: ...@127.0.0.1/postgres?host=db.<projeto>.supabase.co
+ * iria para a produção). Um túnel local para a produção passaria daqui: quem pega isso é a conferência de conectar().
+ */
+export function ehDestaMaquina(endereco) {
+  let u;
+  try { u = new URL(endereco); } catch { return false; }
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname)) return false;
+  for (const p of u.searchParams.keys()) if (['host', 'hostaddr', 'service'].includes(p.toLowerCase())) return false;
+  return true;
 }
 
 /* ===================== Tokens (JWT HS256, assinados com o segredo do banco local) ===================== */
@@ -156,17 +170,41 @@ export async function carregarPg() {
   try {
     pgMod = (await import('pg')).default;
   } catch {
-    throw new Error('Falta o pacote "pg": rode "npm i --no-save pg" na pasta do repositório.');
+    throw new Error('Falta o pacote "pg": rode "npm ci --prefix tests/banco --ignore-scripts" na pasta do repositório.');
   }
   return pgMod;
 }
 
+const bancosConferidos = new Set();
+
+/**
+ * Conexão direta. Na primeira conexão com cada banco, confere que ele NÃO tem dados da produção: banco novo (CI,
+ * cópia local) não tem nenhuma importação do CNES (public.establishment_imports vazia; a produção tem centenas).
+ * Assim, nem um túnel local para a produção deixa os scripts gravarem clínicas e pedidos de teste lá.
+ */
 export async function conectar(conexao, nome = 'imed-teste') {
   const pg = await carregarPg();
   const opcoes = typeof conexao === 'string' ? { connectionString: conexao } : { ...conexao };
   const c = new pg.Client({ ...opcoes, application_name: nome, connectionTimeoutMillis: 15000 });
   await c.connect();
   c.on('error', () => {}); // conexão derrubada no meio de um teste não derruba o processo
+  const chave = typeof conexao === 'string' ? conexao : `${conexao.host}:${conexao.port}/${conexao.database}`;
+  if (!bancosConferidos.has(chave)) {
+    try {
+      const { rows: [t] } = await c.query(`select to_regclass('public.establishment_imports') is not null as tem`);
+      if (t.tem) {
+        const { rows: [r] } = await c.query('select exists (select 1 from public.establishment_imports) as producao');
+        if (r.producao) {
+          throw new Error('este banco tem importações do CNES (public.establishment_imports): parece a PRODUÇÃO, '
+            + 'e os testes só rodam num banco novo (Supabase local)');
+        }
+      }
+    } catch (e) {
+      await c.end().catch(() => {});
+      throw e;
+    }
+    bancosConferidos.add(chave);
+  }
   return c;
 }
 
@@ -249,7 +287,10 @@ export const textoCodigos = (porCodigo) =>
 
 /* ===================== HTTP no PostgREST local ===================== */
 
-/** Chamada no PostgREST local como o site faz (apikey + Authorization). Devolve status, código do erro e tempo. */
+/**
+ * Chamada no PostgREST local como o site faz (apikey + Authorization). Devolve status, código do erro e tempo.
+ * `prefer: null` não manda o cabeçalho Prefer (chamada de função, rpc/...).
+ */
 export async function postgrest(cfg, caminho, { token, metodo = 'POST', corpo, prefer = 'return=minimal' } = {}) {
   const t0 = performance.now();
   const resp = await fetch(`${cfg.apiUrl}/rest/v1/${caminho}`, {
@@ -258,7 +299,7 @@ export async function postgrest(cfg, caminho, { token, metodo = 'POST', corpo, p
       apikey: cfg.anonKey ?? token,
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      Prefer: prefer,
+      ...(prefer ? { Prefer: prefer } : {}),
     },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
   });

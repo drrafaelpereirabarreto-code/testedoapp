@@ -1,11 +1,12 @@
--- Guardas do catálogo (iMed Agenda, fase 3.0; arquitetura §13): regras de segurança que valem para TODO objeto
--- do banco, conferidas a cada envio num banco criado do zero pelas migrações (.github/workflows/banco.yml).
+-- Guardas do catálogo (iMed Agenda, fase 3.0; arquitetura §12 e §13): regras de segurança que valem para TODO
+-- objeto do banco, conferidas a cada envio num banco criado do zero pelas migrações (.github/workflows/banco.yml).
 -- Quando uma guarda reprova, a mensagem traz o que está fora da regra ("have" = o que existe, "want" = o certo).
--- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir.
+-- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir; o que já se sabe que
+-- falta e depende de decisão fica como pendência (TODO: aparece no resumo do banco.yml, mas não reprova).
 begin;
-select plan(16);
+select plan(22);
 
-/* ===================== Tabelas ===================== */
+/* ===================== Tabelas e views ===================== */
 
 select is(
   array(select c.relname::text
@@ -18,21 +19,26 @@ select is(
   'nenhuma tabela de public sem RLS (ligue com: alter table ... enable row level security)'
 );
 
+-- private: RLS ligada e nenhuma permissão para os papéis da API, nem na tabela inteira nem coluna por coluna.
 select is(
   array(select format('%s%s', c.relname, case when c.relrowsecurity then '' else ' (sem RLS)' end)
           || coalesce(' (' || (select string_agg(r || ' ' || lower(p), ', ' order by r, p)
                                from unnest(array['anon', 'authenticated', 'service_role']) r,
-                                    unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
-                               where has_table_privilege(r, c.oid, p)) || ')', '')
+                                    unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES']) p
+                               where has_table_privilege(r, c.oid, p)
+                                  or (p in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                                      and has_any_column_privilege(r, c.oid, p))) || ')', '')
         from pg_class c
-        where c.relnamespace = 'private'::regnamespace and c.relkind in ('r', 'p')
-          and (not c.relrowsecurity
+        where c.relnamespace = 'private'::regnamespace and c.relkind in ('r', 'p', 'v', 'm')
+          and (not c.relrowsecurity and c.relkind in ('r', 'p')
                or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role']) r,
-                                        unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) p
-                          where has_table_privilege(r, c.oid, p)))
+                                        unnest(array['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES']) p
+                          where has_table_privilege(r, c.oid, p)
+                             or (p in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+                                 and has_any_column_privilege(r, c.oid, p))))
         order by 1),
   '{}'::text[],
-  'tabelas de private com RLS e sem nenhuma permissão para anon, authenticated e service_role'
+  'tabelas de private com RLS e sem nenhuma permissão (nem por coluna) para anon, authenticated e service_role'
 );
 
 select ok(
@@ -40,6 +46,34 @@ select ok(
   and not has_schema_privilege('authenticated', 'private', 'USAGE')
   and not has_schema_privilege('service_role', 'private', 'USAGE'),
   'schema private sem USAGE para anon, authenticated e service_role (a API não alcança)'
+);
+
+-- View lê as tabelas como a DONA (passa por cima da RLS), a menos que tenha security_invoker; view materializada
+-- não tem RLS nenhuma. Em public, só com security_invoker ou sem SELECT para anon e authenticated.
+select is(
+  array(select c.relname || case c.relkind when 'm' then ' (view materializada com SELECT para a API)'
+                                           else ' (view sem security_invoker, com SELECT para a API)' end
+        from pg_class c
+        where c.relnamespace = 'public'::regnamespace and c.relkind in ('v', 'm')
+          and not exists (select 1 from pg_depend d
+                          where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e')
+          and (has_any_column_privilege('anon', c.oid, 'SELECT') or has_any_column_privilege('authenticated', c.oid, 'SELECT'))
+          and (c.relkind = 'm'
+               or not coalesce(c.reloptions, '{}') && array['security_invoker=true', 'security_invoker=on',
+                                                             'security_invoker=1', 'security_invoker=yes'])
+        order by 1),
+  '{}'::text[],
+  'views de public com security_invoker (respeitam a RLS) ou sem SELECT para anon e authenticated'
+);
+
+-- Realtime: nenhuma tabela com dado pessoal na publicação (§7 e §12: o Realtime só leva avisos sem dado pessoal).
+select is(
+  array(select pt.schemaname || '.' || pt.tablename
+        from pg_publication_tables pt
+        where pt.pubname = 'supabase_realtime' and pt.schemaname in ('public', 'private', 'agenda')
+        order by 1),
+  '{}'::text[],
+  'nenhuma tabela de public, private ou agenda na publicação do Realtime (a fase 3.4 decide o que entra)'
 );
 
 -- Privilégios que objeto NOVO do schema public ganha sozinho (criado pelo postgres numa migração), iguais aos da
@@ -56,6 +90,44 @@ select is(
         'f anon=X/postgres,authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres',
         'r anon=arwd/postgres,authenticated=arwd/postgres,postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres'],
   'privilégios padrão do schema public iguais aos da produção (tabela, sequência e função nova)'
+);
+
+-- Extensão instalada em public põe as funções dela na API, sem passar pela lista de permissões abaixo.
+-- Na produção, só o pg_net está em public (as funções dele ficam no schema net). btree_gist (fase 3.1) e qualquer
+-- outra vão para o schema extensions.
+select is(
+  array(select e.extname::text from pg_extension e
+        where e.extnamespace = 'public'::regnamespace and e.extname <> 'pg_net' order by 1),
+  '{}'::text[],
+  'nenhuma extensão nova no schema public (crie com: create extension ... with schema extensions)'
+);
+
+/* ===================== O pedido de agendamento que o site manda ===================== */
+
+-- As colunas que o site grava num pedido (assets/js/geo-core.js, bookingRow, mais review_token_hash) precisam
+-- continuar com INSERT para anon e authenticated: na fase 3.1 o INSERT passa a ser coluna por coluna (§2.3), e
+-- esquecer uma delas quebra o pedido no ar (por exemplo, other_consent: todo pedido "para outra pessoa").
+-- tests/banco/pedido-do-site.mjs confere que esta lista é EXATAMENTE o que o bookingRow manda hoje.
+-- [colunas do pedido do site]
+create temp table colunas_do_site (col text primary key) on commit drop;
+insert into colunas_do_site (col) values
+  ('id'), ('clinic_id'), ('place_source'), ('place_ref'), ('place_name'), ('place_address'), ('place_phone'),
+  ('exam_code'), ('preferred_date'), ('preferred_period'), ('patient_name'), ('patient_phone'), ('patient_email'),
+  ('notes'), ('consent'), ('slot_start'), ('for_other'), ('other_name'), ('relationship'), ('other_minor'),
+  ('guardian_consent'), ('other_consent'), ('review_token_hash');
+-- [fim das colunas do pedido do site]
+
+select is(
+  array(select r || ': ' || s.col || case when a.attname is null then ' (a coluna não existe)' else ' (sem INSERT)' end
+        from colunas_do_site s
+        cross join unnest(array['anon', 'authenticated']) r
+        left join pg_attribute a on a.attrelid = 'public.appointment_requests'::regclass and a.attname = s.col
+                                and not a.attisdropped
+        where case when a.attname is null then true
+                   else not has_column_privilege(r, 'public.appointment_requests'::regclass, s.col, 'INSERT') end
+        order by 1),
+  '{}'::text[],
+  'anon e authenticated gravam (INSERT) as 23 colunas que o site manda no pedido de agendamento'
 );
 
 /* ===================== Funções ===================== */
@@ -198,22 +270,75 @@ select is(
   'quem executa cada função de public é exatamente o da lista (anon, authenticated, PUBLIC)'
 );
 
-/* ===================== Nada aponta para a produção ===================== */
+/* ===================== Nada chama a internet nem aponta para a produção ===================== */
+-- Um banco novo (o do GitHub, a cópia local de alguém) tem de ser incapaz de chamar a produção: endereço de
+-- servidor fica em private.app_settings (vazia num banco novo), nunca no código.
 
+-- Endereço de internet no código de função: proibido, fora a lista de exceções (hoje vazia). Se um dia uma
+-- função precisar de um endereço fixo que NÃO seja de servidor do IMED (ex.: link para uma página pública),
+-- acrescente '<schema>.<função>' na lista e explique ao lado.
 select is(
   array(select format('%I.%I', n.nspname, p.proname)
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-        where n.nspname in ('public', 'private', 'agenda') and p.prosrc ~* 'https?://[a-z0-9-]+\.supabase\.co'
+        where n.nspname in ('public', 'private', 'agenda') and p.prosrc ~* 'https?://'
+          and not exists (select 1 from pg_depend d
+                          where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+          and format('%I.%I', n.nspname, p.proname) <> all (array[]::text[])
         order by 1),
   '{}'::text[],
-  'nenhuma função com o endereço do projeto escrito no código (o endereço fica em private.app_settings)'
+  'nenhuma função com endereço de internet (http:// ou https://) no código (o endereço fica em private.app_settings)'
 );
 
+-- Sem exceção: endereço do Supabase (qualquer forma, inclusive <projeto>.functions.supabase.co ou montado em
+-- pedaços com o código do projeto) em função ou job, e chamada HTTP direto no comando de um job.
 select is(
-  array(select jobname::text from cron.job where command ~* 'https?://' order by 1),
+  array(select format('função %I.%I', n.nspname, p.proname)
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('public', 'private', 'agenda')
+          and p.prosrc ~* '(supabase\.(co|in|net)|pyoqiecupxhdzigjudyd)'
+          and not exists (select 1 from pg_depend d
+                          where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+        union all
+        select format('job %s', j.jobname)
+        from cron.job j
+        where j.command ~* '(https?://|net\.http_|supabase\.(co|in|net)|pyoqiecupxhdzigjudyd)'
+        order by 1),
   '{}'::text[],
-  'nenhum job do pg_cron com endereço de internet no comando'
+  'nenhuma função nem job do pg_cron com endereço do Supabase, código do projeto ou chamada HTTP no comando'
 );
+
+-- Quem chama a internet pelo pg_net: só a fila de importação, como na produção (conferido em 31/10/2026).
+-- Função nova que chame net.http_*: leia o endereço de private.app_settings e acrescente o nome aqui.
+select is(
+  array(select format('%I.%I', n.nspname, p.proname)
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('public', 'private', 'agenda') and p.prosrc ~* 'net\.http_'
+          and not exists (select 1 from pg_depend d
+                          where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+        order by 1),
+  array['private.process_import_queue'],
+  'só private.process_import_queue chama a internet (net.http_*), e lê o endereço de private.app_settings'
+);
+
+/* ===================== Pendências conhecidas (TODO: não reprovam) ===================== */
+
+-- Já existia antes da 3.0 (revisão de segurança de 31/10/2026): anon e authenticated alcançam o schema net do
+-- pg_net e leem net.http_request_queue (por onde o token interno passa por um instante, no cabeçalho
+-- x-imed-token) e net._http_response. Não sai pela API (o schema net não é exposto), mas é algo a fechar ou a
+-- nunca expor. A fase 3.1 decide (e confere que o Database Webhooks do Supabase não é usado).
+select todo_start('fase 3.1: fechar o schema net do pg_net para anon e authenticated');
+select is(
+  array(select r || ': ' || o
+        from unnest(array['anon', 'authenticated']) r,
+             unnest(array['usage no schema net', 'select em net.http_request_queue', 'select em net._http_response']) o
+        where case o when 'usage no schema net' then has_schema_privilege(r, 'net', 'USAGE')
+                     when 'select em net.http_request_queue' then has_table_privilege(r, 'net.http_request_queue', 'SELECT')
+                     else has_table_privilege(r, 'net._http_response', 'SELECT') end
+        order by 1),
+  '{}'::text[],
+  'anon e authenticated sem acesso ao schema net (onde o token interno passa)'
+);
+select todo_end();
 
 /* ===================== Guardas das próximas fases (puladas até o objeto existir) ===================== */
 
@@ -231,14 +356,16 @@ select case when to_regnamespace('agenda') is null
   else is(array(select c.relname || case when not c.relrowsecurity then ' (sem RLS)' else '' end
                        || case when exists (select 1 from pg_policy po where po.polrelid = c.oid) then ' (com policy)' else '' end
                        || case when exists (select 1 from unnest(array['anon', 'authenticated', 'service_role']) r
-                                            where has_table_privilege(r, c.oid, 'SELECT, INSERT, UPDATE, DELETE'))
+                                            where has_table_privilege(r, c.oid, 'SELECT, INSERT, UPDATE, DELETE')
+                                               or has_any_column_privilege(r, c.oid, 'SELECT, INSERT, UPDATE'))
                                then ' (com permissão para a API)' else '' end
                 from pg_class c
                 where c.relnamespace = to_regnamespace('agenda') and c.relkind in ('r', 'p')
                   and (not c.relrowsecurity
                        or exists (select 1 from pg_policy po where po.polrelid = c.oid)
                        or exists (select 1 from unnest(array['anon', 'authenticated', 'service_role']) r
-                                  where has_table_privilege(r, c.oid, 'SELECT, INSERT, UPDATE, DELETE')))
+                                  where has_table_privilege(r, c.oid, 'SELECT, INSERT, UPDATE, DELETE')
+                                     or has_any_column_privilege(r, c.oid, 'SELECT, INSERT, UPDATE')))
                 order by 1),
           '{}'::text[], 'tabelas do schema agenda: RLS ligada, sem policy e sem permissão para a API')
 end;
@@ -289,8 +416,8 @@ end;
 -- 3.1: a equipe do IMED fica fora de admin_emails e o is_imed_admin continua só do dono (§12).
 select case when to_regclass('private.imed_staff') is null
   then skip('fase 3.1: private.imed_staff ainda não existe', 1)
-  else ok(not has_table_privilege('authenticated', 'private.imed_staff', 'SELECT')
-          and not has_table_privilege('anon', 'private.imed_staff', 'SELECT'),
+  else ok(not has_any_column_privilege('authenticated', 'private.imed_staff', 'SELECT')
+          and not has_any_column_privilege('anon', 'private.imed_staff', 'SELECT'),
           'private.imed_staff fora do alcance de anon e authenticated')
 end;
 

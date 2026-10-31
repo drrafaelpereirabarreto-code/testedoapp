@@ -1,11 +1,11 @@
 // iMed Agenda, fase 3.0 — como o pedido COM HORÁRIO se comporta HOJE sob concorrência, no banco de verdade
 // (Postgres 17 + PostgREST do Supabase local, com todas as migrações aplicadas). Roda no GitHub (banco.yml):
-//   node tests/banco/concorrencia-atual.mjs        (precisa do "supabase start" e de "npm i --no-save pg")
+//   node tests/banco/concorrencia-atual.mjs   (precisa do "supabase start" e de "npm ci --prefix tests/banco --ignore-scripts")
 //
 // 1. Inícios iguais (já protegido hoje): 40 pedidos ao mesmo tempo no mesmo horário, por conexão direta como
 //    visitante (anon) e pelo PostgREST: só 1 entra. Os outros recebem 23505 (índice único
-//    appointment_requests_slot_uq) ou 23P01 (o gatilho já viu o horário ocupado); o site trata os dois como
-//    "este horário não está mais livre" (HTTP 409).
+//    appointment_requests_slot_uq) ou 23P01 (o gatilho já viu o horário ocupado); o site reconhece os dois pelo
+//    código (geo-core.js, isSlotTaken) e mostra "este horário não está mais livre".
 // 2. FALHA ESPERADA — defeito conhecido (arquitetura §1): a grade de hoje só compara o INÍCIO do horário. Com duas
 //    faixas no mesmo dia (08:00–12:00 de 45 em 45 min e 08:30–12:00 de 30 em 30 min), o pedido das 08:00 (até 08:45)
 //    e o das 08:30 (até 09:00) passam juntos, no mesmo exame, embora se cruzem das 08:30 às 08:45. Este script PASSA
@@ -125,7 +125,7 @@ await principal('concorrencia-atual', async () => {
       const t0 = performance.now();
       const resultados = await Promise.all(Array.from({ length: N }, (_, i) => pedirHttp('10:30', `Paciente HTTP ${i}`)));
       const { e, inesperados } = registrar(`Inícios iguais, ${N} ao mesmo tempo, PostgREST (10:30)`, resultados, performance.now() - t0);
-      afirmar(e.ok === 1, 'inícios iguais (PostgREST): exatamente 1 pedido entra (201) e o resto recebe 409',
+      afirmar(e.ok === 1, 'inícios iguais (PostgREST): exatamente 1 pedido entra (201) e o resto é recusado',
         `entraram ${e.ok} de ${e.total}; recusas: ${textoCodigos(e.porCodigo)}\n${resultados.find((r) => !r.ok)?.message ?? ''}`);
       afirmar(inesperados.length === 0, 'inícios iguais (PostgREST): só recusas 23505/23P01 (sem 40P01 nem 57014)',
         resultados.filter((r) => !r.ok && !RECUSA_ESPERADA.has(r.code)).slice(0, 5).map((r) => `${r.code}: ${r.message}`).join('\n'));
@@ -133,6 +133,19 @@ await principal('concorrencia-atual', async () => {
     }
 
     /* ---------- 2. FALHA ESPERADA: inícios diferentes que se cruzam ---------- */
+    // O que o defeito de hoje produz: exatamente UM pedido confirmado em cada um dos dois inícios (o índice único
+    // segura o mesmo início) e todas as outras recusas por 23505/23P01. Dois confirmados no MESMO início seriam outro
+    // defeito (índice único quebrado), e 40P01/57014 seriam travamento: os dois reprovam aqui, em vez de passarem
+    // como "falha esperada".
+    const conferirCruzados = (via, horas, esperadas, inesperados, resultados) => {
+      const repetidos = horas.filter((h, i) => horas.indexOf(h) !== i);
+      afirmar(repetidos.length === 0, `cruzados (${via}): no máximo 1 pedido por início (índice único)`,
+        `confirmados: ${horas.join(', ') || 'nenhum'}; repetidos: ${repetidos.join(', ')}`);
+      afirmar(horas.length === 0 || horas.every((h) => esperadas.includes(h)),
+        `cruzados (${via}): só os dois horários pedidos foram confirmados`, `confirmados: ${horas.join(', ')}`);
+      afirmar(inesperados.length === 0, `cruzados (${via}): só recusas 23505/23P01 (sem 40P01 nem 57014)`,
+        resultados.filter((r) => !r.ok && !RECUSA_ESPERADA.has(r.code)).slice(0, 5).map((r) => `${r.code}: ${r.message}`).join('\n'));
+    };
     const defeito = [];
     {
       const { resultados, totalMs } = await rodarJuntos({
@@ -141,9 +154,9 @@ await principal('concorrencia-atual', async () => {
       });
       const horas = await confirmados(['08:00', '08:30']);
       const pares = paresQueSeCruzam(horas);
-      registrar(`Inícios diferentes que se cruzam, ${N} ao mesmo tempo, conexão direta (08:00 de 45 min × 08:30 de 30 min)`,
+      const { inesperados } = registrar(`Inícios diferentes que se cruzam, ${N} ao mesmo tempo, conexão direta (08:00 de 45 min × 08:30 de 30 min)`,
         resultados, totalMs, { confirmados: horas, paresQueSeCruzam: pares });
-      afirmar(horas.length <= 2, 'cruzados (conexão direta): no máximo 1 pedido por início (índice único)', horas.join(', '));
+      conferirCruzados('conexão direta', horas, ['08:00', '08:30'], inesperados, resultados);
       defeito.push({ via: 'conexão direta', horas, pares });
     }
     {
@@ -152,13 +165,16 @@ await principal('concorrencia-atual', async () => {
         (_, i) => pedirHttp(i % 2 ? '09:00' : '08:45', `Paciente Cruzado HTTP ${i}`)));
       const horas = await confirmados(['08:45', '09:00']);
       const pares = paresQueSeCruzam(horas);
-      registrar(`Inícios diferentes que se cruzam, ${N} ao mesmo tempo, PostgREST (08:45 de 45 min × 09:00 de 30 min)`,
+      const { inesperados } = registrar(`Inícios diferentes que se cruzam, ${N} ao mesmo tempo, PostgREST (08:45 de 45 min × 09:00 de 30 min)`,
         resultados, performance.now() - t0, { confirmados: horas, paresQueSeCruzam: pares });
-      afirmar(horas.length <= 2, 'cruzados (PostgREST): no máximo 1 pedido por início (índice único)', horas.join(', '));
+      conferirCruzados('PostgREST', horas, ['08:45', '09:00'], inesperados, resultados);
       defeito.push({ via: 'PostgREST', horas, pares });
     }
 
-    const comDefeito = defeito.filter((d) => d.pares > 0);
+    // Defeito presente = os dois inícios diferentes confirmados juntos (1 par que se cruza), sem repetição.
+    const temDefeito = (d) => d.pares === 1 && d.horas.length === 2 && new Set(d.horas).size === 2;
+    const comDefeito = defeito.filter(temDefeito);
+    const semDefeito = defeito.filter((d) => d.pares === 0 && d.horas.length === 1);
     const textoDefeito = defeito.map((d) => `${d.via}: confirmados ${d.horas.join(' e ') || 'nenhum'} → ${d.pares} par(es) que se cruzam`).join('\n');
     if (comDefeito.length === defeito.length) {
       console.log('FALHA ESPERADA - defeito de hoje confirmado (inícios diferentes que se cruzam passam juntos)');
@@ -166,10 +182,10 @@ await principal('concorrencia-atual', async () => {
         'Dois pedidos com inícios diferentes que se cruzam no mesmo exame passam juntos (a grade só compara o início).\n'
         + `${textoDefeito}\nEste teste passa enquanto o defeito existir. Na fase 3.3 ele deve ser invertido.`, { maxAvisos: 1 });
       notas.push(`FALHA ESPERADA (defeito de hoje, corrigido na 3.3): ${defeito.map((d) => `${d.via} ${d.horas.join(' e ')}`).join('; ')} se cruzam e passaram juntos`);
-    } else if (comDefeito.length === 0) {
+    } else if (semDefeito.length === defeito.length) {
       afirmar(false, 'o defeito de hoje NÃO aparece mais: inverta este teste (fase 3.3; arquitetura §13)', textoDefeito);
     } else {
-      afirmar(false, 'conexão direta e PostgREST deram resultados diferentes para pedidos que se cruzam', textoDefeito);
+      afirmar(false, 'pedidos que se cruzam deram um resultado inesperado (nem o defeito de hoje, nem 1 por intervalo)', textoDefeito);
     }
 
     resumir('concorrencia-atual', { rodadas, defeito }, notas);

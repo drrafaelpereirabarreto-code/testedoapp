@@ -6,11 +6,12 @@
 -- dono postgres) e publicacao.
 --
 -- Serve para duas coisas:
---   1. banco.yml: antes e depois de "volta + reaplicação" das migrações (supabase/volta/) as linhas têm de ser iguais.
+--   1. banco.yml: o banco que nasce SEM as migrações que têm volta (F0) e o banco COM todas (F1); depois dos testes,
+--      a volta tem de deixar o banco igual a F0, e a reaplicação, igual a F1 (linha a linha).
 --   2. Conferir que o banco do CI é igual ao da PRODUÇÃO: o SQL é só leitura (um SELECT) e roda também na produção
 --      (conector Supabase). Junte as linhas por tipo com "node tests/banco/anotar.mjs impressao <arquivo>" e compare
 --      com a linha "Impressão digital" do resumo do banco.yml (ou as linhas inteiras: banco.yml rodado à mão com
---      impressao=completa).
+--      impressao=todos, ou só alguns tipos, como impressao=funcao,tabela).
 --
 -- Rode como postgres (o search_path dele, "$user", public, extensions, é o mesmo na produção e no CI e entra na
 -- forma como os tipos aparecem nas definições).

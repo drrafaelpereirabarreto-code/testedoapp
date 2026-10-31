@@ -4,15 +4,17 @@
 //
 //   node tests/banco/local/rodar.mjs                       casos do §3.4 (segundos)
 //   node tests/banco/local/rodar.mjs --concorrencia        + todos os modos de concorrência abaixo
-//   node tests/banco/local/rodar.mjs --concorrencia=com-trava,remarcacao,capacidade   só esses (os do CI)
+//   node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade   os do CI
 //     sem-trava   40 e 100 ao mesmo tempo no mesmo aparelho, só com o EXCLUDE
 //     com-trava   o mesmo, com a trava curta por recurso antes de conferir e gravar (§3.2)
 //     remarcacao  troca de horário segura o antigo até o COMMIT; com ROLLBACK, o antigo continua (§3.3, I4)
 //     capacidade  sala com 2 vagas, 60 pedidos de 15 min com inícios variados, com trava: nunca 3 ao mesmo tempo
+//     <modo>:N    só com N ao mesmo tempo (ex.: sem-trava:40)
 //   ... --sem-limite   na concorrência, sem o tempo-limite de 3 s do anon (mostra as cadeias longas de impasse)
 //
-// Precisa do PostgreSQL (16 ou mais novo, com btree_gist) e do pacote "pg" (npm i --no-save pg). Não substitui o CI
-// (falta PostGIS, PostgREST, Auth e Realtime): é para errar rápido antes de mandar para o GitHub.
+// Precisa do PostgreSQL (16 ou mais novo, com btree_gist) e do pacote "pg" (npm ci --prefix tests/banco
+// --ignore-scripts). Não substitui o CI (falta PostGIS, PostgREST, Auth e Realtime): é para errar rápido antes de
+// mandar para o GitHub. No GitHub (GITHUB_ACTIONS=true), sem PostgreSQL na máquina o laço REPROVA (não pula).
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -25,10 +27,13 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 const conc = args.find((a) => a.startsWith('--concorrencia'));
 const MODOS = ['sem-trava', 'com-trava', 'remarcacao', 'capacidade'];
-const modosConc = !conc ? [] : conc.includes('=') ? conc.split('=')[1].split(',').filter(Boolean) : MODOS;
-const desconhecidos = modosConc.filter((m) => !MODOS.includes(m));
+// "modo" ou "modo:N" (N ao mesmo tempo; sem N, os padrões de cada modo).
+const modosConc = (!conc ? [] : conc.includes('=') ? conc.split('=')[1].split(',').filter(Boolean) : MODOS)
+  .map((m) => { const [modo, n] = m.split(':'); return { modo, n: n === undefined ? null : Number(n) }; });
+const desconhecidos = modosConc.filter((m) => !MODOS.includes(m.modo) || (m.n !== null && !(Number.isInteger(m.n) && m.n >= 2 && m.n <= 200)));
 if (desconhecidos.length) {
-  console.error(`modo de concorrência desconhecido: ${desconhecidos.join(', ')} (use ${MODOS.join(', ')})`);
+  console.error(`modo de concorrência desconhecido: ${desconhecidos.map((m) => m.modo + (m.n === null ? '' : `:${m.n}`)).join(', ')}`
+    + ` (use ${MODOS.join(', ')}, com :N opcional entre 2 e 200)`);
   process.exit(2);
 }
 const limite = args.includes('--sem-limite') ? null : '3s';
@@ -160,8 +165,16 @@ async function rodarConcorrencia(conexao, db, modo, n) {
   const linha = `${modo}, ${n} ao mesmo tempo: ${e.ok} gravou, ${semHorario} "sem horário", erros: ${textoCodigos(e.porCodigo)}; `
     + `p95 ${e.p95} ms, máx ${e.max} ms, total ${Math.round(totalMs)} ms (com a abertura: ${Math.round(performance.now() - t0)} ms)`;
   console.log(linha);
-  afirmar(ativos === 1 && viol.length === 0, `concorrência ${modo} (${n}): exatamente 1 uso ativo e nenhuma violação`,
-    `ativos: ${ativos}; violações: ${JSON.stringify(viol)}`);
+  if (modo === 'sem-trava') {
+    // Só o EXCLUDE: nunca mais de 1 (sem a restrição, entrariam todos). Zero só se uma cadeia de impasses foi
+    // cortada pelo tempo-limite de 3 s (57014), como no §3.4: aí o vencedor também pode ter estourado o tempo.
+    afirmar((ativos === 1 || (ativos === 0 && (e.porCodigo['57014'] ?? 0) > 0)) && viol.length === 0,
+      `concorrência sem trava (${n}): no máximo 1 uso ativo (a restrição de exclusão segura) e nenhuma violação`,
+      `ativos: ${ativos}; erros: ${textoCodigos(e.porCodigo)}; violações: ${JSON.stringify(viol)}`);
+  } else {
+    afirmar(ativos === 1 && viol.length === 0, `concorrência ${modo} (${n}): exatamente 1 uso ativo e nenhuma violação`,
+      `ativos: ${ativos}; violações: ${JSON.stringify(viol)}`);
+  }
   if (modo === 'com-trava') {
     afirmar(Object.keys(e.porCodigo).length === 0, `concorrência com trava (${n}): nenhum erro (nem 23P01, 40P01 ou 57014)`,
       textoCodigos(e.porCodigo));
@@ -269,6 +282,12 @@ await principal('laço local', async () => {
   const t0 = performance.now();
   const pgsrv = await subirPostgres();
   if (!pgsrv) {
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      // No GitHub a imagem ubuntu-24.04 traz o PostgreSQL: se sumiu, o laço não pode passar em silêncio.
+      afirmar(false, 'Laço local: PostgreSQL não encontrado na máquina do GitHub',
+        'initdb/pg_ctl/postgres não estão em /usr/lib/postgresql/<versão>/bin nem no pg_config (a imagem mudou?).');
+      return;
+    }
     anotar('notice', 'Laço local pulado', 'PostgreSQL não encontrado nesta máquina (defina PG_BIN com a pasta do initdb).', { maxAvisos: 1 });
     return;
   }
@@ -285,13 +304,13 @@ await principal('laço local', async () => {
     console.log(`\n${casos} casos em ${msCasos} ms`);
 
     const conc = [];
-    for (const modo of modosConc) {
+    for (const { modo, n } of modosConc) {
       if (modo === 'remarcacao') {
         for (const desfecho of ['commit', 'rollback']) conc.push(await rodarRemarcacao(pgsrv.conexao, db, desfecho));
       } else if (modo === 'capacidade') {
-        conc.push(await rodarCapacidade(pgsrv.conexao, db, 60));
+        conc.push(await rodarCapacidade(pgsrv.conexao, db, n ?? 60));
       } else {
-        for (const n of [40, 100]) conc.push(await rodarConcorrencia(pgsrv.conexao, db, modo, n));
+        for (const k of n ? [n] : [40, 100]) conc.push(await rodarConcorrencia(pgsrv.conexao, db, modo, k));
       }
     }
     const notas = [`${pgsrv.versao}: ${casos} casos da restrição de exclusão em ${msCasos} ms`, ...conc.map((c) => c.linha)];
