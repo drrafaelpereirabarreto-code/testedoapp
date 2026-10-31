@@ -216,9 +216,18 @@ async function parteB() {
     const ok = s.status === 200 && s.dados?.ok === true && cnes.length > 0;
     registra(P, 'search perto da Av. Paulista', ok ? 'ok' : 'falhou',
       ok ? `ok: ${cnes.length} do CNES, ${(s.dados.imed || []).length} parceiro(s), cobertura ${s.dados.coverage?.status} (${s.ms} ms)${s.dados.warnings?.length ? `; avisos: ${s.dados.warnings.join(', ')}` : ''}` : `HTTP ${s.status}: ${curto(s.dados)}`);
-    if (ok && !s.dados.coverage?.city) {
-      // A cidade vem do importador (importar-clinicas), que a busca chama com a chave secreta.
-      registra(P, 'importador respondeu à busca', 'aviso', 'a busca não trouxe a cidade do importador: confira se a importar-clinicas nova foi publicada (ela aceita a chave secreta no apikey)');
+    // A cidade vem do importador (importar-clinicas), que a busca chama com a chave secreta e espera no máximo 3,5 s.
+    // Sem a cidade, tenta mais uma vez depois de 16 s (a busca guarda o "sem resposta" por 15 s): o importador às vezes
+    // demora mais que isso para achar o município (serviço público de mapas).
+    let cidade = ok ? s.dados.coverage?.city : null;
+    if (ok && !cidade) {
+      await new Promise((r) => setTimeout(r, 16000));
+      const s2 = await funcao({ action: 'search', lat: PAULISTA.lat, lng: PAULISTA.lng, radius_m: 2000, include_demo: false }).catch(() => null);
+      cidade = s2?.dados?.coverage?.city ?? null;
+      if (cidade) s.dados.coverage = s2.dados.coverage;
+    }
+    if (ok && !cidade) {
+      registra(P, 'importador respondeu à busca', 'aviso', 'duas buscas sem a cidade do importador (ele demorou mais de 3,5 s ou recusou a chamada). Se repetir depois de publicar as duas funções, confira a importar-clinicas: ela precisa aceitar a chave secreta no apikey');
     } else if (ok) {
       registra(P, 'importador respondeu à busca (chave secreta)', 'ok', `ok: ${s.dados.coverage.city}/${s.dados.coverage.uf}`);
     }
@@ -235,7 +244,7 @@ async function parteB() {
   // A autorização feita no código (verify_jwt=false): sem chave, 401; outro site no navegador, 403.
   try {
     const sem = await funcao({ action: 'status' }, { chave: '' });
-    registra(P, 'sem chave nenhuma: recusa (401)', sem.status === 401 ? 'ok' : 'falhou', `HTTP ${sem.status}: ${curto(sem.dados, 100)}`);
+    registra(P, 'sem chave nenhuma: recusa (401)', sem.status === 401 ? 'ok' : 'falhou', `HTTP ${sem.status}: ${curto(sem.dados, 100)}${sem.status === 401 ? '' : ' (a função não conferiu a chave: o ambiente dela tem SUPABASE_PUBLISHABLE_KEYS?)'}`);
     const outro = await funcao({ action: 'status' }, { origem: 'https://exemplo.com' });
     registra(P, 'outro site no navegador: recusa (403)', outro.status === 403 ? 'ok' : 'falhou', `HTTP ${outro.status}: ${curto(outro.dados, 100)}`);
   } catch (e) {
@@ -328,6 +337,8 @@ async function parteC() {
     { nome: 'perto.html?exame=rm (busca por ressonância)', caminho: 'perto.html?exame=rm', confere: async (page) => {
       await page.waitForSelector('.pc h3', { timeout: 60000 });
       await page.waitForFunction(() => !document.querySelector('.pt-more'), null, { timeout: 30000 }).catch(() => {});
+      // A lista ainda pode crescer com a área inteira (vinda do banco): espera as chamadas terminarem.
+      await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
       const nomes = await page.$$eval('.pc h3', (els) => els.map((e) => e.textContent.trim()));
       if (!nomes.length) return 'nenhum resultado';
       return `ok: ${nomes.length} resultado(s) (ex.: ${nomes.slice(0, 2).join('; ')})`;
