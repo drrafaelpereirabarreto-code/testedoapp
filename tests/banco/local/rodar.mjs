@@ -1,6 +1,8 @@
-// Laço rápido do banco (iMed Agenda, fase 3.0; arquitetura §3.4 e §13), SEM Docker: sobe um PostgreSQL descartável
-// desta máquina, cria a base mínima (base.sql) e a tabela de prova da agenda (prova.sql) e confere em segundos a
-// restrição de exclusão (EXCLUDE) que garante "nenhum horário vendido duas vezes para o mesmo recurso".
+// Laço rápido do banco (iMed Agenda, fases 3.0 e 3.1; arquitetura §3.4 e §13), SEM Docker: sobe um PostgreSQL
+// descartável desta máquina, cria a base mínima (base.sql), o ESPELHO da agenda gerado da própria migração da fundação
+// (supabase/migrations/*_agenda_base.sql: agenda.resources e agenda.occupancy, com a restrição de exclusão, os CHECKs e
+// os gatilhos de vagas e de capacidade, no schema prova) e o oráculo (prova.sql), e confere em segundos a restrição de
+// exclusão (EXCLUDE) que garante "nenhum horário vendido duas vezes para o mesmo recurso".
 //
 //   node tests/banco/local/rodar.mjs                       casos do §3.4 (segundos)
 //   node tests/banco/local/rodar.mjs --concorrencia        + todos os modos de concorrência abaixo
@@ -16,7 +18,7 @@
 // --ignore-scripts). Não substitui o CI (falta PostGIS, PostgREST, Auth e Realtime): é para errar rápido antes de
 // mandar para o GitHub. No GitHub (GITHUB_ACTIONS=true), sem PostgreSQL na máquina o laço REPROVA (não pula).
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +26,25 @@ import { afirmar, anotar, conectar, estatisticas, principal, resumir, rodarJunto
 import { subirPostgres } from './servidor.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
+const MIGRACOES = path.join(aqui, '..', '..', '..', 'supabase', 'migrations');
+
+/**
+ * O espelho da agenda: os blocos entre "-- [espelho do laço local]" e "-- [fim do espelho]" da migração da fundação
+ * (a mais nova *_agenda_base.sql), com agenda/private trocados por prova e sem as linhas "-- [só no banco]" (chaves
+ * estrangeiras para tabelas que o laço local não tem). Sem os blocos, o laço reprova (a migração mudou de forma).
+ */
+export function espelhoDaMigracao() {
+  const nome = readdirSync(MIGRACOES).filter((n) => /_agenda_base\.sql$/.test(n)).sort().at(-1);
+  if (!nome) throw new Error('migração *_agenda_base.sql não encontrada em supabase/migrations (o espelho do laço local vem dela)');
+  const sql = readFileSync(path.join(MIGRACOES, nome), 'utf8');
+  const blocos = [...sql.matchAll(/^-- \[espelho do laço local\]\n([\s\S]*?)^-- \[fim do espelho\]$/gm)].map((m) => m[1]);
+  if (blocos.length < 3 || !blocos.join('').includes('agenda.occupancy') || !blocos.join('').includes('agenda.resources')) {
+    throw new Error(`${nome}: faltam os blocos "[espelho do laço local]" com agenda.resources, agenda.occupancy e os gatilhos`);
+  }
+  const texto = blocos.join('\n').split('\n').filter((l) => !l.includes('-- [só no banco]')).join('\n')
+    .replaceAll('private.agenda_', 'prova.agenda_').replace(/\bagenda\./g, 'prova.');
+  return { nome, texto };
+}
 const args = process.argv.slice(2);
 const conc = args.find((a) => a.startsWith('--concorrencia'));
 const MODOS = ['sem-trava', 'com-trava', 'remarcacao', 'capacidade'];
@@ -41,7 +62,9 @@ const limite = args.includes('--sem-limite') ? null : '3s';
 const CLINICA = '0c000000-0000-4000-8000-000000000001';
 const RM = '0e000000-0000-4000-8000-000000000001';      // aparelho de ressonância, capacidade 1
 const SALA = '0e000000-0000-4000-8000-000000000002';    // sala de coleta, capacidade 2
-const t = (hhmm) => `2026-12-01 ${hhmm}:00-03`;
+// Um dia daqui a 30 dias (a guarda de capacidade só olha usos futuros), no fuso de São Paulo (UTC-3).
+const DIA = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+const t = (hhmm) => `${DIA} ${hhmm}:00-03`;
 const faixa = (de, ate) => `[${t(de)},${t(ate)})`;
 
 /* ===================== Casos (arquitetura §3.4) ===================== */
@@ -102,6 +125,10 @@ const cenarios = [
       ['vaga 2 encostada 11:00–11:30 é aceita', uso(SALA, '11:00', '11:30', { vaga: 2 }), 'ok'],
       ['vaga 1 com o mesmo início (11:00–11:30) é aceita: 2 ao mesmo tempo, dentro da capacidade',
         uso(SALA, '11:00', '11:30'), 'ok'],
+      ['reduzir a capacidade para 1 com uso futuro na vaga 2 é recusado (guarda do recurso)',
+        { sql: 'update prova.resources set capacity = 1 where id = $1', params: [SALA] }, '23514'],
+      ['desativar a sala com usos futuros é recusado (guarda do recurso)',
+        { sql: 'update prova.resources set active = false where id = $1', params: [SALA] }, '23514'],
     ],
   },
 ];
@@ -295,7 +322,11 @@ await principal('laço local', async () => {
   const db = await conectar(pgsrv.conexao, 'imed-laco-local');
   try {
     await db.query(readFileSync(path.join(aqui, 'base.sql'), 'utf8'));
+    const espelho = espelhoDaMigracao();
+    await db.query('create schema prova');
+    await db.query(espelho.texto);
     await db.query(readFileSync(path.join(aqui, 'prova.sql'), 'utf8'));
+    console.log(`Espelho da agenda gerado de ${espelho.nome}`);
     await db.query(`insert into prova.resources (id, clinic_id, kind, name, capacity)
                     values ($1, $3, 'equipamento', 'RM-1', 1), ($2, $3, 'sala', 'Coleta', 2)`, [RM, SALA, CLINICA]);
     const tCasos = performance.now();
@@ -313,7 +344,8 @@ await principal('laço local', async () => {
         for (const k of n ? [n] : [40, 100]) conc.push(await rodarConcorrencia(pgsrv.conexao, db, modo, k));
       }
     }
-    const notas = [`${pgsrv.versao}: ${casos} casos da restrição de exclusão em ${msCasos} ms`, ...conc.map((c) => c.linha)];
+    const notas = [`${pgsrv.versao}: ${casos} casos da restrição de exclusão em ${msCasos} ms (espelho de ${espelho.nome})`,
+      ...conc.map((c) => c.linha)];
     resumir('laco-local', { versao: pgsrv.versao, casos, msCasos, concorrencia: conc }, notas);
   } finally {
     await db.end().catch(() => {});

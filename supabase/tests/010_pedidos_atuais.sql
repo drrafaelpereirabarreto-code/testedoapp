@@ -8,6 +8,8 @@
 --     para outra pessoa, adulta ou menor), como visitante e como paciente logado. O mesmo pedido, montado pelo
 --     próprio assets/js/geo-core.js e enviado pelo PostgREST, é conferido em tests/banco/pedido-do-site.mjs.
 -- Todos os dados são criados aqui e desfeitos no fim (rollback). E-mails no domínio reservado .test.
+-- Fase 3.1: as respostas e o que fica gravado continuam iguais; só a preparação "horário que já passou" (seção E),
+-- um UPDATE direto pelo SQL, passou a usar a marca de emergência (a guarda nova recusa mudança sem marca).
 begin;
 select plan(50);
 
@@ -257,9 +259,18 @@ select lives_ok($$
     current_setting('teste.h0930')::timestamptz, current_setting('teste.hash_r7'))
 $$, 'visitante marca 09:30');
 
+-- O horário "passa": mudança à mão pelo SQL. Desde a fase 3.1 a guarda do pedido só deixa mudar o horário com a
+-- marca de emergência (imed.origin = 'sql' + motivo), que fica registrada em agenda.audit_log.
 select pg_temp.entrar('postgres');
-update public.appointment_requests set slot_start = now() - interval '1 hour'
-where id = 'b7000000-0000-4000-8000-000000000007';
+do $$
+begin
+  perform set_config('imed.origin', 'sql', true);
+  perform set_config('imed.reason', 'teste_horario_passado', true);
+  update public.appointment_requests set slot_start = now() - interval '1 hour'
+  where id = 'b7000000-0000-4000-8000-000000000007';
+  perform set_config('imed.origin', '', true);
+  perform set_config('imed.reason', '', true);
+end $$;
 
 select pg_temp.entrar('anon');
 select is(public.cancel_request('b7000000-0000-4000-8000-000000000007', 'codigo-r7'), 'past',

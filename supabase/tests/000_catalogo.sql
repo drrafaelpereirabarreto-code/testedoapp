@@ -1,10 +1,10 @@
--- Guardas do catálogo (iMed Agenda, fase 3.0; arquitetura §12 e §13): regras de segurança que valem para TODO
--- objeto do banco, conferidas a cada envio num banco criado do zero pelas migrações (.github/workflows/banco.yml).
+-- Guardas do catálogo (iMed Agenda, fases 3.0 e 3.1; arquitetura §12 e §13): regras de segurança que valem para
+-- TODO objeto do banco, conferidas a cada envio num banco criado do zero pelas migrações (.github/workflows/banco.yml).
 -- Quando uma guarda reprova, a mensagem traz o que está fora da regra ("have" = o que existe, "want" = o certo).
--- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir; o que já se sabe que
--- falta e depende de decisão fica como pendência (TODO: aparece no resumo do banco.yml, mas não reprova).
+-- As guardas das fases seguintes já estão aqui e são puladas (SKIP) até o objeto existir (as da 3.1 já valem); o que
+-- já se sabe que falta e depende de decisão fica como pendência (TODO: aparece no resumo do banco.yml, mas não reprova).
 begin;
-select plan(22);
+select plan(27);
 
 /* ===================== Tabelas e views ===================== */
 
@@ -150,7 +150,8 @@ select is(
 );
 
 -- Quem executa cada função de public: lista permitida para anon e authenticated (PUBLIC vale para os dois).
--- Gerada do estado das migrações e conferida com a produção em 31/10/2026 (82 funções, iguais).
+-- Gerada do estado das migrações e conferida com a produção em 31/10/2026 (82 funções, iguais; a 3.1 acrescentou
+-- has_clinic_perm e imed_has, só para quem está logado).
 -- Função nova SEM entrada aqui reprova: acrescente a linha com as permissões que ela deve ter
 -- ('' = só o servidor; 'authenticated' = só quem está logado; 'anon,authenticated' = qualquer visitante).
 create temp table esperado_acl (fn text primary key, acl text not null) on commit drop;
@@ -172,6 +173,8 @@ insert into esperado_acl (fn, acl) values
     ('cnes_last_update(integer)', 'anon,authenticated'),
     ('establishment_points(double precision, double precision, integer, text, text, boolean, integer)', 'anon,authenticated'),
     ('finish_establishment_import(integer, timestamp with time zone, integer, text)', ''),
+    ('has_clinic_perm(uuid, text)', 'authenticated'),
+    ('imed_has(text)', 'authenticated'),
     ('import_queue_mark(integer, integer, text, text)', ''),
     ('imported_cities()', 'anon,authenticated'),
     ('is_clinic_member(uuid)', 'authenticated'),
@@ -324,9 +327,15 @@ select is(
 
 -- Já existia antes da 3.0 (revisão de segurança de 31/10/2026): anon e authenticated alcançam o schema net do
 -- pg_net e leem net.http_request_queue (por onde o token interno passa por um instante, no cabeçalho
--- x-imed-token) e net._http_response. Não sai pela API (o schema net não é exposto), mas é algo a fechar ou a
--- nunca expor. A fase 3.1 decide (e confere que o Database Webhooks do Supabase não é usado).
-select todo_start('fase 3.1: fechar o schema net do pg_net para anon e authenticated');
+-- x-imed-token) e net._http_response.
+-- DECISÃO DA 3.1: não dá para fechar por migração. Essas permissões foram dadas pelo supabase_admin (dono da extensão
+-- pg_net, que as dá de novo sempre que a extensão é recriada: event trigger issue_pg_net_access), e o papel que
+-- aplica as migrações (postgres) não tem GRANT OPTION nem é membro do supabase_admin: um REVOKE dele não teria efeito
+-- (conferido na produção em 31/10/2026). Fechar de verdade = pedido ao suporte do Supabase. Enquanto isso, o risco
+-- fica contido por guardas que reprovam: o schema net não é exposto pela API (config.toml; e o script
+-- tests/banco/fora-das-migracoes.mjs confere no PostgREST local), nenhum Database Webhook (guarda abaixo) e só
+-- private.process_import_queue chama net.http_* (guarda acima).
+select todo_start('pg_net: só o suporte do Supabase fecha o schema net (o postgres não tem como; decisão da fase 3.1)');
 select is(
   array(select r || ': ' || o
         from unnest(array['anon', 'authenticated']) r,
@@ -340,7 +349,39 @@ select is(
 );
 select todo_end();
 
-/* ===================== Guardas das próximas fases (puladas até o objeto existir) ===================== */
+-- Database Webhooks (gatilho que chama supabase_functions.http_request pelo pg_net) não é usado: na produção, nem o
+-- schema supabase_functions existe (conferido em 31/10/2026). Se alguém ligar, esta guarda reprova e a decisão
+-- sobre o schema net acima precisa ser revista.
+select is(
+  array(select format('%I.%I.%I', n.nspname, c.relname, g.tgname)
+        from pg_trigger g
+        join pg_class c on c.oid = g.tgrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        join pg_proc p on p.oid = g.tgfoid
+        where not g.tgisinternal
+          and (p.pronamespace = to_regnamespace('supabase_functions') or p.proname = 'http_request')
+        order by 1),
+  '{}'::text[],
+  'nenhum Database Webhook (gatilho que chama supabase_functions.http_request)'
+);
+
+/* ===================== O que fica fora das migrações (igual à produção) ===================== */
+
+-- Tempo-limite de cada chamada pela API, por papel (conferido na produção em 31/10/2026: anon 3 s, authenticated 8 s).
+-- Não vem das migrações: se o banco do CI ficar diferente da produção, os testes de tempo e de concorrência deixam de
+-- valer para a produção. ("Confirm email" e os schemas expostos pela API não ficam no banco: quem confere é
+-- tests/banco/fora-das-migracoes.mjs, no Auth e no PostgREST locais, contra o supabase/config.toml.)
+select is(
+  array(select r.rolname || ' ' || coalesce((select string_agg(c, ' ' order by c)
+                                             from pg_db_role_setting s, unnest(s.setconfig) c
+                                             where s.setrole = r.oid and s.setdatabase = 0 and c like 'statement\_timeout=%'),
+                                            'sem statement_timeout')
+        from pg_roles r where r.rolname in ('anon', 'authenticated') order by 1),
+  array['anon statement_timeout=3s', 'authenticated statement_timeout=8s'],
+  'tempos-limite dos papéis da API iguais aos da produção (anon 3 s, authenticated 8 s)'
+);
+
+/* ===================== Guardas das fases da agenda (as da 3.1 já valem; as seguintes, puladas até o objeto existir) ===================== */
 
 -- 3.1: o schema agenda fica fora da API.
 select case when to_regnamespace('agenda') is null
@@ -370,19 +411,19 @@ select case when to_regnamespace('agenda') is null
           '{}'::text[], 'tabelas do schema agenda: RLS ligada, sem policy e sem permissão para a API')
 end;
 
--- 3.1: as colunas novas do agendamento não podem ser gravadas pelo navegador (INSERT por coluna, §2.3).
+-- 3.1: o navegador grava SÓ as 23 colunas do site (INSERT por coluna, §2.3): nenhuma outra coluna de
+-- appointment_requests (as novas, a situação, a conta, a data, quem cancelou, a versão...) tem INSERT para anon ou
+-- authenticated, nem coluna que alguma migração futura criar.
 select case when not exists (select 1 from pg_attribute
                              where attrelid = 'public.appointment_requests'::regclass and attname = 'channel' and not attisdropped)
   then skip('fase 3.1: appointment_requests ainda não tem as colunas novas', 1)
   else is(array(select r || ': ' || a.attname
                 from pg_attribute a, unnest(array['anon', 'authenticated']) r
-                where a.attrelid = 'public.appointment_requests'::regclass and not a.attisdropped
-                  and a.attname in ('channel', 'slot_end', 'hold_expires_at', 'version', 'updated_at', 'cancel_reason',
-                                    'total_cents', 'payment_mode', 'notify_channels', 'uses_resources',
-                                    'status', 'user_id', 'cancelled_at', 'cancelled_by')
+                where a.attrelid = 'public.appointment_requests'::regclass and a.attnum > 0 and not a.attisdropped
+                  and a.attname not in (select col from colunas_do_site)
                   and has_column_privilege(r, 'public.appointment_requests'::regclass, a.attname, 'INSERT')
                 order by 1),
-          '{}'::text[], 'colunas novas de appointment_requests sem INSERT para anon e authenticated')
+          '{}'::text[], 'anon e authenticated só gravam (INSERT) as 23 colunas do site em appointment_requests')
 end;
 
 -- 3.1: trilhas só de acréscimo (UPDATE, DELETE e TRUNCATE barrados por gatilho).
@@ -400,6 +441,18 @@ select case when to_regclass('agenda.status_history') is null
                                   where g.tgrelid = to_regclass(t) and not g.tgisinternal and (g.tgtype & 32) <> 0)
                 order by 1),
           '{}'::text[], 'trilhas da agenda com guarda contra UPDATE, DELETE e TRUNCATE')
+end;
+
+-- 3.1: trilhas sem chave estrangeira (guardam o uuid; apagar um pedido não pode apagar o histórico dele; §2.1).
+select case when to_regclass('agenda.status_history') is null
+  then skip('fase 3.1: as trilhas ainda não existem', 1)
+  else is(array(select co.conrelid::regclass::text || '.' || co.conname
+                from pg_constraint co
+                where co.contype = 'f'
+                  and co.conrelid in (to_regclass('agenda.status_history'), to_regclass('agenda.audit_log'),
+                                      to_regclass('agenda.access_log'))
+                order by 1),
+          '{}'::text[], 'trilhas da agenda sem chave estrangeira')
 end;
 
 -- 3.3: nenhuma função grava em agenda.occupancy com ON CONFLICT (pularia uma linha em silêncio; §2.5).
@@ -420,6 +473,33 @@ select case when to_regclass('private.imed_staff') is null
           and not has_any_column_privilege('anon', 'private.imed_staff', 'SELECT'),
           'private.imed_staff fora do alcance de anon e authenticated')
 end;
+
+/* ===================== Marca de origem e gatilhos (fase 3.1) ===================== */
+
+-- A marca de origem (imed.origin) e o motivo (imed.reason) só valem até o fim da transação: função que os defina
+-- para a sessão inteira (set_config(..., false)) deixaria a marca numa conexão do PostgREST para o próximo cliente.
+select is(
+  array(select format('%I.%I', n.nspname, p.proname)
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname in ('public', 'private', 'agenda')
+          and p.prosrc ~* 'set_config\s*\(\s*''imed\.[a-z_]+''\s*,[^;]*,\s*false\s*\)'
+          and not exists (select 1 from pg_depend d
+                          where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+        order by 1),
+  '{}'::text[],
+  'nenhuma função define imed.* para a sessão inteira (só set_config(..., true), até o fim da transação)'
+);
+
+-- Nenhum gatilho desligado (ALTER TABLE ... DISABLE TRIGGER) em public, private e agenda: as guardas de origem,
+-- de trilha e de validação do pedido só protegem se estiverem ligadas.
+select is(
+  array(select format('%I.%I.%I (%s)', n.nspname, c.relname, g.tgname, g.tgenabled)
+        from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname in ('public', 'private', 'agenda') and not g.tgisinternal and g.tgenabled <> 'O'
+        order by 1),
+  '{}'::text[],
+  'nenhum gatilho desligado em public, private e agenda'
+);
 
 select * from finish();
 rollback;

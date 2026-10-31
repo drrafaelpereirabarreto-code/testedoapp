@@ -4,6 +4,14 @@ Confere em segundos, num PostgreSQL descartável desta máquina, a regra mais im
 **nenhum aparelho, sala ou profissional usado por mais pacientes do que a capacidade ao mesmo tempo**
 (a restrição de exclusão `occupancy_no_overlap` da arquitetura, §2.5 e §3.4).
 
+Desde a fase 3.1 as tabelas do laço vêm da **própria migração da fundação**
+(`supabase/migrations/*_agenda_base.sql`): o `rodar.mjs` pega os blocos entre `-- [espelho do laço local]` e
+`-- [fim do espelho]` (`agenda.resources`, `agenda.occupancy`, a restrição de exclusão, os CHECKs, os gatilhos de vagas
+e de capacidade), troca `agenda`/`private` por `prova` e tira as linhas marcadas `-- [só no banco]` (chaves
+estrangeiras para tabelas que o laço não tem). Mudou a ocupação na migração? O laço testa a mudança na hora; não há
+espelho para manter à mão. Quem mexer nesses blocos: chave estrangeira para fora da agenda vai numa linha própria,
+com `-- [só no banco]` no fim, e nunca como a última linha da tabela.
+
 ## Como rodar
 
 ```bash
@@ -23,11 +31,11 @@ tempo (ex.: `sem-trava:40`).
 
 ## O que ele confere
 
-- **Casos** (`prova.sql`, igual à tabela `agenda.occupancy` da arquitetura, sem as chaves estrangeiras):
-  cruzamento recusado (inícios diferentes também), encostado aceito, bloqueio × bloqueio aceito, uso dentro de
-  bloqueio recusado, sala com capacidade 2 (vagas, inclusive dois usos que começam juntos), vaga acima da
-  capacidade, bloqueio em cima de uso, reativar bloqueio por cima de uso. No fim de cada cenário, um oráculo que
-  não olha a vaga confere a capacidade (`prova.violacoes()`).
+- **Casos** (na ocupação gerada da migração, num dia daqui a 30 dias): cruzamento recusado (inícios diferentes
+  também), encostado aceito, bloqueio × bloqueio aceito, uso dentro de bloqueio recusado, sala com capacidade 2
+  (vagas, inclusive dois usos que começam juntos), vaga acima da capacidade, bloqueio em cima de uso, reativar
+  bloqueio por cima de uso, reduzir a capacidade ou desativar a sala com uso futuro (guarda do recurso). No fim de
+  cada cenário, um oráculo que não olha a vaga confere a capacidade (`prova.violacoes()`, em `prova.sql`).
 - **Concorrência** (N transações partem juntas: barreira com `pg_advisory_lock`):
   - `sem-trava` e `com-trava`: 40 e 100 no mesmo aparelho, inícios 10:00/10:05/10:10 de 45 min.
     *Sem trava*, só a restrição de exclusão segura: nunca entra mais de 1 (sem ela, entram todos: é o modo que pega
@@ -42,5 +50,6 @@ tempo (ex.: `sem-trava:40`).
 ## Limites
 
 Não substitui o banco de verdade do GitHub (`.github/workflows/banco.yml`): aqui não há PostGIS, PostgREST, Auth,
-Realtime nem as migrações do site. A base mínima (`base.sql`) tem só os papéis `anon`, `authenticated`,
+Realtime nem as migrações do site (só os blocos do espelho; a guarda de origem, as trilhas e os pedidos são testados
+no GitHub, pelos pgTAP `supabase/tests/1*.sql`). A base mínima (`base.sql`) tem só os papéis `anon`, `authenticated`,
 `service_role` e as funções `auth.uid()`, `auth.role()` e `auth.jwt()` iguais às do Supabase.

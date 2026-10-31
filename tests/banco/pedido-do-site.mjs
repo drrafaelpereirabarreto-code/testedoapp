@@ -11,6 +11,8 @@
 // Confere: HTTP 201; cada coluna gravada igual à enviada; request_status e cancel_request com o código do pedido;
 // e que a lista "colunas do pedido do site" de supabase/tests/000_catalogo.sql é EXATAMENTE o que o bookingRow
 // manda, com INSERT para anon e authenticated em cada coluna (a fase 3.1 passa o INSERT para coluna por coluna).
+// Fase 3.1: as colunas novas do pedido nascem no padrão (o navegador nem tem permissão para gravá-las) e o PATCH
+// direto no pedido pela API é recusado (42501): a situação só muda pelas funções (cancel_request, set_request_status).
 //
 // Os dados (uma clínica, a grade, um usuário e os pedidos) são criados aqui e apagados no fim.
 
@@ -162,6 +164,34 @@ await principal('pedido-do-site', async () => {
         `situação ${c.situacao} e ${conta ? 'ligado à conta de quem está logado' : 'sem conta'}: ${c.nome}`,
         `status ${j.status}, user_id ${j.user_id}`);
       enviados.push({ ...c, id, codigo, linha });
+    }
+
+    // Fase 3.1: as colunas novas nascem no padrão em todo pedido do site (canal imed_app, versão 1, sem recursos...).
+    {
+      const ids = enviados.map((e) => e.id);
+      const { rows } = await db.query(
+        `select id, channel, version, uses_resources, payment_mode, notify_channels, slot_end, hold_expires_at, cancel_reason,
+                total_cents from public.appointment_requests where id = any($1::uuid[])`, [ids]);
+      const fora = rows.filter((x) => x.channel !== 'imed_app' || x.version !== 1 || x.uses_resources !== false
+        || x.payment_mode !== 'no_local' || (x.notify_channels ?? []).length > 0 || x.slot_end !== null
+        || x.hold_expires_at !== null || x.cancel_reason !== null || x.total_cents !== null);
+      afirmar(ids.length > 0 && rows.length === ids.length && fora.length === 0,
+        'fase 3.1: os pedidos do site nascem com as colunas novas no padrão (canal imed_app, versão 1, sem recursos)',
+        JSON.stringify(fora).slice(0, 600));
+    }
+    // Fase 3.1: ninguém muda o pedido direto pela API (PATCH), nem o dono do pedido: só pelas funções.
+    {
+      const alvo = enviados.find((e) => e.quem === 'usuario');
+      if (alvo) {
+        const r = await postgrest(cfg, `appointment_requests?id=eq.${alvo.id}`, {
+          token: tokens.usuario, metodo: 'PATCH', corpo: { status: 'cancelled' },
+        });
+        const { rows: [x] } = await db.query('select status, version from public.appointment_requests where id = $1', [alvo.id]);
+        afirmar(!r.ok && r.code === '42501' && x?.status === alvo.situacao && x?.version === 1,
+          'fase 3.1: PATCH direto no pedido pela API é recusado (42501) e nada muda',
+          `HTTP ${r.status} ${r.code ?? ''}: ${r.message}; situação ${x?.status}, versão ${x?.version}`);
+        notas.push(`PATCH direto no pedido: HTTP ${r.status}, código ${r.code ?? '-'} (recusado; só as funções mudam o pedido)`);
+      }
     }
 
     // O mesmo horário de novo: recusado, e o site reconhece como "horário ocupado" (isSlotTaken, com o erro no

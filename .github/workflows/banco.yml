@@ -1,16 +1,19 @@
-# Banco de verdade no GitHub (iMed Agenda, fase 3.0; memory/projects/imed-agenda-arquitetura.md, §13 e §14).
+# Banco de verdade no GitHub (iMed Agenda, fases 3.0 e 3.1; memory/projects/imed-agenda-arquitetura.md, §13 e §14).
 #
 # Sobe nesta máquina do GitHub um Supabase LOCAL e descartável (Postgres 17 com Auth, PostgREST, Realtime e Edge
 # Runtime) e confere, um passo depois do outro:
 #   1. o laço rápido (PostgreSQL da própria máquina, sem Docker): a restrição de exclusão da agenda, em segundos;
-#   2. o banco nasce com as migrações que JÁ estão na produção (F0: todas, menos as que têm volta em supabase/volta/)
-#      e depois "supabase migration up" aplica as que têm volta (F1: todas as migrações, num banco novo);
+#   2. o banco nasce com as migrações sem volta (F0: todas, menos as que têm volta em supabase/volta/); depois
+#      "supabase migration up" aplica as que têm volta em duas etapas: até a última que JÁ está na produção
+#      (ULTIMA_NA_PRODUCAO: o banco "P", igual ao da produção de hoje) e depois as novas (F1: todas as migrações);
 #   3. os testes pgTAP de supabase/tests/*.sql ("supabase test db");
 #   4. os scripts de tests/banco/*.mjs (conexão direta e HTTP no PostgREST local, com tokens assinados pelo segredo
 #      do banco local; o pedido de agendamento montado pelo próprio código do site);
-#   5. a volta (supabase/volta/*.sql): depois dela o banco tem de ficar IGUAL a F0, e reaplicado, igual a F1.
-# A "impressão digital" de F0 e F1 (tests/banco/catalogo.sql) sai no resumo: é comparável com a da produção (a mesma
-# consulta, só leitura, rodada lá).
+#   5. a volta (supabase/volta/*.sql), da mais nova para a mais velha: desfeitas as novas, o banco tem de ficar IGUAL a
+#      P (a produção de hoje); desfeitas todas, igual a F0; e reaplicado, igual a F1.
+# A "impressão digital" de F0, P e F1 (tests/banco/catalogo.sql) sai no resumo; a de P é a que se compara com a da
+# produção (a mesma consulta, só leitura, rodada lá). Ao aplicar uma migração nova na produção, troque
+# ULTIMA_NA_PRODUCAO pela versão dela (a mesma do nome do arquivo).
 #
 # Nada aqui fala com o Supabase de produção: o banco é criado do zero; os contêineres ficam sem saída para a
 # internet e um teste prova isso; um vigia desliga cada job do pg_cron assim que uma migração o cria; a fila de
@@ -20,7 +23,8 @@
 # O registro desta execução fica num lugar que o Claude não lê: cada falha vira aviso (anotação) no topo da página,
 # com as linhas úteis do erro (tests/banco/anotar.mjs), e o último passo deixa as notas "Resumo do banco".
 # À mão (pela API): gh api -X POST repos/<repo>/actions/workflows/banco.yml/dispatches -f ref=<ramo>
-#   [-f 'inputs[impressao]=funcao,tabela' -f 'inputs[impressao_base]=sem-volta'] para ver a impressão linha a linha.
+#   [-f 'inputs[impressao]=funcao,tabela' -f 'inputs[impressao_base]=producao'] para ver a impressão linha a linha
+#   (sem-volta = F0, producao = P, todas = F1).
 name: Banco
 
 on:
@@ -38,11 +42,11 @@ on:
         required: false
         default: ''
       impressao_base:
-        description: 'De qual banco: sem-volta (F0, sem as migrações que têm volta) ou todas (F1, com todas as migrações)'
+        description: 'De qual banco: sem-volta (F0, sem as migrações que têm volta), producao (P, até a última da produção) ou todas (F1)'
         required: false
         default: 'sem-volta'
         type: choice
-        options: [sem-volta, todas]
+        options: [sem-volta, producao, todas]
 
 # Só leitura: os testes não escrevem nada no repositório.
 permissions:
@@ -63,6 +67,10 @@ env:
   # Última migração que já estava na produção quando passou a valer a regra "toda migração tem volta testada no CI"
   # (arquitetura §14). Migração mais nova que esta sem supabase/volta/<mesmo nome>.sql reprova.
   ULTIMA_SEM_VOLTA: '20261030191354'
+  # Última migração que JÁ está aplicada na produção (supabase_migrations.schema_migrations de lá; conferido pelo
+  # conector em 31/10/2026). As migrações com volta até ela formam o banco "P", igual ao da produção de hoje; as mais
+  # novas ainda esperam a aprovação do dono. Troque ao aplicar uma migração nova na produção.
+  ULTIMA_NA_PRODUCAO: '20261031034327'
   # Porta do banco local (supabase/config.toml, [db] port) e a senha fixa que a CLI usa no banco local.
   DB_VIGIA: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres?connect_timeout=2'
   SUPABASE_TELEMETRY_DISABLED: '1'
@@ -297,29 +305,63 @@ jobs:
             exit 1
           fi
 
-      # F1: as migrações que têm volta, aplicadas pela CLI como uma migração nova da produção; o pg_cron é desligado
-      # de novo (a migração de preparo cria o job de limpeza).
-      - name: Aplicar as migrações que têm volta (supabase migration up, F1)
+      # As migrações que têm volta, aplicadas pela CLI como migrações novas da produção, em duas etapas: primeiro as que
+      # JÁ estão na produção (até $ULTIMA_NA_PRODUCAO; as mais novas saem da pasta por um instante): a impressão digital
+      # desse banco ("P") é a que se compara com a da produção. Depois as novas (F1: todas). O pg_cron é desligado de
+      # novo depois de cada etapa (a migração de preparo cria o job de limpeza).
+      - name: Aplicar as migrações que têm volta (P = até a última da produção; F1 = todas)
         id: migrar
         run: |
           set -o pipefail
           trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
-          if [ -s "$RUNNER_TEMP/com-volta.txt" ]; then
+          desligar_cron() {
+            psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" > /dev/null
+          }
+          : > "$RUNNER_TEMP/novas.txt"
+          mkdir -p "$RUNNER_TEMP/novas"
+          while IFS= read -r nome; do
+            [ -n "$nome" ] || continue
+            if [[ "${nome%%_*}" > "$ULTIMA_NA_PRODUCAO" ]]; then
+              echo "$nome" >> "$RUNNER_TEMP/novas.txt"
+              mv "supabase/migrations/$nome" "$RUNNER_TEMP/novas/"
+            fi
+          done < "$RUNNER_TEMP/com-volta.txt"
+          devolver_novas() {
+            while IFS= read -r nome; do
+              [ -n "$nome" ] && [ -f "$RUNNER_TEMP/novas/$nome" ] && mv "$RUNNER_TEMP/novas/$nome" supabase/migrations/
+            done < "$RUNNER_TEMP/novas.txt"
+            return 0
+          }
+          if [ -s "$RUNNER_TEMP/com-volta.txt" ] && [ "$(wc -l < "$RUNNER_TEMP/novas.txt")" != "$(wc -l < "$RUNNER_TEMP/com-volta.txt")" ]; then
             log="$RUNNER_TEMP/migration-up.log"
+            if ! timeout -k 30s 10m supabase migration up --local 2>&1 | tee "$log"; then
+              devolver_novas
+              node tests/banco/anotar.mjs migracoes "$log"
+              exit 1
+            fi
+          fi
+          desligar_cron
+          # P: o banco igual ao da produção de hoje (todas as migrações até $ULTIMA_NA_PRODUCAO).
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-producao.txt" 2> "$RUNNER_TEMP/impressao.err" \
+            || { devolver_novas; node tests/banco/anotar.mjs cauda "A impressão digital falhou (tests/banco/catalogo.sql)" "$RUNNER_TEMP/impressao.err"; exit 1; }
+          node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-producao.txt" "P (igual à produção: até $ULTIMA_NA_PRODUCAO)"
+          devolver_novas
+          if [ -s "$RUNNER_TEMP/novas.txt" ]; then
+            log="$RUNNER_TEMP/migration-up-novas.log"
             if ! timeout -k 30s 10m supabase migration up --local 2>&1 | tee "$log"; then
               node tests/banco/anotar.mjs migracoes "$log"
               exit 1
             fi
-          else
-            echo "Nenhuma migração com volta: o banco já tem todas."
           fi
-          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" > /dev/null
+          if [ ! -s "$RUNNER_TEMP/com-volta.txt" ]; then echo "Nenhuma migração com volta: o banco já tem todas."; fi
+          desligar_cron
           ativos=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job where active")
           jobs=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(jobname || ' (' || schedule || ')', ', ' order by jobid), 'nenhum') from cron.job")
           arquivos=$(ls supabase/migrations/*.sql | wc -l)
           no_banco=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from supabase_migrations.schema_migrations")
           url=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from private.app_settings where key = 'functions_url'")
-          echo "Migrações num banco novo: $no_banco de $arquivos (com volta: $(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")); pg_cron desligado de novo (ativos: $ativos): $jobs; endereço das funções gravado: $url" \
+          novas=$(paste -sd ' ' "$RUNNER_TEMP/novas.txt")
+          echo "Migrações num banco novo: $no_banco de $arquivos (com volta: $(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt"); novas, ainda não na produção: ${novas:-nenhuma}); pg_cron desligado de novo (ativos: $ativos): $jobs; endereço das funções gravado: $url" \
             | tee "$IMED_RESUMO_DIR/16-migracoes.txt"
           if [ "$ativos" != "0" ] || [ "$url" != "0" ]; then
             echo "::error title=pg_cron ou endereço::jobs ativos: $ativos; endereço das funções gravado no banco local: $url (os dois têm de ser 0)"
@@ -345,9 +387,13 @@ jobs:
             exit 1
           fi
           { echo -n "pgTAP: "; grep -E '^(Files=|Result:)' "$log" | tr '\n' ' '; echo; } | tee "$IMED_RESUMO_DIR/20-pgtap.txt"
-          # Pendência conhecida (TODO no 000_catalogo, decisão da fase 3.1): quem alcança o schema net do pg_net.
+          # Resultado de cada arquivo (linhas "<arquivo>.sql .. ok" do pg_prove).
+          por_arquivo=$(grep -E '[A-Za-z0-9_.-]+\.sql \.+ ' "$log" | sed -E 's#^.*/##; s/ \.+ / /' | paste -sd ';' - | sed 's/;/; /g' || true)
+          echo "pgTAP por arquivo: ${por_arquivo:-sem a lista do pg_prove}" | tee -a "$IMED_RESUMO_DIR/20-pgtap.txt"
+          # Pendência aceita na 3.1 (TODO no 000_catalogo): quem alcança o schema net do pg_net. Só o suporte do Supabase
+          # fecha (as permissões são do supabase_admin; o postgres das migrações não tem como tirar).
           net=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(r, ' e ' order by r), 'ninguém') from unnest(array['anon', 'authenticated']) r where has_schema_privilege(r, 'net', 'USAGE')")
-          echo "Pendência (TODO, fase 3.1): alcançam o schema net do pg_net (onde o token interno passa): $net" | tee -a "$IMED_RESUMO_DIR/20-pgtap.txt"
+          echo "Pendência aceita (TODO, só o suporte do Supabase fecha; decisão da 3.1): alcançam o schema net do pg_net: $net" | tee -a "$IMED_RESUMO_DIR/20-pgtap.txt"
 
       - name: Scripts do banco (tests/banco/*.mjs)
         id: scripts
@@ -367,9 +413,10 @@ jobs:
           done
           exit $falhou
 
-      # Volta das migrações que têm volta (da mais nova para a mais velha) e reaplicação. Três conferências pela
-      # impressão digital: os testes não deixaram rastro (igual a F1); depois da volta, o banco é IGUAL ao que nasceu
-      # sem elas (F0: pega volta que esquece ou apaga coisa demais); reaplicado, igual a F1.
+      # Volta das migrações que têm volta (da mais nova para a mais velha) e reaplicação. Quatro conferências pela
+      # impressão digital: os testes não deixaram rastro (igual a F1); desfeitas as migrações novas, o banco é IGUAL ao
+      # da produção de hoje (P: pega volta que esquece ou apaga coisa demais); desfeitas todas, igual ao que nasceu sem
+      # elas (F0); reaplicado, igual a F1.
       - name: Volta e reaplicação das migrações
         id: volta
         run: |
@@ -381,13 +428,22 @@ jobs:
             node tests/banco/anotar.mjs cauda "Os testes deixaram rastro no catálogo (impressão digital mudou; < antes, > depois)" "$RUNNER_TEMP/testes.diff"
             exit 1
           fi
-          mapfile -t voltas < <(sort -r "$RUNNER_TEMP/com-volta.txt")
-          for nome in "${voltas[@]}"; do
-            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/volta/$nome" > "$RUNNER_TEMP/volta.log" 2>&1; then
-              node tests/banco/anotar.mjs cauda "A volta falhou - $nome" "$RUNNER_TEMP/volta.log"
+          voltar() {
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/volta/$1" > "$RUNNER_TEMP/volta.log" 2>&1; then
+              node tests/banco/anotar.mjs cauda "A volta falhou - $1" "$RUNNER_TEMP/volta.log"
               exit 1
             fi
-          done
+          }
+          mapfile -t voltas < <(sort -r "$RUNNER_TEMP/com-volta.txt")
+          mapfile -t novas < <(sort -r "$RUNNER_TEMP/novas.txt")
+          mapfile -t antigas < <(comm -23 <(sort "$RUNNER_TEMP/com-volta.txt") <(sort "$RUNNER_TEMP/novas.txt") | sort -r)
+          for nome in "${novas[@]}"; do voltar "$nome"; done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/catalogo-depois-da-volta-das-novas.txt"
+          if ! diff "$RUNNER_TEMP/impressao-producao.txt" "$RUNNER_TEMP/catalogo-depois-da-volta-das-novas.txt" > "$RUNNER_TEMP/volta-novas.diff"; then
+            node tests/banco/anotar.mjs cauda "A volta das migrações novas não deixou o banco igual ao da produção (P; < P, > depois da volta)" "$RUNNER_TEMP/volta-novas.diff"
+            exit 1
+          fi
+          for nome in "${antigas[@]}"; do voltar "$nome"; done
           psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/catalogo-depois-da-volta.txt"
           if ! diff "$RUNNER_TEMP/impressao-sem-volta.txt" "$RUNNER_TEMP/catalogo-depois-da-volta.txt" > "$RUNNER_TEMP/volta.diff"; then
             node tests/banco/anotar.mjs cauda "A volta não deixou o banco igual ao que nasceu sem as migrações com volta (F0; < F0, > depois da volta)" "$RUNNER_TEMP/volta.diff"
@@ -406,7 +462,7 @@ jobs:
             node tests/banco/anotar.mjs cauda "A reaplicação não deixou o banco igual ao com todas as migrações (F1; < F1, > reaplicado)" "$RUNNER_TEMP/reaplicar.diff"
             exit 1
           fi
-          echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")); depois da volta, igual a F0 ($(wc -l < "$RUNNER_TEMP/impressao-sem-volta.txt") objetos); reaplicada, igual a F1 ($(wc -l < "$RUNNER_TEMP/impressao-todas.txt") objetos); os testes não deixaram rastro no catálogo" \
+          echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")); desfeitas as novas (${novas[*]:-nenhuma}), igual a P, a produção de hoje ($(wc -l < "$RUNNER_TEMP/impressao-producao.txt") objetos); desfeitas todas, igual a F0 ($(wc -l < "$RUNNER_TEMP/impressao-sem-volta.txt") objetos); reaplicadas, igual a F1 ($(wc -l < "$RUNNER_TEMP/impressao-todas.txt") objetos); os testes não deixaram rastro no catálogo" \
             | tee "$IMED_RESUMO_DIR/40-volta.txt"
 
       # Conferência final, mesmo se algo falhou: nenhuma resposta da internet registrada pelo banco em toda a execução.
