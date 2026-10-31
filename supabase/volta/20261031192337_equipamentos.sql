@@ -1,4 +1,4 @@
--- VOLTA da migração supabase/migrations/20261031120000_equipamentos.sql (só se for preciso desfazer).
+-- VOLTA da migração supabase/migrations/20261031192337_equipamentos.sql (só se for preciso desfazer).
 -- Devolve as buscas como eram (20261030043843_busca_area_inteira e 20261030021903_marketplace) e tira o que a
 -- migração criou: a tabela de aparelhos, as colunas equip_* de establishments e as funções de carga.
 -- Tem o mesmo nome da migração; se a migração for renomeada, renomeie esta também.

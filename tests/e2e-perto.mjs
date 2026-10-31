@@ -2125,6 +2125,47 @@ await scenario('exame na busca no celular (360 px): as opções do "eco" e os av
   await context.close();
 });
 
+// Aparelhos do CNES: o banco já devolve services com o exame do aparelho em uso (nome OU aparelho) e o site busca
+// as colunas equip_* para o aviso. Nunca promete que o local faz o exame.
+const EQ_ROWS = [
+  { ...estRow(9001, 300, 0, 'clinica', true, 'Clínica Aparelho Teste'), services: ['rm'] },
+  { ...estRow(9002, -400, 100, 'imagem', false, 'Imagem Sem Ressonância Teste'), services: ['rx', 'usg'], phone: '(11) 3000-1111' },
+];
+const EQ_EQUIP = { [EQ_ROWS[0].cnes]: { equip_exams: ['rm'], equip_exams_sus: ['rm'], equip_competencia: '2026-09-01' } };
+const eqFn = (r, b) => (b.action !== 'search' ? defaultFn(r, b) : json(r, { ok: true, provider: 'osm', radius_m: b.radius_m, warnings: [], imed: [],
+  cnes: pageOf(areaRows(EQ_ROWS, { p_lat: b.lat, p_lng: b.lng, p_radius_m: b.radius_m }), 0, 250), places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } }));
+const eqRest = (route, u) => {
+  if (!u.pathname.endsWith('/establishments')) return json(route, []);
+  const ids = (u.searchParams.get('cnes') ?? '').replace(/^in\.\(|\)$/g, '').replace(/^eq\./, '').split(',');
+  return json(route, ids.filter((c) => EQ_EQUIP[c]).map((c) => ({ cnes: c, ...EQ_EQUIP[c] })));
+};
+
+await scenario('aparelhos do CNES: ressonância pelo aparelho em uso, com o aviso para confirmar', async () => {
+  const { page, context, log, errors } = await newPage(browser, { fn: eqFn, data: EQ_ROWS, rest: eqRest, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+  await page.waitForSelector('.pc-equip');
+  assert.deepEqual(await names(page), ['Clínica Aparelho Teste']);
+  assert.equal((await page.textContent('.pc-equip')).trim(), 'Tem aparelho de ressonância em uso (cadastro oficial). Confirme com o local.');
+  assert.match(await cardSpeech(page, '.pc'), /Confirme com o local/);
+  assert.ok(log.rest.some((r) => r.startsWith('establishments?select=cnes,equip_exams')), 'busca os aparelhos dos locais na tela');
+  assert.ok(!/faz (o|a) (exame|ressonância)/i.test(await page.textContent('#list')), 'não promete o exame');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('aparelhos do CNES: nenhum local com o exame mostra os centros de imagem perto para ligar e confirmar', async () => {
+  const { page, context, errors } = await newPage(browser, { fn: eqFn, data: EQ_ROWS, rest: eqRest, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=mamo`);
+  await page.waitForSelector('[data-near] .eq-near li');
+  const st = await page.textContent('.st');
+  assert.match(st, /Nenhum local com esse exame aqui/);
+  assert.match(st, /Ligue e confirme se fazem o exame/);
+  assert.match(st, /Imagem Sem Ressonância Teste/);
+  assert.ok(!/Clínica Aparelho Teste/.test(st), 'só centros de diagnóstico por imagem');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter(([s]) => s !== 'ok');

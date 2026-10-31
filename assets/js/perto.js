@@ -64,6 +64,9 @@ const S = {
   exameNome: '', // exame de laboratório escrito na busca ("Hemograma"), para o aviso da lista
   ratings: new Map(), // id do local → { rating, reviews }, só o que veio do banco
   ratingsAsked: new Set(),
+  equip: new Map(), // CNES → aparelhos em uso informados ao cadastro oficial ({ exams, sus, competencia })
+  equipAsked: new Set(),
+  near: { key: '', rows: [], state: 'idle' }, // centros de imagem perto, quando nenhum local tem o exame
   scheduled: new Set(), // parceiros com agenda online (horários livres para escolher)
   scheduleAsked: new Set(),
   pendingOpen: null, // local pedido em ?local=, aberto quando a busca em volta dele termina
@@ -268,6 +271,7 @@ async function loadOsm(origin, radius, signal, seq) {
 // Notas dos locais na tela (até 300), quando existem avaliações publicadas. Falha não atrapalha a busca.
 // ids: locais específicos (por exemplo, o ponto do mapa que acabou de ser aberto).
 async function loadRatings(seq, ids = null) {
+  loadEquip(seq);
   const keys = (ids ?? allPlaces().map((p) => p.id)).filter((id) => !S.ratingsAsked.has(id)).slice(0, 300);
   if (!keys.length) return;
   keys.forEach((k) => S.ratingsAsked.add(k));
@@ -284,6 +288,61 @@ async function loadRatings(seq, ids = null) {
   } catch {
     keys.forEach((k) => S.ratingsAsked.delete(k));
   }
+}
+
+// Aparelhos em uso (cadastro oficial) dos locais na tela, para o aviso "Tem aparelho de ... em uso". Falha não
+// atrapalha: o local continua na lista (o banco já filtrou pelo exame).
+async function loadEquip(seq) {
+  if (!G.EQUIP_EXAMS.includes(S.f.exam)) return; // só com exame escolhido (é quando o aviso aparece)
+  const keys = allPlaces().filter((p) => p.source === 'cnes' && !p.equip && p.services.includes(S.f.exam)).map((p) => p.id.slice(5))
+    .filter((c) => !S.equipAsked.has(c)).slice(0, 150);
+  const path = G.equipPath(keys);
+  if (!path) return;
+  keys.forEach((k) => S.equipAsked.add(k));
+  try {
+    const rows = await restGet(path);
+    let got = 0;
+    for (const r of Array.isArray(rows) ? rows : []) {
+      const e = G.normalizeEquip(r);
+      if (!e?.exams.length) continue;
+      S.equip.set(String(r.cnes), e);
+      got += 1;
+    }
+    if (got && seq === S.seq && S.phase === 'results') render();
+  } catch {
+    keys.forEach((k) => S.equipAsked.delete(k));
+  }
+}
+const withEquip = (p) => (p.source === 'cnes' && !p.equip && S.equip.has(p.id.slice(5)) ? { ...p, equip: S.equip.get(p.id.slice(5)) } : p);
+function equipLineHTML(p) {
+  const t = G.equipNote(withEquip(p), S.f.exam);
+  return t ? `<p class="pc-equip"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>${esc(t)}</span></p>` : '';
+}
+
+// Nenhum local com o exame de imagem: os centros de diagnóstico por imagem mais perto (sem o exame), para ligar e
+// confirmar. Nunca diz que fazem o exame.
+async function loadNear(seq) {
+  const key = `${areaKey()}|near`;
+  if (S.near.key === key) return;
+  S.near = { key, rows: [], state: 'loading' };
+  try {
+    const rows = await rpc('nearby_establishments', { ...G.areaArgs(S.origin, { ...S.f, exam: '', kind: 'imagem' }), p_limit: 5, p_offset: 0 });
+    if (seq !== S.seq || S.near.key !== key) return;
+    S.near = { key, rows: (Array.isArray(rows) ? rows : []).map((r) => G.normalizeCnes(r, S.origin)), state: 'ok' };
+  } catch {
+    if (S.near.key === key) S.near = { key, rows: [], state: 'error' };
+  }
+  if (S.phase === 'results') render();
+}
+function nearHTML() {
+  if (S.near.key !== `${areaKey()}|near` || !S.near.rows.length) return '';
+  const items = S.near.rows.map((p) => {
+    const url = G.localUrl(p);
+    const tel = p.phone && G.telHref(p.phone);
+    return `<li><b>${url ? `<a class="link" href="${esc(url)}">${esc(p.name)}</a>` : esc(p.name)}</b><span>${distanceText(p)}${p.address ? ` · ${esc(p.address)}` : ''}</span>${tel ? `<a href="${esc(tel)}"><i class="fa-solid fa-phone" aria-hidden="true"></i>${esc(p.phone)}</a>` : ''}</li>`;
+  }).join('');
+  return `<div class="eq-nearbox" data-near><h3>Centros de diagnóstico por imagem perto</h3>
+    <p>Ligue e confirme se fazem o exame: o cadastro oficial não diz isso.</p><ul class="eq-near">${items}</ul></div>`;
 }
 
 // Parceiros na tela que têm agenda online. Falha não atrapalha: o botão continua sendo o pedido.
@@ -1195,6 +1254,8 @@ function cardLabel(p) {
     parts.push('Cadastro oficial');
     if (p.hours?.[0] === 'Aberto 24 horas') parts.push('24 horas');
     if (p.sus) parts.push('Atende SUS');
+    const eq = G.equipNote(withEquip(p), S.f.exam);
+    if (eq) parts.push(eq);
   }
   const r = S.ratings.get(p.id);
   if (r) parts.push(`Nota ${G.formatRating(r.rating)} de 5, ${plural(r.reviews, 'avaliação', 'avaliações')}`);
@@ -1223,6 +1284,7 @@ function cardHTML(p) {
       <span id="${did}" hidden>${esc(cardSummary(p))}</span>
       <p class="pc-addr">${esc(p.address || 'Endereço não informado no mapa')}</p>
       ${svc ? `<div class="pc-svc">${svc}</div>` : ''}
+      ${equipLineHTML(p)}
       <div class="pc-meta"><span class="pc-dist"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>${distanceText(p)}</span><span>${k.n}</span>${ratingHTML(p)}${priceHTML(p)}${p.source === 'cnes' && p.hours ? `<span>${esc(p.hours[0])}</span>` : ''}</div>
       ${contactLinksHTML(p)}
     </div>
@@ -1285,6 +1347,13 @@ function emptyHTML() {
     const text = n ? `Há ${countWord(n)} em até ${kmLabel(S.f.radius)}, mas nenhum combina com os filtros escolhidos.`
       : `Nenhum estabelecimento em até ${kmLabel(S.f.radius)} combina com os filtros escolhidos.`;
     const wider = next && !G.onlyPartnerFilter(S.f) ? `<button class="btn btn-ghost" type="button" data-act="radius" data-radius="${next}">Buscar em até ${kmLabel(next)}</button>` : '';
+    if (G.IMAGING_EXAMS.includes(S.f.exam) && !G.onlyPartnerFilter(S.f) && S.origin) {
+      loadNear(S.seq);
+      const nome = G.APARELHO[S.f.exam];
+      return stateHTML('fa-x-ray', 'Nenhum local com esse exame aqui',
+        `Nenhum local em até ${kmLabel(S.f.radius)} informou aparelho ${esc(nome)} ao cadastro oficial nem tem o exame no nome.`,
+        '<button class="btn btn-primary" type="button" data-act="clear">Limpar filtros</button>' + wider, false, nearHTML());
+    }
     return stateHTML('fa-filter', 'Nada com esses filtros', text,
       '<button class="btn btn-primary" type="button" data-act="clear">Limpar filtros</button>' + wider, false, priceNote);
   }

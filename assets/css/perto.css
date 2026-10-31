@@ -486,3 +486,12 @@ fieldset.fld{border:0}
   }
 }
 /* ==== Tema escuro do grupo "busca": fim ==== */
+/* Aparelhos do CNES (cadastro oficial): aviso no cartão, na ficha e centros de imagem quando nenhum local tem o exame */
+.pc-equip{display:flex;gap:7px;align-items:flex-start;margin:6px 0 0;font-size:12.5px;line-height:1.4;color:var(--text)}
+.pc-equip i{color:var(--bu-azul-ic,#2C7BE5);margin-top:2px}
+.dt-equip{margin-top:14px}
+.dt-equip h3{font-size:14px;margin:0 0 8px}
+.dt-equip p{margin:8px 0 0}
+.eq-near{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px;text-align:left}
+.eq-near li{padding:11px 14px;border-radius:14px;background:var(--bg2);display:grid;gap:3px}
+.eq-near li span{font-size:12.5px;color:var(--muted)}

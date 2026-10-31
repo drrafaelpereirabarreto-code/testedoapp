@@ -262,6 +262,25 @@ await scenario('ficha do CNES sem avaliações e sem localização: sem nota, se
   assert.deepEqual(errors, []);
 });
 
+await scenario('ficha do CNES: aparelhos informados ao CNES, com SUS, fonte e competência, sem prometer o exame', async () => {
+  const row = { ...EST['2077485'], services: [], equip_exams: ['rm', 'tc'], equip_exams_sus: ['tc'], equip_competencia: '2026-09-01' };
+  const est = (route, u) => json(route, u.searchParams.get('cnes') === 'eq.2077485' ? [row] : []);
+  const { page, errors, context } = await newPage(browser, { est });
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('[data-equip]');
+  const t = await page.textContent('[data-equip]');
+  assert.match(t, /Aparelhos informados ao CNES/);
+  assert.match(t, /Aparelho de ressonância\s*O local informou que este aparelho não atende pelo SUS/);
+  assert.match(t, /Aparelho de tomografia\s*O local informou que este aparelho atende pelo SUS/);
+  assert.match(t, /Confirme com o local/);
+  assert.match(t, /Isso não garante que ele faça o exame para o público/);
+  assert.match(t, /Fonte: CNES\/DATASUS – Ministério da Saúde, competência 09\/2026/);
+  assert.ok(!/particular/i.test(t));
+  assert.match(await page.textContent('#exames'), /Ressonância/);
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
 await scenario('compartilhar: usa o compartilhamento do celular ou copia o link', async () => {
   const shared = await newPage(browser, { initScript: () => { navigator.share = (d) => { window.__shared = d; return Promise.resolve(); }; } });
   await shared.page.goto(`${BASE}local.html?cnes=2077485`);
