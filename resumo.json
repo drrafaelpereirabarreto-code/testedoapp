@@ -1,0 +1,19 @@
+{
+  "url": "https://drrafaelpereirabarreto-code.github.io/testedoapp/",
+  "feitos": [
+    {
+      "formato": "vertical",
+      "arquivo": "/home/runner/work/_temp/video/imed-vertical.mp4",
+      "quadros": 1045,
+      "segundos": 68.8,
+      "falhas": []
+    },
+    {
+      "formato": "horizontal",
+      "arquivo": "/home/runner/work/_temp/video/imed-horizontal.mp4",
+      "quadros": 476,
+      "segundos": 53.4,
+      "falhas": []
+    }
+  ]
+}
