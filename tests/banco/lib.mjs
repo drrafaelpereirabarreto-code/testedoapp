@@ -24,15 +24,27 @@ export const NO_GITHUB = process.env.GITHUB_ACTIONS === 'true';
 const esc = (s) => String(s).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
 const escProp = (s) => esc(s).replace(/:/g, '%3A').replace(/,/g, '%2C');
 
+// O GitHub corta a mensagem de cada anotação em ~4.096 bytes (conferido: o resumo parou no byte 4.096).
+export const MAX_BYTES_AVISO = 3800;
+/** Corta o texto em `max` bytes (UTF-8), sem quebrar letra, e marca o corte. */
+export function cortarBytes(texto, max = MAX_BYTES_AVISO) {
+  const t = String(texto);
+  if (Buffer.byteLength(t, 'utf8') <= max) return t;
+  let fim = Math.min(t.length, max);
+  while (fim > 0 && Buffer.byteLength(t.slice(0, fim), 'utf8') > max - 12) fim--;
+  return `${t.slice(0, fim)} …(cortado)`;
+}
+
 /**
  * Mostra um aviso. No GitHub vira anotação (::error, ::warning ou ::notice) no topo da página da execução,
- * com até 14 linhas por aviso (linhas vazias são puladas) e no máximo `maxAvisos` avisos; fora dele, texto simples.
+ * com até 14 linhas por aviso (linhas vazias são puladas), até ~3.800 bytes cada, e no máximo `maxAvisos` avisos;
+ * fora dele, texto simples.
  */
 export function anotar(nivel, titulo, texto = '', { maxLinhas = 14, maxAvisos = 3 } = {}) {
   const linhas = String(texto).split('\n').map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim() !== '');
   const blocos = [];
   for (let i = 0; i < Math.max(linhas.length, 1) && blocos.length < maxAvisos; i += maxLinhas) {
-    blocos.push(linhas.slice(i, i + maxLinhas).join('\n'));
+    blocos.push(cortarBytes(linhas.slice(i, i + maxLinhas).join('\n')));
   }
   blocos.forEach((b, k) => {
     const t = blocos.length > 1 ? `${titulo} (${k + 1}/${blocos.length})` : titulo;

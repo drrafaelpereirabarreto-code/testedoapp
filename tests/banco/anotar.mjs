@@ -5,6 +5,7 @@
 //   node tests/banco/anotar.mjs migracoes <registro>        "supabase start" ou "supabase migration up" que falhou:
 //                                                           a migração culpada (nome, erro, SQLSTATE, comando) ou,
 //                                                           se o banco subiu, o fim do registro e o dos contêineres
+//   node tests/banco/anotar.mjs vigia <registro com hora> <vigia.log>   em quanto tempo o vigia desligou o pg_cron
 //   node tests/banco/anotar.mjs pgtap <registro>            cada teste pgTAP que falhou (com have/want) e erros de SQL
 //   node tests/banco/anotar.mjs cauda "<título>" <registro> as últimas linhas do registro
 //   node tests/banco/anotar.mjs resumo <pasta> "<passos>"   o resumo de todos os passos (até 3 notas de 40 linhas)
@@ -18,7 +19,7 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { anotar } from './lib.mjs';
+import { anotar, cortarBytes, MAX_BYTES_AVISO } from './lib.mjs';
 
 const [modo, ...resto] = process.argv.slice(2);
 const MAX = 8;
@@ -110,8 +111,9 @@ function pgtap(texto) {
   if (resultado.length) anotar('error', 'pgTAP - resultado', resultado.join('\n'), { maxAvisos: 1 });
 }
 
-// O resumo vai em até 3 notas de 40 linhas (o GitHub mostra no máximo 10 notas por passo). Se passar disso, um
-// aviso diz quantas linhas ficaram de fora; o resumo inteiro fica no resumo da execução (GITHUB_STEP_SUMMARY).
+// O resumo vai em até 5 notas de no máximo 40 linhas e ~3.800 bytes cada (o GitHub corta cada anotação em ~4.096
+// bytes e mostra no máximo 10 notas por passo). Se passar disso, um aviso diz quantas linhas ficaram de fora; o
+// resumo inteiro fica no resumo da execução (GITHUB_STEP_SUMMARY).
 function resumo(pasta, passos) {
   const linhas = [];
   if (passos) linhas.push(`Passos: ${passos}`);
@@ -126,22 +128,61 @@ function resumo(pasta, passos) {
   }
   if (!linhas.length) linhas.push('nenhum passo deixou resumo');
   const POR_NOTA = 40;
-  const MAX_NOTAS = 3;
+  const MAX_NOTAS = 5;
   const blocos = [];
-  for (let i = 0; i < linhas.length; i += POR_NOTA) blocos.push(linhas.slice(i, i + POR_NOTA));
+  let atual = [];
+  let bytes = 0;
+  for (const bruta of linhas) {
+    const l = cortarBytes(bruta, 1500);
+    const b = Buffer.byteLength(l, 'utf8') + 1;
+    if (atual.length && (atual.length >= POR_NOTA || bytes + b > MAX_BYTES_AVISO)) { blocos.push(atual); atual = []; bytes = 0; }
+    atual.push(l);
+    bytes += b;
+  }
+  if (atual.length) blocos.push(atual);
   const mostrados = blocos.slice(0, MAX_NOTAS);
   mostrados.forEach((b, k) => {
     anotar('notice', mostrados.length > 1 ? `Resumo do banco (${k + 1}/${mostrados.length})` : 'Resumo do banco', b.join('\n'),
       { maxAvisos: 1, maxLinhas: POR_NOTA });
   });
   if (blocos.length > MAX_NOTAS) {
+    const fora = blocos.slice(MAX_NOTAS).reduce((n, b) => n + b.length, 0);
     anotar('warning', 'Resumo do banco cortado',
-      `${linhas.length} linhas; as notas mostram as ${POR_NOTA * MAX_NOTAS} primeiras (o resto está no resumo da execução).`,
-      { maxAvisos: 1 });
+      `${linhas.length} linhas; ${fora} ficaram fora das notas (estão no resumo da execução).`, { maxAvisos: 1 });
   }
   if (process.env.GITHUB_STEP_SUMMARY) {
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Resumo do banco\n\n${linhas.map((l) => `- ${l}`).join('\n')}\n`);
   }
+}
+
+/* ===================== Vigia do pg_cron (banco.yml, passo F0) ===================== */
+// <registro com hora>: cada linha do "supabase start" com o instante (ms) na frente; <vigia.log>: "<ms> conectou",
+// "<ms> cron" (o schema cron apareceu) e "<ms> desligou <n>". A migração da fila (20261030021434_fila_importacao)
+// agenda o job que, nas migrações antigas, tem o endereço da produção no código: mostra quanto tempo ele pode ter
+// ficado ligado (do fim dessa migração até o primeiro desligamento). O instante de cada linha é o de quando a CLI a
+// escreveu; "Applying migration X" sai ANTES de aplicar X, então a migração da fila terminou antes da linha seguinte.
+function vigia(arqTempo, arqVigia) {
+  const linhas = linhasDe(ler(arqTempo)).filter(util).map((l) => {
+    const i = l.indexOf(' ');
+    return { ms: Number(l.slice(0, i)), texto: l.slice(i + 1) };
+  }).filter((x) => Number.isFinite(x.ms));
+  const eventos = linhasDe(ler(arqVigia)).filter(util).map((l) => l.split(' '))
+    .map(([ms, tipo, n]) => ({ ms: Number(ms), tipo, n: Number(n ?? 0) }));
+  const inicio = linhas[0]?.ms;
+  const iFila = linhas.findIndex((x) => /Applying migration 20261030021434_/.test(x.texto));
+  const depois = iFila >= 0 ? linhas.slice(iFila + 1).find((x) => /Applying migration |Starting containers|Seeding/.test(x.texto)) : null;
+  const conectou = eventos.find((e) => e.tipo === 'conectou');
+  const desligou = eventos.filter((e) => e.tipo === 'desligou');
+  const s = (ms) => `${(ms / 1000).toFixed(1)} s`;
+  const partes = [];
+  if (conectou && inicio) partes.push(`conectou ao banco ${s(conectou.ms - inicio)} depois do início do start`);
+  else partes.push('não conseguiu conectar durante o start');
+  if (depois && desligou.length) {
+    const delta = desligou[0].ms - depois.ms;
+    partes.push(`a migração da fila terminou até ${s(depois.ms - inicio)} e o primeiro desligamento veio ${delta <= 0 ? 'antes da linha seguinte da CLI' : `${delta} ms depois`}`);
+  }
+  partes.push(`${desligou.length} desligamento(s), ${desligou.reduce((n, e) => n + e.n, 0)} job(s) no total`);
+  console.log(`Vigia do pg_cron: ${partes.join('; ')}`);
 }
 
 /* ===================== Impressão digital (tests/banco/catalogo.sql) ===================== */
@@ -217,6 +258,7 @@ function impressaoLinhas(arq, tiposTexto) {
 
 if (modo === 'migracoes' || modo === 'supabase-start') migracoes(ler(resto[0]));
 else if (modo === 'pgtap') pgtap(ler(resto[0]));
+else if (modo === 'vigia') vigia(resto[0], resto[1]);
 else if (modo === 'cauda') cauda(resto[0], ler(resto[1]));
 else if (modo === 'resumo') resumo(resto[0], resto[1]);
 else if (modo === 'impressao') impressao(resto[0], resto[1] || 'do banco');

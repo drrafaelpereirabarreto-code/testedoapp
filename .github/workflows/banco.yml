@@ -173,11 +173,20 @@ jobs:
             mv "supabase/migrations/$nome" "$RUNNER_TEMP/com-volta/"
           done
 
-          # Vigia (a cada meio segundo, até o banco subir): desliga todo job ativo do pg_cron.
+          # Vigia (a cada meio segundo, até o banco subir): desliga todo job ativo do pg_cron. Anota em vigia.log (ms)
+          # a primeira conexão, quando o schema cron apareceu e cada desligamento (o resumo mostra o tempo de reação).
           (
+            conectou=''
+            cron=''
             while :; do
-              n=$(psql "$DB_VIGIA" -wqAtX -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" 2>/dev/null) || n=''
-              if [ -n "$n" ] && [ "$n" != "0" ]; then echo "$(date -u +%H:%M:%S) desligou $n job(s)" >> "$RUNNER_TEMP/vigia.log"; fi
+              if r=$(psql "$DB_VIGIA" -wqAtX -c "select to_regclass('cron.job') is not null" 2>/dev/null); then
+                [ -n "$conectou" ] || { conectou=1; echo "$(date +%s%3N) conectou" >> "$RUNNER_TEMP/vigia.log"; }
+                if [ "$r" = "t" ]; then
+                  [ -n "$cron" ] || { cron=1; echo "$(date +%s%3N) cron" >> "$RUNNER_TEMP/vigia.log"; }
+                  n=$(psql "$DB_VIGIA" -wqAtX -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" 2>/dev/null) || n=''
+                  if [ -n "$n" ] && [ "$n" != "0" ]; then echo "$(date +%s%3N) desligou $n" >> "$RUNNER_TEMP/vigia.log"; fi
+                fi
+              fi
               sleep 0.5
             done
           ) &
@@ -187,7 +196,9 @@ jobs:
           log="$RUNNER_TEMP/supabase-start.log"
           inicio=$SECONDS
           supabase --version
-          if ! timeout -k 30s 15m supabase start -x studio,imgproxy,storage-api,logflare,vector,mailpit,postgres-meta,supavisor 2>&1 | tee "$log"; then
+          # O registro vai inteiro para a tela e para $log; uma cópia com o instante (ms) de cada linha vai para o vigia.
+          if ! timeout -k 30s 15m supabase start -x studio,imgproxy,storage-api,logflare,vector,mailpit,postgres-meta,supavisor 2>&1 \
+               | tee "$log" | while IFS= read -r linha; do printf '%s %s\n' "$(date +%s%3N)" "$linha" >> "$log.hora"; printf '%s\n' "$linha"; done; then
             node tests/banco/anotar.mjs migracoes "$log"
             exit 1
           fi
@@ -205,11 +216,16 @@ jobs:
           kill "$vigia" 2>/dev/null || true
           ativos=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job where active")
           jobs=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(jobname || ' (' || schedule || ')', ', ' order by jobid), 'nenhum') from cron.job")
-          vezes=$( [ -f "$RUNNER_TEMP/vigia.log" ] && wc -l < "$RUNNER_TEMP/vigia.log" || echo 0 )
-          echo "pg_cron desligado (ativos: $ativos; o vigia desligou jobs $vezes vez(es) durante o start): $jobs" | tee "$IMED_RESUMO_DIR/15-cron.txt"
+          rodaram=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job_run_details")
+          echo "pg_cron desligado (ativos: $ativos; execuções de job durante o start: $rodaram): $jobs" | tee "$IMED_RESUMO_DIR/15-cron.txt"
+          node tests/banco/anotar.mjs vigia "$log.hora" "$RUNNER_TEMP/vigia.log" | tee -a "$IMED_RESUMO_DIR/15-cron.txt"
           if [ "$ativos" != "0" ]; then
             echo "::error title=pg_cron ligado::$ativos job(s) do pg_cron continuam ativos no banco local"
             exit 1
+          fi
+          if [ "$rodaram" != "0" ]; then
+            quais=$(psql "$db_url" -qAt -c "select string_agg(coalesce(j.jobname, d.jobid::text) || ' ' || d.status || coalesce(' (' || left(d.return_message, 80) || ')', ''), '; ') from cron.job_run_details d left join cron.job j using (jobid)")
+            echo "::warning title=Um job do pg_cron rodou antes do vigia desligar::$quais (a trava de rede barra qualquer chamada; veja a conferência final da rede)"
           fi
 
           versao=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select current_setting('server_version')")
