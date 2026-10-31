@@ -20,7 +20,7 @@ NOMES = {'rm': 'Ressonância', 'tc': 'Tomografia', 'mamo': 'Mamografia', 'rx': '
 # (1 = diagnóstico por imagem, 4 = métodos gráficos): (inclui, exclui, tipos aceitos ou None = qualquer tipo).
 REGRA = {
     'rm': (r'RESSON', None, {'1'}),
-    'tc': (r'TOMOGRAF', r'COERENCIA|OPTIC', {'1'}),
+    'tc': (r'TOMOGRAF', r'COERENCIA|OPTIC|SIMULADOR|RADIOTERAP', {'1'}),
     'mamo': (r'MAMOGRAF', r'PROCESSADORA', {'1'}),
     'rx': (r'RAIO.?X', r'ODONTO|DENT|PANORAM|INTRAORAL|DENSITOM|HEMODIN|MAMOGRAF|MOVEL|ARCO', {'1'}),
     'dens': (r'DENSITOM', None, {'1'}),

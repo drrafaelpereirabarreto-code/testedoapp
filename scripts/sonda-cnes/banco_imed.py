@@ -9,13 +9,14 @@ com o tipo e os exames que o site deduziu pelo nome. Não grava nada.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from comum import CAMPINAS, DADOS, SAO_PAULO, anotar, http, json_de, ler_json, resumo_http, tabela  # noqa: E402
+from comum import CAMPINAS, DADOS, PONTOS, SAO_PAULO, anotar, http, json_de, ler_json, resumo_http, tabela  # noqa: E402
 from exames import NOMES  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
@@ -45,6 +46,33 @@ def do_banco(url: str, chave: str, ibge: int) -> tuple[dict, str]:
             break
         pagina += 1
     return out, '; '.join(notas)
+
+
+def rpc(url: str, chave: str, funcao: str, args: dict) -> tuple[list, str]:
+    r = http(f'{url}/rest/v1/rpc/{funcao}', metodo='POST', corpo=json.dumps(args).encode(),
+             cab={'apikey': chave, 'Authorization': f'Bearer {chave}', 'Content-Type': 'application/json',
+                  'Accept': 'application/json'}, timeout=60)
+    j = json_de(r)
+    return (j if isinstance(j, list) else []), resumo_http(r)
+
+
+def perto(url: str, chave: str, res: dict, exame: str = 'rm', raio_m: int = 5000) -> str:
+    """O mesmo raio de 5 km que o site usa: o que o site acha hoje x o que teria com o aparelho do CNES."""
+    blocos = []
+    for nome, (lat, lon, ibge) in PONTOS.items():
+        base_args = {'p_lat': lat, 'p_lng': lon, 'p_radius_m': raio_m, 'p_limit': 5000}
+        todos, nota = rpc(url, chave, 'establishment_points', base_args)
+        hoje, _ = rpc(url, chave, 'establishment_points', {**base_args, 'p_exam': exame})
+        eq = set(res.get('exames', {}).get(exame, {}).get(str(ibge), []))
+        no_raio = {str(x.get('cnes')): x for x in todos}
+        com = sorted((no_raio[c] for c in eq & set(no_raio)), key=lambda x: x.get('distance_m') or 0)
+        uso = res.get('em_uso', {}).get(exame, {})
+        blocos.append(f"{nome}, até {raio_m // 1000} km: {len(no_raio)} estabelecimentos do CNES no banco do IMED ({nota}); "
+                      f"o site acha HOJE com o exame: {len(hoje)} ({'; '.join(str(x.get('name')) for x in hoje[:5])}); "
+                      f"com o aparelho em uso no CNES: {len(com)}\n"
+                      + '\n'.join(f"  {x.get('distance_m')} m  {x.get('cnes')}  {x.get('name')} ({x.get('kind')}), {uso.get(str(x.get('cnes')), '?')} em uso"
+                                   for x in com[:10]))
+    return '\n'.join(blocos)
 
 
 def main() -> None:
@@ -84,6 +112,8 @@ def main() -> None:
                       + '\nRessonância:\n' + ('\n'.join(exemplos) or '  (nada)'))
     anotar('notice', f"{cod} {titulo} ({res.get('mes')}) x banco do IMED (só leitura, chave pública do site)",
            '\n'.join(blocos) + '\nExames: ' + ', '.join(f'{k} = {v}' for k, v in NOMES.items()))
+    if res.get('exames', {}).get('rm'):
+        anotar('notice', f"{cod}b {titulo}: ressonância até 5 km, como na busca do site (só leitura)", perto(url, chave, res))
 
 
 if __name__ == '__main__':

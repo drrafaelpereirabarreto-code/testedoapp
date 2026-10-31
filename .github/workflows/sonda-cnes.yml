@@ -11,7 +11,8 @@
 #   F  os arquivos mensais por UF do FTP do DATASUS (CNES/200508_/Dados/EQ/EQ<UF><AAMM>.dbc);
 #   O  outras: portais de dados abertos (CKAN), o serviço da ficha do site do CNES e o TabNet.
 # Quais fontes rodam: as letras de scripts/sonda-cnes/fontes.txt (para não repetir à toa as pesadas);
-# H = só as competências e a paginação da rota cnes-equipamentos da API (3ª rodada).
+# H = só as competências e a paginação da rota cnes-equipamentos da API (3ª rodada); Z = a base completa lida
+# por partes (só o índice do ZIP e as tabelas de equipamento, sem baixar o arquivo inteiro); C = compara F com Z.
 # Para B e F: tempo e tamanho do download, colunas, códigos oficiais dos aparelhos, quantos estabelecimentos de
 # Campinas (3509502) e São Paulo (3550308) têm ressonância em uso, com exemplos (CNES, quantidade; nome só de pessoa
 # jurídica) e a conferência com o que o site do IMED mostra hoje (só leitura, pela API pública do site, com a mesma
@@ -57,7 +58,7 @@ jobs:
           persist-credentials: false
       - name: Ler a lista
         id: ler
-        run: echo "fontes=$(tr -cd 'RABFOH' < scripts/sonda-cnes/fontes.txt)" >> "$GITHUB_OUTPUT"
+        run: echo "fontes=$(tr -cd 'RABFOHZC' < scripts/sonda-cnes/fontes.txt)" >> "$GITHUB_OUTPUT"
 
   rede:
     name: R - Rede (de onde sai e o que alcança)
@@ -171,6 +172,7 @@ jobs:
     timeout-minutes: 45
     outputs:
       rm_campinas: ${{ steps.cnes.outputs.rm_campinas }}
+      rm: ${{ steps.listas.outputs.rm }}
     steps:
       - name: Baixar o código
         uses: actions/checkout@v7
@@ -192,6 +194,22 @@ jobs:
       - name: Conferir com o banco do IMED (só leitura, chave pública do site)
         if: always()
         run: python -I scripts/sonda-cnes/banco_imed.py eq
+      - name: Guardar as listas de ressonância (para comparar as fontes)
+        id: listas
+        if: always()
+        env:
+          RESUMO: eq-resumo.json
+        run: |
+          python3 -I - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'sonda' / 'dados' / os.environ['RESUMO']
+          try:
+              d = json.loads(p.read_text(encoding='utf-8'))
+              out = {'mes': d.get('mes'), 'rm': d['exames']['rm'], 'uso': d['em_uso']['rm']}
+          except Exception:
+              out = {}
+          print('rm=' + json.dumps(out, separators=(',', ':')))
+          PY
       - name: Separar 3 CNES de Campinas com ressonância (para a sonda O)
         id: cnes
         if: always()
@@ -222,6 +240,73 @@ jobs:
       - name: Publicar avisos (5)
         if: always()
         run: python3 -I "$PUBLICAR" 4 --ultimo
+
+  zip:
+    name: Z - Base completa lida por partes (índice do ZIP e tabelas de equipamento)
+    needs: plano
+    if: contains(needs.plano.outputs.fontes, 'Z')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    outputs:
+      rm: ${{ steps.listas.outputs.rm }}
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Achar o mês mais recente (FTP e HTTPS)
+        run: python3 -I scripts/sonda-cnes/base.py descobrir
+      - name: Ler por partes (HTTP Range ou FTP REST)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/base_parcial.py
+      - name: Conferir com o banco do IMED (só leitura, chave pública do site)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/banco_imed.py base
+      - name: Guardar as listas de ressonância (para comparar as fontes)
+        id: listas
+        if: always()
+        env:
+          RESUMO: base-resumo.json
+        run: |
+          python3 -I - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'sonda' / 'dados' / os.environ['RESUMO']
+          try:
+              d = json.loads(p.read_text(encoding='utf-8'))
+              out = {'mes': d.get('mes'), 'rm': d['exames']['rm'], 'uso': d['em_uso']['rm']}
+          except Exception:
+              out = {}
+          print('rm=' + json.dumps(out, separators=(',', ':')))
+          PY
+      - name: Publicar avisos (1)
+        if: always()
+        run: python3 -I "$PUBLICAR" 0
+      - name: Publicar avisos (2)
+        if: always()
+        run: python3 -I "$PUBLICAR" 1
+      - name: Publicar avisos (3)
+        if: always()
+        run: python3 -I "$PUBLICAR" 2 --ultimo
+
+  comparar:
+    name: C - Comparar FTP EQ com a base completa (ressonância)
+    needs: [plano, ftp, zip]
+    if: always() && contains(needs.plano.outputs.fontes, 'C')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Comparar as listas
+        env:
+          RM_FTP: ${{ needs.ftp.outputs.rm }}
+          RM_ZIP: ${{ needs.zip.outputs.rm }}
+        run: python3 -I scripts/sonda-cnes/comparar.py
+      - name: Publicar avisos
+        if: always()
+        run: python3 -I "$PUBLICAR" 0 --ultimo
 
   outras:
     name: O - Outras fontes (portais, site do CNES, TabNet)
