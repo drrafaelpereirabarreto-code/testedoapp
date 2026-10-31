@@ -1,0 +1,190 @@
+# Sonda do CNES: dá para saber, por fonte oficial e aberta, quais APARELHOS cada estabelecimento tem
+# (ressonância, tomógrafo, mamógrafo, raio-X, densitômetro, ultrassom, eletrocardiógrafo...)?
+#
+# Hoje o site deduz o exame de um local não parceiro só pelo NOME (supabase/functions/importar-clinicas/lib.ts):
+# "ressonância em Campinas" deu 0 locais em 5 km. Esta sonda testa de verdade, de uma máquina do GitHub (a do Claude
+# não alcança os servidores do governo), as fontes candidatas:
+#   R  a rede: de onde a máquina sai e quais servidores do governo respondem;
+#   A  a API de dados abertos do Ministério (apidadosabertos.saude.gov.br): tem equipamentos?
+#   B  a base completa mensal do CNES (BASE_DE_DADOS_CNES_AAAAMM.ZIP, CSV), com estabelecimento x equipamento;
+#   F  os arquivos mensais por UF do FTP do DATASUS (CNES/200508_/Dados/EQ/EQ<UF><AAMM>.dbc);
+#   O  outras: portais de dados abertos (CKAN), o serviço da ficha do site do CNES e o TabNet.
+# Para B e F: tempo e tamanho do download, colunas, códigos oficiais dos aparelhos, quantos estabelecimentos de
+# Campinas (3509502) e São Paulo (3550308) têm ressonância em uso, com exemplos (CNES, quantidade; nome só de pessoa
+# jurídica) e a conferência com o que o site do IMED mostra hoje (só leitura, pela API pública do site, com a mesma
+# chave pública de assets/js/config.js que qualquer visitante recebe).
+#
+# Sem segredo nenhum; não grava nada em lugar nenhum; nenhum dado pessoal nos avisos (CPF, e-mail, usuário do
+# sistema e nome de pessoa física ficam de fora). O registro completo e os artifacts não abrem para o Claude: cada
+# script guarda os seus avisos e os passos "Publicar" os mostram como anotações (9 por passo; o GitHub aceita ~10
+# por passo e 50 por job). Para ler: gh api repos/<repo>/actions/runs/<id>/jobs e
+# gh api repos/<repo>/check-runs/<job_id>/annotations. Este ramo é só de prova: não vai para a main.
+name: Sonda CNES (aparelhos)
+
+on:
+  push:
+    branches: ['ci/sonda-cnes']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonda-cnes-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: '1'
+  PYTHONDONTWRITEBYTECODE: '1'
+  PIP_DISABLE_PIP_VERSION_CHECK: '1'
+  PUBLICAR: scripts/sonda-cnes/publicar.py
+
+jobs:
+  rede:
+    name: R - Rede (de onde sai e o que alcança)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Testar DNS, TCP e HTTP dos servidores do governo
+        run: python3 -I scripts/sonda-cnes/rede.py
+      - name: Publicar avisos
+        if: always()
+        run: python3 -I "$PUBLICAR" 0 --ultimo
+
+  api:
+    name: A - API de dados abertos do Ministério
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Documentação, fichas reais e rotas de equipamentos
+        run: python3 -I scripts/sonda-cnes/api.py
+      - name: Publicar avisos (1)
+        if: always()
+        run: python3 -I "$PUBLICAR" 0
+      - name: Publicar avisos (2)
+        if: always()
+        run: python3 -I "$PUBLICAR" 1 --ultimo
+
+  base:
+    name: B - Base completa do CNES (ZIP com CSV)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Achar o mês mais recente (FTP e HTTPS)
+        run: python3 -I scripts/sonda-cnes/base.py descobrir
+      - name: Baixar o ZIP (tempo e tamanho)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/base.py baixar
+      - name: Analisar as tabelas (equipamentos, Campinas, São Paulo, serviços)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/base.py analisar
+      - name: Conferir com o banco do IMED (só leitura, chave pública do site)
+        if: always()
+        run: python3 -I scripts/sonda-cnes/banco_imed.py base
+      - name: Publicar avisos (1)
+        if: always()
+        run: python3 -I "$PUBLICAR" 0
+      - name: Publicar avisos (2)
+        if: always()
+        run: python3 -I "$PUBLICAR" 1
+      - name: Publicar avisos (3)
+        if: always()
+        run: python3 -I "$PUBLICAR" 2
+      - name: Publicar avisos (4)
+        if: always()
+        run: python3 -I "$PUBLICAR" 3
+      - name: Publicar avisos (5)
+        if: always()
+        run: python3 -I "$PUBLICAR" 4 --ultimo
+
+  ftp:
+    name: F - FTP do DATASUS, equipamentos por UF (DBC)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      rm_campinas: ${{ steps.cnes.outputs.rm_campinas }}
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Preparar o Python (pyreaddbc, datasus-dbc e dbfread, em versões fixas)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv" || { sudo apt-get install -y python3-venv && python3 -m venv "$RUNNER_TEMP/venv"; }
+          "$RUNNER_TEMP/venv/bin/pip" install --only-binary=:all: 'pyreaddbc==2.0.4' 'datasus-dbc==0.1.3' 'dbfread==2.0.7'
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Listar a pasta EQ (mês mais recente e tamanhos)
+        run: python -I scripts/sonda-cnes/ftp_eq.py descobrir
+      - name: Baixar os 27 arquivos do mês e a tabela auxiliar
+        if: always()
+        run: python -I scripts/sonda-cnes/ftp_eq.py baixar
+      - name: Descompactar, ler e contar (Campinas e São Paulo)
+        if: always()
+        run: python -I scripts/sonda-cnes/ftp_eq.py analisar
+      - name: Conferir com o banco do IMED (só leitura, chave pública do site)
+        if: always()
+        run: python -I scripts/sonda-cnes/banco_imed.py eq
+      - name: Separar 3 CNES de Campinas com ressonância (para a sonda O)
+        id: cnes
+        if: always()
+        run: |
+          python3 -I - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path(os.environ['RUNNER_TEMP']) / 'sonda' / 'dados' / 'eq-resumo.json'
+          try:
+              d = json.loads(p.read_text(encoding='utf-8'))
+              uso = d['em_uso']['rm']
+              lst = sorted(d['exames']['rm']['3509502'], key=lambda c: -uso.get(c, 0))[:3]
+          except Exception:
+              lst = []
+          print('rm_campinas=' + ','.join(c for c in lst if c.isdigit() and len(c) == 7))
+          PY
+      - name: Publicar avisos (1)
+        if: always()
+        run: python3 -I "$PUBLICAR" 0
+      - name: Publicar avisos (2)
+        if: always()
+        run: python3 -I "$PUBLICAR" 1
+      - name: Publicar avisos (3)
+        if: always()
+        run: python3 -I "$PUBLICAR" 2
+      - name: Publicar avisos (4)
+        if: always()
+        run: python3 -I "$PUBLICAR" 3
+      - name: Publicar avisos (5)
+        if: always()
+        run: python3 -I "$PUBLICAR" 4 --ultimo
+
+  outras:
+    name: O - Outras fontes (portais, site do CNES, TabNet)
+    needs: ftp
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Portais de dados abertos, ficha do site do CNES e TabNet
+        env:
+          CNES_CAMPINAS: ${{ needs.ftp.outputs.rm_campinas }}
+        run: python3 -I scripts/sonda-cnes/outras.py "$CNES_CAMPINAS"
+      - name: Publicar avisos (1)
+        if: always()
+        run: python3 -I "$PUBLICAR" 0
+      - name: Publicar avisos (2)
+        if: always()
+        run: python3 -I "$PUBLICAR" 1 --ultimo
