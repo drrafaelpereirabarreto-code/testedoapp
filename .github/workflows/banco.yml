@@ -387,8 +387,11 @@ jobs:
             exit 1
           fi
           { echo -n "pgTAP: "; grep -E '^(Files=|Result:)' "$log" | tr '\n' ' '; echo; } | tee "$IMED_RESUMO_DIR/20-pgtap.txt"
-          # Resultado de cada arquivo (linhas "<arquivo>.sql .. ok" do pg_prove).
-          por_arquivo=$(grep -E '[A-Za-z0-9_.-]+\.sql \.+ ' "$log" | sed -E 's#^.*/##; s/ \.+ / /' | paste -sd ';' - | sed 's/;/; /g' || true)
+          # Resultado de cada arquivo (linhas "<arquivo>.sql .. ok" do pg_prove). Arquivo com pendência (TODO) pode ter a
+          # linha cortada pelo comentário do TODO: sem o resultado na linha e com "Result: PASS", ele passou.
+          resultado=$(grep -oE '^Result: [A-Z]+' "$log" | awk '{print $2}' | tail -n 1 || true)
+          por_arquivo=$(grep -E '[A-Za-z0-9_.-]+\.sql \.+' "$log" | sed -E 's#^.*/##; s/ \.+ ?/|/' \
+            | awk -F'|' -v r="$resultado" '{ s = $2; gsub(/^ +| +$/, "", s); if (s == "") s = (r == "PASS" ? "ok" : "?"); printf "%s%s %s", (NR > 1 ? "; " : ""), $1, s }' || true)
           echo "pgTAP por arquivo: ${por_arquivo:-sem a lista do pg_prove}" | tee -a "$IMED_RESUMO_DIR/20-pgtap.txt"
           # Pendência aceita na 3.1 (TODO no 000_catalogo): quem alcança o schema net do pg_net. Só o suporte do Supabase
           # fecha (as permissões são do supabase_admin; o postgres das migrações não tem como tirar).

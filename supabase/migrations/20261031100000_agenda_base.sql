@@ -40,6 +40,19 @@
 --
 -- Pode rodar de novo sem erro e sem mudar nada. Volta: supabase/volta/20261031100000_agenda_base.sql (testada no
 -- CI: depois da volta o banco fica igual ao da produção antes desta migração; reaplicada, igual ao com ela).
+--
+-- Conferir na produção depois de aplicar (só leitura; tem de dar true):
+--   select to_regnamespace('agenda') is not null
+--      and not has_schema_privilege('anon', 'agenda', 'USAGE') and not has_schema_privilege('authenticated', 'agenda', 'USAGE')
+--      and not has_schema_privilege('service_role', 'agenda', 'USAGE')
+--      and (select count(*) from pg_tables where schemaname = 'agenda') = 22
+--      and (select count(*) from agenda.role_permissions) = 63 and (select count(*) from agenda.status_transitions) = 58
+--      and not has_table_privilege('anon', 'public.appointment_requests', 'INSERT')
+--      and has_column_privilege('anon', 'public.appointment_requests', 'review_token_hash', 'INSERT')
+--      and not has_column_privilege('anon', 'public.appointment_requests', 'channel', 'INSERT')
+--      and not has_table_privilege('authenticated', 'public.appointment_requests', 'UPDATE')
+--      and (select count(*) from public.appointment_requests where channel <> 'imed_app' or version <> 1) = 0
+--      and (select count(*) from public.clinics where agenda_mode <> 'pedido' or timezone <> 'America/Sao_Paulo') = 0;
 
 /* ===================== 1. Extensão e schema ===================== */
 -- btree_gist: "=" em uuid dentro do índice GiST da restrição de exclusão. No schema extensions (fora da API).
