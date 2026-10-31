@@ -44,11 +44,11 @@
 .tl-faq-a{padding:0 2px 14px}
 .tl-faq-a p{font-size:15px;line-height:1.6;color:var(--text)}
 .tl-faq-a p+p{margin-top:8px}
-.tl-join{background:transparent;border:1px dashed #B5CBD4;box-shadow:none}
+.tl-join{background:transparent;border:1px dashed var(--tl-join-line);box-shadow:none}
 .tl-join h2{display:flex;align-items:center;gap:10px;font-size:17px;line-height:1.35}
 .tl-join h2 i{display:grid;place-items:center;flex-shrink:0;width:36px;height:36px;border-radius:11px;background:var(--primary-s);color:var(--primary);font-size:16px}
 .tl-join .tl-muted{margin-top:8px}
-.tl-join .btn-ghost{background:#fff}
+.tl-join .btn-ghost{background:var(--card)}
 @media (prefers-reduced-motion:reduce){.tl-faq summary::after{transition:none}}
 </style>
 </head>
@@ -65,6 +65,7 @@
       <a href="conta.html">Minha conta</a>
     </nav>
     <a class="pt-partner" href="medico.html">Sou médico</a>
+    <button type="button" class="tema-btn" data-tema></button>
   </div>
 </header>
 

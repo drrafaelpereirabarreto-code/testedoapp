@@ -7,7 +7,7 @@
 // PDF assinado; documento.html mostra só o mínimo. Também: "Falta assinar", rascunho não emitido ao sair, bloqueios e
 // alerta da receita, foco do teclado, XSS, celular 390 px e nenhum erro no console.
 // Rodar com: node tests/e2e-tele-docs.mjs   (precisa do pacote "playwright" instalado)
-// Opcional: SHOTS=pasta salva capturas; E2E_PORT muda a porta; ONLY="trecho" roda só alguns cenários.
+// Opcional: TEMA=escuro (aparelho no escuro). SHOTS=pasta salva capturas; E2E_PORT muda a porta; ONLY="trecho" roda só alguns cenários.
 import http from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID, randomInt } from 'node:crypto';
@@ -472,6 +472,7 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 /* ======================= páginas ======================= */
 async function newPage(browser, db, { mobile = false, store = null } = {}) {
   const context = await browser.newContext({
+    ...(process.env.TEMA === 'escuro' ? { colorScheme: 'dark' } : {}), // TEMA=escuro: aparelho no escuro (o Automático do site segue), para as capturas
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile,
     locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', permissions: ['camera', 'microphone'], acceptDownloads: true,
   });
