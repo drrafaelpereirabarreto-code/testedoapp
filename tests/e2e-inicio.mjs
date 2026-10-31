@@ -2685,6 +2685,230 @@ await scenario('foto da fachada: celular com tela de alta densidade baixa a vers
   }
 });
 
+/* ======================= L2: nomes do dia a dia na caixa "Qual exame você precisa?" ======================= */
+// Texto de cada opção da lista de sugestões: [nome em negrito, linha de baixo].
+const sugestoes = (page) => page.$$eval('#heroSug .sug', (els) => els.map((e) => [e.querySelector('b').textContent, e.querySelector('small').textContent]));
+const CONFIRME = 'Confirme se o local faz este exame.';
+// Endereço pedido ao sair da página inicial (antes de a busca tirar o ?onde= do endereço).
+const navegaPara = (page, re) => page.waitForRequest((r) => r.isNavigationRequest() && re.test(r.url()));
+
+await scenario('exame pelo nome do dia a dia: "hemograma" leva a perto.html?exame=lab, com o aviso do laboratório uma vez só; o dicionário só vem no toque', async () => {
+  const { page, errors, context, requests } = await newPage(browser);
+  await page.goto(BASE);
+  await page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  await page.waitForTimeout(400);
+  assert.ok(!requests.some((u) => /exames-nomes\.js/.test(u)), 'a página inicial abre sem o dicionário');
+  // Caixa vazia: os 9 exames, com o laboratório (o 9º).
+  await page.focus('#heroQ');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 9);
+  assert.deepEqual((await sugestoes(page))[8], ['Exames de laboratório (sangue, urina)', 'Ver lugares perto de você']);
+  await page.fill('#heroQ', 'hemograma');
+  await page.waitForFunction(() => /Hemograma/.test(document.querySelector('#heroSug')?.textContent || ''));
+  assert.ok(requests.some((u) => /exames-nomes\.js/.test(u)), 'o dicionário vem quando a pessoa usa a caixa');
+  assert.deepEqual((await sugestoes(page))[0], ['Hemograma', 'Laboratórios perto de você']);
+  assert.equal(await page.getAttribute('#heroSug .sug', 'href'), 'perto.html?exame=lab');
+  assert.equal(await page.textContent('#heroSug .hs-nota'), CONFIRME, 'o aviso aparece embaixo, uma vez');
+  assert.equal(await page.getAttribute('#heroSug .hs-nota', 'aria-hidden'), 'true', 'fora das opções da lista (o leitor de tela ouve no anúncio)');
+  assert.ok(!/R\$/.test(await page.textContent('#heroSug')), 'sem preço');
+  await page.waitForFunction((c) => document.querySelector('#heroSugMsg').textContent === `1 sugestão abaixo. Use as setas para escolher. ${c}`, CONFIRME);
+  // "glic": vários exames do laboratório, o aviso continua uma vez só.
+  await page.fill('#heroQ', 'glic');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length >= 3);
+  assert.equal(await page.locator('#heroSug .hs-nota').count(), 1);
+  assert.ok((await sugestoes(page)).every(([, s]) => s === 'Laboratórios perto de você'));
+  await page.fill('#heroQ', 'hemograma');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 1);
+  await shot(page, 'inicio-exame-hemograma');
+  await Promise.all([page.waitForURL(/perto\.html\?exame=lab$/), page.press('#heroQ', 'Enter')]);
+  assert.deepEqual(errors.filter((e) => !/perto/.test(e)), []);
+  await context.close();
+});
+
+await scenario('exame pelo apelido, pela sigla e com uma letra errada: "também chamado de"; "eco" mostra as duas opções e não escolhe sozinho', async () => {
+  const { page, errors, context } = await newPage(browser);
+  await page.goto(BASE);
+  await page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  for (const [q, primeira] of [
+    ['USG', ['Ultrassom', 'Também chamado de USG']],
+    ['ecografia', ['Ultrassom', 'Também chamado de ecografia']],
+    ['tomo', ['Tomografia computadorizada', 'Também chamado de tomo']],
+    ['RNM', ['Ressonância magnética', 'Também chamado de RNM']],
+    ['resonancia', ['Ressonância magnética', 'Ver lugares perto de você']],
+    ['exame de gravidez', ['Exame de gravidez', 'Laboratórios perto de você']],
+    ['TSH', ['TSH', 'Laboratórios perto de você']],
+    ['doppler', ['Doppler', 'Ultrassom: ver lugares perto de você']],
+    ['ecocardiograma com doppler', ['Ecocardiograma com doppler', 'Ecocardiograma: ver lugares perto de você']],
+  ]) {
+    await page.fill('#heroQ', q);
+    await page.waitForFunction(([b, s]) => { const o = document.querySelector('#heroSug .sug'); return o?.querySelector('b').textContent === b && o.querySelector('small').textContent === s; }, primeira);
+    assert.deepEqual((await sugestoes(page))[0], primeira, q);
+  }
+  // Exame específico de imagem: o IMED também não sabe quais locais fazem.
+  await page.fill('#heroQ', 'doppler');
+  await page.waitForFunction((c) => document.querySelector('#heroSug .hs-nota')?.textContent === c, CONFIRME);
+  // "eco": ecocardiograma ou ultrassom. O Enter não escolhe: a lista fica aberta e o leitor de tela ouve as opções.
+  await page.fill('#heroQ', 'eco');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 2);
+  assert.deepEqual(await sugestoes(page), [['Ecocardiograma', 'Também chamado de eco'], ['Ultrassom', 'Também chamado de eco']]);
+  assert.equal(await page.textContent('#heroSug h6'), '“eco” pode ser:');
+  assert.equal(await page.getAttribute('#heroSug', 'aria-label'), '“eco” pode ser:', 'a lista tem o nome da pergunta');
+  const h6 = await page.$eval('#heroSug h6', (e) => { const c = getComputedStyle(e); return [c.fontSize, c.textTransform]; });
+  assert.deepEqual(h6, ['14px', 'none'], 'a pergunta em letra legível, sem maiúsculas');
+  await page.press('#heroQ', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#heroSugMsg').textContent === '“eco” pode ser ecocardiograma ou ultrassom. Escolha uma das opções. Use as setas para escolher.');
+  await page.waitForTimeout(300);
+  assert.equal(new URL(page.url()).pathname, '/', 'continua na página inicial');
+  assert.ok(await page.isVisible('#heroSug'), 'as opções continuam abertas');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'heroQ');
+  assert.equal(await page.getAttribute('#heroQ', 'aria-expanded'), 'true');
+  await shot(page, 'inicio-exame-eco');
+  // O botão Buscar também não escolhe sozinho.
+  await page.click('.hs-go');
+  await page.waitForTimeout(400);
+  assert.equal(new URL(page.url()).pathname, '/');
+  assert.ok(await page.isVisible('#heroSug .sug'));
+  // Seta, Esc e Enter: o Esc desfaz a escolha da seta (o Enter mostra as opções de novo, sem escolher).
+  await page.focus('#heroQ');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Escape');
+  assert.ok(await page.isHidden('#heroSug'));
+  assert.equal(await page.locator('#heroSug .sug.act, #heroSug [aria-selected="true"]').count(), 0);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+  assert.equal(new URL(page.url()).pathname, '/', 'o Esc desfez a escolha: nada de ?exame=eco');
+  assert.ok(await page.isVisible('#heroSug .sug'));
+  // Com as setas, a pessoa escolhe; a opção marcada aparece bem (fundo e borda da cor do site).
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  const act = await page.getAttribute('#heroQ', 'aria-activedescendant');
+  assert.equal(await page.textContent(`#${act} b`), 'Ultrassom');
+  const estilo = await page.$eval(`#${act}`, (e) => { const c = getComputedStyle(e); return [c.backgroundColor, c.boxShadow]; });
+  assert.equal(estilo[0], 'rgb(230, 244, 248)');
+  assert.match(estilo[1], /rgb\(11, 114, 144\)/);
+  await Promise.all([page.waitForURL(/perto\.html\?exame=usg$/), page.keyboard.press('Enter')]);
+  assert.deepEqual(errors.filter((e) => !/perto/.test(e)), []);
+  await context.close();
+});
+
+await scenario('exame com lugar e doença: "ressonância em Campinas" leva a cidade junto; "dengue" pergunta se é o exame ou atendimento', async () => {
+  const { page, errors, context } = await newPage(browser);
+  await page.goto(BASE);
+  await page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  // A cidade escrita vai junto (a busca não usa a localização no lugar dela).
+  await page.fill('#heroQ', 'ressonância em Campinas');
+  await page.waitForFunction(() => /Ressonância/.test(document.querySelector('#heroSug .sug b')?.textContent || ''));
+  assert.deepEqual((await sugestoes(page))[0], ['Ressonância magnética', 'Ver lugares em Campinas']);
+  assert.equal(await page.getAttribute('#heroSug .sug', 'href'), 'perto.html?exame=rm&onde=Campinas');
+  // Doença sozinha: o exame ou atendimento (todos os locais); o Enter não escolhe.
+  await page.fill('#heroQ', 'dengue');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 2);
+  assert.deepEqual(await sugestoes(page), [['Exame de dengue', 'Laboratórios perto de você'], ['Atendimento', 'Todos os locais perto de você']]);
+  assert.equal(await page.textContent('#heroSug h6'), '“dengue”: você procura o exame ou atendimento?');
+  assert.deepEqual(await page.$$eval('#heroSug .sug', (els) => els.map((e) => e.getAttribute('href'))), ['perto.html?exame=lab', 'perto.html?usar=localizacao']);
+  await page.press('#heroQ', 'Enter');
+  await page.waitForTimeout(400);
+  assert.equal(new URL(page.url()).pathname, '/');
+  await shot(page, 'inicio-dengue-exame-ou-atendimento');
+  // Exame com cidade pelo Enter: a cidade vai no endereço da busca.
+  await page.fill('#heroQ', 'ressonância em Campinas');
+  await page.waitForFunction(() => /Ressonância/.test(document.querySelector('#heroSug .sug b')?.textContent || ''));
+  await Promise.all([navegaPara(page, /perto\.html\?exame=rm&onde=Campinas$/), page.press('#heroQ', 'Enter')]);
+  assert.deepEqual(errors.filter((e) => !/perto/.test(e)), []);
+  await context.close();
+});
+
+await scenario('exame com o dicionário demorando: "Procurando…" (e não "Nenhum exame"); Buscar mostra a espera; sem o dicionário, a lista avisa', async () => {
+  const { page, errors, context } = await newPage(browser);
+  let atraso = 1500;
+  await context.route(`${BASE}assets/js/exames-nomes.js`, async (route) => { if (atraso < 0) return route.abort(); await new Promise((r) => setTimeout(r, atraso)); return route.continue(); });
+  await page.goto(BASE);
+  await page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  await page.fill('#heroQ', 'hemograma');
+  await page.waitForSelector('#heroSug .hs-vazio');
+  assert.equal(await page.textContent('#heroSug .hs-vazio'), 'Procurando…');
+  await page.waitForTimeout(800);
+  assert.ok(!/Nenhum exame/.test(await page.textContent('#heroSugMsg')), 'o leitor de tela não ouve "nenhum" enquanto o dicionário chega');
+  await page.waitForFunction(() => /Hemograma/.test(document.querySelector('#heroSug').textContent));
+  await context.close();
+  // Buscar logo depois de digitar, com o dicionário chegando: o botão mostra "Buscando…" e o exame vai junto.
+  const c = await newPage(browser);
+  await c.context.route(`${BASE}assets/js/exames-nomes.js`, async (route) => { await new Promise((r) => setTimeout(r, atraso)); return route.continue(); });
+  await c.page.goto(BASE);
+  await c.page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  await c.page.fill('#heroQ', 'hemograma');
+  const indo = c.page.waitForURL(/perto\.html\?exame=lab$/);
+  await c.page.press('#heroQ', 'Enter');
+  assert.deepEqual(await c.page.$eval('.hs-go', (x) => [x.textContent, x.disabled]), ['Buscando…', true], 'o botão mostra a espera');
+  await indo;
+  await c.context.close();
+  // Sem o dicionário (bloqueado): a lista fica aberta com o aviso.
+  const b = await newPage(browser);
+  await b.context.route(`${BASE}assets/js/exames-nomes.js`, (route) => route.abort());
+  await b.page.goto(BASE);
+  await b.page.waitForFunction(() => /estabelecimentos oficiais/.test(document.querySelector('#livePill').textContent));
+  await b.page.fill('#heroQ', 'hemograma');
+  await b.page.press('#heroQ', 'Enter');
+  await b.page.waitForFunction(() => /não carregaram/.test(document.querySelector('#heroSug').textContent));
+  assert.equal(new URL(b.page.url()).pathname, '/', 'o exame não se perde calado');
+  assert.equal(await b.page.textContent('.hs-go'), 'Buscar');
+  // O segundo Buscar segue sem o dicionário (como antes: todos os lugares perto de você).
+  await Promise.all([b.page.waitForURL(/perto\.html\?usar=localizacao$/), b.page.press('#heroQ', 'Enter')]);
+  assert.deepEqual([...errors, ...b.errors, ...c.errors].filter((e) => !/perto|exames-nomes/.test(e)), []);
+  await b.context.close();
+});
+
+await scenario('exame pelo nome no celular (360 px): a lista cabe, fica à vista com o aviso de privacidade e o modo leve, e "Campinas" leva a Campinas', async () => {
+  const { page, log, errors, context } = await newPage(browser, { mobile: true, viewport: { width: 360, height: 780 }, lgpd: true, geocode: (r) => json(r, { ok: true, lat: -22.90556, lng: -47.06083, label: 'Campinas - SP', precision: 'cidade', provider: 'osm' }) });
+  await page.goto(BASE);
+  await page.waitForSelector('.lgpd');
+  assert.ok(await page.evaluate(() => document.body.classList.contains('lite')), 'modo leve (o cartão de exemplo fica perto da caixa)');
+  // Caixa vazia: os 9 exames, com o laboratório.
+  await page.tap('#heroQ');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 9);
+  assert.ok(await page.evaluate(() => document.querySelector('#heroForm').getBoundingClientRect().top < 200), 'o formulário sobe para o alto da tela');
+  await page.fill('#heroQ', 'glic');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length >= 4);
+  // Cada opção, ao ser marcada com a seta, fica à vista e por cima de tudo (aviso de privacidade, cartão do modo
+  // leve e menu de baixo).
+  const n = await page.locator('#heroSug .sug').count();
+  for (let i = 0; i < n; i += 1) {
+    await page.keyboard.press('ArrowDown');
+    const ok = await page.evaluate((k) => {
+      const o = document.querySelectorAll('#heroSug .sug')[k], r = o.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      return { dentro: y > 0 && y < innerHeight, emCima: o.contains(document.elementFromPoint(x, y)) };
+    }, i);
+    assert.ok(ok.dentro && ok.emCima, `opção ${i + 1} de ${n} à vista e sem nada por cima (${JSON.stringify(ok)})`);
+  }
+  assert.ok(await page.isHidden('.lgpd'), 'o aviso de privacidade some enquanto a lista está aberta');
+  const m = await page.evaluate(() => {
+    const f = document.querySelector('#heroForm').getBoundingClientRect(), box = document.querySelector('#heroSug').getBoundingClientRect();
+    return { inner: innerWidth, scroll: document.documentElement.scrollWidth, left: Math.min(f.left, box.left), right: Math.max(f.right, box.right), sugs: [...document.querySelectorAll('#heroSug .sug')].map((e) => e.scrollWidth - e.clientWidth) };
+  });
+  assert.ok(m.inner === 360 && m.scroll <= 360, `sem rolagem lateral (${JSON.stringify(m)})`);
+  assert.ok(m.left >= 0 && m.right <= 360, `o formulário e a lista cabem na tela (${Math.round(m.left)} a ${Math.round(m.right)})`);
+  assert.ok(m.sugs.every((x) => x <= 0), 'o texto das opções quebra a linha, sem cortar');
+  await shot(page, 'inicio-exame-celular-360');
+  await page.keyboard.press('Escape');
+  assert.ok(await page.isVisible('.lgpd'), 'o aviso volta quando a lista fecha');
+  // "eco" + Buscar no celular: as opções aparecem sem reabrir o teclado (o foco não volta para a caixa).
+  await page.fill('#heroQ', 'eco');
+  await page.waitForFunction(() => document.querySelectorAll('#heroSug .sug').length === 2);
+  await page.tap('.hs-go');
+  await page.waitForFunction(() => /“eco” pode ser/.test(document.querySelector('#heroSugMsg').textContent));
+  assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'heroQ', 'o teclado do celular não reabre');
+  assert.ok(await page.isVisible('#heroSug .sug'));
+  assert.ok(!/setas/.test(await page.textContent('#heroSugMsg')), 'no celular, o anúncio não fala das setas');
+  // Nome de cidade na caixa do exame: nenhuma sugestão inventada; o Buscar leva à busca em Campinas.
+  await page.fill('#heroQ', 'Campinas');
+  await page.waitForFunction(() => /Nenhum exame com esse nome\. Toque em Buscar para ver os lugares em Campinas\./.test(document.querySelector('#heroSug').textContent));
+  await Promise.all([navegaPara(page, /perto\.html\?onde=Campinas$/), page.press('#heroQ', 'Enter')]);
+  await page.waitForFunction(() => /Campinas/.test(document.querySelector('#count')?.textContent || ''));
+  assert.ok(log.geocode.some((b) => b.q === 'Campinas'));
+  assert.deepEqual(errors.filter((e) => !/perto/.test(e)), []);
+  await context.close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter(([s]) => s !== 'ok');

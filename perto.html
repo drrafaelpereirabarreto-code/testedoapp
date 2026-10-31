@@ -50,17 +50,18 @@
   <section class="pt-side" aria-labelledby="ptTitle">
     <div class="pt-hero">
       <h1 id="ptTitle">Clínicas perto de você</h1>
-      <p>Clínicas, laboratórios, centros de diagnóstico e hospitais reais, do cadastro oficial do Ministério da Saúde, com distância e contato.</p>
+      <p>Clínicas, laboratórios, centros de diagnóstico e hospitais reais, do cadastro oficial do Ministério da Saúde, com distância e contato. Dá para escrever o exame junto: “ultrassom em Campinas”.</p>
       <form class="pt-search" id="searchForm" role="search" novalidate>
         <label class="pt-field">
           <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-          <span class="sr">CEP, cidade ou endereço</span>
+          <span class="sr">CEP, cidade ou endereço (e o exame, se quiser)</span>
           <input id="q" name="q" type="search" placeholder="CEP, cidade ou endereço" maxlength="140" enterkeyhint="search" autocomplete="off" aria-describedby="qMsg">
         </label>
         <button class="pt-go" type="submit" id="goBtn">Buscar</button>
       </form>
       <button class="pt-loc" id="locBtn" type="button"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i><span>Usar minha localização</span></button>
-      <p class="pt-qmsg" id="qMsg" role="alert" hidden></p>
+      <p class="pt-qmsg" id="qMsg" role="alert" tabindex="-1" hidden></p>
+      <div class="pt-qmsg info" id="qEsc" role="group" hidden></div>
       <p class="pt-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span>Emergência? Ligue <a href="tel:192">192 (SAMU)</a> ou vá ao pronto-socorro mais próximo.</span></p>
     </div>
 

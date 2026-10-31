@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import * as T from '../assets/js/tele-core.js';
+import * as N from '../assets/js/exames-nomes.js';
 
 // A migração ganha o número da versão aplicada no banco (o nome do arquivo muda): procura pelo fim do nome.
 const MIG_DIR = new URL('../supabase/migrations/', import.meta.url);
@@ -46,6 +47,44 @@ test('busca no catálogo sem acento e por outros nomes', () => {
   assert.equal(names('').length, 90, 'sem busca: todos');
   assert.deepEqual(names('xyzzy'), []);
   assert.equal(T.searchCatalog('hemograma')[0].group, 'Sangue');
+});
+
+test('busca no catálogo com o dicionário do site (exames-nomes.js): apelidos dos exames de imagem e uma letra errada', () => {
+  const names = (q) => T.searchCatalog(q, N).map((i) => i.id);
+  const usg = T.CATALOG.flatMap((g) => g.items).filter((i) => i.s === 'usg').map((i) => i.id);
+  // Apelidos: o mesmo dicionário da busca do site.
+  assert.deepEqual(names('USG'), usg);
+  assert.deepEqual(names('ecografia abdome'), ['usg_abdome_total']);
+  assert.deepEqual(names('tomo cranio'), ['tc_cranio']);
+  assert.deepEqual(names('RNM joelho'), ['rm_joelho']);
+  assert.deepEqual(names('chapa torax'), ['rx_torax']);
+  // Uma letra errada só em palavra de 7 letras ou mais, como na busca do site.
+  assert.deepEqual(names('hemogrma'), ['hemograma']);
+  assert.deepEqual(names('ultrasom'), usg);
+  assert.deepEqual(names('resonancia joelho'), ['rm_joelho']);
+  assert.deepEqual(names('resonan'), ['rm_cranio', 'rm_coluna_lombar', 'rm_joelho', 'rm_ombro'], 'começo do nome com uma letra errada');
+  assert.deepEqual(names('tsg'), [], 'palavra curta precisa vir certa');
+  // O laboratório não ganha apelido por exame: "sangue" continua achando só os nomes com sangue.
+  assert.deepEqual(names('sangue'), ['beta_hcg', 'sangue_oculto']);
+  // Os apelidos valem pela palavra inteira ou pelo começo dela, não no meio: "sono" (exame do sono) não acha os
+  // ultrassons por causa de "ultrassonografia"; acha o mesmo que antes do dicionário.
+  assert.deepEqual(names('sono'), ['usg_abdome_total', 'polissonografia']);
+  assert.deepEqual(names('sono'), T.searchCatalog('sono').map((i) => i.id));
+  assert.deepEqual(names('grafia'), T.searchCatalog('grafia').map((i) => i.id), 'pedaço do meio só no nome e nos outros nomes do catálogo');
+  // Tudo o que a busca achava sem o dicionário continua achando com ele.
+  for (const q of ['tireoide', 'eas', 'raio-x torax', 'ultrassom abdome', 'glicada', 'preventivo', 'hemograma', 'eco', 'doppler', 'covid']) {
+    const antes = T.searchCatalog(q).map((i) => i.id);
+    assert.ok(antes.every((id) => names(q).includes(id)), q);
+  }
+});
+
+test('busca no catálogo sem o dicionário (ainda chegando ou sem internet): a de sempre, e tele-core.js não o importa', () => {
+  // Sem o dicionário, nada de apelido nem de letra errada; e a teleconsulta e o documento.html abrem sem baixá-lo.
+  assert.deepEqual(T.searchCatalog('USG').map((i) => i.id), []);
+  assert.deepEqual(T.searchCatalog('hemogrma').map((i) => i.id), []);
+  assert.deepEqual(T.searchCatalog('hemograma').map((i) => i.id), ['hemograma']);
+  const src = readFileSync(new URL('../assets/js/tele-core.js', import.meta.url), 'utf8');
+  assert.ok(!/exames-nomes/.test(src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n')), 'tele-core.js não importa exames-nomes.js');
 });
 
 test('exames no formato do banco: limites, sem repetir e no máximo 60', () => {

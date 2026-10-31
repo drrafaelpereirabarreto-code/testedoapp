@@ -126,41 +126,204 @@ addEventListener('scroll', headerState, { passive: true });
 /* ======================= TOPO ======================= */
 const examUrl = (k) => `perto.html?exame=${encodeURIComponent(k)}`;
 
-let sugIdx = -1, sugItems = [];
+// Endereço da busca: o exame (k; '' = todos os locais) e o lugar escrito junto ("ressonância em Campinas" →
+// &onde=Campinas; sem lugar, a busca usa a localização). Lugar com número (CEP, endereço) não vai no endereço da
+// página: fica só nesta aba até a busca abrir (sessionStorage), longe do histórico e do contador de visitas.
+const ONDE_KEY = 'imed_onde';
+const ondeNaUrl = (onde) => !!onde && !/\d/.test(onde);
+function buscaUrl(k, onde = '') {
+  const p = new URLSearchParams();
+  if (k) p.set('exame', k);
+  if (ondeNaUrl(onde)) p.set('onde', onde);
+  else if (!k && !onde) p.set('usar', 'localizacao');
+  const q = p.toString();
+  return q ? `perto.html?${q}` : 'perto.html';
+}
+function guardarOnde(onde) {
+  if (!onde || ondeNaUrl(onde)) return;
+  try { sessionStorage.setItem(ONDE_KEY, onde); } catch { /* sem armazenamento: a busca usa a localização */ }
+}
+function ir(k, onde = '') { guardarOnde(onde); location.href = buscaUrl(k, onde); }
+
+// Nomes de exames do dia a dia ("hemograma", "USG", "tomo", "ressonancia" sem acento, uma letra errada):
+// exames-nomes.js, baixado só quando a pessoa toca na caixa (a página inicial abre sem ele).
+// nomesErro: não chegou (sem internet); a próxima letra digitada tenta de novo.
+let nomes = null, nomesP = null, nomesErro = false;
+const loadNomes = () => (nomesP ||= import('./exames-nomes.js').then((m) => (nomes = m), () => { nomesP = null; nomesErro = true; return null; }));
+const SUG_VER = 'Ver lugares perto de você';
+// O IMED não sabe quais exames cada local faz: com exame de laboratório ou um exame específico ("Doppler"), a lista
+// avisa uma vez só, embaixo das opções (e o leitor de tela ouve junto com o número de opções).
+const CONFIRME = 'Confirme se o local faz este exame.';
+const DICA_EM = 'Para buscar em outra cidade, escreva “em” antes do nome dela, por exemplo “ultrassom em Campinas”.';
+// Doença ou condição ("HIV", "Hepatite B"): a opção mostra "Exame de HIV".
+const exameDe = (nome) => (/^(exame|teste)/i.test(nome) ? nome : `Exame de ${nomes.minusculo(nome)}`);
+// Uma opção da lista para o que o dicionário achou: o exame com "também chamado de" (apelido) ou o nome digitado
+// ligado ao exame ("Hemograma · Laboratórios perto de você").
+function sugItem(h, onde, doenca) {
+  const e = EXAMS[h.codigo];
+  const ver = onde ? `Ver lugares em ${onde}` : SUG_VER;
+  if (h.codigo === 'lab' && h.tipo !== 'n') return { k: 'lab', b: doenca ? exameDe(h.nome) : h.nome, s: onde ? `Laboratórios em ${onde}` : 'Laboratórios perto de você', item: true, confirme: true };
+  if (h.tipo === 'a') return { k: h.codigo, b: e.full, s: `Também chamado de ${nomes.minusculo(h.nome)}` };
+  if (h.tipo === 'e') return { k: h.codigo, b: h.nome, s: `${e.n}: ${ver.charAt(0).toLowerCase()}${ver.slice(1)}`, item: true, confirme: true };
+  return { k: h.codigo, b: e.full, s: ver };
+}
+// Opções para o texto: primeiro o que o dicionário achou; depois, os exames do site com o texto no nome (como era
+// antes, e o que fica se o dicionário não chegar). Caixa vazia: os 9 exames (o laboratório é o 9º).
+function sugestoes(raw) {
+  const q = norm(raw.trim());
+  const r = q && nomes ? nomes.sugerir(raw) : null;
+  const onde = r?.exato ? r.lugar : '';
+  const out = [];
+  const poe = (o) => { if (o.item || !out.some((x) => x.k === o.k && !x.item)) out.push({ ...o, onde }); };
+  for (const h of r?.itens || []) if (EXAMS[h.codigo]) poe(sugItem(h, onde, !!r.doenca));
+  // "dengue", "HIV": o exame ou atendimento (todos os locais, sem filtro de exame).
+  if (r?.doenca) poe({ k: '', b: 'Atendimento', s: onde ? `Todos os locais em ${onde}` : 'Todos os locais perto de você', item: true });
+  else for (const k of Object.keys(EXAMS)) if (!q || norm(EXAMS[k].n + ' ' + EXAMS[k].full).includes(q)) poe({ k, b: EXAMS[k].full, s: SUG_VER });
+  const itens = out.slice(0, q ? 8 : 9);
+  return {
+    itens, ambiguo: r?.ambiguo || null, doenca: r?.doenca || null, codigos: r?.exames || [],
+    // escolha: o nome serve para mais de um exame ("eco"), é doença ("dengue") ou há mais de um exame escrito.
+    escolha: !!r && (r.exames.length > 1 || !!r.doenca),
+    sobra: r?.exato ? r.sobra : '', confirme: itens.some((o) => o.confirme),
+    // Sem exame, mas o texto é um lugar conhecido ("Campinas", CEP): o Buscar leva para lá.
+    lugar: r && !r.exato ? nomes.lugarConhecido(raw) : '',
+  };
+}
+// Anúncio para o leitor de tela (quantas opções; e, com "eco", que é preciso escolher). Espera a pessoa parar de
+// digitar, para não falar a cada letra.
+let sugMsgT = 0;
+function sugStatus(texto, agora = false) {
+  const el = $('#heroSugMsg'); if (!el) return;
+  clearTimeout(sugMsgT);
+  const put = () => { if (el.textContent !== texto) el.textContent = texto; };
+  if (agora) put(); else sugMsgT = setTimeout(put, 700);
+}
+const pergunta = (r) => (r.doenca ? `“${r.doenca}”: você procura o exame ou atendimento?`
+  : r.ambiguo ? `“${nomes.minusculo(r.ambiguo)}” pode ser:` : 'Você escreveu mais de um exame. Escolha um:');
+const qualOpcao = (r) => (r.doenca ? `“${r.doenca}”: você procura o exame ou atendimento? Escolha uma das opções.`
+  : r.ambiguo ? `“${nomes.minusculo(r.ambiguo)}” pode ser ${r.codigos.map((k) => EXAMS[k].n.toLowerCase()).join(' ou ')}. Escolha uma das opções.`
+    : 'Você escreveu mais de um exame. Escolha um para buscar.');
+// Setas só fazem sentido com teclado (no celular, com TalkBack ou VoiceOver, a pessoa desliza pelas opções).
+const setas = () => (matchMedia('(pointer: fine)').matches ? ' Use as setas para escolher.' : '');
+// O dicionário não chegou a tempo do Buscar (sem internet?): o exame não se perde calado.
+const avisoDe = (r) => (r.itens.length ? 'Os nomes dos exames não carregaram. Escolha um exame da lista ou toque em Buscar de novo.'
+  : 'Os nomes dos exames não carregaram. Toque em Buscar de novo para ver todos os lugares perto de você.');
+const notaDe = (r) => (sugAviso ? avisoDe(r) : r.sobra ? DICA_EM : r.confirme ? CONFIRME : '');
+function statusDe(r, esperando = false) {
+  const n = r.itens.length, q = $('#heroQ').value.trim();
+  if (!q || esperando) return '';
+  if (!n) return sugAviso ? avisoDe(r) : 'Nenhum exame com esse nome.';
+  const nota = notaDe(r);
+  return `${r.escolha ? qualOpcao(r) : `${n} ${n === 1 ? 'sugestão' : 'sugestões'} abaixo.`}${setas()}${nota ? ` ${nota}` : ''}`;
+}
+
+// sugAviso: o dicionário não chegou a tempo do Buscar (a lista fica aberta com o aviso; o 2º Buscar segue sem ele).
+let sugIdx = -1, sugItems = [], sugHideT = 0, sugAviso = false;
+const opcaoAtiva = (i) => document.querySelectorAll('#heroSug .sug').forEach((b, n) => { b.classList.toggle('act', n === i); b.setAttribute('aria-selected', String(n === i)); });
 function showSug() {
-  const box = $('#heroSug'), q = norm($('#heroQ').value.trim());
-  sugItems = Object.entries(EXAMS).filter(([, e]) => !q || norm(e.n + ' ' + e.full).includes(q));
+  const box = $('#heroSug'), raw = $('#heroQ').value, q = raw.trim();
+  // O dicionário chega depois do primeiro toque: a lista é refeita quando ele chega, ou quando ele falha (se a pessoa
+  // não estiver escolhendo com as setas).
+  if (!nomes && !nomesErro) loadNomes().then(() => { if ($('#heroQ').value.trim() && sugIdx < 0 && !box.hidden) showSug(); });
+  const r = sugestoes(raw);
+  // Enquanto o dicionário chega, "Procurando…" (e não "Nenhum exame", que ainda não dá para saber).
+  const esperando = !!q && !nomes && !nomesErro && !sugAviso;
+  sugItems = r.itens;
   sugIdx = -1;
+  const titulo = r.escolha ? pergunta(r) : '';
+  const nota = notaDe(r);
+  const icone = (k) => (k === 'lab' ? '<span class="lg" style="background:#6C4BD8" aria-hidden="true"><i class="fa-solid fa-flask"></i></span>'
+    : !k ? '<span class="lg" style="background:#0B7290" aria-hidden="true"><i class="fa-solid fa-hospital"></i></span>' : `<img ${icoSet(k, 38)} alt="">`);
   // Padrão de caixa de sugestões (combobox): as opções ficam fora do Tab e são escolhidas com as setas.
   box.innerHTML = sugItems.length
-    ? '<h6 aria-hidden="true">Exames</h6>' + sugItems.map(([k, e], i) => `<a class="sug" role="option" id="sug-${i}" href="${examUrl(k)}" tabindex="-1" aria-selected="false">${k === 'lab' ? '<span class="lg" style="background:#6C4BD8" aria-hidden="true"><i class="fa-solid fa-flask"></i></span>' : `<img ${icoSet(k, 38)} alt="">`}<span><b>${esc(e.full)}</b><small>Ver lugares perto de você</small></span></a>`).join('')
-    : '<p style="padding:14px;color:var(--muted)">Nenhum exame com esse nome. Toque em Buscar para ver todos os lugares perto de você.</p>';
-  if (sugItems.length) box.setAttribute('role', 'listbox'); else box.removeAttribute('role');
+    ? `<h6${titulo ? ' class="pergunta"' : ''} aria-hidden="true">${esc(titulo || 'Exames')}</h6>`
+      + sugItems.map((o, i) => `<a class="sug" role="option" id="sug-${i}" href="${buscaUrl(o.k, o.onde)}"${o.onde ? ` data-onde="${esc(o.onde)}"` : ''} tabindex="-1" aria-selected="false">${icone(o.k)}<span><b>${esc(o.b)}</b><small>${esc(o.s)}</small></span></a>`).join('')
+      + (nota ? `<p class="hs-nota" aria-hidden="true">${esc(nota)}</p>` : '')
+    : `<p class="hs-vazio">${sugAviso ? esc(avisoDe(r)) : esperando ? 'Procurando…' : `Nenhum exame com esse nome. Toque em Buscar para ver ${r.lugar ? `os lugares em ${esc(r.lugar)}` : 'todos os lugares perto de você'}.`}</p>`;
+  if (sugItems.length) { box.setAttribute('role', 'listbox'); box.setAttribute('aria-label', titulo || 'Exames'); } else { box.removeAttribute('role'); box.removeAttribute('aria-label'); }
   box.hidden = false;
+  document.body.classList.add('sug-aberta');
   $('#heroQ').setAttribute('aria-expanded', String(!!sugItems.length));
   $('#heroQ').removeAttribute('aria-activedescendant');
+  sugStatus(statusDe(r, esperando && !sugItems.length));
+  return r;
 }
-function hideSug() { $('#heroSug').hidden = true; $('#heroQ').setAttribute('aria-expanded', 'false'); $('#heroQ').removeAttribute('aria-activedescendant'); }
-$('#heroQ').addEventListener('focus', showSug);
-$('#heroQ').addEventListener('input', showSug);
+function hideSug() {
+  $('#heroSug').hidden = true;
+  sugIdx = -1;
+  opcaoAtiva(-1);
+  document.body.classList.remove('sug-aberta');
+  $('#heroQ').setAttribute('aria-expanded', 'false');
+  $('#heroQ').removeAttribute('aria-activedescendant');
+  sugStatus('', true);
+}
+// Celular e tablet: ao tocar na caixa, o formulário sobe para o alto da tela, para as sugestões caberem acima do
+// teclado (o topo fixo fica de fora: scroll-padding-top).
+const ATE_979 = matchMedia('(max-width: 979px)');
+$('#heroQ').addEventListener('focus', () => {
+  clearTimeout(sugHideT);
+  showSug();
+  const f = $('#heroForm');
+  if (ATE_979.matches && f.getBoundingClientRect().top > 110) f.scrollIntoView({ block: 'start', behavior: 'auto' });
+});
+$('#heroQ').addEventListener('input', () => { sugAviso = false; nomesErro = false; showSug(); });
 $('#heroQ').addEventListener('keydown', (e) => {
-  const opts = [...document.querySelectorAll('#heroSug .sug')];
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    e.preventDefault(); if (!opts.length) return;
-    sugIdx = (sugIdx + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length;
-    opts.forEach((b, i) => { b.classList.toggle('act', i === sugIdx); b.setAttribute('aria-selected', String(i === sugIdx)); });
+    e.preventDefault();
+    // Lista fechada (Esc): abre de novo antes de andar, para a opção escolhida estar à vista.
+    if ($('#heroSug').hidden) showSug();
+    const opts = [...document.querySelectorAll('#heroSug .sug')];
+    if (!opts.length) return;
+    const desce = e.key === 'ArrowDown';
+    sugIdx = sugIdx < 0 ? (desce ? 0 : opts.length - 1) : (sugIdx + (desce ? 1 : -1) + opts.length) % opts.length;
+    opcaoAtiva(sugIdx);
     $('#heroQ').setAttribute('aria-activedescendant', opts[sugIdx].id);
+    opts[sugIdx].scrollIntoView({ block: 'nearest' });
   }
   if (e.key === 'Escape') hideSug();
 });
 $('#heroSug').addEventListener('mousedown', (e) => e.preventDefault());
-$('#heroQ').addEventListener('blur', () => setTimeout(hideSug, 150));
-$('#heroForm').addEventListener('submit', (e) => {
+// Lugar com número: guardado nesta aba antes de abrir a busca (o link não o leva no endereço).
+$('#heroSug').addEventListener('click', (e) => { const a = e.target.closest('.sug'); if (a?.dataset.onde) guardarOnde(a.dataset.onde); });
+$('#heroQ').addEventListener('blur', () => { clearTimeout(sugHideT); sugHideT = setTimeout(hideSug, 150); });
+// Lista aberta sem o foco na caixa (celular, depois do Buscar): fecha ao tocar fora do formulário.
+document.addEventListener('pointerdown', (e) => { if (!$('#heroSug').hidden && !e.target.closest('#heroForm')) hideSug(); });
+// Mostra as opções de novo depois do Buscar. Com o mouse ou o teclado, o foco volta para a caixa; no celular, não
+// (o teclado abriria por cima das opções): a lista só rola para a vista.
+function mostrarOpcoes() {
+  const toque = matchMedia('(pointer: coarse)').matches;
+  if (!toque) $('#heroQ').focus();
+  const r = showSug();
+  if (toque) $('#heroSug').scrollIntoView({ block: 'nearest' });
+  // Falado de novo mesmo se o aviso já estava lá (o leitor de tela só fala o que muda).
+  sugStatus('', true);
+  setTimeout(() => sugStatus(statusDe(r), true), 60);
+}
+let enviando = false;
+$('#heroForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if (sugIdx >= 0 && sugItems[sugIdx]) { location.href = examUrl(sugItems[sugIdx][0]); return; }
-  const v = norm($('#heroQ').value.trim());
-  const hit = v && Object.entries(EXAMS).find(([, x]) => norm(x.n + ' ' + x.full).includes(v));
-  location.href = hit ? examUrl(hit[0]) : 'perto.html?usar=localizacao';
+  if (enviando) return;
+  if (sugIdx >= 0 && sugItems[sugIdx]) { const o = sugItems[sugIdx]; ir(o.k, o.onde); return; }
+  const raw = $('#heroQ').value.trim();
+  if (!raw) { ir(''); return; }
+  if (!nomes && !sugAviso) {
+    // Buscar logo depois de digitar: o dicionário pode ainda estar chegando. O botão mostra a espera (até 2 s).
+    const btn = $('.hs-go');
+    enviando = true; btn.disabled = true; btn.textContent = 'Buscando…';
+    await Promise.race([loadNomes(), new Promise((r) => setTimeout(r, 2000))]);
+    enviando = false; btn.disabled = false; btn.textContent = 'Buscar';
+    if (!nomes) {
+      // Não chegou: o exame não se perde calado. A lista fica aberta com o aviso; o próximo Buscar segue sem ele.
+      sugAviso = true;
+      mostrarOpcoes();
+      return;
+    }
+  }
+  const r = sugestoes(raw);
+  // "eco" (ecocardiograma ou ultrassom), "dengue" (exame ou atendimento) ou mais de um exame: a pessoa escolhe.
+  if (r.escolha) { mostrarOpcoes(); return; }
+  if (r.itens.length) { ir(r.itens[0].k, r.itens[0].onde); return; }
+  ir('', r.lugar);
 });
 // O lugar do topo (#heroLoc) e o do cabeçalho (#addrBtn) mostram a origem e abrem o seletor de cidade.
 $('#heroLoc').onclick = () => PERTO?.abrirSeletor();

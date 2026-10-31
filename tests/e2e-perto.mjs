@@ -1812,6 +1812,312 @@ await scenario('celular (360 e 390px): sem copiar sozinho, o aviso e o texto sel
   }
 });
 
+/* ======================= L2: nome do exame escrito na busca ======================= */
+// Centro de Campinas, Recife e Belo Horizonte (a geocodificação devolve a cidade); o resto é a busca de sempre (fullFn).
+const CIDADE_FN = (r, b) => {
+  if (b.action === 'geocode' && /Campinas/.test(b.q)) return json(r, { ok: true, lat: -22.90556, lng: -47.06083, label: 'Campinas - SP', precision: 'cidade', provider: 'osm' });
+  if (b.action === 'geocode' && /Recife/.test(b.q)) return json(r, { ok: true, lat: -8.05389, lng: -34.88111, label: 'Recife - PE', precision: 'cidade', provider: 'osm' });
+  if (b.action === 'geocode' && /Belo Horizonte/.test(b.q)) return json(r, { ok: true, lat: -19.91668, lng: -43.93449, label: 'Belo Horizonte - MG', precision: 'cidade', provider: 'osm' });
+  return fullFn(r, b);
+};
+const geocodes = (log) => log.fn.filter((b) => b.action === 'geocode').map((b) => b.q);
+// Espera uma condição do lado do Node (uma chamada ao servidor simulado), até 5 segundos.
+async function until(cond, ms = 5000) {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await new Promise((r) => setTimeout(r, 50));
+}
+// Celular sem rolagem lateral: a largura da janela continua a da tela (com isMobile, o que transborda aumentaria o
+// innerWidth) e nada passa dela.
+const semRolagemLateral = (page, largura) => page.evaluate((w) => ({ inner: innerWidth, scroll: document.documentElement.scrollWidth, ok: innerWidth === w && document.documentElement.scrollWidth <= w }), largura);
+
+await scenario('exame na busca: "ultrassom em Campinas" liga o filtro e procura só "Campinas"; o dicionário só vem no toque', async () => {
+  const { page, log, errors, context } = await newPage(browser, { geo: false, fn: CIDADE_FN });
+  const pedidos = [];
+  page.on('request', (r) => pedidos.push(r.url()));
+  await page.goto(`${BASE}perto.html`);
+  await page.waitForSelector('.st h2:has-text("Veja o que tem perto de você")');
+  await page.waitForTimeout(300);
+  assert.ok(!pedidos.some((u) => /exames-nomes\.js/.test(u)), 'a página abre sem o dicionário');
+  assert.match(await page.textContent('.pt-hero > p'), /Dá para escrever o exame junto: “ultrassom em Campinas”\./);
+  await page.fill('#q', 'ultrassom em Campinas');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'usg' && document.querySelector('#count').textContent.includes('Campinas'));
+  assert.ok(pedidos.some((u) => /exames-nomes\.js/.test(u)), 'o dicionário vem quando a pessoa usa a caixa');
+  assert.deepEqual(geocodes(log), ['Campinas'], 'o mapa procura só o lugar');
+  const busca = log.fn.find((b) => b.action === 'search');
+  assert.deepEqual([busca.lat, busca.lng], [-22.906, -47.061], 'em volta do centro de Campinas, arredondado');
+  assert.match(await page.textContent('#qMsg'), /^Filtro de exame: Ultrassom\. Mostrando a partir do centro de Campinas - SP\./);
+  assert.ok(await page.$eval('#qMsg', (e) => e.classList.contains('info')), 'aviso, não erro');
+  assert.ok(await page.$eval('#fExam', (e) => e.parentElement.classList.contains('on')), 'o filtro aparece ligado');
+  await page.waitForFunction(() => !document.querySelector('.pt-pager-busy'));
+  assert.ok(log.cnes.some((b) => b.p_exam === 'usg') || log.points.some((p) => p.body.p_exam === 'usg'), 'a área inteira é buscada com o exame');
+  await shot(page, '42-exame-na-busca');
+  // Texto com erro de digitação e o lugar antes do exame.
+  await page.fill('#q', 'Campinas resonancia');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'rm');
+  assert.deepEqual(geocodes(log), ['Campinas', 'Campinas']);
+  assert.match(await page.textContent('#qMsg'), /^Filtro de exame: Ressonância \(você escreveu “resonancia”\)\./);
+  // Só o lugar: o filtro escolhido continua, e o texto vai inteiro para o mapa (como antes).
+  await page.fill('#q', 'Rua Augusta, 900');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#qMsg').hidden || /Não encontramos/.test(document.querySelector('#qMsg').textContent));
+  await until(() => geocodes(log).length === 3);
+  assert.equal(geocodes(log)[2], 'Rua Augusta, 900');
+  assert.equal(await page.inputValue('#fExam'), 'rm');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: só o exame ("hemograma") liga o filtro na área da tela, com o aviso do laboratório e sem o preço geral', async () => {
+  // Um laboratório parceiro que informou um preço geral de laboratório (não o do hemograma).
+  const LAB = { ...PARTNER_ROWS[1], id: 'bbbbbbbb-0000-4000-8000-000000000013', name: 'Laboratório Parceiro Verificado', kind: 'laboratorio', distance_m: 500, exams: [{ code: 'lab', price_cents: 2500 }], insurances: [] };
+  const fn = (r, b) => (b.action === 'search' ? json(r, { ok: true, provider: 'osm', radius_m: b.radius_m, warnings: [], imed: [...PARTNER_ROWS, LAB], cnes: CNES_ROWS, places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } }) : CIDADE_FN(r, b));
+  const { page, log, errors, context } = await newPage(browser, { fn });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  const antes = log.fn.length;
+  await page.fill('#q', 'hemograma');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'lab');
+  assert.equal(log.fn.length, antes, 'nada de geocodificação: a área continua a da localização');
+  assert.equal(await page.textContent('#qMsg'), 'Você buscou “hemograma”: a lista mostra os laboratórios. Confirme se o local faz este exame.');
+  await page.waitForFunction(() => /Laboratório Análise Paulista/.test(document.querySelector('#list').textContent));
+  assert.deepEqual(await names(page), ['Laboratório Parceiro Verificado', 'Laboratório Análise Paulista']);
+  const nota = await page.textContent('#list .pt-note:has-text("laboratório")');
+  assert.match(nota, /Você buscou “hemograma”: a lista mostra os laboratórios\. O IMED não sabe quais exames cada laboratório faz: confirme se o local faz este exame\./);
+  // O preço que o parceiro informou é o geral do laboratório: não aparece ao lado do hemograma.
+  assert.ok(!/R\$/.test(await page.textContent('#list')), 'sem o preço geral do laboratório na lista');
+  assert.match(await page.textContent('.pc:has-text("Laboratório Parceiro Verificado") .pc-price'), /^Preço do exame sob consulta$/);
+  assert.match(await page.textContent('#priceBand'), /O preço de cada exame de laboratório não está no IMED: confirme com o laboratório\./);
+  assert.match(await page.textContent('#count'), /da sua localização/);
+  await shot(page, '43-exame-so-laboratorio');
+  // Exame trocado na lista de filtros: o nome escrito sai do aviso, e o preço geral do laboratório volta.
+  await page.selectOption('#fExam', '');
+  await page.selectOption('#fExam', 'lab');
+  assert.match(await page.textContent('#list .pt-note:has-text("laboratório")'), /^O IMED não sabe quais exames cada laboratório faz: confirme se o local faz este exame\.$/);
+  await page.waitForFunction(() => /^Exames de laboratório: R\$\s?25$/.test(document.querySelector('.pc-price')?.textContent || ''));
+  // Doença ou substância não é chamada de exame: a frase diz só o que foi buscado.
+  for (const q of ['T3', 'colesterol', 'insulina']) {
+    await page.fill('#q', q);
+    await page.press('#q', 'Enter');
+    await page.waitForFunction((x) => document.querySelector('#qMsg').textContent.startsWith(`Você buscou “${x}”`), q);
+    assert.ok(!/é exame de laboratório/.test(await page.textContent('#qMsg')), q);
+  }
+  // Apelido: "USG" é o ultrassom.
+  await page.fill('#q', 'USG');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'usg');
+  assert.equal(await page.textContent('#qMsg'), 'Filtro de exame: Ultrassom (também chamado de USG).');
+  // Exame específico de imagem: o IMED também não sabe quais locais fazem.
+  await page.fill('#q', 'doppler');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => /Doppler/.test(document.querySelector('#qMsg').textContent));
+  assert.equal(await page.textContent('#qMsg'), 'Filtro de exame: Ultrassom (Doppler). Confirme se o local faz este exame.');
+  assert.equal(log.fn.filter((b) => b.action === 'geocode').length, 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: "eco" mostra as duas opções (ecocardiograma ou ultrassom) e não escolhe sozinho, nem com dois Enter', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: CIDADE_FN });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.fill('#q', 'eco');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  assert.equal(await page.textContent('#qEscT'), '“eco” pode ser:');
+  assert.deepEqual(await page.$$eval('#qEsc button', (els) => els.map((e) => e.textContent)), ['Ecocardiograma', 'Ultrassom']);
+  assert.equal(await page.getAttribute('#qEsc', 'role'), 'group');
+  assert.equal(await page.getAttribute('#qEsc', 'aria-labelledby'), 'qEscT');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'qEscT', 'o foco vai para a pergunta, não para uma opção');
+  // Dois Enter seguidos (toque duplo, tremor): o segundo não escolhe.
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  assert.equal(await page.inputValue('#fExam'), '', 'nenhum exame escolhido sozinho');
+  assert.ok(await page.isVisible('#qEsc button'));
+  assert.equal(log.fn.filter((b) => b.action === 'geocode').length, 0);
+  const alvos = await page.$$eval('#qEsc button', (els) => els.map((e) => e.getBoundingClientRect().height));
+  assert.ok(alvos.every((h) => h >= 44), `alvos de toque de 44 px (${alvos.join(', ')})`);
+  await shot(page, '44-eco-duas-opcoes');
+  // Teclado: Tab para a primeira opção, Tab para a segunda e Enter.
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'Ecocardiograma');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'usg');
+  assert.ok(await page.isHidden('#qEsc'));
+  assert.equal(await page.textContent('#qMsg'), 'Filtro de exame: Ultrassom.');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'q', 'pelo teclado, o foco volta para a caixa de busca');
+  // Com o lugar: procura o lugar e deixa as duas opções à mostra.
+  await page.fill('#q', 'eco em Recife');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  await until(() => log.fn.some((b) => b.action === 'geocode'));
+  assert.deepEqual(log.fn.filter((b) => b.action === 'geocode').map((b) => b.q), ['Recife']);
+  await page.waitForFunction(() => /Recife/.test(document.querySelector('#count').textContent));
+  assert.equal(await page.inputValue('#fExam'), 'usg', 'o filtro de antes continua até a pessoa escolher');
+  await page.click('#qEsc button:has-text("Ecocardiograma")');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'eco');
+  assert.ok(await page.isHidden('#qEsc'));
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'qMsg', 'pelo clique, o foco vai para o aviso');
+  // "ecocardiograma com doppler" é um exame só: nada de perguntar.
+  await page.fill('#q', 'ecocardiograma com doppler');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => /Ecocardiograma/.test(document.querySelector('#qMsg').textContent));
+  assert.ok(await page.isHidden('#qEsc'));
+  assert.equal(await page.inputValue('#fExam'), 'eco');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: o que sobra do nome do exame nunca vai para o mapa; sigla de cidade e endereço de Goiânia', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: CIDADE_FN });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  // Detalhes do exame: filtro ligado, a área da localização e nenhuma geocodificação.
+  for (const [q, k] of [['glicemia em jejum', 'lab'], ['raio x panorâmico', 'rx'], ['Doppler venoso de membros inferiores', 'usg'], ['Raio-X de tórax (PA e perfil)', 'rx'], ['ultrassom 3D', 'usg'], ['teste rápido de HIV', 'lab']]) {
+    await page.fill('#q', q);
+    await page.press('#q', 'Enter');
+    await page.waitForFunction((x) => document.querySelector('#fExam').value === x && !document.querySelector('#qMsg').hidden, k);
+    assert.ok(await page.$eval('#qMsg', (e) => e.classList.contains('info')), `${q}: aviso, não erro`);
+    assert.equal(log.fn.filter((b) => b.action === 'geocode').length, 0, `${q}: nada vai para o mapa`);
+    await page.selectOption('#fExam', '');
+  }
+  // Sem o "em", um lugar que não é cidade do IMED fica de fora, com a dica.
+  await page.fill('#q', 'ultrassom Braço do Norte');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'usg');
+  assert.equal(await page.textContent('#qMsg'), 'Filtro de exame: Ultrassom. Para buscar em outra cidade, escreva “em” antes do nome dela, por exemplo “ultrassom em Campinas”.');
+  assert.equal(log.fn.filter((b) => b.action === 'geocode').length, 0);
+  // O lugar é só o que vem depois do "em"; sigla de cidade vira o nome (o servidor só procura com 3 letras ou mais).
+  await page.fill('#q', 'ressonância pelo SUS em Campinas');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'rm' && /Campinas/.test(document.querySelector('#count').textContent));
+  await page.fill('#q', 'ressonância em BH');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => /Belo Horizonte/.test(document.querySelector('#count').textContent));
+  assert.ok(!/Digite um CEP/.test(await page.textContent('#qMsg')));
+  assert.deepEqual(geocodes(log), ['Campinas', 'Belo Horizonte, MG']);
+  // Avenida de Goiânia: endereço, não exame (T-4 não é o exame T4).
+  await page.selectOption('#fExam', '');
+  await page.fill('#q', 'Goiânia, Av. T-4');
+  await page.press('#q', 'Enter');
+  await until(() => geocodes(log).length === 3);
+  assert.equal(geocodes(log)[2], 'Goiânia, Av. T-4');
+  assert.equal(await page.inputValue('#fExam'), '', 'nenhum filtro de exame');
+  await shot(page, '47-exame-sobra-fora');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: doença sozinha ("dengue") pergunta se é o exame ou atendimento', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: CIDADE_FN });
+  await page.goto(`${BASE}perto.html?usar=localizacao`);
+  await ready(page);
+  await page.fill('#q', 'dengue');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  assert.equal(await page.textContent('#qEscT'), '“dengue”: você procura o exame ou atendimento?');
+  assert.deepEqual(await page.$$eval('#qEsc button', (els) => els.map((e) => e.textContent)), ['Exame (laboratórios)', 'Atendimento (todos os locais)']);
+  assert.equal(await page.inputValue('#fExam'), '', 'nada escolhido sozinho: hospitais e UPAs continuam na lista');
+  await shot(page, '48-dengue-exame-ou-atendimento');
+  await page.click('#qEsc button:has-text("Atendimento")');
+  await page.waitForFunction(() => /todos os locais/.test(document.querySelector('#qMsg').textContent));
+  assert.equal(await page.inputValue('#fExam'), '');
+  await page.fill('#q', 'HIV');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  await page.click('#qEsc button:has-text("Exame")');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'lab');
+  assert.equal(await page.textContent('#qMsg'), 'Você buscou “HIV”: a lista mostra os laboratórios. Confirme se o local faz este exame.');
+  // Com "exame de", não pergunta.
+  await page.selectOption('#fExam', '');
+  await page.fill('#q', 'exame de dengue');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'lab');
+  assert.ok(await page.isHidden('#qEsc'));
+  assert.equal(log.fn.filter((b) => b.action === 'geocode').length, 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: "Buscando…" desde o Enter, mesmo com o dicionário demorando (e sem ele, o texto vai inteiro)', async () => {
+  const { page, log, errors, context } = await newPage(browser, { geo: false, fn: CIDADE_FN });
+  // Dicionário lento (2 s): o endereço não espera mais que 1 s.
+  await context.route(`${BASE}assets/js/exames-nomes.js`, async (route) => { await new Promise((r) => setTimeout(r, 2000)); return route.continue(); });
+  await page.goto(`${BASE}perto.html`);
+  await page.waitForSelector('.st h2:has-text("Veja o que tem perto de você")');
+  await page.fill('#q', 'Rua Augusta, 900');
+  const t0 = Date.now();
+  await page.press('#q', 'Enter');
+  assert.equal(await page.textContent('#goBtn'), 'Buscando…', 'o botão mostra a espera desde o Enter');
+  assert.ok(await page.$eval('#goBtn', (b) => b.disabled));
+  await until(() => geocodes(log).length === 1, 4000);
+  const ms = Date.now() - t0;
+  assert.ok(ms < 1800, `a busca sai em até ~1 s (${ms} ms)`);
+  assert.deepEqual(geocodes(log), ['Rua Augusta, 900']);
+  await page.waitForFunction(() => document.querySelector('#goBtn').textContent === 'Buscar');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca: o lugar escrito na página inicial chega pelo ?onde= (cidade) ou guardado na aba (com número)', async () => {
+  const { page, log, errors, context } = await newPage(browser, { fn: CIDADE_FN });
+  // A localização está liberada, mas a pessoa escreveu Campinas: a busca vai para Campinas, não para a localização.
+  await page.goto(`${BASE}perto.html?exame=rm&onde=Campinas`);
+  await page.waitForFunction(() => /Campinas/.test(document.querySelector('#count').textContent));
+  assert.deepEqual(geocodes(log), ['Campinas']);
+  assert.equal(await page.inputValue('#fExam'), 'rm');
+  assert.equal(await page.inputValue('#q'), 'Campinas');
+  assert.equal(new URL(page.url()).search, '?exame=rm', 'o ?onde= sai do endereço depois de lido');
+  assert.ok(!log.fn.some((b) => b.action === 'search' && Math.abs(b.lat + 23.56) < 0.01), 'a localização do aparelho não foi usada');
+  // Endereço com número: guardado só na aba pela página inicial, lido uma vez e apagado.
+  await page.evaluate(() => sessionStorage.setItem('imed_onde', '01310-100'));
+  await page.goto(`${BASE}perto.html?exame=lab`);
+  await until(() => geocodes(log).length === 2);
+  assert.equal(geocodes(log)[1], '01310-100');
+  assert.equal(await page.evaluate(() => sessionStorage.getItem('imed_onde')), null);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame na busca no celular (360 px): as opções do "eco" e os avisos cabem, sem rolagem lateral', async () => {
+  const { page, errors, context } = await newPage(browser, { mobile: true, viewport: { width: 360, height: 780 }, geo: false, fn: CIDADE_FN });
+  await page.goto(`${BASE}perto.html`);
+  await page.fill('#q', 'eco');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  const m1 = await semRolagemLateral(page, 360);
+  assert.ok(m1.ok, `sem rolagem lateral (${JSON.stringify(m1)})`);
+  const caixas = await page.$$eval('#qEsc button', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.right, r.height]; }));
+  assert.ok(caixas.every(([l, r, h]) => l >= 0 && r <= 360 && h >= 44), JSON.stringify(caixas));
+  await shot(page, '45-eco-celular-360');
+  // Toque na opção: o filtro liga e o foco vai para o aviso (o teclado do celular não reabre por cima da lista).
+  await page.tap('#qEsc button:has-text("Ultrassom")');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'usg');
+  assert.notEqual(await page.evaluate(() => document.activeElement?.id), 'q', 'o toque não leva o foco de volta para a caixa');
+  // Só o exame, sem localização liberada: o filtro liga e o site pede a localização (sem ela, explica e espera o CEP).
+  await page.waitForSelector('.st h2:has-text("não liberou")');
+  assert.equal(await page.textContent('#qMsg'), 'Filtro de exame: Ultrassom.');
+  await page.fill('#q', 'hemograma em Campinas');
+  await page.press('#q', 'Enter');
+  await page.waitForFunction(() => document.querySelector('#fExam').value === 'lab' && /Campinas/.test(document.querySelector('#count').textContent));
+  const m2 = await semRolagemLateral(page, 360);
+  assert.ok(m2.ok, `sem rolagem lateral com o aviso (${JSON.stringify(m2)})`);
+  await page.fill('#q', 'dengue');
+  await page.press('#q', 'Enter');
+  await page.waitForSelector('#qEsc:not([hidden]) button');
+  const m3 = await semRolagemLateral(page, 360);
+  assert.ok(m3.ok, `sem rolagem lateral com a pergunta da doença (${JSON.stringify(m3)})`);
+  const caixas2 = await page.$$eval('#qEsc button', (els) => els.map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.right, r.height]; }));
+  assert.ok(caixas2.every(([l, r, h]) => l >= 0 && r <= 360 && h >= 44), JSON.stringify(caixas2));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await shot(page, '46-hemograma-celular-360');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await browser.close();
 server.close();
 const failed = results.filter(([s]) => s !== 'ok');

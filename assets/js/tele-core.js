@@ -169,14 +169,29 @@ export const catalogItem = (id) => {
 // Sem acento e em minúsculas, para buscar "ultrassom" com "ULTRASSOM" ou "tireóide" com "tireoide".
 export const fold = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-// Busca no catálogo pelo nome e pelos outros nomes. Todas as palavras precisam aparecer.
-export function searchCatalog(query) {
+// Busca no catálogo pelo nome e pelos outros nomes: todas as palavras precisam aparecer (em qualquer parte).
+// nomes: o dicionário da busca do site (o módulo exames-nomes.js, que medico.js baixa quando o médico toca na busca;
+// este arquivo não o importa, para a teleconsulta e o documento.html abrirem sem ele). Com ele, a busca também acha os
+// apelidos do exame ("USG", "ecografia", "tomo", "RNM", "chapa"), só pela palavra inteira ou pelo começo dela ("sono" não
+// acha "ultrassonografia"), e aceita uma letra errada em palavra de 7 letras ou mais ("hemogrma", "resonancia").
+const HAY = new Map();
+function hayOf(it, nomes) {
+  const key = nomes ? `${it.id}+` : it.id;
+  if (!HAY.has(key)) {
+    const hay = fold([it.name, ...(it.aka || []), SEARCH[it.s] || ''].join(' '));
+    const extra = nomes ? nomes.apelidos(it.s).join(' ') : '';
+    HAY.set(key, { hay, words: [...new Set(`${hay} ${extra}`.split(/[^a-z0-9]+/).filter(Boolean))] });
+  }
+  return HAY.get(key);
+}
+export function searchCatalog(query, nomes = null) {
   const words = fold(query).split(' ').filter(Boolean);
   const out = [];
   for (const g of CATALOG) {
     for (const it of g.items) {
-      const hay = fold([it.name, ...(it.aka || []), SEARCH[it.s] || ''].join(' '));
-      if (words.every((w) => hay.includes(w))) out.push({ ...it, group: g.label, groupId: g.id });
+      const h = hayOf(it, nomes);
+      const acha = (w) => h.hay.includes(w) || (!!nomes && h.words.some((x) => nomes.comecoParecido(w, x) || nomes.parecida(w, x)));
+      if (words.every(acha)) out.push({ ...it, group: g.label, groupId: g.id });
     }
   }
   return out;
