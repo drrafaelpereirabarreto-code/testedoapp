@@ -1,0 +1,9 @@
+{
+  "name": "imed-testes-banco",
+  "private": true,
+  "description": "Dependências dos testes do banco (tests/banco e tests/banco/local): só o cliente do PostgreSQL, com a versão travada em package-lock.json. Instalar com: npm ci --prefix tests/banco --ignore-scripts",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "pg": "8.23.1"
+  }
+}

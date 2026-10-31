@@ -93,6 +93,45 @@ node --experimental-strip-types --test supabase/functions/*/lib.test.ts
 node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
 ```
 - `E2E_PORT=<porta>` roda um e2e em outra porta (para rodar em paralelo); `ONLY="trecho"` no e2e-perto roda só alguns cenários.
+- **Banco de verdade (iMed Agenda 3.0):** `.github/workflows/banco.yml` (separado do `testes.yml`; roda em envio para a
+  `main` ou `ci/**` que mude `supabase/**`, `tests/banco/**`, `assets/js/geo-core.js` ou o próprio arquivo, e à mão pela
+  API: `gh api -X POST repos/<repo>/actions/workflows/banco.yml/dispatches -f ref=<ramo>`; `gh workflow run` não
+  funciona daqui). Versões presas: CLI do Supabase 2.121.0, ações pelo commit, Node 22.23.4 e o `pg` por
+  `tests/banco/package-lock.json` (`npm ci --prefix tests/banco --ignore-scripts`). Passos: laço local; fecha a saída
+  dos contêineres para a internet; **F0** = `supabase start` (Postgres 17, Auth, PostgREST, Realtime, Kong e Edge
+  Runtime; `-x` tira studio, imgproxy, storage-api, logflare, vector, mailpit, postgres-meta e supavisor) só com as
+  migrações que já estão na produção (as que têm volta saem da pasta), com um vigia que desliga cada job do pg_cron
+  assim que uma migração o cria; prova a trava de rede (2 pedidos do pg_net para IP de fora têm de falhar); **F1** =
+  `supabase migration up --local` com as que têm volta; `supabase test db` (pgTAP em `supabase/tests/`: `000_catalogo`
+  guardas de RLS, private fechada até por coluna, views, Realtime, extensões em public, as 23 colunas do pedido do site
+  com INSERT, search_path, permissões de cada função de public, nada de endereço de internet no código, só a fila chama
+  `net.http_*`; `005_preparo`; `010_pedidos_atuais`); os scripts `tests/banco/*.mjs` (`concorrencia-atual.mjs` mostra
+  o defeito de hoje como FALHA ESPERADA até a 3.3; `pedido-do-site.mjs` monta o pedido com o próprio `geo-core.js` e
+  manda pelo PostgREST como visitante e logado); a volta (`supabase/volta/<mesmo nome>.sql`) tem de deixar o banco
+  igual a F0, e a reaplicação, igual a F1 (impressão digital); no fim, qualquer resposta da internet registrada pelo
+  banco reprova. Migração mais nova que `20261030191354` sem volta reprova. Falhas viram avisos com as linhas do erro
+  (`tests/banco/anotar.mjs`) e o fim deixa as notas "Resumo do banco" (serviços e imagens, trava de rede, p95, 40P01,
+  57014, impressão digital): `gh api repos/<repo>/actions/runs/<run>/jobs` e
+  `gh api repos/<repo>/check-runs/<job>/annotations` (o registro completo e os artifacts não abrem daqui).
+- **Nunca** use `supabase/` com a produção: nada de `supabase link`, `config push`, `db push` ou `migration up --linked`
+  (o `config.toml` é de TESTE: gravaria `site_url` de 127.0.0.1 e outros valores locais na produção). Migração na
+  produção só pelo conector, aprovada pelo dono; depois, renomear o arquivo (e a volta) com a versão gravada e só então
+  juntar o ramo na `main`.
+- **Impressão digital** (`tests/banco/catalogo.sql`, só SELECT): uma linha por objeto (função, tabela, policy,
+  job...) com hash da definição normalizada. O resumo por tipo sai no "Resumo do banco" para F0 e F1. Para conferir a
+  produção: rodar no conector o SELECT de resumo
+  (`select split_part(linha,' ',1), count(*), left(md5(string_agg(linha, chr(10) order by linha collate "C")),12)
+  from (<catalogo.sql sem o order by do fim>) z group by 1`) e comparar; para achar o objeto que difere, rodar o
+  banco.yml à mão com `-f 'inputs[impressao]=funcao,tabela'` (ou `todos`; linhas em notas). Conferido em 31/10/2026:
+  F0 deu o MESMO resumo da produção nos 10 tipos (527 objetos); depois que o preparo for aplicado lá, o resumo da
+  produção tem de bater com F1.
+- Função nova em `public`: acrescente a linha com quem pode executar em `supabase/tests/000_catalogo.sql` (senão reprova).
+  Migração nova a partir da 3.0: escreva também a volta em `supabase/volta/` com o mesmo nome (senão reprova).
+- **Laço rápido do banco (sem Docker, segundos):** `npm ci --prefix tests/banco --ignore-scripts` e
+  `node tests/banco/local/rodar.mjs` (casos do §3.4 da arquitetura; `--concorrencia` para 40 e 100 ao mesmo tempo com
+  e sem trava por recurso, remarcação com COMMIT e ROLLBACK e sala com 2 vagas; `<modo>:N` escolhe N; `--sem-limite`
+  tira os 3 s do anon). Usa o PostgreSQL 16 da máquina (initdb numa pasta temporária, porta livre; como root roda como
+  o usuário `postgres`). Detalhes em `tests/banco/local/README.md`.
 - Celular: no modo celular do Playwright, quando algo passa da tela o navegador afasta o zoom e o `innerWidth` cresce
   junto; para conferir rolagem lateral, medir contra a largura configurada (ex.: 360), não contra `innerWidth`.
 - GitHub Actions (`.github/workflows/testes.yml`) roda tudo a cada envio para a main; veja com `gh run list`.

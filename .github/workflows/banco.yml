@@ -1,0 +1,479 @@
+# Banco de verdade no GitHub (iMed Agenda, fase 3.0; memory/projects/imed-agenda-arquitetura.md, §13 e §14).
+#
+# Sobe nesta máquina do GitHub um Supabase LOCAL e descartável (Postgres 17 com Auth, PostgREST, Realtime e Edge
+# Runtime) e confere, um passo depois do outro:
+#   1. o laço rápido (PostgreSQL da própria máquina, sem Docker): a restrição de exclusão da agenda, em segundos;
+#   2. o banco nasce com as migrações que JÁ estão na produção (F0: todas, menos as que têm volta em supabase/volta/)
+#      e depois "supabase migration up" aplica as que têm volta (F1: todas as migrações, num banco novo);
+#   3. os testes pgTAP de supabase/tests/*.sql ("supabase test db");
+#   4. os scripts de tests/banco/*.mjs (conexão direta e HTTP no PostgREST local, com tokens assinados pelo segredo
+#      do banco local; o pedido de agendamento montado pelo próprio código do site);
+#   5. a volta (supabase/volta/*.sql): depois dela o banco tem de ficar IGUAL a F0, e reaplicado, igual a F1.
+# A "impressão digital" de F0 e F1 (tests/banco/catalogo.sql) sai no resumo: é comparável com a da produção (a mesma
+# consulta, só leitura, rodada lá).
+#
+# Nada aqui fala com o Supabase de produção: o banco é criado do zero; os contêineres ficam sem saída para a
+# internet e um teste prova isso; um vigia desliga cada job do pg_cron assim que uma migração o cria; a fila de
+# importação não tem o endereço das funções; e qualquer resposta da internet registrada pelo banco reprova a
+# execução. Não usa segredo nenhum, não publica nada e não muda o repositório.
+#
+# O registro desta execução fica num lugar que o Claude não lê: cada falha vira aviso (anotação) no topo da página,
+# com as linhas úteis do erro (tests/banco/anotar.mjs), e o último passo deixa as notas "Resumo do banco".
+# À mão (pela API): gh api -X POST repos/<repo>/actions/workflows/banco.yml/dispatches -f ref=<ramo>
+#   [-f 'inputs[impressao]=funcao,tabela' -f 'inputs[impressao_base]=sem-volta'] para ver a impressão linha a linha.
+name: Banco
+
+on:
+  push:
+    branches: [main, 'ci/**']
+    paths:
+      - 'supabase/**'
+      - 'tests/banco/**'
+      - 'assets/js/geo-core.js'
+      - '.github/workflows/banco.yml'
+  workflow_dispatch:
+    inputs:
+      impressao:
+        description: 'Impressão digital linha a linha: tipos separados por vírgula (funcao,tabela,...) ou "todos"; vazio = só o resumo'
+        required: false
+        default: ''
+      impressao_base:
+        description: 'De qual banco: sem-volta (F0, sem as migrações que têm volta) ou todas (F1, com todas as migrações)'
+        required: false
+        default: 'sem-volta'
+        type: choice
+        options: [sem-volta, todas]
+
+# Só leitura: os testes não escrevem nada no repositório.
+permissions:
+  contents: read
+
+# Um envio novo no mesmo ramo cancela a execução antiga que ainda estiver rodando.
+concurrency:
+  group: banco-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # CLI do Supabase em versão FIXA: 2.121.0, publicada em 14/10/2026 (estável; a 2.122.0 é de 23/10). Aceita no
+  # "supabase start -x": gotrue, realtime, storage-api, imgproxy, kong, mailpit, postgrest, postgres-meta, studio,
+  # edge-runtime, logflare, vector, supavisor. Trocar só depois de testar aqui (e conferir config.toml).
+  SUPABASE_CLI_VERSION: '2.121.0'
+  # Node em versão exata (22 LTS, correção de segurança de 20/10/2026). O pacote "pg" vem de tests/banco/package-lock.json.
+  NODE_VERSION: '22.23.4'
+  # Última migração que já estava na produção quando passou a valer a regra "toda migração tem volta testada no CI"
+  # (arquitetura §14). Migração mais nova que esta sem supabase/volta/<mesmo nome>.sql reprova.
+  ULTIMA_SEM_VOLTA: '20261030191354'
+  # Porta do banco local (supabase/config.toml, [db] port) e a senha fixa que a CLI usa no banco local.
+  DB_VIGIA: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres?connect_timeout=2'
+  SUPABASE_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  banco:
+    name: Supabase local, migrações e testes do banco
+    # Ubuntu 24.04 fixo (o mesmo sistema da máquina onde os testes foram escritos, com PostgreSQL 16 instalado).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Ações presas pelo commit (a etiqueta pode mudar de lugar; o commit, não).
+      - name: Baixar o código
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Instalar o Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      # O "pg" e as dependências dele exatamente como em tests/banco/package-lock.json, sem rodar script de instalação.
+      - name: Preparar (pacote pg travado e pasta do resumo)
+        run: |
+          echo "IMED_RESUMO_DIR=$RUNNER_TEMP/resumo" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/resumo"
+          npm ci --prefix tests/banco --ignore-scripts --no-audit --no-fund
+
+      # Se o laço reprovar, o resto continua (para a execução trazer todas as informações) e o último passo reprova.
+      - name: Laço rápido (PostgreSQL da máquina, sem Docker)
+        id: laco
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          log="$RUNNER_TEMP/laco-local.log"
+          if ! timeout -k 10s 5m node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade 2>&1 | tee "$log"; then
+            grep -q '^::error' "$log" || node tests/banco/anotar.mjs cauda "Laço local quebrou" "$log"
+            exit 1
+          fi
+
+      - name: Instalar a CLI do Supabase
+        uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359 # v3.0.1
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+
+      # Os contêineres do Supabase local não saem para a internet: mesmo que algo no banco tentasse chamar a
+      # produção, a chamada não sairia daqui (o passo "Provar a trava de rede" confere). Baixar as imagens continua
+      # funcionando (quem baixa é o Docker da máquina, não os contêineres).
+      - name: Fechar a saída dos contêineres para a internet
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          externa=$(ip -4 route show default | awk '{print $5; exit}')
+          if [ -z "$externa" ] || ! sudo iptables -I DOCKER-USER 1 -o "$externa" -j REJECT; then
+            echo "::error title=Sem trava de rede::não deu para bloquear a saída dos contêineres (interface: ${externa:-nenhuma}; cadeia DOCKER-USER)"
+            exit 1
+          fi
+          sudo iptables -S DOCKER-USER
+          # IPv6, quando o Docker da máquina tiver a cadeia (a rede do Supabase local nasce sem IPv6; é só por garantia).
+          v6='IPv6 sem cadeia DOCKER-USER (rede dos contêineres sem IPv6)'
+          if sudo ip6tables -L DOCKER-USER -n > /dev/null 2>&1 && sudo ip6tables -I DOCKER-USER 1 -o "$externa" -j REJECT; then
+            v6='IPv6 também fechado'
+          fi
+          echo "Contêineres sem saída para a internet pela interface $externa ($v6)." | tee "$IMED_RESUMO_DIR/05-rede.txt"
+
+      # F0: o banco nasce só com as migrações que já estão na produção (as que têm volta saem da pasta até o passo
+      # seguinte). Um vigia desliga cada job do pg_cron logo que uma migração o cria: a fila de importação das
+      # migrações antigas tem o endereço da produção no código (a migração de preparo tira, mas só entra depois).
+      - name: Subir o Supabase local com as migrações que já estão na produção (F0)
+        id: subir
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          shopt -s nullglob
+          # Regra das voltas (arquitetura §14): toda migração depois de $ULTIMA_SEM_VOLTA tem volta com o mesmo nome.
+          com_volta=()
+          sem_volta=()
+          for m in supabase/migrations/*.sql; do
+            nome=$(basename "$m")
+            versao=${nome%%_*}
+            if [ -f "supabase/volta/$nome" ]; then
+              com_volta+=("$nome")
+            elif [[ "$versao" > "$ULTIMA_SEM_VOLTA" ]]; then
+              sem_volta+=("$nome")
+            fi
+          done
+          for v in supabase/volta/*.sql; do
+            if [ ! -f "supabase/migrations/$(basename "$v")" ]; then
+              echo "::error title=Volta sem migração::$v não tem a migração supabase/migrations/$(basename "$v") (renomeou a migração? renomeie a volta igual)"
+              exit 1
+            fi
+          done
+          if [ ${#sem_volta[@]} -gt 0 ]; then
+            echo "::error title=Migração nova sem volta::${sem_volta[*]} - escreva supabase/volta/<mesmo nome>.sql (arquitetura §14: toda migração nova tem volta testada aqui)"
+            exit 1
+          fi
+          : > "$RUNNER_TEMP/com-volta.txt"
+          mkdir -p "$RUNNER_TEMP/com-volta"
+          for nome in "${com_volta[@]}"; do
+            echo "$nome" >> "$RUNNER_TEMP/com-volta.txt"
+            mv "supabase/migrations/$nome" "$RUNNER_TEMP/com-volta/"
+          done
+
+          # Vigia (a cada meio segundo, até o banco subir): desliga todo job ativo do pg_cron. Anota em vigia.log (ms)
+          # a primeira conexão, quando o schema cron apareceu e cada desligamento (o resumo mostra o tempo de reação).
+          (
+            conectou=''
+            cron=''
+            while :; do
+              if r=$(psql "$DB_VIGIA" -wqAtX -c "select to_regclass('cron.job') is not null" 2>/dev/null); then
+                [ -n "$conectou" ] || { conectou=1; echo "$(date +%s%3N) conectou" >> "$RUNNER_TEMP/vigia.log"; }
+                if [ "$r" = "t" ]; then
+                  [ -n "$cron" ] || { cron=1; echo "$(date +%s%3N) cron" >> "$RUNNER_TEMP/vigia.log"; }
+                  n=$(psql "$DB_VIGIA" -wqAtX -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" 2>/dev/null) || n=''
+                  if [ -n "$n" ] && [ "$n" != "0" ]; then echo "$(date +%s%3N) desligou $n" >> "$RUNNER_TEMP/vigia.log"; fi
+                fi
+              fi
+              sleep 0.5
+            done
+          ) &
+          vigia=$!
+          trap 'kill "$vigia" 2>/dev/null || true' EXIT
+
+          log="$RUNNER_TEMP/supabase-start.log"
+          inicio=$SECONDS
+          supabase --version
+          # O registro vai inteiro para a tela e para $log; uma cópia com o instante (ms) de cada linha vai para o vigia.
+          if ! timeout -k 30s 15m supabase start -x studio,imgproxy,storage-api,logflare,vector,mailpit,postgres-meta,supavisor 2>&1 \
+               | tee "$log" | while IFS= read -r linha; do printf '%s %s\n' "$(date +%s%3N)" "$linha" >> "$log.hora"; printf '%s\n' "$linha"; done; then
+            node tests/banco/anotar.mjs migracoes "$log"
+            exit 1
+          fi
+          supabase status -o json 2>/dev/null > "$RUNNER_TEMP/supabase-status.json"
+          echo "IMED_SUPABASE_STATUS=$RUNNER_TEMP/supabase-status.json" >> "$GITHUB_ENV"
+          db_url=$(node --input-type=module -e "import { readFileSync } from 'node:fs'; import { jsonDaSaida } from './tests/banco/lib.mjs'; console.log(jsonDaSaida(readFileSync(process.env.RUNNER_TEMP + '/supabase-status.json', 'utf8')).DB_URL)")
+          if [ -z "$db_url" ] || [ "$db_url" = "undefined" ]; then
+            node tests/banco/anotar.mjs cauda "Sem o endereço do banco local (supabase status)" "$RUNNER_TEMP/supabase-status.json"
+            exit 1
+          fi
+          echo "DB_URL=$db_url" >> "$GITHUB_ENV"
+
+          # pg_cron: desliga de novo (o vigia pode ter perdido o último) e para o vigia.
+          psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" > /dev/null
+          kill "$vigia" 2>/dev/null || true
+          ativos=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job where active")
+          jobs=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(jobname || ' (' || schedule || ')', ', ' order by jobid), 'nenhum') from cron.job")
+          rodaram=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job_run_details")
+          echo "pg_cron desligado (ativos: $ativos; execuções de job durante o start: $rodaram): $jobs" | tee "$IMED_RESUMO_DIR/15-cron.txt"
+          node tests/banco/anotar.mjs vigia "$log.hora" "$RUNNER_TEMP/vigia.log" | tee -a "$IMED_RESUMO_DIR/15-cron.txt"
+          if [ "$ativos" != "0" ]; then
+            echo "::error title=pg_cron ligado::$ativos job(s) do pg_cron continuam ativos no banco local"
+            exit 1
+          fi
+          if [ "$rodaram" != "0" ]; then
+            quais=$(psql "$db_url" -qAt -c "select string_agg(coalesce(j.jobname, d.jobid::text) || ' ' || d.status || coalesce(' (' || left(d.return_message, 80) || ')', ''), '; ') from cron.job_run_details d left join cron.job j using (jobid)")
+            echo "::warning title=Um job do pg_cron rodou antes do vigia desligar::$quais (a trava de rede barra qualquer chamada; veja a conferência final da rede)"
+          fi
+
+          versao=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select current_setting('server_version')")
+          versao_num=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select current_setting('server_version_num')")
+          arquivos=$(ls supabase/migrations/*.sql | wc -l)
+          no_banco=$(psql "$db_url" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from supabase_migrations.schema_migrations")
+          echo "Supabase local de pé em $(( SECONDS - inicio )) s (Postgres $versao, CLI $(supabase --version)); o banco nasceu com $no_banco de $arquivos migrações (as que já estão na produção); com volta, aplicadas no passo seguinte: $(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")" \
+            | tee "$IMED_RESUMO_DIR/10-supabase.txt"
+          if [ "$versao_num" -lt 170000 ] || [ "$versao_num" -ge 180000 ]; then
+            echo "::error title=Postgres não é o 17::o banco local é o Postgres $versao; a produção é 17 (config.toml, [db] major_version = 17)"
+            exit 1
+          fi
+          # Quais serviços subiram (e de qual imagem): os excluídos com -x não podem aparecer.
+          docker ps --format '{{.Names}} {{.Image}}' | { grep '^supabase_' || true; } | sort > "$RUNNER_TEMP/conteineres.txt"
+          servicos=$(sed -E 's/^supabase_(.+)_imed-local [^ ]*\/([^/ ]+)$/\1 (\2)/' "$RUNNER_TEMP/conteineres.txt" | paste -sd ';' - | sed 's/;/; /g')
+          echo "Serviços de pé: $servicos" | tee "$IMED_RESUMO_DIR/11-servicos.txt"
+          if grep -E '^supabase_(studio|imgproxy|storage|analytics|vector|inbucket|pg_meta|pooler)_' "$RUNNER_TEMP/conteineres.txt"; then
+            echo "::error title=Serviço que devia estar desligado::$(grep -E '^supabase_(studio|imgproxy|storage|analytics|vector|inbucket|pg_meta|pooler)_' "$RUNNER_TEMP/conteineres.txt" | paste -sd ',' -)"
+            exit 1
+          fi
+          for s in db auth rest realtime kong; do
+            if ! grep -q "^supabase_${s}_" "$RUNNER_TEMP/conteineres.txt"; then
+              echo "::error title=Serviço faltando::o contêiner supabase_${s} não está de pé (o CI precisa de Postgres, Auth, PostgREST, Realtime e Kong)"
+              exit 1
+            fi
+          done
+          if [ "$no_banco" != "$arquivos" ]; then
+            echo "::error title=Migrações faltando::o banco local registrou $no_banco migrações, mas há $arquivos arquivos (sem as que têm volta) em supabase/migrations"
+            exit 1
+          fi
+
+          # F0: impressão digital do banco igual ao da produção de hoje (sem as migrações que têm volta).
+          psql "$db_url" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-sem-volta.txt" 2> "$RUNNER_TEMP/impressao.err" \
+            || { node tests/banco/anotar.mjs cauda "A impressão digital falhou (tests/banco/catalogo.sql)" "$RUNNER_TEMP/impressao.err"; exit 1; }
+          node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-sem-volta.txt" "F0 (sem as migrações com volta)"
+          for nome in "${com_volta[@]}"; do mv "$RUNNER_TEMP/com-volta/$nome" supabase/migrations/; done
+
+      # Dois pedidos de propósito para fora, pelo pg_net (o mesmo caminho da fila de importação), para endereços de
+      # IP (sem DNS), IPv4 e IPv6: os dois têm de falhar sem resposta. Resposta com código HTTP = a trava não
+      # funciona, e a execução para aqui.
+      - name: Provar a trava de rede (o banco local não alcança a internet)
+        id: rede
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          c4=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select net.http_get(url := 'http://1.1.1.1/', timeout_milliseconds := 5000)")
+          c6=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select net.http_get(url := 'http://[2606:4700:4700::1111]/', timeout_milliseconds := 5000)")
+          echo "$c4,$c6" > "$RUNNER_TEMP/canarios.txt"
+          prontos=0
+          for i in $(seq 1 40); do
+            prontos=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net._http_response where id in ($c4, $c6)")
+            [ "$prontos" = "2" ] && break
+            sleep 1
+          done
+          resultado=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(case id when $c4 then 'IPv4' else 'IPv6' end || ': ' || coalesce('HTTP ' || status_code, 'sem resposta') || coalesce(' (' || left(error_msg, 100) || ')', '') || case when timed_out then ' (tempo esgotado)' else '' end, '; ' order by id), 'nada') from net._http_response where id in ($c4, $c6)")
+          saiu=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net._http_response where id in ($c4, $c6) and status_code is not null")
+          echo "Trava de rede provada pelo pg_net: $resultado" | tee "$IMED_RESUMO_DIR/06-trava.txt"
+          if [ "$saiu" != "0" ]; then
+            echo "::error title=A TRAVA DE REDE NÃO FUNCIONA::o banco local recebeu resposta da internet ($resultado); nada pode rodar assim"
+            exit 1
+          fi
+          if [ "$prontos" != "2" ]; then
+            echo "::error title=Trava de rede sem prova::o pg_net não terminou os 2 pedidos de teste em 40 s ($resultado)"
+            exit 1
+          fi
+          saidas=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net._http_response where status_code is not null")
+          if [ "$saidas" != "0" ]; then
+            echo "::error title=O banco local falou com a internet::$saidas resposta(s) com código HTTP em net._http_response antes dos testes"
+            exit 1
+          fi
+
+      # F1: as migrações que têm volta, aplicadas pela CLI como uma migração nova da produção; o pg_cron é desligado
+      # de novo (a migração de preparo cria o job de limpeza).
+      - name: Aplicar as migrações que têm volta (supabase migration up, F1)
+        id: migrar
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          if [ -s "$RUNNER_TEMP/com-volta.txt" ]; then
+            log="$RUNNER_TEMP/migration-up.log"
+            if ! timeout -k 30s 10m supabase migration up --local 2>&1 | tee "$log"; then
+              node tests/banco/anotar.mjs migracoes "$log"
+              exit 1
+            fi
+          else
+            echo "Nenhuma migração com volta: o banco já tem todas."
+          fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" > /dev/null
+          ativos=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from cron.job where active")
+          jobs=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(jobname || ' (' || schedule || ')', ', ' order by jobid), 'nenhum') from cron.job")
+          arquivos=$(ls supabase/migrations/*.sql | wc -l)
+          no_banco=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from supabase_migrations.schema_migrations")
+          url=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from private.app_settings where key = 'functions_url'")
+          echo "Migrações num banco novo: $no_banco de $arquivos (com volta: $(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")); pg_cron desligado de novo (ativos: $ativos): $jobs; endereço das funções gravado: $url" \
+            | tee "$IMED_RESUMO_DIR/16-migracoes.txt"
+          if [ "$ativos" != "0" ] || [ "$url" != "0" ]; then
+            echo "::error title=pg_cron ou endereço::jobs ativos: $ativos; endereço das funções gravado no banco local: $url (os dois têm de ser 0)"
+            exit 1
+          fi
+          if [ "$no_banco" != "$arquivos" ]; then
+            echo "::error title=Migrações faltando::o banco local registrou $no_banco migrações, mas há $arquivos arquivos em supabase/migrations"
+            exit 1
+          fi
+          # F1: impressão digital com todas as migrações, antes de qualquer teste.
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-todas.txt" 2> "$RUNNER_TEMP/impressao.err" \
+            || { node tests/banco/anotar.mjs cauda "A impressão digital falhou (tests/banco/catalogo.sql)" "$RUNNER_TEMP/impressao.err"; exit 1; }
+          node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-todas.txt" "F1 (com todas as migrações)"
+
+      - name: Testes pgTAP (supabase test db)
+        id: pgtap
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          log="$RUNNER_TEMP/pgtap.log"
+          if ! timeout -k 30s 10m supabase test db 2>&1 | tee "$log"; then
+            node tests/banco/anotar.mjs pgtap "$log"
+            exit 1
+          fi
+          { echo -n "pgTAP: "; grep -E '^(Files=|Result:)' "$log" | tr '\n' ' '; echo; } | tee "$IMED_RESUMO_DIR/20-pgtap.txt"
+          # Pendência conhecida (TODO no 000_catalogo, decisão da fase 3.1): quem alcança o schema net do pg_net.
+          net=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select coalesce(string_agg(r, ' e ' order by r), 'ninguém') from unnest(array['anon', 'authenticated']) r where has_schema_privilege(r, 'net', 'USAGE')")
+          echo "Pendência (TODO, fase 3.1): alcançam o schema net do pg_net (onde o token interno passa): $net" | tee -a "$IMED_RESUMO_DIR/20-pgtap.txt"
+
+      - name: Scripts do banco (tests/banco/*.mjs)
+        id: scripts
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          falhou=0
+          for f in tests/banco/*.mjs; do
+            case "$(basename "$f")" in lib.mjs|anotar.mjs) continue ;; esac
+            log="$RUNNER_TEMP/$(basename "$f" .mjs).log"
+            echo "::group::$f"
+            if ! timeout -k 10s 10m node "$f" 2>&1 | tee "$log"; then
+              falhou=1
+              grep -q '^::error' "$log" || node tests/banco/anotar.mjs cauda "$f quebrou" "$log"
+            fi
+            echo "::endgroup::"
+          done
+          exit $falhou
+
+      # Volta das migrações que têm volta (da mais nova para a mais velha) e reaplicação. Três conferências pela
+      # impressão digital: os testes não deixaram rastro (igual a F1); depois da volta, o banco é IGUAL ao que nasceu
+      # sem elas (F0: pega volta que esquece ou apaga coisa demais); reaplicado, igual a F1.
+      - name: Volta e reaplicação das migrações
+        id: volta
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          if [ ! -s "$RUNNER_TEMP/com-volta.txt" ]; then echo "Nenhuma migração com volta."; exit 0; fi
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/catalogo-depois-dos-testes.txt"
+          if ! diff "$RUNNER_TEMP/impressao-todas.txt" "$RUNNER_TEMP/catalogo-depois-dos-testes.txt" > "$RUNNER_TEMP/testes.diff"; then
+            node tests/banco/anotar.mjs cauda "Os testes deixaram rastro no catálogo (impressão digital mudou; < antes, > depois)" "$RUNNER_TEMP/testes.diff"
+            exit 1
+          fi
+          mapfile -t voltas < <(sort -r "$RUNNER_TEMP/com-volta.txt")
+          for nome in "${voltas[@]}"; do
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/volta/$nome" > "$RUNNER_TEMP/volta.log" 2>&1; then
+              node tests/banco/anotar.mjs cauda "A volta falhou - $nome" "$RUNNER_TEMP/volta.log"
+              exit 1
+            fi
+          done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/catalogo-depois-da-volta.txt"
+          if ! diff "$RUNNER_TEMP/impressao-sem-volta.txt" "$RUNNER_TEMP/catalogo-depois-da-volta.txt" > "$RUNNER_TEMP/volta.diff"; then
+            node tests/banco/anotar.mjs cauda "A volta não deixou o banco igual ao que nasceu sem as migrações com volta (F0; < F0, > depois da volta)" "$RUNNER_TEMP/volta.diff"
+            exit 1
+          fi
+          mapfile -t migracoes < <(sort "$RUNNER_TEMP/com-volta.txt")
+          for nome in "${migracoes[@]}"; do
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$nome" > "$RUNNER_TEMP/reaplicar.log" 2>&1; then
+              node tests/banco/anotar.mjs cauda "Reaplicar depois da volta falhou - $nome" "$RUNNER_TEMP/reaplicar.log"
+              exit 1
+            fi
+          done
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from (select cron.alter_job(jobid, active := false) from cron.job where active) x" > /dev/null
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/catalogo-reaplicado.txt"
+          if ! diff "$RUNNER_TEMP/impressao-todas.txt" "$RUNNER_TEMP/catalogo-reaplicado.txt" > "$RUNNER_TEMP/reaplicar.diff"; then
+            node tests/banco/anotar.mjs cauda "A reaplicação não deixou o banco igual ao com todas as migrações (F1; < F1, > reaplicado)" "$RUNNER_TEMP/reaplicar.diff"
+            exit 1
+          fi
+          echo "Volta e reaplicação: ${#voltas[@]} migração(ões) ($(paste -sd ' ' "$RUNNER_TEMP/com-volta.txt")); depois da volta, igual a F0 ($(wc -l < "$RUNNER_TEMP/impressao-sem-volta.txt") objetos); reaplicada, igual a F1 ($(wc -l < "$RUNNER_TEMP/impressao-todas.txt") objetos); os testes não deixaram rastro no catálogo" \
+            | tee "$IMED_RESUMO_DIR/40-volta.txt"
+
+      # Conferência final, mesmo se algo falhou: nenhuma resposta da internet registrada pelo banco em toda a execução.
+      - name: Nada saiu do banco para a internet (conferência final)
+        id: rede_final
+        if: always() && steps.subir.outcome == 'success'
+        run: |
+          set -o pipefail
+          trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
+          canarios=$(cat "$RUNNER_TEMP/canarios.txt" 2>/dev/null || true)
+          [ -n "$canarios" ] || canarios=0
+          saidas=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net._http_response where status_code is not null")
+          tentativas=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net._http_response where id not in ($canarios)")
+          fila=$(psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -c "select count(*) from net.http_request_queue")
+          echo "Rede no fim: respostas da internet registradas pelo banco: $saidas; tentativas barradas fora as 2 da prova: $tentativas; pedidos ainda na fila do pg_net: $fila" \
+            | tee "$IMED_RESUMO_DIR/90-rede.txt"
+          if [ "$saidas" != "0" ]; then
+            lista=$(psql "$DB_URL" -qAt -c "select string_agg(id || ': HTTP ' || status_code || coalesce(' ' || content_type, ''), '; ' order by id) from net._http_response where status_code is not null")
+            echo "::error title=O banco local falou com a internet::$saidas resposta(s) com código HTTP em net._http_response ($lista): a trava de rede falhou"
+            exit 1
+          fi
+          if [ "$tentativas" != "0" ] || [ "$fila" != "0" ]; then
+            erros=$(psql "$DB_URL" -qAt -c "select string_agg(id || ': ' || coalesce(left(error_msg, 100), 'sem mensagem'), '; ' order by id) from net._http_response where id not in ($canarios)")
+            echo "::warning title=O banco local tentou chamar a internet::$tentativas tentativa(s) barrada(s) pela trava de rede e $fila na fila do pg_net: ${erros:-}"
+          fi
+
+      # Só à mão (workflow_dispatch com impressao=...): as linhas da impressão digital em notas, para achar o objeto
+      # que difere da produção quando o resumo por tipo não bate.
+      - name: Impressão digital linha a linha (só à mão)
+        if: always() && inputs.impressao != '' && steps.subir.outcome == 'success'
+        env:
+          IMPRESSAO: ${{ inputs.impressao }}
+          IMPRESSAO_BASE: ${{ inputs.impressao_base }}
+        run: |
+          arq="$RUNNER_TEMP/impressao-${IMPRESSAO_BASE:-sem-volta}.txt"
+          [ -s "$arq" ] || arq="$RUNNER_TEMP/impressao-sem-volta.txt"
+          node tests/banco/anotar.mjs impressao-linhas "$arq" "$IMPRESSAO"
+
+      # Falha DEPOIS de o banco subir (a falha no próprio "supabase start" já traz o registro do contêiner que não
+      # ficou de pé, pelo passo dele): contêiner que parou e só os erros graves do Postgres (FATAL/PANIC; os ERROR
+      # são, quase todos, os erros que os testes provocam de propósito).
+      - name: O que os contêineres registraram (falha depois de subir)
+        if: failure() && steps.subir.outcome == 'success'
+        run: |
+          docker ps -a --format '{{.Names}}|{{.Status}}' | grep '^supabase_' > "$RUNNER_TEMP/conteineres-estado.txt" || true
+          while IFS='|' read -r nome estado; do
+            case "$estado" in Up*) continue ;; esac
+            docker logs --tail 80 "$nome" > "$RUNNER_TEMP/log-$nome.txt" 2>&1 || true
+            node tests/banco/anotar.mjs cauda "Contêiner parado: $nome ($estado)" "$RUNNER_TEMP/log-$nome.txt"
+          done < "$RUNNER_TEMP/conteineres-estado.txt"
+          db=$(grep -o '^supabase_db_[^|]*' "$RUNNER_TEMP/conteineres-estado.txt" | head -n 1 || true)
+          if [ -n "$db" ]; then
+            docker logs --tail 3000 "$db" 2>&1 | grep -E '(FATAL|PANIC):' \
+              | grep -vE 'the database system is (starting up|shutting down)|terminating connection due to administrator command' \
+              | tail -n 14 > "$RUNNER_TEMP/db-graves.txt" || true
+            if [ -s "$RUNNER_TEMP/db-graves.txt" ]; then node tests/banco/anotar.mjs cauda "Erros graves no registro do Postgres local" "$RUNNER_TEMP/db-graves.txt"; fi
+          fi
+          true
+
+      - name: Resumo
+        if: always()
+        run: |
+          node tests/banco/anotar.mjs resumo "$IMED_RESUMO_DIR" \
+            "laço local ${{ steps.laco.outcome }}; F0 ${{ steps.subir.outcome }}; trava de rede ${{ steps.rede.outcome }}; F1 ${{ steps.migrar.outcome }}; pgTAP ${{ steps.pgtap.outcome }}; scripts ${{ steps.scripts.outcome }}; volta ${{ steps.volta.outcome }}; rede no fim ${{ steps.rede_final.outcome }}"
+
+      - name: O laço rápido reprovou?
+        if: always() && steps.laco.outcome == 'failure'
+        run: |
+          echo "::error title=Laço rápido reprovou::veja os avisos do passo 'Laço rápido' (o resto da execução rodou para trazer as outras informações)"
+          exit 1

@@ -1,0 +1,102 @@
+# Supabase LOCAL do IMED: o banco descartável que o GitHub sobe a cada envio (.github/workflows/banco.yml)
+# e que qualquer pessoa sobe com "supabase start" (precisa de Docker).
+#
+# !!! NUNCA use esta pasta com a produção: nada de "supabase link", "supabase config push", "supabase db push"
+# !!! nem "supabase migration up --linked". O "config push" gravaria na produção os valores de TESTE daqui (por
+# !!! exemplo o site_url de 127.0.0.1, que quebra os links de login) e o "db push" aplicaria migrações sem a
+# !!! conferência de quem as aprova. A produção recebe migração só pelo conector do Supabase, aprovada pelo dono.
+#
+# Nada aqui vale para a produção: o projeto de verdade (pyoqiecupxhdzigjudyd) é configurado pelo painel do
+# Supabase. Este arquivo só diz como montar a cópia local: Postgres 17 (o mesmo da produção), Auth, PostgREST,
+# Realtime e Edge Runtime, com TODAS as migrações de supabase/migrations aplicadas num banco novo.
+# Feito para a CLI do Supabase 2.121.0 (a versão fixada no banco.yml).
+
+project_id = "imed-local"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+# Igual à produção: tabela, sequência e função nova do schema public nascem com permissão para anon,
+# authenticated e service_role (é o padrão "antigo", que o projeto de produção mantém; conferido em 31/10/2026)
+# e cada migração fecha o que precisa (RLS, REVOKE). Na CLI 2.121.0, sem esta linha o resultado é o mesmo (só
+# "false" tira as permissões); ela fica explícita porque o padrão já foi "nada exposto" em outras versões da CLI
+# e pode voltar a ser. A guarda "privilégios padrão do schema public" (supabase/tests/000_catalogo.sql) avisa se
+# o banco do CI deixar de ser igual à produção nisso.
+auto_expose_new_tables = true
+
+[db]
+port = 54322
+shadow_port = 54320
+# A produção roda PostgreSQL 17.11.
+major_version = 17
+
+[db.pooler]
+enabled = false
+
+[db.migrations]
+enabled = true
+
+[db.seed]
+# Sem dados de exemplo: cada teste cria (e desfaz) os dados de que precisa.
+enabled = false
+
+[realtime]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+
+[auth.email]
+# Como na produção ("Confirm email" ligado). Os testes criam os usuários direto no banco, com o e-mail confirmado.
+enable_confirmations = true
+
+[edge_runtime]
+enabled = true
+
+# Serviços que os testes do banco não usam: ficam desligados (o banco.yml também os exclui com -x).
+[studio]
+enabled = false
+
+[storage]
+enabled = false
+
+[local_smtp]
+enabled = false
+
+[analytics]
+enabled = false
+
+# ---------------- Edge Functions ----------------
+# verify_jwt = false: a própria função confere quem chama (chave de serviço ou token interno).
+# Mesmos valores da produção (conferidos em 31/10/2026: clinicas-proximas true, importar-clinicas false).
+
+[functions.clinicas-proximas]
+verify_jwt = true
+
+[functions.importar-clinicas]
+verify_jwt = false
+
+# Funções que ainda não existem: nascem nas fases do iMed Agenda (memory/projects/imed-agenda-arquitetura.md,
+# §13). Já ficam declaradas com verify_jwt = false (cada uma confere quem chama por conta própria), mas DESLIGADAS
+# (enabled = false) enquanto a pasta supabase/functions/<nome> não existir: assim o Edge Runtime local não procura
+# código que ainda não foi escrito. Quem criar a função troca para enabled = true.
+
+[functions.agenda-reservar]   # fase 5.1 (só se o Turnstile existir)
+enabled = false
+verify_jwt = false
+
+[functions.agenda-saida]      # fase 5.3 (avisos)
+enabled = false
+verify_jwt = false
+
+[functions.pagamentos-webhook]   # fase 5.4 (só depois da decisão sobre pagamento online)
+enabled = false
+verify_jwt = false
+
+[functions.agenda-api]        # fase 6.1 (integração com o sistema da clínica)
+enabled = false
+verify_jwt = false
