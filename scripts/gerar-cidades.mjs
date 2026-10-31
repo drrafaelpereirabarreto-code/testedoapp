@@ -15,6 +15,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rodapeHtml } from './rodape.mjs';
 import { tagVisitas } from './aplicar-visitas.mjs';
+import { tagsTema } from './aplicar-tema.mjs';
 import { headFontes } from './fontes.mjs';
 import { deCidade as deCidadeSite } from '../assets/js/confianca.js';
 
@@ -121,6 +122,7 @@ function head({ title, description, canonical, rel, base, ld, api = false, faq =
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
 <meta name="theme-color" content="#05161e">
+${tagsTema(rel)}
 <link rel="canonical" href="${esc(canonical)}">
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(description)}">

@@ -45,6 +45,21 @@ export const GRUPOS = [
 export const INICIO = '<!-- rodape -->';
 export const FIM = '<!-- /rodape -->';
 
+// Escolha do tema: [valor de data-tema-opcao, texto]. assets/js/tema.js liga os botões; assets/css/rodape.css desenha.
+export const TEMAS = [['auto', 'Automático'], ['claro', 'Claro'], ['escuro', 'Escuro']];
+
+// Grupo com nome ("Tema") e um botão de alternância (aria-pressed) por opção. A opção marcada aparece certa já na
+// primeira pintura (o CSS lê o <html data-tema-escolha>); o aria-pressed de cada botão o tema.js acerta ao abrir.
+// Sem o tema.js funcionando, o grupo não aparece (assets/css/rodape.css).
+export function temaHtml() {
+  return `<div class="rd-tema" role="group" aria-labelledby="rd-tema-h">
+        <p class="rd-h" id="rd-tema-h">Tema</p>
+        <div class="rd-tema-op">
+          ${TEMAS.map(([v, t]) => `<button type="button" data-tema-opcao="${v}" aria-pressed="${v === 'auto'}">${t}</button>`).join('\n          ')}
+        </div>
+      </div>`;
+}
+
 // Endereço de um link do rodapé visto de uma página com o `rel` dado.
 export function rodapeHref(rel, path) {
   const root = rel || './';
@@ -69,6 +84,7 @@ export function rodapeHtml(rel = '') {
       <a class="rd-logo" href="${href('')}" aria-label="IMED, página inicial"><span class="rd-mk" aria-hidden="true"><i class="fa-solid fa-plus"></i></span>IMED</a>
       <p class="rd-med"><i class="fa-solid fa-user-doctor" aria-hidden="true"></i><span>Médico responsável: <b>${MEDICO}</b> — <span class="rd-nw">${CRM}</span> · <a href="${CFM_URL}" target="_blank" rel="noopener">conferir no CFM<span class="rd-sr"> (abre em outra aba)</span></a></span></p>
       <p class="rd-sos"><i class="fa-solid fa-truck-medical" aria-hidden="true"></i><span><b>Emergência? Ligue <a href="tel:192">192 (SAMU)</a></b> ou vá ao pronto-socorro mais próximo.</span></p>
+      ${temaHtml()}
     </div>
     <nav class="rd-nav" aria-label="Rodapé">${grupos}
     </nav>
