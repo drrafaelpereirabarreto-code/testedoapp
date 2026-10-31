@@ -44,12 +44,18 @@ create table if not exists private.app_settings (
 -- O endereço das funções (a fila monta '<endereço>/importar-clinicas'): https no endereço do projeto no Supabase,
 -- sem barra no fim. http só para endereço desta máquina (testes): o token interno nunca vai em texto aberto pela
 -- internet nem para outro servidor por causa de um erro de digitação.
-alter table private.app_settings drop constraint if exists app_settings_functions_url_ck;
-alter table private.app_settings add constraint app_settings_functions_url_ck check (
-  key <> 'functions_url'
-  or value ~ '^https://[a-z0-9]{20}\.supabase\.co/functions/v1$'
-  or value ~ '^http://(127\.0\.0\.1|localhost|kong|host\.docker\.internal)(:[0-9]{1,5})?/functions/v1$'
-);
+-- Criada só se ainda não existir (sem DROP: aplicar de novo não muda nada).
+do $$
+begin
+  if not exists (select 1 from pg_constraint
+                 where conrelid = 'private.app_settings'::regclass and conname = 'app_settings_functions_url_ck') then
+    alter table private.app_settings add constraint app_settings_functions_url_ck check (
+      key <> 'functions_url'
+      or value ~ '^https://[a-z0-9]{20}\.supabase\.co/functions/v1$'
+      or value ~ '^http://(127\.0\.0\.1|localhost|kong|host\.docker\.internal)(:[0-9]{1,5})?/functions/v1$'
+    );
+  end if;
+end $$;
 comment on table private.app_settings is
   'Configurações do servidor que não são segredo (ex.: functions_url, o endereço das Edge Functions do projeto). '
   'Banco sem functions_url (testes do GitHub, cópia local) não chama nenhuma função. Segredos ficam no Vault ou em private.app_tokens.';
