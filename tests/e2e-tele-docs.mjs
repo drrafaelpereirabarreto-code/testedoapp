@@ -804,7 +804,8 @@ await scenario('médico: perfil, dados do paciente e identidade antes de emitir;
   await visible(page, '#cDocs');
   await page.waitForFunction(() => document.querySelector('#dIdOk').checked, null, { timeout: 10000 });
   await page.click('#dTab-comparecimento');
-  await page.waitForFunction(() => /^Atendimento em .*, das \d{2}:\d{2} às \d{2}:\d{2}/.test(document.querySelector('#dCoWhen').textContent));
+  // Perto da meia-noite de Brasília a consulta (começou 10 min antes) atravessa o dia e a frase muda de forma.
+  await page.waitForFunction(() => /^Atendimento (em .*, das \d{2}:\d{2} às \d{2}:\d{2}|de .*, às \d{2}:\d{2}, a .*, às \d{2}:\d{2})/.test(document.querySelector('#dCoWhen').textContent));
   await page.click('[data-demit="comparecimento"]');
   await waitFor(() => docsOf(db, c).length === 7, 10000, 'declaração emitida');
   assert.deepEqual(db.called('tele_doc_create').at(-1).args.p_payload, { observacao: null }, 'nenhum horário digitado vai ao banco');
