@@ -113,7 +113,7 @@ jobs:
           set -o pipefail
           trap 'echo "::error title=Comando falhou::$BASH_COMMAND (linha $LINENO)"' ERR
           log="$RUNNER_TEMP/laco-local.log"
-          if ! timeout -k 10s 5m node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade 2>&1 | tee "$log"; then
+          if ! timeout -k 10s 5m node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade,reducao 2>&1 | tee "$log"; then
             grep -q '^::error' "$log" || node tests/banco/anotar.mjs cauda "Laço local quebrou" "$log"
             exit 1
           fi
@@ -375,6 +375,23 @@ jobs:
           psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-todas.txt" 2> "$RUNNER_TEMP/impressao.err" \
             || { node tests/banco/anotar.mjs cauda "A impressão digital falhou (tests/banco/catalogo.sql)" "$RUNNER_TEMP/impressao.err"; exit 1; }
           node tests/banco/anotar.mjs impressao "$RUNNER_TEMP/impressao-todas.txt" "F1 (com todas as migrações)"
+          # Repetição sem mudança: cada migração nova aplicada DE NOVO, por cima dela mesma (como pode acontecer na
+          # produção se o conector repetir), tem de deixar o banco igual a F1.
+          while IFS= read -r nome; do
+            [ -n "$nome" ] || continue
+            if ! psql "$DB_URL" -v ON_ERROR_STOP=1 -q -1 -f "supabase/migrations/$nome" > "$RUNNER_TEMP/repetir.log" 2>&1; then
+              node tests/banco/anotar.mjs cauda "Aplicar de novo (por cima dela mesma) falhou - $nome" "$RUNNER_TEMP/repetir.log"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/novas.txt"
+          desligar_cron
+          psql "$DB_URL" -v ON_ERROR_STOP=1 -qAt -f tests/banco/catalogo.sql > "$RUNNER_TEMP/impressao-repetida.txt"
+          if ! diff "$RUNNER_TEMP/impressao-todas.txt" "$RUNNER_TEMP/impressao-repetida.txt" > "$RUNNER_TEMP/repetir.diff"; then
+            node tests/banco/anotar.mjs cauda "Aplicar de novo mudou o banco (a migração não é idempotente; < F1, > repetida)" "$RUNNER_TEMP/repetir.diff"
+            exit 1
+          fi
+          echo "Migrações novas aplicadas de novo por cima delas mesmas: banco igual a F1 ($(paste -sd ' ' "$RUNNER_TEMP/novas.txt"))" \
+            | tee -a "$IMED_RESUMO_DIR/16-migracoes.txt"
 
       - name: Testes pgTAP (supabase test db)
         id: pgtap

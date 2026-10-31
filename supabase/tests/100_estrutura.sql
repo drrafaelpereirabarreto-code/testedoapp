@@ -9,7 +9,7 @@
 -- As escritas na agenda usam a marca de emergência (imed.origin = 'sql' + motivo), como o SQL do painel usaria.
 -- Tudo é desfeito no fim (rollback). As restrições adiáveis dos itens são conferidas com SET CONSTRAINTS IMMEDIATE.
 begin;
-select plan(88);
+select plan(109);
 
 /* ===================== Ferramentas do teste ===================== */
 create function pg_temp.marca(p_origem text, p_motivo text default null) returns void language plpgsql as $$
@@ -288,10 +288,10 @@ select throws_ok($$ update agenda.resources set active = false where id = 'e3100
                  '23514', null, 'desativar a RM com usos futuros é recusado');
 select throws_ok($$ update agenda.resources set archived_at = now() where id = 'e3100000-0000-4000-8000-000000000001' $$,
                  '23514', null, 'arquivar a RM com usos futuros é recusado');
-select lives_ok($$ select pg_temp.uso('e3100000-0000-4000-8000-000000000004', '09:00', '09:30', 1) $$,
-                'sala 3: uso na vaga 1');
+select lives_ok($$ select pg_temp.uso('e3100000-0000-4000-8000-000000000004', '09:00', '09:30', 2) $$,
+                'sala 3: uso na vaga 2');
 select lives_ok($$ update agenda.resources set capacity = 2 where id = 'e3100000-0000-4000-8000-000000000004' $$,
-                'sala 3: reduzir de 3 para 2 vagas sem uso acima disso é aceito');
+                'sala 3: reduzir de 3 para 2 vagas com uso na vaga 2 é aceito (a vaga 2 ainda cabe)');
 select lives_ok($$ update agenda.resources set active = false where id = 'e3100000-0000-4000-8000-000000000005' $$,
                 'desativar recurso sem usos futuros é aceito');
 
@@ -478,6 +478,91 @@ select lives_ok($$ insert into public.clinic_schedules (clinic_id, weekday, star
 select throws_ok($$ insert into public.clinic_blocks (clinic_id, starts_at, ends_at, kind)
                     values ('c3100000-0000-4000-8000-000000000001', pg_temp.t('08:00'), pg_temp.t('09:00'), 'ferias') $$,
                  '23514', null, 'tipo de bloqueio desconhecido é recusado');
+
+/* ===================== L. Revisão da 3.1: vagas, donos, capacidade, replica, auditoria e formatos ===================== */
+select pg_temp.marca('sql', 'teste_estrutura');
+create function pg_temp.ocupado_cru(p_rec uuid, p_seats int4range, p_de text, p_ate text) returns void language sql as $$
+  insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, busy_id)
+  values ('c3100000-0000-4000-8000-000000000001', p_rec, 'ocupado', p_seats, pg_temp.faixa(p_de, p_ate),
+          (select id from agenda.busy_marks limit 1)) $$;
+select throws_ok($$ select pg_temp.ocupado_cru('e3100000-0000-4000-8000-000000000001', 'empty', '10:00', '11:00') $$,
+                 '23514', null, 'vaga vazia é recusada (não fura a exclusão)');
+select throws_ok($$ select pg_temp.ocupado_cru('e3100000-0000-4000-8000-000000000001', '[2,)', '10:00', '11:00') $$,
+                 '23514', null, 'vaga sem limite em cima é recusada');
+select throws_ok($$ select pg_temp.ocupado_cru('e3100000-0000-4000-8000-000000000001', '(,1)', '10:00', '11:00') $$,
+                 '23514', null, 'vaga sem limite embaixo é recusada');
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, block_id)
+                    select 'c3100000-0000-4000-8000-000000000001', 'e3100000-0000-4000-8000-000000000002', 'bloqueio',
+                           int4range(1, 2), pg_temp.faixa('19:00', '20:00'), b.id from public.clinic_blocks b limit 1 $$,
+                 '23514', null, 'fechamento que não cobre todas as vagas é recusado');
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, block_id, item_id)
+                    select 'c3100000-0000-4000-8000-000000000001', 'e3100000-0000-4000-8000-000000000002', 'bloqueio',
+                           int4range(1, 51), pg_temp.faixa('19:00', '20:00'), b.id, (select id from agenda.appointment_items limit 1)
+                    from public.clinic_blocks b limit 1 $$,
+                 '23514', null, 'fechamento com item_id é recusado (sumiria na cascata do pedido)');
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, busy_id, item_id)
+                    values ('c3100000-0000-4000-8000-000000000001', 'e3100000-0000-4000-8000-000000000002', 'ocupado',
+                            int4range(1, 2), pg_temp.faixa('19:00', '20:00'), (select id from agenda.busy_marks limit 1),
+                            (select id from agenda.appointment_items limit 1)) $$,
+                 '23514', null, '"ocupado" com item_id é recusado');
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, busy_id, group_no)
+                    values ('c3100000-0000-4000-8000-000000000001', 'e3100000-0000-4000-8000-000000000002', 'ocupado',
+                            int4range(1, 2), pg_temp.faixa('19:00', '20:00'), (select id from agenda.busy_marks limit 1), 1) $$,
+                 '23514', null, '"ocupado" com group_no é recusado');
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, item_id, group_no)
+                    select o.clinic_id, 'e3100000-0000-4000-8000-000000000004', 'agendamento', int4range(1, 2),
+                           pg_temp.faixa('20:00', '20:30'), o.item_id, o.group_no
+                    from agenda.occupancy o where o.kind = 'agendamento' and o.active limit 1 $$,
+                 '23505', null, 'no máximo um uso ativo por grupo do item');
+select throws_ok($$ select pg_temp.bloqueio('e3100000-0000-4000-8000-000000000004', '09:10', '09:20') $$,
+                 '23P01', null, 'fechamento que só cruza um uso da vaga 2 é recusado');
+insert into public.clinic_blocks (id, clinic_id, starts_at, ends_at)
+values ('93100000-0000-4000-8000-000000000001', 'c3100000-0000-4000-8000-000000000002', pg_temp.t('19:00'), pg_temp.t('20:00'));
+select throws_ok($$ insert into agenda.occupancy (clinic_id, resource_id, kind, seats, during, block_id)
+                    values ('c3100000-0000-4000-8000-000000000002', 'e3100000-0000-4000-8000-000000000001', 'bloqueio',
+                            int4range(1, 51), pg_temp.faixa('19:00', '20:00'), '93100000-0000-4000-8000-000000000001') $$,
+                 '23503', 'insert or update on table "occupancy" violates foreign key constraint "occupancy_resource_fk"',
+                 'fechamento com recurso de outra clínica: recusado pela chave estrangeira composta');
+-- Capacidade: reativar um uso da vaga 2 depois de reduzir a capacidade para 1 é recusado.
+insert into agenda.resources (id, clinic_id, kind, name, capacity)
+values ('e3100000-0000-4000-8000-000000000007', 'c3100000-0000-4000-8000-000000000001', 'sala', 'Sala 7', 2);
+select pg_temp.uso('e3100000-0000-4000-8000-000000000007', '09:00', '09:30', 2, p_ativo := false);
+update agenda.resources set capacity = 1 where id = 'e3100000-0000-4000-8000-000000000007';
+select throws_ok($$ update agenda.occupancy set active = true, released_at = null
+                    where resource_id = 'e3100000-0000-4000-8000-000000000007' $$,
+                 '23514', null, 'reativar uso na vaga 2 depois de reduzir a capacidade para 1 é recusado');
+select throws_ok($$ set local session_replication_role = replica;
+                    select pg_temp.uso('e3100000-0000-4000-8000-000000000002', '12:00', '12:30', 3) $$,
+                 '23514', null, 'com session_replication_role = replica, a vaga acima da capacidade continua recusada (ALWAYS)');
+select throws_ok($$ set local session_replication_role = replica;
+                    select pg_temp.uso('e3100000-0000-4000-8000-000000000001', '21:00', '21:30', p_marca := null) $$,
+                 '42501', null, 'com session_replication_role = replica, a guarda de origem continua valendo (ALWAYS)');
+select is((select count(*)::int from agenda.audit_log where action = 'occupancy_insert'
+             and new_value ->> 'kind' = 'bloqueio' and new_value ->> 'excl_group' = '(,)'), 0,
+          'auditoria do fechamento guarda a linha final (grupo [id,id]), registrada depois dos outros gatilhos');
+select is((select count(*)::int from agenda.audit_log where action = 'occupancy_insert'
+             and (new_value ? 'clinic_id' or new_value ? 'created_at')), 0,
+          'auditoria guarda só a lista fixa de campos');
+select throws_ok($$ select pg_temp.uso('e3100000-0000-4000-8000-000000000001', '22:00', '22:30', p_motivo := 'tel_11987654321') $$,
+                 '22023', null, 'motivo com 4 ou mais algarismos seguidos (telefone, documento) é recusado');
+select throws_ok($$ insert into agenda.idempotency (scope, actor, key, fingerprint)
+                    values ('agenda_book', '11987654321', gen_random_uuid(), repeat('a', 64)) $$,
+                 '23514', null, 'idempotência: quem pediu só como uuid ou hash (nunca telefone)');
+insert into agenda.notes (id, clinic_id, request_id, kind, text)
+values ('83100000-0000-4000-8000-000000000001', 'c3100000-0000-4000-8000-000000000001',
+        'b3100000-0000-4000-8000-000000000001', 'observacao', 'Observação curta');
+select throws_ok($$ update agenda.notes set deleted_at = now() where id = '83100000-0000-4000-8000-000000000001' $$,
+                 '23514', null, 'nota apagada sem tirar o texto é recusada (apagar tira o texto de verdade)');
+select throws_ok($$ insert into agenda.notes (clinic_id, request_id, kind, text)
+                    values ('c3100000-0000-4000-8000-000000000002', 'b3100000-0000-4000-8000-000000000001', 'observacao', 'Outra') $$,
+                 '23503', null, 'nota de uma clínica não aponta para pedido de outra');
+-- Apagar o pedido pelo SQL: fica na auditoria; os itens saem em cascata sem auditoria própria.
+delete from public.appointment_requests where id = 'b3100000-0000-4000-8000-000000000001';
+select is((select count(*)::int from agenda.audit_log where object_id = 'b3100000-0000-4000-8000-000000000001'
+             and action = 'pedido_apagado_sql'), 1, 'pedido apagado pelo SQL fica na auditoria');
+select is((select count(*)::int from agenda.appointment_items where request_id = 'b3100000-0000-4000-8000-000000000001')
+          + (select count(*)::int from agenda.audit_log where action = 'appointment_items_delete'), 0,
+          'os itens do pedido saem em cascata, sem passar pela guarda (a cascata fica registrada no pedido)');
 
 select * from finish();
 rollback;

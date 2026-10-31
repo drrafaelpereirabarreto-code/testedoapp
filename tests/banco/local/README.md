@@ -18,7 +18,7 @@ com `-- [só no banco]` no fim, e nunca como a última linha da tabela.
 npm ci --prefix tests/banco --ignore-scripts         # uma vez, na pasta do repositório (versões travadas)
 node tests/banco/local/rodar.mjs                     # os casos (uns 2 s)
 node tests/banco/local/rodar.mjs --concorrencia      # + todos os modos de concorrência (uns 6 s)
-node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade   # os que o GitHub roda
+node tests/banco/local/rodar.mjs --concorrencia=sem-trava:40,com-trava,remarcacao,capacidade,reducao   # os que o GitHub roda
 node tests/banco/local/rodar.mjs --concorrencia --sem-limite   # sem o tempo-limite de 3 s do visitante
 ```
 
@@ -46,6 +46,11 @@ tempo (ex.: `sem-trava:40`).
   - `remarcacao`: a troca de horário desativa o antigo e grava o novo na mesma transação e segura 1,5 s; quem
     tenta o horário antigo espera até o fim. Com COMMIT, entra depois; com ROLLBACK, recebe 23P01 e o antigo continua.
   - `capacidade`: sala com 2 vagas, 60 pedidos de 15 min com inícios variados, com trava: nunca 3 ao mesmo tempo.
+  - `reducao`: redução de capacidade (2 → 1) × marcação na vaga 2, em duas conexões, nas duas ordens: a segunda
+    espera a primeira (FOR SHARE na linha do recurso) e é recusada com 23514 (sem o FOR SHARE, os dois lados gravavam).
+- **Também nos casos** (revisão da 3.1): vaga vazia ou sem limite recusada, fechamento parcial ou com dono de outro
+  tipo recusado, fechamento que só cruza a vaga 2, redução para 2 com uso na vaga 2 aceita, reativar uso acima da nova
+  capacidade recusado, e a vaga 3 recusada também com `session_replication_role = replica` (gatilhos ALWAYS).
 
 ## Limites
 

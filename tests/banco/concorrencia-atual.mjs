@@ -28,7 +28,11 @@ const DURACAO = { '08:00': 45, '08:45': 45, '10:15': 45, '08:30': 30, '09:00': 3
 const RECUSA_ESPERADA = new Set(['23505', '23P01']);
 
 async function limpar(db) {
+  // Desde a 3.1, apagar pedido exige a marca de emergência (imed.origin = 'sql' + motivo; fica na auditoria).
+  await db.query('begin');
+  await db.query("select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'limpeza_teste_ci', true)");
   await db.query('delete from public.appointment_requests where clinic_id = $1', [CLINICA]);
+  await db.query('commit');
   await db.query('delete from public.clinics where id = $1', [CLINICA]);
 }
 

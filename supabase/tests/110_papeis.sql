@@ -9,7 +9,7 @@
 --     motor completo onde volta a ocupar horário).
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(49);
+select plan(58);
 
 -- Troca de papel como o PostgREST faz (role + request.jwt.claims). p_amr: como a sessão foi aberta.
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null, p_amr text default 'otp')
@@ -122,6 +122,33 @@ select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000004', '
 select ok(public.is_imed_admin() and not public.has_clinic_perm('c1100000-0000-4000-8000-000000000001', 'pedidos.ver'),
           'o admin do IMED não vira membro de clínica (has_clinic_perm é só papel na clínica; a equipe usa imed_has)');
 
+-- Escopo: has_clinic_perm só vale para a clínica inteira; o escopo parcial sai em clinic_perm_scope.
+select pg_temp.entrar('postgres');
+insert into agenda.role_permissions (role, permission, scope) values ('staff', 'teste.parcial', 'propria');
+select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000002', 'staff.papeis@exemplo.test');
+select ok(not public.has_clinic_perm('c1100000-0000-4000-8000-000000000001', 'teste.parcial')
+          and public.clinic_perm_scope('c1100000-0000-4000-8000-000000000001', 'teste.parcial') = 'propria',
+          'permissão de escopo parcial (propria): has_clinic_perm nega; clinic_perm_scope diz o escopo');
+select is(public.clinic_perm_scope('c1100000-0000-4000-8000-000000000001', 'pedidos.ver'), 'clinica',
+          'clinic_perm_scope: staff lê pedidos da clínica inteira');
+select pg_temp.entrar('postgres');
+select is((select count(*)::int from agenda.audit_log where action = 'role_permissions_insert' and new_value ->> 'permission' = 'teste.parcial'),
+          1, 'mudança na matriz de permissões fica na auditoria');
+-- Conta sem e-mail confirmado ou banida: o papel não vale.
+insert into public.clinic_members (clinic_id, user_id, role) values
+  ('c1100000-0000-4000-8000-000000000001', 'a1100000-0000-4000-8000-000000000009', 'owner'),
+  ('c1100000-0000-4000-8000-000000000001', 'a1100000-0000-4000-8000-000000000007', 'owner');
+update auth.users set banned_until = now() + interval '1 day' where id = 'a1100000-0000-4000-8000-000000000007';
+select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000009', 'naoconfirmado.papeis@exemplo.test');
+select ok(not public.has_clinic_perm('c1100000-0000-4000-8000-000000000001', 'pedidos.ver'),
+          'membro com e-mail não confirmado: nenhuma permissão');
+select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000007', 'revogado.papeis@exemplo.test');
+select ok(not public.has_clinic_perm('c1100000-0000-4000-8000-000000000001', 'pedidos.ver'),
+          'membro banido: nenhuma permissão (mesmo com o token ainda válido)');
+select pg_temp.entrar('postgres');
+update auth.users set banned_until = null where id = 'a1100000-0000-4000-8000-000000000007';
+delete from public.clinic_members where user_id in ('a1100000-0000-4000-8000-000000000009', 'a1100000-0000-4000-8000-000000000007');
+
 select pg_temp.entrar('anon');
 select throws_ok($$ select public.has_clinic_perm('c1100000-0000-4000-8000-000000000001', 'pedidos.ver') $$,
                  '42501', null, 'visitante (anon) não executa has_clinic_perm');
@@ -170,6 +197,11 @@ select throws_ok($$ select public.imed_has('imed.agenda.monitor') $$, '42501', n
 select pg_temp.entrar('postgres');
 select throws_ok($$ insert into private.imed_staff (user_id, role) values ('a1100000-0000-4000-8000-000000000003', 'dono') $$,
                  '23514', null, 'papel da equipe fora da lista é recusado');
+select throws_ok($$ delete from private.imed_staff where user_id = 'a1100000-0000-4000-8000-000000000005' $$,
+                 '42501', null, 'equipe do IMED: o acesso não se apaga (revogar = revoked_at)');
+select throws_ok($$ truncate private.imed_staff $$, '42501', null, 'equipe do IMED: TRUNCATE recusado');
+select is((select count(*)::int from agenda.audit_log where action = 'imed_staff_insert'), 5,
+          'quem recebeu acesso da equipe do IMED fica na auditoria');
 select throws_ok($$ insert into agenda.role_permissions (role, permission, scope) values ('owner', 'imed.agenda.monitor', 'clinica') $$,
                  '23514', null, 'papel de clínica não recebe permissão da equipe do IMED (e vice-versa)');
 
@@ -194,9 +226,12 @@ select is(
   '{}'::text[], 'de concluído, cancelado ou expirado só sai a equipe do IMED (reabrir, corrigir) ou o sistema (pagamento atrasado)');
 select is(
   array(select t.from_status || '→' || t.to_status || ' ' || t.actor_kind from agenda.status_transitions t
-        where t.to_status in ('confirmed', 'checked_in', 'reschedule_requested')
-          and t.from_status in ('novo', 'expired', 'cancelled', 'reschedule_requested') and not t.needs_engine order by 1),
-  '{}'::text[], 'toda transição que volta a ocupar horário passa pelo motor completo');
+        -- I2 (§3.3): ocupam horário hold, awaiting_payment, confirmed, checked_in e in_service; as outras situações do
+        -- agendamento com itens não ocupam (pending e contacted são o pedido antigo, sem ocupação)
+        where t.to_status in ('hold', 'awaiting_payment', 'confirmed', 'checked_in', 'in_service')
+          and t.from_status not in ('pending', 'contacted', 'hold', 'awaiting_payment', 'confirmed', 'checked_in', 'in_service')
+          and not t.needs_engine order by 1),
+  '{}'::text[], 'toda transição que volta a ocupar horário (de uma situação sem ocupação) passa pelo motor completo');
 select is((select concat_ws('|', permission, time_rule, requires_reason::text, needs_engine::text) from agenda.status_transitions
            where from_status = 'confirmed' and to_status = 'checked_in' and actor_kind = 'clinica'),
           'agenda.atender|janela_de_chegada|false|false', 'confirmado → chegou: atender, a partir da janela de chegada');
@@ -206,6 +241,9 @@ select is((select concat_ws('|', permission, time_rule, requires_reason::text) f
 select is((select concat_ws('|', permission, time_rule, requires_reason::text) from agenda.status_transitions
            where from_status = 'no_show' and to_status = 'checked_in' and actor_kind = 'clinica'),
           'agenda.atender|mesmo_dia|true', 'faltou → chegou: mesmo dia, com motivo');
+select is((select needs_engine from agenda.status_transitions
+           where from_status = 'no_show' and to_status = 'checked_in' and actor_kind = 'clinica'),
+          true, 'faltou → chegou volta a ocupar o horário: pelo motor completo (pode já ter sido dado a outro paciente)');
 select is((select concat_ws('|', coalesce(permission, '-'), time_rule) from agenda.status_transitions
            where from_status = 'confirmed' and to_status = 'cancelled' and actor_kind = 'paciente'),
           '-|prazo_cancelar_paciente', 'o paciente cancela até o prazo da unidade');

@@ -467,10 +467,11 @@ create table agenda.occupancy (                    -- O ÚNICO lugar que diz "es
                                                 'removido','capacidade','corrigido')),
   created_at timestamptz not null default now(),
   foreign key (resource_id, clinic_id) references agenda.resources (id, clinic_id) on delete restrict,
-  check ((kind = 'agendamento') = (item_id is not null and group_no is not null)),
+  check ((kind = 'agendamento') = (item_id is not null) and (kind = 'agendamento') = (group_no is not null)),
   check ((kind = 'ocupado') = (busy_id is not null)),           -- fase 6.1: "ou external_ref_id"
   check ((kind = 'bloqueio') = (block_id is not null)),
-  check (case when kind = 'bloqueio'
+  -- vaga vazia ou sem limite daria NULL no CASE (e CHECK com NULL passa): recusadas fora dele (revisão da 3.1)
+  check (not isempty(seats) and not lower_inf(seats) and not upper_inf(seats) and case when kind = 'bloqueio'
               then seats = int4range(1, 51) and excl_group = int8range(id, id, '[]')
               else upper(seats) - lower(seats) = 1 and lower(seats) >= 1 and upper(seats) <= 51
                    and excl_group = '(,)'::int8range end),
@@ -483,7 +484,9 @@ create index on agenda.occupancy (block_id) where block_id is not null;
 create index on agenda.occupancy (busy_id) where busy_id is not null;
 create index on agenda.occupancy (hold_until) where active and hold_until is not null;
 -- BEFORE INSERT/UPDATE (occupancy_bi): define excl_group; para uso novo, recurso ativo; lê a capacidade com
---   "select capacity from agenda.resources … for share" e exige upper(seats) - 1 <= capacity.
+--   "select capacity from agenda.resources … for share" e exige upper(seats) - 1 <= capacity (NULL = recusa).
+-- create unique index … (item_id, group_no) where active and kind = 'agendamento' (no máximo um uso por grupo, na hora).
+-- Guardas da agenda ENABLE ALWAYS (valem também com session_replication_role = replica; revisão da 3.1).
 -- CONSTRAINT TRIGGER adiado (AFTER UPDATE OF active, DELETE): o item dono continua com o conjunto completo (I2).
 -- Regra de código (teste de catálogo): nenhuma função usa INSERT … ON CONFLICT nesta tabela.
 ```
@@ -828,7 +831,8 @@ Pacote parcial ficou fora da primeira versão (§16): o paciente pode marcar os 
 create policy "agenda: membro recebe avisos da clinica" on realtime.messages for select to authenticated using (
   realtime.messages.extension = 'broadcast'
   and (select realtime.topic()) ~ '^agenda:clinica:[0-9a-f-]{36}$'
-  and public.has_clinic_perm(split_part((select realtime.topic()), ':', 3)::uuid, 'agenda.ver'));
+  and public.clinic_perm_scope(split_part((select realtime.topic()), ':', 3)::uuid, 'agenda.ver') is not null);
+  -- (has_clinic_perm só vale para o escopo 'clinica'; o profissional, de escopo 'propria', também recebe o aviso)
 create policy "agenda: equipe imed recebe avisos" on realtime.messages for select to authenticated using (
   realtime.messages.extension = 'broadcast' and (select realtime.topic()) = 'agenda:imed'
   and public.imed_has('imed.agenda.monitor'));

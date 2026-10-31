@@ -12,7 +12,7 @@
 --   - o schema agenda e as funções internas fora do alcance de anon, authenticated e service_role.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(56);
+select plan(65);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -181,6 +181,38 @@ select is((select concat_ws('|', h.from_status, h.to_status, h.origin, h.actor_k
            from agenda.status_history h where h.request_id = 'b1200000-0000-4000-8000-000000000002'),
           'pending|contacted|sql|sql|correcao_teste|3', 'e no histórico de situação, com a versão do pedido');
 
+-- As outras colunas guardadas e o DELETE (revisão da 3.1).
+select throws_ok($$ update public.appointment_requests set slot_end = now() + interval '2 days'
+                    where id = 'b1200000-0000-4000-8000-000000000002' $$,
+                 '42501', null, 'sem a marca, nem o dono do banco muda o fim do horário (slot_end)');
+select throws_ok($$ update public.appointment_requests set hold_expires_at = now() + interval '10 minutes'
+                    where id = 'b1200000-0000-4000-8000-000000000002' $$,
+                 '42501', null, 'sem a marca, nem o dono do banco muda o prazo da reserva (hold_expires_at)');
+select throws_ok($$ update public.appointment_requests set uses_resources = true
+                    where id = 'b1200000-0000-4000-8000-000000000002' $$,
+                 '42501', null, 'sem a marca, nem o dono do banco muda uses_resources');
+select throws_ok($$ delete from public.appointment_requests where id = 'b1200000-0000-4000-8000-000000000002' $$,
+                 '42501', 'Um pedido só é apagado pelas funções da agenda',
+                 'sem a marca, nem o dono do banco (ou a chave de serviço) apaga um pedido');
+select throws_ok($$ select pg_temp.marca('sql');
+                    insert into public.appointment_requests (id, place_source, place_name, preferred_date, patient_name, patient_phone, consent)
+                    values ('b1200000-0000-4000-8000-000000000009', 'cnes', 'Laboratório', current_setting('teste.dia')::date,
+                            'Paciente Nove', '11999991219', true) $$,
+                 '42501', null, 'pedido criado pelo SQL sem motivo é recusado');
+select pg_temp.marca('sql', 'correcao_teste');
+insert into public.appointment_requests (id, place_source, place_name, preferred_date, patient_name, patient_phone, consent, status)
+values ('b1200000-0000-4000-8000-000000000009', 'cnes', 'Laboratório', current_setting('teste.dia')::date,
+        'Paciente Nove', '11999991219', true, 'contacted');
+delete from public.appointment_requests where id = 'b1200000-0000-4000-8000-000000000009';
+select pg_temp.marca(null);
+select is(array(select a.action || '|' || a.reason_code from agenda.audit_log a
+                where a.object_id = 'b1200000-0000-4000-8000-000000000009' order by a.id),
+          array['pedido_criado_sql|correcao_teste', 'pedido_apagado_sql|correcao_teste'],
+          'pedido criado e apagado pelo SQL: os dois ficam na auditoria, com o motivo');
+select is((select count(*)::int from agenda.audit_log a
+           where a.object_id = 'b1200000-0000-4000-8000-000000000009' and a.new_value ->> 'status' = 'contacted'), 1,
+          'a auditoria do pedido criado pelo SQL guarda a situação gravada');
+
 -- Apagar uma clínica continua soltando os pedidos dela (on delete set null), sem marca.
 select pg_temp.entrar('anon');
 insert into public.appointment_requests (id, clinic_id, place_source, place_ref, place_name, preferred_date, patient_name,
@@ -249,6 +281,10 @@ select throws_ok($$ update public.clinics set agenda_mode = 'nativa' where id = 
                  'nem o admin muda a modalidade da agenda direto pela API');
 select throws_ok($$ update public.clinics set timezone = 'America/Manaus' where id = 'c1200000-0000-4000-8000-000000000001' $$,
                  '42501', null, 'nem o admin muda o fuso direto pela API');
+select throws_ok($$ update public.clinics set timezone_confirmed_at = now() where id = 'c1200000-0000-4000-8000-000000000001' $$,
+                 '42501', null, 'confirmação do fuso só pelas funções da agenda');
+select throws_ok($$ update public.clinics set agenda_online_since = now() where id = 'c1200000-0000-4000-8000-000000000001' $$,
+                 '42501', null, 'venda online só pelas funções da agenda');
 select lives_ok($$ update public.clinics set phone = '(11) 3000-1200' where id = 'c1200000-0000-4000-8000-000000000001' $$,
                 'o admin continua editando os outros dados da clínica, como antes');
 select throws_ok($$ insert into public.clinics (name, kind, address_line, city, state, location, status, agenda_mode)
@@ -305,10 +341,12 @@ select ok(not has_schema_privilege('service_role', 'agenda', 'USAGE')
           'nem a chave de serviço (service_role) alcança o schema agenda');
 select is(
   array(select r || ' ' || f from unnest(array['anon', 'authenticated']) r,
-          unnest(array['public.check_appointment_request()', 'public.has_clinic_perm(uuid,text)', 'public.imed_has(text)']) f
+          unnest(array['public.check_appointment_request()', 'public.has_clinic_perm(uuid,text)',
+                       'public.clinic_perm_scope(uuid,text)', 'public.imed_has(text)']) f
         where has_function_privilege(r, f, 'EXECUTE') order by 1),
-  array['authenticated public.has_clinic_perm(uuid,text)', 'authenticated public.imed_has(text)'],
-  'só quem está logado executa has_clinic_perm e imed_has; o gatilho do pedido, ninguém');
+  array['authenticated public.clinic_perm_scope(uuid,text)', 'authenticated public.has_clinic_perm(uuid,text)',
+        'authenticated public.imed_has(text)'],
+  'só quem está logado executa has_clinic_perm, clinic_perm_scope e imed_has; o gatilho do pedido, ninguém');
 
 select * from finish();
 rollback;

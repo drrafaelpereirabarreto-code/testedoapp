@@ -6,6 +6,7 @@
 --     pedido volta a ser SECURITY INVOKER);
 --   - a policy "admin atualiza pedidos" volta a valer e anon/authenticated voltam a ter INSERT na tabela inteira
 --     (e authenticated, UPDATE e DELETE), como antes;
+--   - is_clinic_member volta a contar qualquer papel (como em 20261030021903_marketplace);
 --   - sai tudo o que a 3.1 criou: o schema agenda (com os dados dele: recursos, ocupação, histórico, auditoria...),
 --     private.imed_staff, has_clinic_perm, imed_has, as funções private.agenda_*, as colunas novas das tabelas de
 --     hoje (com os valores delas) e a extensão btree_gist.
@@ -160,6 +161,17 @@ end $$;
 revoke execute on function public.set_request_status(uuid, text) from public, anon;
 grant execute on function public.set_request_status(uuid, text) to authenticated;
 
+-- is_clinic_member como era (20261030021903_marketplace: qualquer papel conta).
+create or replace function public.is_clinic_member(p_clinic uuid)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.clinic_members m where m.clinic_id = p_clinic and m.user_id = auth.uid());
+$$;
+revoke execute on function public.is_clinic_member(uuid) from public, anon;
+grant execute on function public.is_clinic_member(uuid) to authenticated;
+
 /* ===================== 3. Permissões e policy do pedido como eram ===================== */
 alter policy "admin atualiza pedidos" on public.appointment_requests
   using (public.is_imed_admin()) with check (public.is_imed_admin());
@@ -174,6 +186,7 @@ grant update, delete on table public.appointment_requests to authenticated;
 drop schema if exists agenda cascade;
 drop table if exists private.imed_staff;
 drop function if exists public.has_clinic_perm(uuid, text);
+drop function if exists public.clinic_perm_scope(uuid, text);
 drop function if exists public.imed_has(text);
 drop function if exists private.agenda_requests_guard();
 drop function if exists private.agenda_requests_touch();
@@ -183,6 +196,7 @@ drop function if exists private.agenda_occupancy_seats();
 drop function if exists private.agenda_resources_guard();
 drop function if exists private.agenda_write_guard();
 drop function if exists private.agenda_trail_guard();
+drop function if exists private.agenda_access_audit();
 drop function if exists private.agenda_audit_sql(uuid, text, text, text, jsonb, jsonb);
 drop function if exists private.agenda_validate_patient(public.appointment_requests);
 drop function if exists private.agenda_touch(uuid);

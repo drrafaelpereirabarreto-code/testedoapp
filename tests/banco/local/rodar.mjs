@@ -11,6 +11,7 @@
 //     com-trava   o mesmo, com a trava curta por recurso antes de conferir e gravar (§3.2)
 //     remarcacao  troca de horário segura o antigo até o COMMIT; com ROLLBACK, o antigo continua (§3.3, I4)
 //     capacidade  sala com 2 vagas, 60 pedidos de 15 min com inícios variados, com trava: nunca 3 ao mesmo tempo
+//     reducao     redução de capacidade × marcação na vaga alta, em duas conexões, nas duas ordens (§3.3, I1-c)
 //     <modo>:N    só com N ao mesmo tempo (ex.: sem-trava:40)
 //   ... --sem-limite   na concorrência, sem o tempo-limite de 3 s do anon (mostra as cadeias longas de impasse)
 //
@@ -47,7 +48,7 @@ export function espelhoDaMigracao() {
 }
 const args = process.argv.slice(2);
 const conc = args.find((a) => a.startsWith('--concorrencia'));
-const MODOS = ['sem-trava', 'com-trava', 'remarcacao', 'capacidade'];
+const MODOS = ['sem-trava', 'com-trava', 'remarcacao', 'capacidade', 'reducao'];
 // "modo" ou "modo:N" (N ao mesmo tempo; sem N, os padrões de cada modo).
 const modosConc = (!conc ? [] : conc.includes('=') ? conc.split('=')[1].split(',').filter(Boolean) : MODOS)
   .map((m) => { const [modo, n] = m.split(':'); return { modo, n: n === undefined ? null : Number(n) }; });
@@ -62,6 +63,8 @@ const limite = args.includes('--sem-limite') ? null : '3s';
 const CLINICA = '0c000000-0000-4000-8000-000000000001';
 const RM = '0e000000-0000-4000-8000-000000000001';      // aparelho de ressonância, capacidade 1
 const SALA = '0e000000-0000-4000-8000-000000000002';    // sala de coleta, capacidade 2
+const SALA3 = '0e000000-0000-4000-8000-000000000003';   // sala com capacidade 3 (redução de capacidade)
+const SALA_R = '0e000000-0000-4000-8000-000000000004';  // sala do modo de concorrência "reducao" (capacidade 2)
 // Um dia daqui a 30 dias (a guarda de capacidade só olha usos futuros), no fuso de São Paulo (UTC-3).
 const DIA = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
 const t = (hhmm) => `${DIA} ${hhmm}:00-03`;
@@ -81,6 +84,13 @@ const bloqueio = (rec, de, ate, { ativo = true, grupo = null } = {}) => ({
         values ($1, $2, 'bloqueio', int4range(1, 51), $3::tstzrange, gen_random_uuid(), $4, case when $4 then null else now() end,
                 coalesce($5::int8range, '(,)'::int8range))`,
   params: [CLINICA, rec, faixa(de, ate), ativo, grupo],
+});
+
+// Linha "ocupado" com a vaga crua (int4range em texto: 'empty', '[2,)', '(,1)'...).
+const ocupadoCru = (rec, seats, de, ate) => ({
+  sql: `insert into prova.occupancy (clinic_id, resource_id, kind, seats, during, busy_id)
+        values ($1, $2, 'ocupado', $3::int4range, $4::tstzrange, gen_random_uuid())`,
+  params: [CLINICA, rec, seats, faixa(de, ate)],
 });
 
 const cenarios = [
@@ -129,6 +139,50 @@ const cenarios = [
         { sql: 'update prova.resources set capacity = 1 where id = $1', params: [SALA] }, '23514'],
       ['desativar a sala com usos futuros é recusado (guarda do recurso)',
         { sql: 'update prova.resources set active = false where id = $1', params: [SALA] }, '23514'],
+      ['com session_replication_role = replica, a vaga 3 continua recusada (gatilho ALWAYS)',
+        { sql: `select set_config('session_replication_role', 'replica', true);
+                insert into prova.occupancy (clinic_id, resource_id, kind, seats, during, busy_id)
+                values ('${CLINICA}', '${SALA}', 'ocupado', int4range(3, 4), '${faixa('10:30', '11:00')}', gen_random_uuid())`,
+          params: undefined }, '23514'],
+    ],
+  },
+  {
+    nome: 'Vagas que furavam a restrição (vazia ou sem limite) e donos por tipo',
+    passos: [
+      ['vaga vazia é recusada', ocupadoCru(RM, 'empty', '07:00', '08:00'), '23514'],
+      ['vaga [2,) sem limite em cima é recusada', ocupadoCru(RM, '[2,)', '07:00', '08:00'), '23514'],
+      ['vaga (,1) sem limite embaixo é recusada', ocupadoCru(RM, '(,1)', '07:00', '08:00'), '23514'],
+      ['vaga [1,1) (alocador com erro de um) é recusada', ocupadoCru(SALA, '[1,1)', '07:00', '08:00'), '23514'],
+      ['fechamento que não cobre todas as vagas é recusado',
+        { sql: `insert into prova.occupancy (clinic_id, resource_id, kind, seats, during, block_id)
+                values ($1, $2, 'bloqueio', int4range(1, 2), $3::tstzrange, gen_random_uuid())`,
+          params: [CLINICA, SALA, faixa('07:00', '08:00')] }, '23514'],
+      ['fechamento com item_id é recusado',
+        { sql: `insert into prova.occupancy (clinic_id, resource_id, kind, seats, during, block_id, item_id)
+                values ($1, $2, 'bloqueio', int4range(1, 51), $3::tstzrange, gen_random_uuid(), gen_random_uuid())`,
+          params: [CLINICA, SALA, faixa('07:00', '08:00')] }, '23514'],
+      ['"ocupado" com group_no é recusado',
+        { sql: `insert into prova.occupancy (clinic_id, resource_id, kind, seats, during, busy_id, group_no)
+                values ($1, $2, 'ocupado', int4range(1, 2), $3::tstzrange, gen_random_uuid(), 1)`,
+          params: [CLINICA, SALA, faixa('07:00', '08:00')] }, '23514'],
+      ['uso na vaga 2 da sala, 08:00–08:30', uso(SALA, '08:00', '08:30', { vaga: 2 }), 'ok'],
+      ['fechamento que só cruza o uso da vaga 2 é recusado', bloqueio(SALA, '08:10', '08:20'), '23P01'],
+    ],
+  },
+  {
+    nome: 'Redução de capacidade (guarda do recurso; I1-c)',
+    passos: [
+      ['sala com 3 vagas', { sql: `insert into prova.resources (id, clinic_id, kind, name, capacity)
+                                   values ($1, $2, 'sala', 'Sala 3', 3)`, params: [SALA3, CLINICA] }, 'ok'],
+      ['uso na vaga 2', uso(SALA3, '09:00', '09:30', { vaga: 2 }), 'ok'],
+      ['uso liberado na vaga 3', uso(SALA3, '10:00', '10:30', { vaga: 3, ativo: false }), 'ok'],
+      ['reduzir para 2 com uso na vaga 2 é aceito (a vaga 2 ainda cabe)',
+        { sql: 'update prova.resources set capacity = 2 where id = $1', params: [SALA3] }, 'ok'],
+      ['reativar o uso da vaga 3 depois da redução é recusado',
+        { sql: `update prova.occupancy set active = true, released_at = null
+                where resource_id = $1 and not active`, params: [SALA3] }, '23514'],
+      ['reduzir para 1 com uso na vaga 2 é recusado',
+        { sql: 'update prova.resources set capacity = 1 where id = $1', params: [SALA3] }, '23514'],
     ],
   },
 ];
@@ -305,6 +359,48 @@ async function rodarCapacidade(conexao, db, n) {
   return { modo: 'capacidade', n, ...e, semHorario, maximo, totalMs: Math.round(totalMs), linha };
 }
 
+/* ===================== Redução de capacidade × marcação, em duas conexões (§3.3, I1-c) ===================== */
+// A: marca na vaga 2 (sem COMMIT) e outra conexão reduz a capacidade para 1: a redução espera a marcação (FOR SHARE
+// na linha do recurso) e depois é recusada. B: reduz primeiro (sem COMMIT) e outra conexão marca na vaga 2: a
+// marcação espera e depois é recusada. Nas duas ordens o resultado respeita a capacidade (sem o FOR SHARE, os dois
+// lados gravavam).
+async function rodarReducao(conexao, db, ordem) {
+  await db.query('delete from prova.occupancy where resource_id = $1', [SALA_R]);
+  await db.query('update prova.resources set capacity = 2 where id = $1', [SALA_R]);
+  const primeiro = await conectar(conexao, 'imed-reducao-1');
+  const segundo = await conectar(conexao, 'imed-reducao-2');
+  const marcar = uso(SALA_R, '10:00', '10:30', { vaga: 2 });
+  const reduzir = { sql: 'update prova.resources set capacity = 1 where id = $1', params: [SALA_R] };
+  const [p1, p2] = ordem === 'marca-antes' ? [marcar, reduzir] : [reduzir, marcar];
+  try {
+    await primeiro.query('begin');
+    await primeiro.query(p1.sql, p1.params);
+    const t0 = performance.now();
+    const tentativa = segundo.query(p2.sql, p2.params)
+      .then(() => ({ ok: true, ms: performance.now() - t0 }), (e) => ({ ok: false, code: e.code, ms: performance.now() - t0 }));
+    await new Promise((r) => setTimeout(r, 500));
+    const { rows: [{ esperando }] } = await db.query(
+      `select count(*)::int as esperando from pg_stat_activity where application_name = 'imed-reducao-2' and wait_event_type = 'Lock'`);
+    await primeiro.query('commit');
+    const r = await tentativa;
+    const { rows: [{ cap }] } = await db.query('select capacity as cap from prova.resources where id = $1', [SALA_R]);
+    const { rows: viol } = await db.query('select * from prova.violacoes() where maximo_simultaneo > capacidade or usos_em_fechamento > 0');
+    const { rows: [{ acima }] } = await db.query(
+      `select count(*)::int as acima from prova.occupancy o join prova.resources r on r.id = o.resource_id
+        where o.resource_id = $1 and o.active and upper(o.seats) - 1 > r.capacity`, [SALA_R]);
+    const resultado = r.ok ? 'gravou' : `recusado (${r.code})`;
+    const linha = `redução × marcação (${ordem}): a segunda conexão esperou ${Math.round(r.ms)} ms e ${resultado}; capacidade final ${cap}`;
+    console.log(linha);
+    afirmar(esperando === 1 && !r.ok && r.code === '23514' && acima === 0 && viol.length === 0,
+      `redução × marcação (${ordem}): a segunda espera a primeira e é recusada (23514); nenhum uso acima da capacidade`,
+      `esperando: ${esperando}; ${resultado}; capacidade ${cap}; usos acima: ${acima}; violações: ${JSON.stringify(viol)}`);
+    return { modo: `reducao-${ordem}`, resultado, linha };
+  } finally {
+    await primeiro.end().catch(() => {});
+    await segundo.end().catch(() => {});
+  }
+}
+
 await principal('laço local', async () => {
   const t0 = performance.now();
   const pgsrv = await subirPostgres();
@@ -328,7 +424,8 @@ await principal('laço local', async () => {
     await db.query(readFileSync(path.join(aqui, 'prova.sql'), 'utf8'));
     console.log(`Espelho da agenda gerado de ${espelho.nome}`);
     await db.query(`insert into prova.resources (id, clinic_id, kind, name, capacity)
-                    values ($1, $3, 'equipamento', 'RM-1', 1), ($2, $3, 'sala', 'Coleta', 2)`, [RM, SALA, CLINICA]);
+                    values ($1, $3, 'equipamento', 'RM-1', 1), ($2, $3, 'sala', 'Coleta', 2), ($4, $3, 'sala', 'Sala R', 2)`,
+                   [RM, SALA, CLINICA, SALA_R]);
     const tCasos = performance.now();
     const casos = await rodarCasos(db);
     const msCasos = Math.round(performance.now() - tCasos);
@@ -338,6 +435,8 @@ await principal('laço local', async () => {
     for (const { modo, n } of modosConc) {
       if (modo === 'remarcacao') {
         for (const desfecho of ['commit', 'rollback']) conc.push(await rodarRemarcacao(pgsrv.conexao, db, desfecho));
+      } else if (modo === 'reducao') {
+        for (const ordem of ['marca-antes', 'reduz-antes']) conc.push(await rodarReducao(pgsrv.conexao, db, ordem));
       } else if (modo === 'capacidade') {
         conc.push(await rodarCapacidade(pgsrv.conexao, db, n ?? 60));
       } else {

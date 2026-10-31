@@ -168,6 +168,7 @@ insert into esperado_acl (fn, acl) values
     ('check_appointment_request()', ''),
     ('check_establishment_claim()', ''),
     ('check_internal_token(text, text)', ''),
+    ('clinic_perm_scope(uuid, text)', 'authenticated'),
     ('city_establishments(integer, text, integer, integer)', 'anon,authenticated'),
     ('clinics_with_schedule(uuid[])', 'anon,authenticated'),
     ('cnes_last_update(integer)', 'anon,authenticated'),
@@ -338,11 +339,13 @@ select is(
 select todo_start('pg_net: só o suporte do Supabase fecha o schema net (o postgres não tem como; decisão da fase 3.1)');
 select is(
   array(select r || ': ' || o
-        from unnest(array['anon', 'authenticated']) r,
-             unnest(array['usage no schema net', 'select em net.http_request_queue', 'select em net._http_response']) o
+        -- PUBLIC também (na produção: =U no schema e arwdDxtm nas tabelas, dados pelo supabase_admin); o pedido ao
+        -- suporte tem de incluir PUBLIC, senão revogar de anon e authenticated não fecha nada
+        from unnest(array['anon', 'authenticated', 'public']) r,
+             unnest(array['usage no schema net', 'select/insert em net.http_request_queue', 'select/insert em net._http_response']) o
         where case o when 'usage no schema net' then has_schema_privilege(r, 'net', 'USAGE')
-                     when 'select em net.http_request_queue' then has_table_privilege(r, 'net.http_request_queue', 'SELECT')
-                     else has_table_privilege(r, 'net._http_response', 'SELECT') end
+                     when 'select/insert em net.http_request_queue' then has_table_privilege(r, 'net.http_request_queue', 'SELECT, INSERT')
+                     else has_table_privilege(r, 'net._http_response', 'SELECT, INSERT') end
         order by 1),
   '{}'::text[],
   'anon e authenticated sem acesso ao schema net (onde o token interno passa)'
@@ -490,15 +493,26 @@ select is(
   'nenhuma função define imed.* para a sessão inteira (só set_config(..., true), até o fim da transação)'
 );
 
--- Nenhum gatilho desligado (ALTER TABLE ... DISABLE TRIGGER) em public, private e agenda: as guardas de origem,
--- de trilha e de validação do pedido só protegem se estiverem ligadas.
+-- Nenhum gatilho desligado (ALTER TABLE ... DISABLE TRIGGER) em public, private e agenda ('O' = ligado; 'A' =
+-- ligado sempre, inclusive com session_replication_role = replica; 'R' = só em replica; 'D' = desligado).
 select is(
   array(select format('%I.%I.%I (%s)', n.nspname, c.relname, g.tgname, g.tgenabled)
         from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace
-        where n.nspname in ('public', 'private', 'agenda') and not g.tgisinternal and g.tgenabled <> 'O'
+        where n.nspname in ('public', 'private', 'agenda') and not g.tgisinternal and g.tgenabled not in ('O', 'A')
         order by 1),
   '{}'::text[],
   'nenhum gatilho desligado em public, private e agenda'
+);
+
+-- Guardas da agenda (gatilhos com função private.agenda_*) valem SEMPRE ('A'): com session_replication_role = replica,
+-- que o dono do banco consegue ligar na produção, um gatilho comum não dispara e a guarda sumiria.
+select is(
+  array(select format('%I.%I.%I (%s)', n.nspname, c.relname, g.tgname, g.tgenabled)
+        from pg_trigger g join pg_class c on c.oid = g.tgrelid join pg_namespace n on n.oid = c.relnamespace
+        where not g.tgisinternal and g.tgfoid::regprocedure::text like 'private.agenda\_%' and g.tgenabled <> 'A'
+        order by 1),
+  '{}'::text[],
+  'guardas da agenda ligadas sempre (ENABLE ALWAYS), também em session_replication_role = replica'
 );
 
 select * from finish();

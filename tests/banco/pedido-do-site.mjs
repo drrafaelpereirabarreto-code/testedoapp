@@ -35,7 +35,11 @@ const CATALOGO = fileURLToPath(new URL('../../supabase/tests/000_catalogo.sql', 
 const sha256 = (t) => createHash('sha256').update(t).digest('hex');
 
 async function limpar(db) {
+  // Desde a 3.1, apagar pedido exige a marca de emergência (imed.origin = 'sql' + motivo; fica na auditoria).
+  await db.query('begin');
+  await db.query("select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'limpeza_teste_ci', true)");
   await db.query(`delete from public.appointment_requests where clinic_id = $1 or patient_name like 'Teste do Site %'`, [CLINICA]);
+  await db.query('commit');
   await db.query('delete from public.clinics where id = $1', [CLINICA]);
   await db.query('delete from auth.users where id = $1', [USUARIO]);
 }

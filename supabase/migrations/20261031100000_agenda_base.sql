@@ -17,11 +17,13 @@
 --      coluna por coluna); as colunas novas ele não grava. UPDATE e DELETE diretos pela API acabam (o site não
 --      usa: quem muda a situação são set_request_status e cancel_request, que continuam respondendo igual).
 --   4. Marca de origem (imed.origin): cada função da agenda diz de onde vem a mudança. Mudar a situação, o
---      horário ou a clínica de um pedido sem a marca é recusado, até pelo SQL do painel do Supabase (há uma
---      saída de emergência registrada, abaixo). Toda mudança de situação vai para o histórico
+--      horário, a clínica, o prazo da reserva ou uses_resources de um pedido, ou APAGAR um pedido, sem a marca é
+--      recusado, até pelo SQL do painel do Supabase e até com session_replication_role = replica (guardas ALWAYS;
+--      há uma saída de emergência registrada, abaixo). Toda mudança de situação vai para o histórico
 --      (agenda.status_history): quando, quem, de onde e o motivo, só com códigos.
---   5. Papéis: has_clinic_perm (permissão pelo papel na clínica) e imed_has (equipe do IMED fora de admin_emails;
---      o dono continua sendo is_imed_admin). Ninguém ganha acesso novo: hoje não há membros nem equipe.
+--   5. Papéis: has_clinic_perm (permissão na clínica inteira), clinic_perm_scope (o escopo dela) e imed_has (equipe
+--      do IMED fora de admin_emails; o dono continua sendo is_imed_admin). is_clinic_member passa a contar só dono,
+--      gestor, recepção e staff (hoje só existem owner e staff: nada muda). Ninguém ganha acesso novo.
 --
 -- Emergência no SQL (só se for preciso mudar um pedido, um item ou a ocupação à mão; fica em agenda.audit_log):
 --   begin;
@@ -30,19 +32,23 @@
 --   commit;
 --
 -- O que NÃO está aqui, de propósito:
---   - Nenhum comando apaga objeto ou dado que já existe. A policy "admin atualiza pedidos" fica sem efeito por
---     ALTER POLICY (using false), e as permissões saem por REVOKE.
+--   - Nenhum comando apaga objeto ou dado que já existe, nem UPDATE em dado existente. A policy "admin atualiza
+--     pedidos" fica sem efeito por ALTER POLICY (using false), e as permissões saem por REVOKE (o conector pode
+--     pedir confirmação ao dono por causa dos REVOKE: combine antes).
 --   - Os CHECKs que precisam ser TROCADOS (papéis novos em clinic_members; situações e cancelled_by novos em
 --     appointment_requests) exigem apagar a restrição antiga: vão numa migração pequena separada, antes da 3.3/3.4, aplicada
 --     quando o dono puder aprovar. Até lá existem só os papéis owner/staff e as 5 situações de hoje.
 --   - Funções de cadastro, motor de horários (3.2), marcar/cancelar/remarcar (3.3), painel e policies por
---     permissão (3.4).
+--     permissão (3.4). O fuso das clínicas que já existem (hoje todas de SP, já no padrão) é conferido quando a
+--     clínica confirma o fuso (3.4); clínica nova recebe o fuso pela UF no gatilho.
 --
--- Pode rodar de novo sem erro e sem mudar nada. Volta: supabase/volta/20261031100000_agenda_base.sql (testada no
--- CI: depois da volta o banco fica igual ao da produção antes desta migração; reaplicada, igual ao com ela).
+-- Pode rodar de novo sem erro e sem mudar nada (o CI aplica duas vezes seguidas e compara). Volta:
+-- supabase/volta/20261031100000_agenda_base.sql (testada no CI: depois da volta o banco fica igual ao da produção
+-- antes desta migração; reaplicada, igual ao com ela).
 --
 -- Conferir na produção depois de aplicar (só leitura; tem de dar true):
 --   select to_regnamespace('agenda') is not null
+--      and (select extnamespace::regnamespace::text from pg_extension where extname = 'btree_gist') = 'extensions'
 --      and not has_schema_privilege('anon', 'agenda', 'USAGE') and not has_schema_privilege('authenticated', 'agenda', 'USAGE')
 --      and not has_schema_privilege('service_role', 'agenda', 'USAGE')
 --      and (select count(*) from pg_tables where schemaname = 'agenda') = 22
@@ -51,8 +57,26 @@
 --      and has_column_privilege('anon', 'public.appointment_requests', 'review_token_hash', 'INSERT')
 --      and not has_column_privilege('anon', 'public.appointment_requests', 'channel', 'INSERT')
 --      and not has_table_privilege('authenticated', 'public.appointment_requests', 'UPDATE')
+--      and not has_table_privilege('authenticated', 'public.appointment_requests', 'DELETE')
+--      and (select qual from pg_policies where tablename = 'appointment_requests' and policyname = 'admin atualiza pedidos') = 'false'
+--      and (select count(*) from pg_trigger where not tgisinternal and tgenabled = 'A'
+--             and tgfoid::regprocedure::text like 'private.agenda\_%') = 23
+--      and has_function_privilege('authenticated', 'public.has_clinic_perm(uuid,text)', 'EXECUTE')
+--      and not has_function_privilege('anon', 'public.clinic_perm_scope(uuid,text)', 'EXECUTE')
 --      and (select count(*) from public.appointment_requests where channel <> 'imed_app' or version <> 1) = 0
---      and (select count(*) from public.clinics where agenda_mode <> 'pedido' or timezone <> 'America/Sao_Paulo') = 0;
+--      and (select count(*) from public.clinics where agenda_mode <> 'pedido' or timezone <> 'America/Sao_Paulo') = 0
+--      and (select count(*) from agenda.audit_log) = 0;
+
+/* ===================== 0. Limite de espera e travas (para aplicar na produção sem segurar o site) ===================== */
+-- Se uma transação longa estiver segurando uma destas tabelas (por exemplo, uma consulta largada aberta no painel), a
+-- migração desiste em 5 s com erro 55P03 e NADA é aplicado: é só rodar de novo. Sem isso, ela esperaria para sempre e
+-- toda leitura do site entraria na fila atrás dela (o visitante levaria erro em 3 s). As travas são pegas de uma vez e
+-- na mesma ordem do INSERT do site (primeiro o pedido, depois a clínica), para não haver impasse (40P01) com um pedido
+-- feito durante a aplicação. LOCK TABLE só funciona dentro de uma transação: se o arquivo não rodar numa transação
+-- só, ele para aqui, antes de mudar qualquer coisa.
+select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '120s', true);
+lock table public.appointment_requests, public.clinics, public.clinic_members, public.clinic_schedules,
+  public.clinic_blocks in access exclusive mode;
 
 /* ===================== 1. Extensão e schema ===================== */
 -- btree_gist: "=" em uuid dentro do índice GiST da restrição de exclusão. No schema extensions (fora da API).
@@ -83,7 +107,8 @@ begin
   return v;
 end $$;
 
--- Motivo da mudança (imed.reason): só código (letras minúsculas, números e _), nunca texto livre.
+-- Motivo da mudança (imed.reason): só código (letras minúsculas, números e _), nunca texto livre. No máximo 3
+-- algarismos seguidos: telefone, CPF ou número de documento não cabem num código (as trilhas não se apagam; LGPD).
 create or replace function private.agenda_reason()
 returns text
 language plpgsql stable
@@ -92,8 +117,8 @@ as $$
 declare
   v text := nullif(btrim(current_setting('imed.reason', true)), '');
 begin
-  if v is not null and v !~ '^[a-z][a-z0-9_]{2,59}$' then
-    raise exception 'Motivo inválido (imed.reason): use um código com letras minúsculas, números e _' using errcode = '22023';
+  if v is not null and (v !~ '^[a-z][a-z0-9_]{2,59}$' or v ~ '[0-9]{4,}') then
+    raise exception 'Motivo inválido (imed.reason): use um código com letras minúsculas, números (até 3 seguidos) e _' using errcode = '22023';
   end if;
   return v;
 end $$;
@@ -434,10 +459,14 @@ create table if not exists agenda.occupancy (
   constraint occupancy_item_fk foreign key (item_id, clinic_id) references agenda.appointment_items (id, clinic_id) on delete cascade,   -- [só no banco]
   constraint occupancy_busy_fk foreign key (busy_id, clinic_id) references agenda.busy_marks (id, clinic_id) on delete cascade,   -- [só no banco]
   constraint occupancy_block_fk foreign key (block_id, clinic_id) references public.clinic_blocks (id, clinic_id) on delete cascade,   -- [só no banco]
-  constraint occupancy_kind_item_ck check ((kind = 'agendamento') = (item_id is not null and group_no is not null)),
+  -- cada linha tem exatamente o dono do seu tipo (um fechamento com item_id sumiria na cascata do pedido)
+  constraint occupancy_kind_item_ck check ((kind = 'agendamento') = (item_id is not null)
+                                           and (kind = 'agendamento') = (group_no is not null)),
   constraint occupancy_kind_busy_ck check ((kind = 'ocupado') = (busy_id is not null)),     -- 6.1: "ou external_ref_id"
   constraint occupancy_kind_block_ck check ((kind = 'bloqueio') = (block_id is not null)),
-  constraint occupancy_seats_ck check (case when kind = 'bloqueio'
+  -- vaga vazia ou sem limite daria NULL dentro do CASE (e CHECK com NULL passa): recusadas fora dele
+  constraint occupancy_seats_ck check (not isempty(seats) and not lower_inf(seats) and not upper_inf(seats)
+                                       and case when kind = 'bloqueio'
                                              then seats = int4range(1, 51) and excl_group = int8range(id, id, '[]')
                                              else upper(seats) - lower(seats) = 1 and lower(seats) >= 1 and upper(seats) <= 51
                                                   and excl_group = '(,)'::int8range end),
@@ -448,6 +477,9 @@ create table if not exists agenda.occupancy (
 );
 create index if not exists occupancy_recurso_idx on agenda.occupancy (resource_id, clinic_id);
 create index if not exists occupancy_item_idx on agenda.occupancy (item_id);
+-- no máximo um uso ativo por grupo de cada item (§3.3, I2: "no máximo um", na hora)
+create unique index if not exists occupancy_item_grupo_uq on agenda.occupancy (item_id, group_no)
+  where active and kind = 'agendamento';
 create index if not exists occupancy_block_idx on agenda.occupancy (block_id) where block_id is not null;
 create index if not exists occupancy_busy_idx on agenda.occupancy (busy_id) where busy_id is not null;
 create index if not exists occupancy_hold_idx on agenda.occupancy (hold_until) where active and hold_until is not null;
@@ -496,7 +528,7 @@ create table if not exists agenda.status_history (
   actor_user uuid,
   actor_role text check (actor_role ~ '^[a-z][a-z_]{1,29}$'),
   origin text not null check (origin in ('app', 'painel', 'central', 'api', 'webhook_pagamento', 'cron', 'sql')),
-  reason_code text check (reason_code ~ '^[a-z][a-z0-9_]{2,59}$'),
+  reason_code text check (reason_code ~ '^[a-z][a-z0-9_]{2,59}$' and reason_code !~ '[0-9]{4,}'),
   request_version integer
 );
 create index if not exists status_history_pedido_idx on agenda.status_history (request_id, at);
@@ -511,10 +543,10 @@ create table if not exists agenda.audit_log (
   origin text not null check (origin in ('app', 'painel', 'central', 'api', 'webhook_pagamento', 'cron', 'sql')),
   action text not null check (action ~ '^[a-z][a-z0-9_.]{2,59}$'),
   object_type text not null check (object_type ~ '^[a-z][a-z0-9_]{2,40}$'),
-  object_id text check (char_length(object_id) <= 80),
+  object_id text check (object_id ~ '^[0-9a-f-]{1,36}$'),   -- só id (uuid ou número), nunca texto livre
   old_value jsonb,                                     -- sem dado pessoal nem texto livre
   new_value jsonb,
-  reason_code text check (reason_code ~ '^[a-z][a-z0-9_]{2,59}$'),
+  reason_code text check (reason_code ~ '^[a-z][a-z0-9_]{2,59}$' and reason_code !~ '[0-9]{4,}'),
   txid bigint not null default txid_current(),
   constraint audit_log_tamanho_ck check (coalesce(octet_length(old_value::text), 0)
                                          + coalesce(octet_length(new_value::text), 0) <= 8000)
@@ -534,7 +566,7 @@ create table if not exists agenda.access_log (
   request_id uuid,
   scope text not null check (scope ~ '^[a-z][a-z0-9_]{1,30}$'),
   reads integer not null default 1 check (reads >= 1),
-  justification_code text check (justification_code ~ '^[a-z][a-z0-9_]{2,59}$'),
+  justification_code text check (justification_code ~ '^[a-z][a-z0-9_]{2,59}$' and justification_code !~ '[0-9]{4,}'),
   constraint access_log_uq unique nulls not distinct (day, user_id, clinic_id, fn, request_id, scope)
 );
 
@@ -542,12 +574,17 @@ create table if not exists agenda.access_log (
 create table if not exists agenda.notes (
   id uuid primary key default gen_random_uuid(),
   clinic_id uuid not null references public.clinics (id) on delete cascade,
-  request_id uuid references public.appointment_requests (id) on delete cascade,
+  request_id uuid,
   kind text not null check (kind in ('observacao', 'justificativa_acesso', 'motivo')),
-  text text not null check (char_length(btrim(text)) between 1 and 300),
+  text text check (char_length(btrim(text)) between 1 and 300),
   author_user uuid,
   created_at timestamptz not null default now(),
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  -- o pedido é da MESMA clínica da nota
+  constraint notes_request_fk foreign key (request_id, clinic_id)
+    references public.appointment_requests (id, clinic_id) on delete cascade,
+  -- apagar = tirar o texto de verdade (deleted_at preenchido e text nulo); nota viva sempre tem texto
+  constraint notes_apagada_ck check ((deleted_at is null) = (text is not null))
 );
 create index if not exists notes_pedido_idx on agenda.notes (request_id) where request_id is not null;
 
@@ -555,7 +592,8 @@ create index if not exists notes_pedido_idx on agenda.notes (request_id) where r
 -- pessoal. Apagada em 7 dias (rotina da 3.3).
 create table if not exists agenda.idempotency (
   scope text not null check (scope ~ '^[a-z][a-z0-9_]{2,40}$'),
-  actor text not null check (char_length(actor) between 1 and 100),
+  -- quem pediu: uuid da conta ou SHA-256 (hex) de um identificador; nunca telefone, e-mail ou IP em claro
+  actor text not null check (actor ~ '^([0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'),
   key uuid not null,
   fingerprint text not null check (fingerprint ~ '^[0-9a-f]{64}$'),
   result jsonb,
@@ -577,15 +615,20 @@ create table if not exists agenda.conflicts (
   clinic_id uuid not null references public.clinics (id) on delete cascade,
   kind text not null check (kind in ('grade_mudou', 'capacidade', 'bloqueio_sobre_agendamento', 'fuso_mudou',
     'pagamento_apos_expirar', 'divergencia_externa', 'evento_externo_rejeitado', 'paciente_em_dois_horarios')),
-  request_id uuid references public.appointment_requests (id) on delete cascade,
-  item_id uuid references agenda.appointment_items (id) on delete cascade,
+  request_id uuid,
+  item_id uuid,
   details jsonb not null default '{}'::jsonb check (octet_length(details::text) <= 4000),   -- sem dado pessoal
   status text not null default 'aberto' check (status in ('aberto', 'em_andamento', 'resolvido', 'descartado')),
-  resolution_code text check (resolution_code ~ '^[a-z][a-z0-9_]{2,59}$'),
+  resolution_code text check (resolution_code ~ '^[a-z][a-z0-9_]{2,59}$' and resolution_code !~ '[0-9]{4,}'),
   created_at timestamptz not null default now(),
   resolved_at timestamptz,
   resolved_by uuid,
-  constraint conflicts_resolucao_ck check ((status in ('resolvido', 'descartado')) = (resolved_at is not null))
+  constraint conflicts_resolucao_ck check ((status in ('resolvido', 'descartado')) = (resolved_at is not null)),
+  -- pedido e item da MESMA clínica do conflito
+  constraint conflicts_request_fk foreign key (request_id, clinic_id)
+    references public.appointment_requests (id, clinic_id) on delete cascade,
+  constraint conflicts_item_fk foreign key (item_id, clinic_id)
+    references agenda.appointment_items (id, clinic_id) on delete cascade
 );
 create unique index if not exists conflicts_aberto_item_uq on agenda.conflicts (kind, item_id)
   where status in ('aberto', 'em_andamento') and item_id is not null;
@@ -595,7 +638,8 @@ create index if not exists conflicts_clinica_idx on agenda.conflicts (clinic_id,
 
 -- Limites contra abuso: "upsert ... returning n" (serializa no contador; nunca "conta e depois insere").
 create table if not exists agenda.rate_counters (
-  key text not null check (char_length(key) between 3 and 200),
+  -- "<limite>:<uuid ou SHA-256 hex>" (ex.: agenda_book:<hash do aparelho>); nunca telefone, e-mail ou IP em claro
+  key text not null check (key ~ '^[a-z][a-z0-9_.]{2,40}:([0-9a-f]{64}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$'),
   window_start timestamptz not null,
   n integer not null default 1 check (n >= 0),
   primary key (key, window_start)
@@ -728,7 +772,7 @@ begin
   end if;
   insert into agenda.audit_log (clinic_id, actor_kind, actor_user, actor_role, origin, action, object_type, object_id,
                                 old_value, new_value, reason_code)
-  values (p_clinic, 'sql', auth.uid(), null, 'sql', p_action, p_object_type, left(p_object_id, 80), p_old, p_new, v_reason);
+  values (p_clinic, 'sql', auth.uid(), null, 'sql', p_action, p_object_type, p_object_id, p_old, p_new, v_reason);
 end $$;
 
 -- Validação ÚNICA dos dados do paciente (a mesma para o site de hoje e para as funções da agenda): pedido para
@@ -825,23 +869,58 @@ revoke all on function private.agenda_secure_session() from public, anon, authen
 
 /* ===================== 7. Papéis (§12) ===================== */
 
--- A pessoa logada tem esta permissão nesta clínica (pelo papel dela em clinic_members)? Qualquer escopo conta
--- (o escopo "propria" do profissional é aplicado pelas funções da 3.4). A equipe do IMED NÃO entra aqui: é imed_has.
+-- Escopo da permissão da pessoa logada nesta clínica (pelo papel dela em clinic_members): 'clinica' (tudo da
+-- clínica), 'propria' (só os recursos ligados ao profissional), 'sem_donos' (a equipe, menos os donos) ou nulo (não
+-- tem). Só conta conta ativa: e-mail confirmado, não apagada, não banida e não anônima. A equipe do IMED NÃO entra
+-- aqui: é imed_has. As funções que tratam escopo parcial (3.4) usam esta; as policies usam has_clinic_perm.
+create or replace function public.clinic_perm_scope(p_clinic uuid, p_perm text)
+returns text
+language sql stable
+security definer
+set search_path = ''
+as $$
+  select rp.scope
+  from public.clinic_members m
+  join agenda.role_permissions rp on rp.role = m.role and rp.permission = p_perm
+  join auth.users u on u.id = m.user_id
+  where m.clinic_id = p_clinic and m.user_id = auth.uid()
+    and u.email_confirmed_at is not null
+    and u.deleted_at is null
+    and (u.banned_until is null or u.banned_until <= now())
+    and not coalesce(u.is_anonymous, false)
+  limit 1;
+$$;
+revoke all on function public.clinic_perm_scope(uuid, text) from public, anon, authenticated;
+grant execute on function public.clinic_perm_scope(uuid, text) to authenticated;
+
+-- A pessoa logada tem esta permissão na clínica INTEIRA? Só o escopo 'clinica' conta: na dúvida, nega. Quem tem só
+-- um escopo parcial ('propria', 'sem_donos') passa pelas funções que aplicam o escopo (clinic_perm_scope).
 create or replace function public.has_clinic_perm(p_clinic uuid, p_perm text)
 returns boolean
 language sql stable
 security definer
 set search_path = ''
 as $$
-  select exists (
-    select 1
-    from public.clinic_members m
-    join agenda.role_permissions rp on rp.role = m.role and rp.permission = p_perm
-    where m.clinic_id = p_clinic and m.user_id = auth.uid()
-  );
+  select coalesce(public.clinic_perm_scope(p_clinic, p_perm) = 'clinica', false);
 $$;
 revoke all on function public.has_clinic_perm(uuid, text) from public, anon, authenticated;
 grant execute on function public.has_clinic_perm(uuid, text) to authenticated;
+
+-- is_clinic_member (de 20261030021903_marketplace, usado pelas policies e funções de hoje): conta só os papéis de
+-- quem já vê a clínica inteira (dono, gestor, recepção e o "staff" antigo). Hoje só existem owner e staff (CHECK de
+-- clinic_members): nada muda. Quando a migração dos CHECKs liberar "finance" e "professional", eles NÃO passam a ler
+-- os pedidos com telefone nem a mudar preço, cadastro ou situação pelas funções antigas (§12).
+create or replace function public.is_clinic_member(p_clinic uuid)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (select 1 from public.clinic_members m
+                 where m.clinic_id = p_clinic and m.user_id = auth.uid()
+                   and m.role in ('owner', 'manager', 'reception', 'staff'));
+$$;
+revoke execute on function public.is_clinic_member(uuid) from public, anon;
+grant execute on function public.is_clinic_member(uuid) to authenticated;
 
 -- A pessoa logada tem esta permissão da equipe do IMED? O dono (is_imed_admin) tem todas; a equipe, as do papel
 -- ativo em private.imed_staff, com as mesmas exigências de conta e sessão do admin.
@@ -862,397 +941,11 @@ $$;
 revoke all on function public.imed_has(text) from public, anon, authenticated;
 grant execute on function public.imed_has(text) to authenticated;
 
-/* ===================== 8. Pedido de agendamento: gatilhos de origem, versão e histórico ===================== */
-
--- Antes de gravar um pedido (BEFORE INSERT). SECURITY DEFINER (search_path vazio, sem EXECUTE para ninguém):
--- a validação não depende de quem grava.
---   Sem a marca imed.origin: caminho antigo (o INSERT direto do site de hoje), com as MESMAS regras, na mesma
---   ordem e com as mesmas mensagens de antes; as colunas novas ficam sempre no valor padrão.
---   Com a marca (funções da agenda, 3.3 em diante): só os dados do paciente (validação única) e as datas; a função
---   decide situação, horário e canal.
-create or replace function public.check_appointment_request()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  today date := (now() at time zone 'America/Sao_Paulo')::date;
-  local_ts timestamp;
-  v_origin text := private.agenda_origin();
-begin
-  if v_origin is null then
-    if new.preferred_date < today or new.preferred_date > today + 120 then
-      raise exception 'Data preferida fora do intervalo permitido' using errcode = '22023';
-    end if;
-    if new.clinic_id is not null and not exists (
-      select 1 from public.clinics c
-      where c.id = new.clinic_id and c.status = 'published' and c.accepts_online_booking
-    ) then
-      raise exception 'Esta clínica não recebe pedidos de agendamento pelo site' using errcode = '22023';
-    end if;
-  end if;
-  new := private.agenda_validate_patient(new);
-  if v_origin is not null then
-    new.created_at := now();
-    new.updated_at := now();
-    new.version := 1;
-    return new;
-  end if;
-  new.cancelled_at := null;
-  new.cancelled_by := null;
-  new.status := 'pending';
-  if new.slot_start is not null then
-    if new.clinic_id is null then
-      raise exception 'Horário só pode ser escolhido em clínica parceira com agenda' using errcode = '22023';
-    end if;
-    if not exists (select 1 from public.available_slots(new.clinic_id, new.exam_code,
-                     (new.slot_start at time zone 'America/Sao_Paulo')::date, 1) a where a.slot_start = new.slot_start) then
-      raise exception 'Este horário não está mais livre. Escolha outro.' using errcode = '23P01';
-    end if;
-    local_ts := new.slot_start at time zone 'America/Sao_Paulo';
-    new.preferred_date := local_ts::date;
-    new.preferred_period := case when local_ts::time < '12:00' then 'manha' when local_ts::time < '18:00' then 'tarde' else 'noite' end;
-    new.status := 'confirmed';
-  end if;
-  new.created_at := now();
-  new.user_id := auth.uid();
-  -- Colunas novas: sempre o padrão no caminho antigo (o navegador nem tem permissão para gravá-las).
-  new.channel := 'imed_app';
-  new.slot_end := null;
-  new.hold_expires_at := null;
-  new.version := 1;
-  new.updated_at := now();
-  new.cancel_reason := null;
-  new.total_cents := null;
-  new.payment_mode := 'no_local';
-  new.notify_channels := '{}';
-  new.uses_resources := false;
-  return new;
-end $$;
--- Função de gatilho: ninguém chama como RPC (o gatilho continua funcionando), como antes.
-revoke execute on function public.check_appointment_request() from public, anon, authenticated;
-
--- BEFORE UPDATE OF status, slot_start, slot_end, clinic_id: só com a marca de origem. Saída de emergência pelo
--- SQL (imed.origin = 'sql' + imed.reason), registrada em agenda.audit_log. Exceção: a clínica foi apagada e a
--- chave estrangeira (on delete set null) solta o pedido dela, como sempre.
-create or replace function private.agenda_requests_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_origin text;
-begin
-  if (new.status, new.slot_start, new.slot_end, new.clinic_id)
-     is not distinct from (old.status, old.slot_start, old.slot_end, old.clinic_id) then
-    return new;
-  end if;
-  if new.clinic_id is null and old.clinic_id is not null
-     and (new.status, new.slot_start, new.slot_end) is not distinct from (old.status, old.slot_start, old.slot_end)
-     and not exists (select 1 from public.clinics c where c.id = old.clinic_id) then
-    return new;
-  end if;
-  v_origin := private.agenda_origin();
-  if v_origin is null then
-    raise exception 'A situação, o horário e a clínica de um pedido só mudam pelas funções da agenda'
-      using errcode = '42501',
-            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
-  end if;
-  if v_origin = 'sql' then
-    perform private.agenda_audit_sql(coalesce(new.clinic_id, old.clinic_id), 'pedido_alterado_sql', 'appointment_request',
-      new.id::text,
-      jsonb_build_object('status', old.status, 'slot_start', old.slot_start, 'slot_end', old.slot_end, 'clinic_id', old.clinic_id),
-      jsonb_build_object('status', new.status, 'slot_start', new.slot_start, 'slot_end', new.slot_end, 'clinic_id', new.clinic_id));
-  end if;
-  return new;
-end $$;
-
--- BEFORE UPDATE: toda mudança de verdade sobe a versão (controle de concorrência do painel) e o updated_at.
-create or replace function private.agenda_requests_touch()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if new is not distinct from old then
-    return new;
-  end if;
-  new.version := old.version + 1;
-  new.updated_at := now();
-  return new;
-end $$;
-
--- AFTER UPDATE OF status (só quando muda): uma linha no histórico, com a origem da marca e o motivo (código).
-create or replace function private.agenda_requests_history()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_origin text := coalesce(private.agenda_origin(), 'sql');
-  v_actor text;
-  v_role text;
-begin
-  v_actor := case v_origin when 'app' then 'paciente' when 'painel' then 'clinica' when 'central' then 'imed'
-                           when 'api' then 'integracao' when 'webhook_pagamento' then 'gateway' when 'cron' then 'sistema'
-                           else 'sql' end;
-  if v_actor = 'clinica' then
-    select m.role into v_role from public.clinic_members m where m.clinic_id = new.clinic_id and m.user_id = auth.uid();
-  elsif v_actor = 'imed' then
-    v_role := case when coalesce(public.is_imed_admin(), false) then 'imed_admin'
-                   else (select 'imed_' || s.role from private.imed_staff s
-                         where s.user_id = auth.uid() and s.revoked_at is null order by s.role limit 1) end;
-  end if;
-  insert into agenda.status_history (request_id, item_id, from_status, to_status, actor_kind, actor_user, actor_role,
-                                     origin, reason_code, request_version)
-  values (new.id, null, old.status, new.status, v_actor, auth.uid(), v_role, v_origin, private.agenda_reason(), new.version);
-  return null;
-end $$;
-
-revoke all on function private.agenda_requests_guard() from public, anon, authenticated, service_role;
-revoke all on function private.agenda_requests_touch() from public, anon, authenticated, service_role;
-revoke all on function private.agenda_requests_history() from public, anon, authenticated, service_role;
-
-create or replace trigger appointment_requests_guard
-  before update of status, slot_start, slot_end, clinic_id on public.appointment_requests
-  for each row execute function private.agenda_requests_guard();
-create or replace trigger appointment_requests_touch
-  before update on public.appointment_requests
-  for each row execute function private.agenda_requests_touch();
-create or replace trigger appointment_requests_hist
-  after update of status on public.appointment_requests
-  for each row when (old.status is distinct from new.status) execute function private.agenda_requests_history();
-
-/* ===================== 9. Clínica: fuso, modalidade e venda online só pelas funções da agenda ===================== */
--- BEFORE INSERT: sem a marca, clínica nova nasce no modelo de pedido, sem venda online e com o fuso sugerido pela UF
--- (não confirmado). BEFORE UPDATE OF timezone, timezone_confirmed_at, agenda_mode, agenda_online_since: só com a
--- marca (fecha também o PATCH direto que a policy "admin gerencia clinicas" permite hoje); pelo SQL, registrado.
-create or replace function private.agenda_clinics_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_origin text := private.agenda_origin();
-begin
-  if tg_op = 'INSERT' then
-    if v_origin is null then
-      if new.agenda_mode is distinct from 'pedido' or new.agenda_online_since is not null
-         or new.timezone_confirmed_at is not null then
-        raise exception 'Modalidade da agenda, venda online e confirmação do fuso só mudam pelas funções da agenda'
-          using errcode = '42501';
-      end if;
-      new.timezone := private.agenda_suggested_timezone(new.state, new.cnes);
-    end if;
-    return new;
-  end if;
-  if (new.timezone, new.timezone_confirmed_at, new.agenda_mode, new.agenda_online_since)
-     is not distinct from (old.timezone, old.timezone_confirmed_at, old.agenda_mode, old.agenda_online_since) then
-    return new;
-  end if;
-  if v_origin is null then
-    raise exception 'Fuso, modalidade da agenda e venda online só mudam pelas funções da agenda'
-      using errcode = '42501',
-            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
-  end if;
-  if v_origin = 'sql' then
-    perform private.agenda_audit_sql(new.id, 'clinica_agenda_sql', 'clinic', new.id::text,
-      jsonb_build_object('timezone', old.timezone, 'timezone_confirmed_at', old.timezone_confirmed_at,
-                         'agenda_mode', old.agenda_mode, 'agenda_online_since', old.agenda_online_since),
-      jsonb_build_object('timezone', new.timezone, 'timezone_confirmed_at', new.timezone_confirmed_at,
-                         'agenda_mode', new.agenda_mode, 'agenda_online_since', new.agenda_online_since));
-  end if;
-  return new;
-end $$;
-revoke all on function private.agenda_clinics_guard() from public, anon, authenticated, service_role;
-
-create or replace trigger clinics_agenda_guard
-  before insert or update of timezone, timezone_confirmed_at, agenda_mode, agenda_online_since on public.clinics
-  for each row execute function private.agenda_clinics_guard();
-
-/* ===================== 10. Ocupação e recursos: vagas, capacidade e marca de origem ===================== */
-
--- [espelho do laço local]
--- Antes de gravar uma ocupação: o fechamento ganha o próprio grupo ([id,id]); o uso (novo, reativado ou que mudou
--- de vaga, horário ou recurso) precisa de recurso ativo da mesma clínica e de vaga dentro da capacidade, lida com
--- FOR SHARE (espera quem estiver mudando a capacidade ao mesmo tempo, e vice-versa; §3.2 e §3.3, I1-c).
-create or replace function private.agenda_occupancy_seats()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_cap smallint;
-begin
-  if new.kind = 'bloqueio' and new.excl_group = '(,)'::int8range then
-    new.excl_group := int8range(new.id, new.id, '[]');
-  end if;
-  if new.kind <> 'bloqueio' and new.active
-     and (tg_op = 'INSERT' or not old.active or new.seats <> old.seats or new.during <> old.during
-          or new.resource_id <> old.resource_id or new.clinic_id <> old.clinic_id) then
-    select r.capacity into v_cap
-    from agenda.resources r
-    where r.id = new.resource_id and r.clinic_id = new.clinic_id and r.active and r.archived_at is null
-    for share;
-    if v_cap is null then
-      raise exception 'Recurso inexistente, inativo ou arquivado' using errcode = '23503';
-    end if;
-    if upper(new.seats) - 1 > v_cap then
-      raise exception 'Vaga % acima da capacidade % do recurso', upper(new.seats) - 1, v_cap using errcode = '23514';
-    end if;
-  end if;
-  return new;
-end $$;
-
-create or replace trigger occupancy_seats
-  before insert or update on agenda.occupancy
-  for each row execute function private.agenda_occupancy_seats();
-
--- Reduzir a capacidade, desativar ou arquivar um recurso só sem usos futuros ativos que deixariam de caber
--- (redução temporária é bloqueio, nunca edição). Com a trava da linha do recurso, quem marca na vaga alta espera
--- esta mudança e depois é recusado, ou esta mudança espera a marcação e depois a vê (§3.3, I1-c).
-create or replace function private.agenda_resources_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  if new.capacity < old.capacity and exists (
-       select 1 from agenda.occupancy o
-       where o.resource_id = old.id and o.active and o.kind <> 'bloqueio'
-         and upper(o.during) > now() and upper(o.seats) - 1 > new.capacity) then
-    raise exception 'Há usos futuros nas vagas acima da nova capacidade (%): remarque antes ou use um bloqueio', new.capacity
-      using errcode = '23514';
-  end if;
-  if ((old.active and not new.active) or (old.archived_at is null and new.archived_at is not null)) and exists (
-       select 1 from agenda.occupancy o
-       where o.resource_id = old.id and o.active and o.kind <> 'bloqueio' and upper(o.during) > now()) then
-    raise exception 'O recurso tem usos futuros: remarque ou cancele antes de desativar ou arquivar'
-      using errcode = '23514';
-  end if;
-  return new;
-end $$;
-
-create or replace trigger resources_guard
-  before update of capacity, active, archived_at on agenda.resources
-  for each row execute function private.agenda_resources_guard();
--- [fim do espelho]
-
--- Itens e ocupação só mudam pelas funções da agenda (marca de origem); pelo SQL, com motivo e registrado.
--- Apagar em cascata (o pedido, o item, o "ocupado" ou o bloqueio dono da linha foi apagado) segue livre.
-create or replace function private.agenda_write_guard()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_origin text;
-begin
-  -- (cada tabela no seu bloco: o PL/pgSQL só resolve old.<coluna> da tabela do gatilho)
-  if tg_op = 'DELETE' then
-    if tg_table_name = 'occupancy' then
-      if (old.item_id is not null and not exists (select 1 from agenda.appointment_items i where i.id = old.item_id))
-         or (old.busy_id is not null and not exists (select 1 from agenda.busy_marks b where b.id = old.busy_id))
-         or (old.block_id is not null and not exists (select 1 from public.clinic_blocks b where b.id = old.block_id)) then
-        return old;
-      end if;
-    elsif tg_table_name = 'appointment_items' then
-      if not exists (select 1 from public.appointment_requests r where r.id = old.request_id) then
-        return old;
-      end if;
-    end if;
-  end if;
-  v_origin := private.agenda_origin();
-  if v_origin is null then
-    raise exception 'Itens e ocupação da agenda só mudam pelas funções da agenda'
-      using errcode = '42501',
-            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
-  end if;
-  if v_origin = 'sql' then
-    if tg_op = 'TRUNCATE' then
-      perform private.agenda_audit_sql(null, tg_table_name || '_truncate', tg_table_name, null, null, null);
-    else
-      perform private.agenda_audit_sql(case tg_op when 'DELETE' then old.clinic_id else new.clinic_id end,
-        tg_table_name || '_' || lower(tg_op), tg_table_name,
-        case tg_op when 'DELETE' then old.id::text else new.id::text end,
-        case tg_op when 'INSERT' then null else to_jsonb(old) end,
-        case tg_op when 'DELETE' then null else to_jsonb(new) end);
-    end if;
-  end if;
-  if tg_op = 'TRUNCATE' then return null; end if;
-  if tg_op = 'DELETE' then return old; end if;
-  return new;
-end $$;
-
-revoke all on function private.agenda_occupancy_seats() from public, anon, authenticated, service_role;
-revoke all on function private.agenda_resources_guard() from public, anon, authenticated, service_role;
-revoke all on function private.agenda_write_guard() from public, anon, authenticated, service_role;
-
-create or replace trigger occupancy_guard
-  before insert or update or delete on agenda.occupancy
-  for each row execute function private.agenda_write_guard();
-create or replace trigger occupancy_guard_truncate
-  before truncate on agenda.occupancy
-  for each statement execute function private.agenda_write_guard();
-create or replace trigger appointment_items_guard
-  before insert or update or delete on agenda.appointment_items
-  for each row execute function private.agenda_write_guard();
-create or replace trigger appointment_items_guard_truncate
-  before truncate on agenda.appointment_items
-  for each statement execute function private.agenda_write_guard();
-
-/* ===================== 11. Trilhas: só acrescentam ===================== */
--- UPDATE, DELETE e TRUNCATE dão erro, até pelo SQL do painel. Exceções: a rotina de retenção (dono do banco, com
--- set local imed.retencao = 'on') e, em access_log, a mesma leitura no mesmo dia somando reads e last_at.
-create or replace function private.agenda_trail_guard()
-returns trigger
-language plpgsql
-set search_path = ''
-as $$
-begin
-  if session_user = 'postgres' and current_setting('imed.retencao', true) = 'on' then
-    if tg_op = 'TRUNCATE' then return null; end if;
-    if tg_op = 'DELETE' then return old; end if;
-    return new;
-  end if;
-  -- (bloco próprio: o PL/pgSQL só resolve new.<coluna> da tabela do gatilho)
-  if tg_op = 'UPDATE' and tg_table_name = 'access_log' then
-    if (new.id, new.day, new.first_at, new.user_id, new.clinic_id, new.fn, new.request_id, new.scope, new.justification_code)
-       is not distinct from
-       (old.id, old.day, old.first_at, old.user_id, old.clinic_id, old.fn, old.request_id, old.scope, old.justification_code)
-       and new.reads >= old.reads and new.last_at >= old.last_at then
-      return new;
-    end if;
-  end if;
-  raise exception 'trilha_so_acrescenta: % não pode mudar nem ser apagada', tg_table_name
-    using errcode = 'P0001', hint = 'Trilhas da agenda só recebem linhas novas (a retenção é a única exceção).';
-end $$;
-revoke all on function private.agenda_trail_guard() from public, anon, authenticated, service_role;
-
-create or replace trigger status_history_guard
-  before update or delete on agenda.status_history for each row execute function private.agenda_trail_guard();
-create or replace trigger status_history_guard_truncate
-  before truncate on agenda.status_history for each statement execute function private.agenda_trail_guard();
-create or replace trigger audit_log_guard
-  before update or delete on agenda.audit_log for each row execute function private.agenda_trail_guard();
-create or replace trigger audit_log_guard_truncate
-  before truncate on agenda.audit_log for each statement execute function private.agenda_trail_guard();
-create or replace trigger access_log_guard
-  before update or delete on agenda.access_log for each row execute function private.agenda_trail_guard();
-create or replace trigger access_log_guard_truncate
-  before truncate on agenda.access_log for each statement execute function private.agenda_trail_guard();
-
-/* ===================== 12. As duas funções que mudam pedidos hoje: só a marca de origem ===================== */
+/* ===================== 8. As duas funções que mudam pedidos hoje: só a marca de origem (antes da guarda nova) ===================== */
 -- Iguais às da migração 20261030143738_confianca, com uma diferença: antes do UPDATE, a marca de origem (a guarda
 -- nova não as barra e o histórico sabe de onde veio); depois, a marca anterior volta (a marca não "vaza" para o
--- resto da transação). As respostas não mudam.
+-- resto da transação). As respostas não mudam. Vêm ANTES da guarda (bloco 9): em nenhum momento da aplicação a guarda
+-- existe sem que as duas funções já levem a marca.
 
 -- O paciente cancela o próprio pedido (origem 'app').
 create or replace function public.cancel_request(p_id uuid, p_token text default null)
@@ -1324,6 +1017,463 @@ begin
 end $$;
 revoke execute on function public.set_request_status(uuid, text) from public, anon;
 grant execute on function public.set_request_status(uuid, text) to authenticated;
+
+/* ===================== 9. Pedido de agendamento: gatilhos de origem, versão e histórico ===================== */
+
+-- Antes de gravar um pedido (BEFORE INSERT). SECURITY DEFINER (search_path vazio, sem EXECUTE para ninguém):
+-- a validação não depende de quem grava.
+--   Sem a marca imed.origin: caminho antigo (o INSERT direto do site de hoje), com as MESMAS regras, na mesma
+--   ordem e com as mesmas mensagens de antes; as colunas novas ficam sempre no valor padrão.
+--   Com a marca (funções da agenda, 3.3 em diante): só os dados do paciente (validação única) e as datas; a função
+--   decide situação, horário e canal.
+create or replace function public.check_appointment_request()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  today date := (now() at time zone 'America/Sao_Paulo')::date;
+  local_ts timestamp;
+  v_origin text := private.agenda_origin();
+begin
+  if v_origin is null then
+    if new.preferred_date < today or new.preferred_date > today + 120 then
+      raise exception 'Data preferida fora do intervalo permitido' using errcode = '22023';
+    end if;
+    if new.clinic_id is not null and not exists (
+      select 1 from public.clinics c
+      where c.id = new.clinic_id and c.status = 'published' and c.accepts_online_booking
+    ) then
+      raise exception 'Esta clínica não recebe pedidos de agendamento pelo site' using errcode = '22023';
+    end if;
+  end if;
+  new := private.agenda_validate_patient(new);
+  if v_origin is not null then
+    new.created_at := now();
+    new.updated_at := now();
+    new.version := 1;
+    if v_origin = 'sql' then
+      -- pedido criado à mão pelo SQL (sem a conferência do horário): exige o motivo e fica registrado (§5)
+      perform private.agenda_audit_sql(new.clinic_id, 'pedido_criado_sql', 'appointment_request', new.id::text, null,
+        jsonb_build_object('status', new.status, 'slot_start', new.slot_start, 'slot_end', new.slot_end,
+                           'clinic_id', new.clinic_id, 'channel', new.channel));
+    end if;
+    return new;
+  end if;
+  new.cancelled_at := null;
+  new.cancelled_by := null;
+  new.status := 'pending';
+  if new.slot_start is not null then
+    if new.clinic_id is null then
+      raise exception 'Horário só pode ser escolhido em clínica parceira com agenda' using errcode = '22023';
+    end if;
+    if not exists (select 1 from public.available_slots(new.clinic_id, new.exam_code,
+                     (new.slot_start at time zone 'America/Sao_Paulo')::date, 1) a where a.slot_start = new.slot_start) then
+      raise exception 'Este horário não está mais livre. Escolha outro.' using errcode = '23P01';
+    end if;
+    local_ts := new.slot_start at time zone 'America/Sao_Paulo';
+    new.preferred_date := local_ts::date;
+    new.preferred_period := case when local_ts::time < '12:00' then 'manha' when local_ts::time < '18:00' then 'tarde' else 'noite' end;
+    new.status := 'confirmed';
+  end if;
+  new.created_at := now();
+  new.user_id := auth.uid();
+  -- Colunas novas: sempre o padrão no caminho antigo (o navegador nem tem permissão para gravá-las).
+  new.channel := 'imed_app';
+  new.slot_end := null;
+  new.hold_expires_at := null;
+  new.version := 1;
+  new.updated_at := now();
+  new.cancel_reason := null;
+  new.total_cents := null;
+  new.payment_mode := 'no_local';
+  new.notify_channels := '{}';
+  new.uses_resources := false;
+  return new;
+end $$;
+-- Função de gatilho: ninguém chama como RPC (o gatilho continua funcionando), como antes.
+revoke execute on function public.check_appointment_request() from public, anon, authenticated;
+
+-- BEFORE UPDATE OF status, slot_start, slot_end, clinic_id, hold_expires_at, uses_resources e BEFORE DELETE: só com a
+-- marca de origem. Saída de emergência pelo SQL (imed.origin = 'sql' + imed.reason), registrada em agenda.audit_log.
+-- Exceção: a clínica foi apagada e a chave estrangeira (on delete set null) solta o pedido dela, como sempre.
+-- (Apagar um pedido apaga em cascata os itens e a ocupação dele: sem a marca, o horário seria liberado sem registro.
+-- Nenhum código de hoje apaga pedido.)
+create or replace function private.agenda_requests_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_origin text;
+begin
+  if tg_op = 'DELETE' then
+    v_origin := private.agenda_origin();
+    if v_origin is null then
+      raise exception 'Um pedido só é apagado pelas funções da agenda'
+        using errcode = '42501',
+              hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
+    end if;
+    if v_origin = 'sql' then
+      perform private.agenda_audit_sql(old.clinic_id, 'pedido_apagado_sql', 'appointment_request', old.id::text,
+        jsonb_build_object('status', old.status, 'slot_start', old.slot_start, 'slot_end', old.slot_end,
+                           'clinic_id', old.clinic_id, 'uses_resources', old.uses_resources), null);
+    end if;
+    return old;
+  end if;
+  if (new.status, new.slot_start, new.slot_end, new.clinic_id, new.hold_expires_at, new.uses_resources)
+     is not distinct from (old.status, old.slot_start, old.slot_end, old.clinic_id, old.hold_expires_at, old.uses_resources) then
+    return new;
+  end if;
+  if new.clinic_id is null and old.clinic_id is not null
+     and (new.status, new.slot_start, new.slot_end, new.hold_expires_at, new.uses_resources)
+         is not distinct from (old.status, old.slot_start, old.slot_end, old.hold_expires_at, old.uses_resources)
+     and not exists (select 1 from public.clinics c where c.id = old.clinic_id) then
+    return new;
+  end if;
+  v_origin := private.agenda_origin();
+  if v_origin is null then
+    raise exception 'A situação, o horário e a clínica de um pedido só mudam pelas funções da agenda'
+      using errcode = '42501',
+            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
+  end if;
+  if v_origin = 'sql' then
+    perform private.agenda_audit_sql(coalesce(new.clinic_id, old.clinic_id), 'pedido_alterado_sql', 'appointment_request',
+      new.id::text,
+      jsonb_build_object('status', old.status, 'slot_start', old.slot_start, 'slot_end', old.slot_end, 'clinic_id', old.clinic_id,
+                         'hold_expires_at', old.hold_expires_at, 'uses_resources', old.uses_resources),
+      jsonb_build_object('status', new.status, 'slot_start', new.slot_start, 'slot_end', new.slot_end, 'clinic_id', new.clinic_id,
+                         'hold_expires_at', new.hold_expires_at, 'uses_resources', new.uses_resources));
+  end if;
+  return new;
+end $$;
+
+-- BEFORE UPDATE: toda mudança de verdade sobe a versão (controle de concorrência do painel) e o updated_at.
+create or replace function private.agenda_requests_touch()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new is not distinct from old then
+    return new;
+  end if;
+  new.version := old.version + 1;
+  new.updated_at := now();
+  return new;
+end $$;
+
+-- AFTER UPDATE OF status (só quando muda): uma linha no histórico, com a origem da marca e o motivo (código).
+create or replace function private.agenda_requests_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_origin text := coalesce(private.agenda_origin(), 'sql');
+  v_actor text;
+  v_role text;
+begin
+  v_actor := case v_origin when 'app' then 'paciente' when 'painel' then 'clinica' when 'central' then 'imed'
+                           when 'api' then 'integracao' when 'webhook_pagamento' then 'gateway' when 'cron' then 'sistema'
+                           else 'sql' end;
+  if v_actor = 'clinica' then
+    select m.role into v_role from public.clinic_members m where m.clinic_id = new.clinic_id and m.user_id = auth.uid();
+  elsif v_actor = 'imed' then
+    v_role := case when coalesce(public.is_imed_admin(), false) then 'imed_admin'
+                   else (select 'imed_' || s.role from private.imed_staff s
+                         where s.user_id = auth.uid() and s.revoked_at is null order by s.role limit 1) end;
+  end if;
+  insert into agenda.status_history (request_id, item_id, from_status, to_status, actor_kind, actor_user, actor_role,
+                                     origin, reason_code, request_version)
+  values (new.id, null, old.status, new.status, v_actor, auth.uid(), v_role, v_origin, private.agenda_reason(), new.version);
+  return null;
+end $$;
+
+revoke all on function private.agenda_requests_guard() from public, anon, authenticated, service_role;
+revoke all on function private.agenda_requests_touch() from public, anon, authenticated, service_role;
+revoke all on function private.agenda_requests_history() from public, anon, authenticated, service_role;
+
+create or replace trigger appointment_requests_guard
+  before update of status, slot_start, slot_end, clinic_id, hold_expires_at, uses_resources or delete
+  on public.appointment_requests
+  for each row execute function private.agenda_requests_guard();
+create or replace trigger appointment_requests_touch
+  before update on public.appointment_requests
+  for each row execute function private.agenda_requests_touch();
+create or replace trigger appointment_requests_hist
+  after update of status on public.appointment_requests
+  for each row when (old.status is distinct from new.status) execute function private.agenda_requests_history();
+
+/* ===================== 10. Clínica: fuso, modalidade e venda online só pelas funções da agenda ===================== */
+-- BEFORE INSERT: sem a marca, clínica nova nasce no modelo de pedido, sem venda online e com o fuso sugerido pela UF
+-- (não confirmado). BEFORE UPDATE OF timezone, timezone_confirmed_at, agenda_mode, agenda_online_since: só com a
+-- marca (fecha também o PATCH direto que a policy "admin gerencia clinicas" permite hoje); pelo SQL, registrado.
+create or replace function private.agenda_clinics_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_origin text := private.agenda_origin();
+begin
+  if tg_op = 'INSERT' then
+    if v_origin is null then
+      if new.agenda_mode is distinct from 'pedido' or new.agenda_online_since is not null
+         or new.timezone_confirmed_at is not null then
+        raise exception 'Modalidade da agenda, venda online e confirmação do fuso só mudam pelas funções da agenda'
+          using errcode = '42501';
+      end if;
+      -- de propósito: sem a marca, o fuso vem SEMPRE da UF (o que o INSERT mandou é ignorado; a clínica confirma
+      -- o fuso pelas funções da agenda antes de ativar)
+      new.timezone := private.agenda_suggested_timezone(new.state, new.cnes);
+    elsif v_origin = 'sql' then
+      perform private.agenda_audit_sql(new.id, 'clinica_criada_sql', 'clinic', new.id::text, null,
+        jsonb_build_object('timezone', new.timezone, 'timezone_confirmed_at', new.timezone_confirmed_at,
+                           'agenda_mode', new.agenda_mode, 'agenda_online_since', new.agenda_online_since));
+    end if;
+    return new;
+  end if;
+  if (new.timezone, new.timezone_confirmed_at, new.agenda_mode, new.agenda_online_since)
+     is not distinct from (old.timezone, old.timezone_confirmed_at, old.agenda_mode, old.agenda_online_since) then
+    return new;
+  end if;
+  if v_origin is null then
+    raise exception 'Fuso, modalidade da agenda e venda online só mudam pelas funções da agenda'
+      using errcode = '42501',
+            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
+  end if;
+  if v_origin = 'sql' then
+    perform private.agenda_audit_sql(new.id, 'clinica_agenda_sql', 'clinic', new.id::text,
+      jsonb_build_object('timezone', old.timezone, 'timezone_confirmed_at', old.timezone_confirmed_at,
+                         'agenda_mode', old.agenda_mode, 'agenda_online_since', old.agenda_online_since),
+      jsonb_build_object('timezone', new.timezone, 'timezone_confirmed_at', new.timezone_confirmed_at,
+                         'agenda_mode', new.agenda_mode, 'agenda_online_since', new.agenda_online_since));
+  end if;
+  return new;
+end $$;
+revoke all on function private.agenda_clinics_guard() from public, anon, authenticated, service_role;
+
+create or replace trigger clinics_agenda_guard
+  before insert or update of timezone, timezone_confirmed_at, agenda_mode, agenda_online_since on public.clinics
+  for each row execute function private.agenda_clinics_guard();
+
+/* ===================== 11. Ocupação e recursos: vagas, capacidade e marca de origem ===================== */
+
+-- [espelho do laço local]
+-- Antes de gravar uma ocupação: o fechamento ganha o próprio grupo ([id,id]); o uso (novo, reativado ou que mudou
+-- de vaga, horário ou recurso) precisa de recurso ativo da mesma clínica e de vaga dentro da capacidade, lida com
+-- FOR SHARE (espera quem estiver mudando a capacidade ao mesmo tempo, e vice-versa; §3.2 e §3.3, I1-c).
+create or replace function private.agenda_occupancy_seats()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cap smallint;
+begin
+  if new.kind = 'bloqueio' and new.excl_group = '(,)'::int8range then
+    new.excl_group := int8range(new.id, new.id, '[]');
+  end if;
+  if new.kind <> 'bloqueio' and new.active
+     and (tg_op = 'INSERT' or not old.active or new.seats <> old.seats or new.during <> old.during
+          or new.resource_id <> old.resource_id or new.clinic_id <> old.clinic_id) then
+    select r.capacity into v_cap
+    from agenda.resources r
+    where r.id = new.resource_id and r.clinic_id = new.clinic_id and r.active and r.archived_at is null
+    for share;
+    if v_cap is null then
+      raise exception 'Recurso inexistente, inativo ou arquivado' using errcode = '23503';
+    end if;
+    if coalesce(upper(new.seats) - 1 > v_cap, true) then   -- vaga sem limite (NULL) também é recusada
+      raise exception 'Vaga % acima da capacidade % do recurso', upper(new.seats) - 1, v_cap using errcode = '23514';
+    end if;
+  end if;
+  return new;
+end $$;
+
+create or replace trigger occupancy_seats
+  before insert or update on agenda.occupancy
+  for each row execute function private.agenda_occupancy_seats();
+-- ALWAYS: vale também com session_replication_role = replica (que desliga os gatilhos comuns; o dono do banco
+-- consegue ligar esse modo na produção, e a documentação do Supabase o sugere em restaurações). Ver bloco 17.
+alter table agenda.occupancy enable always trigger occupancy_seats;
+
+-- Reduzir a capacidade, desativar ou arquivar um recurso só sem usos futuros ativos que deixariam de caber
+-- (redução temporária é bloqueio, nunca edição). Com a trava da linha do recurso, quem marca na vaga alta espera
+-- esta mudança e depois é recusado, ou esta mudança espera a marcação e depois a vê (§3.3, I1-c).
+create or replace function private.agenda_resources_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.capacity < old.capacity and exists (
+       select 1 from agenda.occupancy o
+       where o.resource_id = old.id and o.active and o.kind <> 'bloqueio'
+         and upper(o.during) > now() and upper(o.seats) - 1 > new.capacity) then
+    raise exception 'Há usos futuros nas vagas acima da nova capacidade (%): remarque antes ou use um bloqueio', new.capacity
+      using errcode = '23514';
+  end if;
+  if ((old.active and not new.active) or (old.archived_at is null and new.archived_at is not null)) and exists (
+       select 1 from agenda.occupancy o
+       where o.resource_id = old.id and o.active and o.kind <> 'bloqueio' and upper(o.during) > now()) then
+    raise exception 'O recurso tem usos futuros: remarque ou cancele antes de desativar ou arquivar'
+      using errcode = '23514';
+  end if;
+  return new;
+end $$;
+
+create or replace trigger resources_guard
+  before update of capacity, active, archived_at on agenda.resources
+  for each row execute function private.agenda_resources_guard();
+alter table agenda.resources enable always trigger resources_guard;
+-- [fim do espelho]
+
+-- Itens e ocupação só mudam pelas funções da agenda (marca de origem); pelo SQL, com motivo e registrado.
+-- Apagar em cascata (o pedido, o item, o "ocupado" ou o bloqueio dono da linha foi apagado) segue livre.
+-- Dois gatilhos com a mesma função: BEFORE confere a marca e o motivo (recusa cedo); AFTER registra a linha FINAL
+-- (depois dos outros gatilhos BEFORE, como o que dá o grupo [id,id] ao fechamento) e só se ela foi mesmo gravada
+-- (um ON CONFLICT DO NOTHING que não grava não deixa auditoria). A auditoria guarda uma lista FIXA de campos (sem
+-- dado de paciente nem texto livre, mesmo que uma coluna nova apareça depois).
+create or replace function private.agenda_write_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_origin text;
+  v_cascata boolean := false;
+  v_campos text[];
+  v_old jsonb;
+  v_new jsonb;
+begin
+  -- (cada tabela no seu bloco: o PL/pgSQL só resolve old.<coluna> da tabela do gatilho)
+  if tg_op = 'DELETE' then
+    if tg_table_name = 'occupancy' then
+      v_cascata := (old.item_id is not null and not exists (select 1 from agenda.appointment_items i where i.id = old.item_id))
+                or (old.busy_id is not null and not exists (select 1 from agenda.busy_marks b where b.id = old.busy_id))
+                or (old.block_id is not null and not exists (select 1 from public.clinic_blocks b where b.id = old.block_id));
+    elsif tg_table_name = 'appointment_items' then
+      v_cascata := not exists (select 1 from public.appointment_requests r where r.id = old.request_id);
+    end if;
+  end if;
+  v_origin := private.agenda_origin();
+
+  if tg_when = 'AFTER' then
+    -- registro da emergência pelo SQL (a cascata já ficou registrada no dono que foi apagado)
+    if v_origin = 'sql' and not v_cascata then
+      v_campos := case tg_table_name
+        when 'occupancy' then array['id', 'resource_id', 'kind', 'seats', 'during', 'excl_group', 'item_id', 'group_no',
+                                    'busy_id', 'block_id', 'hold_until', 'active', 'released_at', 'release_reason']
+        else array['id', 'request_id', 'seq', 'procedure_id', 'exam_code', 'starts_at', 'ends_at', 'status', 'version'] end;
+      if tg_op <> 'INSERT' then
+        select jsonb_object_agg(e.key, e.value) into v_old from jsonb_each(to_jsonb(old)) e where e.key = any (v_campos);
+      end if;
+      if tg_op <> 'DELETE' then
+        select jsonb_object_agg(e.key, e.value) into v_new from jsonb_each(to_jsonb(new)) e where e.key = any (v_campos);
+      end if;
+      perform private.agenda_audit_sql(case tg_op when 'DELETE' then old.clinic_id else new.clinic_id end,
+        tg_table_name || '_' || lower(tg_op), tg_table_name, coalesce(v_new, v_old) ->> 'id', v_old, v_new);
+    end if;
+    return null;
+  end if;
+
+  -- BEFORE
+  if v_cascata then
+    return old;
+  end if;
+  if v_origin is null then
+    raise exception 'Itens e ocupação da agenda só mudam pelas funções da agenda'
+      using errcode = '42501',
+            hint = 'Emergência no SQL: select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true); (fica registrado)';
+  end if;
+  if v_origin = 'sql' then
+    if tg_op = 'TRUNCATE' then
+      perform private.agenda_audit_sql(null, tg_table_name || '_truncate', tg_table_name, null, null, null);
+      return null;
+    end if;
+    if private.agenda_reason() is null then
+      raise exception 'Mudança pelo SQL sem motivo: defina imed.reason (um código) junto com imed.origin = ''sql'''
+        using errcode = '42501',
+              hint = 'select set_config(''imed.origin'', ''sql'', true), set_config(''imed.reason'', ''<codigo>'', true);';
+    end if;
+  end if;
+  if tg_op = 'TRUNCATE' then return null; end if;
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end $$;
+
+revoke all on function private.agenda_occupancy_seats() from public, anon, authenticated, service_role;
+revoke all on function private.agenda_resources_guard() from public, anon, authenticated, service_role;
+revoke all on function private.agenda_write_guard() from public, anon, authenticated, service_role;
+
+create or replace trigger occupancy_guard
+  before insert or update or delete on agenda.occupancy
+  for each row execute function private.agenda_write_guard();
+create or replace trigger occupancy_guard_audit
+  after insert or update or delete on agenda.occupancy
+  for each row execute function private.agenda_write_guard();
+create or replace trigger occupancy_guard_truncate
+  before truncate on agenda.occupancy
+  for each statement execute function private.agenda_write_guard();
+create or replace trigger appointment_items_guard
+  before insert or update or delete on agenda.appointment_items
+  for each row execute function private.agenda_write_guard();
+create or replace trigger appointment_items_guard_audit
+  after insert or update or delete on agenda.appointment_items
+  for each row execute function private.agenda_write_guard();
+create or replace trigger appointment_items_guard_truncate
+  before truncate on agenda.appointment_items
+  for each statement execute function private.agenda_write_guard();
+
+/* ===================== 12. Trilhas: só acrescentam ===================== */
+-- UPDATE, DELETE e TRUNCATE dão erro, até pelo SQL do painel. Exceções: a rotina de retenção (dono do banco, com
+-- set local imed.retencao = 'on') e, em access_log, a mesma leitura no mesmo dia somando reads e last_at.
+create or replace function private.agenda_trail_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if session_user = 'postgres' and current_setting('imed.retencao', true) = 'on' then
+    if tg_op = 'TRUNCATE' then return null; end if;
+    if tg_op = 'DELETE' then return old; end if;
+    return new;
+  end if;
+  -- (bloco próprio: o PL/pgSQL só resolve new.<coluna> da tabela do gatilho)
+  if tg_op = 'UPDATE' and tg_table_name = 'access_log' then
+    if (new.id, new.day, new.first_at, new.user_id, new.clinic_id, new.fn, new.request_id, new.scope, new.justification_code)
+       is not distinct from
+       (old.id, old.day, old.first_at, old.user_id, old.clinic_id, old.fn, old.request_id, old.scope, old.justification_code)
+       and new.reads >= old.reads and new.last_at >= old.last_at then
+      return new;
+    end if;
+  end if;
+  raise exception 'trilha_so_acrescenta: % não pode mudar nem ser apagada', tg_table_name
+    using errcode = 'P0001', hint = 'Trilhas da agenda só recebem linhas novas (a retenção é a única exceção).';
+end $$;
+revoke all on function private.agenda_trail_guard() from public, anon, authenticated, service_role;
+
+create or replace trigger status_history_guard
+  before update or delete on agenda.status_history for each row execute function private.agenda_trail_guard();
+create or replace trigger status_history_guard_truncate
+  before truncate on agenda.status_history for each statement execute function private.agenda_trail_guard();
+create or replace trigger audit_log_guard
+  before update or delete on agenda.audit_log for each row execute function private.agenda_trail_guard();
+create or replace trigger audit_log_guard_truncate
+  before truncate on agenda.audit_log for each statement execute function private.agenda_trail_guard();
+create or replace trigger access_log_guard
+  before update or delete on agenda.access_log for each row execute function private.agenda_trail_guard();
+create or replace trigger access_log_guard_truncate
+  before truncate on agenda.access_log for each statement execute function private.agenda_trail_guard();
 
 /* ===================== 13. Permissões do pedido: INSERT coluna por coluna, sem UPDATE/DELETE diretos ===================== */
 -- O site grava exatamente estas 23 colunas (assets/js/geo-core.js, bookingRow, mais review_token_hash; conferido
@@ -1415,7 +1565,7 @@ insert into agenda.status_transitions (from_status, to_status, actor_kind, permi
   ('confirmed', 'completed', 'clinica', 'agenda.atender', false, 'depois_do_inicio', false),   -- fluxo simples (decisão 23)
   ('confirmed', 'completed', 'imed', 'imed.agenda.operar', false, 'depois_do_inicio', false),
   ('confirmed', 'no_show', 'clinica', 'agenda.atender', false, 'depois_da_tolerancia', false),
-  ('no_show', 'checked_in', 'clinica', 'agenda.atender', true, 'mesmo_dia', false),
+  ('no_show', 'checked_in', 'clinica', 'agenda.atender', true, 'mesmo_dia', true),        -- volta a ocupar: motor completo (I2)
   -- remarcação
   ('confirmed', 'reschedule_requested', 'paciente', null, false, 'prazo_remarcar_paciente', false),
   ('confirmed', 'reschedule_requested', 'clinica', 'agenda.remarcar', false, null, false),
@@ -1442,24 +1592,92 @@ insert into agenda.status_transitions (from_status, to_status, actor_kind, permi
   ('no_show', 'completed', 'imed', 'imed.agenda.operar', true, null, false)
 on conflict (from_status, to_status, actor_kind) do nothing;
 
-/* ===================== 16. Fuso das clínicas que já existem (pela UF; não confirmado) ===================== */
--- Na produção de 31/10/2026 todas as clínicas são de SP: nada muda. Pelo SQL com a marca (fica registrado).
-do $$
+/* ===================== 16. Quem dá acesso fica registrado (§12: equipe na auditoria) ===================== */
+-- Toda mudança na equipe do IMED (private.imed_staff) e na matriz de permissões (agenda.role_permissions) vai para
+-- agenda.audit_log, com a origem e o motivo quando houver (sem marca = 'sql'). Na equipe, tirar o acesso = preencher
+-- revoked_at: o DELETE só passa quando a conta já foi apagada (cascata de auth.users). TRUNCATE dá erro nas duas.
+-- (As linhas de referência do bloco 14 entram antes destes gatilhos: a matriz inicial é a da migração.)
+create or replace function private.agenda_access_audit()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_origin text := coalesce(private.agenda_origin(), 'sql');
+  v_old jsonb;
+  v_new jsonb;
 begin
-  if exists (select 1 from public.clinics c
-             where c.timezone_confirmed_at is null
-               and c.timezone is distinct from private.agenda_suggested_timezone(c.state, c.cnes)) then
-    perform set_config('imed.origin', 'sql', true);
-    perform set_config('imed.reason', 'migracao_fuso_pela_uf', true);
-    update public.clinics c set timezone = private.agenda_suggested_timezone(c.state, c.cnes)
-     where c.timezone_confirmed_at is null
-       and c.timezone is distinct from private.agenda_suggested_timezone(c.state, c.cnes);
-    perform set_config('imed.origin', '', true);
-    perform set_config('imed.reason', '', true);
+  if tg_op = 'TRUNCATE' then
+    raise exception '%: não se apaga em bloco (cada mudança de acesso fica registrada)', tg_table_name using errcode = '42501';
   end if;
+  if tg_when = 'BEFORE' then   -- só DELETE em private.imed_staff
+    if exists (select 1 from auth.users u where u.id = old.user_id) then
+      raise exception 'Equipe do IMED: para tirar o acesso, preencha revoked_at (o registro não se apaga)' using errcode = '42501';
+    end if;
+    return old;
+  end if;
+  if tg_op <> 'INSERT' then v_old := to_jsonb(old); end if;
+  if tg_op <> 'DELETE' then v_new := to_jsonb(new); end if;
+  insert into agenda.audit_log (clinic_id, actor_kind, actor_user, actor_role, origin, action, object_type, object_id,
+                                old_value, new_value, reason_code)
+  values (null,
+          case v_origin when 'app' then 'paciente' when 'painel' then 'clinica' when 'central' then 'imed'
+                        when 'api' then 'integracao' when 'webhook_pagamento' then 'gateway' when 'cron' then 'sistema'
+                        else 'sql' end,
+          auth.uid(), null, v_origin, tg_table_name || '_' || lower(tg_op), tg_table_name,
+          coalesce(v_new, v_old) ->> 'user_id', v_old, v_new, private.agenda_reason());
+  return null;
 end $$;
+revoke all on function private.agenda_access_audit() from public, anon, authenticated, service_role;
 
-/* ===================== 17. Descrições ===================== */
+create or replace trigger imed_staff_guard
+  before delete on private.imed_staff
+  for each row execute function private.agenda_access_audit();
+create or replace trigger imed_staff_audit
+  after insert or update or delete on private.imed_staff
+  for each row execute function private.agenda_access_audit();
+create or replace trigger imed_staff_guard_truncate
+  before truncate on private.imed_staff
+  for each statement execute function private.agenda_access_audit();
+create or replace trigger role_permissions_audit
+  after insert or update or delete on agenda.role_permissions
+  for each row execute function private.agenda_access_audit();
+create or replace trigger role_permissions_guard_truncate
+  before truncate on agenda.role_permissions
+  for each statement execute function private.agenda_access_audit();
+
+/* ===================== 17. Guardas valem sempre (ENABLE ALWAYS) ===================== */
+-- Com session_replication_role = replica (o dono do banco consegue ligar na produção: está em
+-- supautils.privileged_role_allowed_configs), os gatilhos comuns NÃO disparam. As guardas da agenda são ALWAYS:
+-- valem também nesse modo (a restrição de exclusão já valia). Uma restauração de dados (só dados) nestas tabelas
+-- precisa da marca de emergência (imed.origin = 'sql' + motivo), como qualquer escrita à mão. O pg_dump completo cria os
+-- gatilhos depois dos dados, então a restauração normal não é afetada. occupancy_seats e resources_guard já ficaram
+-- ALWAYS no bloco 11 (junto do espelho do laço local). O gatilho antigo do pedido (appointment_requests_check) fica
+-- como está (não é desta fase).
+alter table public.appointment_requests enable always trigger appointment_requests_guard;
+alter table public.appointment_requests enable always trigger appointment_requests_touch;
+alter table public.appointment_requests enable always trigger appointment_requests_hist;
+alter table public.clinics enable always trigger clinics_agenda_guard;
+alter table agenda.occupancy enable always trigger occupancy_guard;
+alter table agenda.occupancy enable always trigger occupancy_guard_audit;
+alter table agenda.occupancy enable always trigger occupancy_guard_truncate;
+alter table agenda.appointment_items enable always trigger appointment_items_guard;
+alter table agenda.appointment_items enable always trigger appointment_items_guard_audit;
+alter table agenda.appointment_items enable always trigger appointment_items_guard_truncate;
+alter table agenda.status_history enable always trigger status_history_guard;
+alter table agenda.status_history enable always trigger status_history_guard_truncate;
+alter table agenda.audit_log enable always trigger audit_log_guard;
+alter table agenda.audit_log enable always trigger audit_log_guard_truncate;
+alter table agenda.access_log enable always trigger access_log_guard;
+alter table agenda.access_log enable always trigger access_log_guard_truncate;
+alter table private.imed_staff enable always trigger imed_staff_guard;
+alter table private.imed_staff enable always trigger imed_staff_audit;
+alter table private.imed_staff enable always trigger imed_staff_guard_truncate;
+alter table agenda.role_permissions enable always trigger role_permissions_audit;
+alter table agenda.role_permissions enable always trigger role_permissions_guard_truncate;
+
+/* ===================== 18. Descrições ===================== */
 comment on column public.clinics.timezone is 'Fuso da unidade (IANA). Sugerido pela UF; vale para a agenda só depois de confirmado (timezone_confirmed_at). Só muda pelas funções da agenda.';
 comment on column public.clinics.timezone_confirmed_at is 'Quando a clínica confirmou o fuso. Sem confirmação, a agenda não é ativada.';
 comment on column public.clinics.agenda_mode is 'Modalidade: pedido (padrão: a clínica ou o IMED liga), nativa, manual (com compromisso) ou externa. Só muda por ação explícita, pelas funções da agenda.';
@@ -1469,13 +1687,14 @@ comment on column public.appointment_requests.version is 'Sobe a cada mudança (
 comment on column public.appointment_requests.hold_expires_at is 'Prazo da reserva temporária (só em hold e awaiting_payment). Fonte única do prazo.';
 comment on column public.appointment_requests.uses_resources is 'Agendamento do motor novo (com itens e ocupação). O site de hoje grava sempre false.';
 comment on function public.check_appointment_request() is 'Gatilho do pedido. Sem imed.origin: caminho antigo (as regras de sempre). Com a marca: funções da agenda (só dados do paciente e datas). Validação do paciente em private.agenda_validate_patient.';
-comment on function public.has_clinic_perm(uuid, text) is 'A pessoa logada tem esta permissão nesta clínica, pelo papel em clinic_members (agenda.role_permissions)?';
+comment on function public.has_clinic_perm(uuid, text) is 'A pessoa logada tem esta permissão na clínica INTEIRA (escopo clinica), pelo papel em clinic_members (agenda.role_permissions), com conta ativa? Escopo parcial: clinic_perm_scope.';
+comment on function public.clinic_perm_scope(uuid, text) is 'Escopo da permissão da pessoa logada nesta clínica (clinica, propria, sem_donos) ou nulo; só conta ativa (e-mail confirmado, não apagada, não banida, não anônima).';
 comment on function public.imed_has(text) is 'A pessoa logada tem esta permissão da equipe do IMED? O dono (is_imed_admin) tem todas; a equipe, as do papel ativo em private.imed_staff, com sessão pelo link do e-mail.';
 comment on table agenda.occupancy is 'O único lugar que diz "este recurso está ocupado". Restrição de exclusão occupancy_no_overlap: uso × uso na mesma vaga e uso × fechamento nunca se cruzam.';
 comment on table agenda.status_history is 'Histórico de situação dos agendamentos: só acréscimo, só códigos, sem chave estrangeira.';
 comment on table agenda.audit_log is 'Auditoria da agenda (configuração, preços, equipe, bloqueios, mudanças pelo SQL): só acréscimo, sem dado pessoal nem texto livre.';
 comment on table agenda.access_log is 'Quem leu dado de paciente: uma linha por dia, pessoa, função, pedido e escopo (a leitura repetida soma em reads).';
-comment on table agenda.notes is 'O único lugar com texto livre da agenda (curto, apagável). Não escreva dados de saúde.';
+comment on table agenda.notes is 'O único lugar com texto livre da agenda (curto). Apagar = deleted_at e text nulo (o texto sai de verdade). Não escreva dados de saúde.';
 comment on table agenda.role_permissions is 'Referência: permissões de cada papel da clínica e da equipe do IMED (arquitetura §12).';
 comment on table agenda.status_transitions is 'Referência: a máquina de estados do agendamento (arquitetura §5).';
-comment on table private.imed_staff is 'Equipe do IMED (operação, suporte, financeiro, auditoria), fora de admin_emails. Revogar = revoked_at.';
+comment on table private.imed_staff is 'Equipe do IMED (operação, suporte, financeiro, auditoria), fora de admin_emails. Revogar = revoked_at (DELETE só quando a conta foi apagada). Toda mudança vai para agenda.audit_log.';
