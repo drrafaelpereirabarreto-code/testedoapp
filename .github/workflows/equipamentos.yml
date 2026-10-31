@@ -1,0 +1,57 @@
+# Aparelhos do CNES (ressonância, tomógrafo, mamógrafo, raio-X, densitômetro, ultrassom, eletrocardiógrafo) por
+# estabelecimento, para o filtro de exame do site. Baixa do FTP do DATASUS o mês mais recente dos arquivos
+# EQ<UF><AAMM>.dbc das UFs das cidades de scripts/cidades.json, guarda só essas cidades e grava um arquivo compacto
+# (CNES, exame, quantidade em uso, SUS, mês) no ramo dados/cnes-equip. Dado público; a coluna CPF_CNPJ é descartada.
+# Nada é gravado no banco aqui (falta um segredo no GitHub): o banco busca o arquivo do ramo (pg_net) e grava.
+# Avisos saem como anotações (gh api repos/<repo>/check-runs/<job>/annotations).
+name: Equipamentos do CNES
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/equipamentos']
+  schedule:
+    - cron: '17 9 20 * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: equipamentos
+  cancel-in-progress: false
+
+jobs:
+  gerar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Preparar o Python
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q --only-binary=:all: 'pyreaddbc==2.0.4' 'dbfread==2.0.7'
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Testes do gerador
+        run: python -I scripts/cnes-equip/test_gerar.py
+      - name: Baixar do FTP do DATASUS
+        run: python -I scripts/cnes-equip/gerar.py baixar "$RUNNER_TEMP/eq"
+      - name: Gerar o arquivo compacto
+        run: python -I scripts/cnes-equip/gerar.py gerar "$RUNNER_TEMP/eq" "$RUNNER_TEMP/saida"
+      - name: Publicar no ramo dados/cnes-equip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/saida"
+          if grep -qi cpf equipamentos.csv; then echo "::error::CPF na saída"; exit 1; fi
+          cat > LEIAME.txt <<'TXT'
+          Fonte: CNES/DATASUS - Ministério da Saúde (ftp.datasus.gov.br, CNES/200508_/Dados/EQ), dado público.
+          A ligação aparelho -> exame é do IMED (scripts/cnes-equip/gerar.py). Sem dado de pessoa.
+          TXT
+          git init -q -b dados/cnes-equip
+          git add -A .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "Aparelhos do CNES (execução ${GITHUB_RUN_NUMBER})"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/dados/cnes-equip"
+          echo "::notice title=Equipamentos: publicado::ramo dados/cnes-equip, $(wc -l < equipamentos.csv) linhas, $(wc -c < equipamentos.csv) bytes"
