@@ -35,6 +35,28 @@
 .rd-nav li a:hover{color:#fff}
 .rodape .rd-a11y i{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#fff;color:#05161e;font-size:14px}
 
+/* Tema (Automático, Claro, Escuro; o HTML vem de temaHtml() em scripts/rodape.mjs e assets/js/tema.js liga os botões).
+   Só aparece com o tema.js funcionando: ele marca o <html data-tema-escolha> antes da primeira pintura, então a opção
+   marcada já vem certa e nada pula. O rodapé é escuro nos dois temas: as cores daqui não mudam. */
+.rd-tema{display:none;margin-top:18px}
+:root[data-tema-escolha] .rd-tema{display:block}
+.rd-tema-op{display:inline-flex;flex-wrap:wrap;gap:2px;padding:3px;border-radius:25px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.05)}
+.rd-tema-op button{display:inline-flex;align-items:center;gap:6px;min-height:44px;padding:8px 11px;border:0;border-radius:22px;background:transparent;
+  color:rgba(255,255,255,.86);font:600 14px/1.2 'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.rd-tema-op button::before{content:"";flex-shrink:0;width:16px;height:16px;background:currentColor;
+  -webkit-mask:var(--rd-ic) center/contain no-repeat;mask:var(--rd-ic) center/contain no-repeat}
+.rd-tema-op [data-tema-opcao="auto"]{--rd-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M12 2.5a9.5 9.5 0 1 0 0 19a9.5 9.5 0 1 0 0-19zM12 4.7a7.3 7.3 0 0 1 0 14.6z'/%3E%3C/svg%3E")}
+.rd-tema-op [data-tema-opcao="claro"]{--rd-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4.2'/%3E%3Cpath d='M12 2.3v2.4M12 19.3v2.4M2.3 12h2.4M19.3 12h2.4M5.1 5.1l1.7 1.7M17.2 17.2l1.7 1.7M5.1 18.9l1.7-1.7M17.2 6.8l1.7-1.7'/%3E%3C/svg%3E")}
+.rd-tema-op [data-tema-opcao="escuro"]{--rd-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/%3E%3C/svg%3E")}
+.rd-tema-op button:hover{color:#fff;background:rgba(255,255,255,.1)}
+.rd-tema-op button:focus-visible{outline:3px solid #7FF0E4;outline-offset:2px}
+:root[data-tema-escolha="auto"] .rd-tema [data-tema-opcao="auto"],:root[data-tema-escolha="claro"] .rd-tema [data-tema-opcao="claro"],
+:root[data-tema-escolha="escuro"] .rd-tema [data-tema-opcao="escuro"]{background:#7FF0E4;color:#05161e}
+@media (forced-colors:active){
+  .rd-tema-op button::before{forced-color-adjust:none;background:ButtonText}
+  .rd-tema-op button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
+}
+
 .rd-base{display:grid;gap:6px;max-width:1240px;margin:0 auto;padding:16px 20px 22px;border-top:1px solid rgba(255,255,255,.14);font-size:13px;color:rgba(255,255,255,.72)}
 
 @container (min-width:620px){
@@ -54,3 +76,8 @@
   .rd-nav li a{min-height:44px}
   .rd-logo{min-height:44px}
 }
+
+/* Tema escuro: o rodapé continua o mesmo (escuro nos dois temas); só ganha uma linha fina em cima, para não se
+   misturar com o fundo escuro da página. Os dois seletores do tema escuro, cada um no seu @media (só na tela). */
+@media screen and (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rodape{box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}}
+@media screen{:root[data-theme="dark"] .rodape{box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}}

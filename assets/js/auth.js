@@ -1,5 +1,7 @@
 // Conta no IMED (pacientes e clínicas): login por link mágico enviado por e-mail, pelo Supabase Auth.
 // Sem biblioteca: fala direto com a API REST do Supabase. A sessão fica no localStorage deste navegador.
+// Cabeçalhos pela regra única do site (IMED_CONFIG.supabaseHeaders, em config.js): a chave publishable vai só em
+// "apikey"; "Authorization: Bearer" leva só o token da pessoa logada. Sem conta, vai só a chave.
 const C = window.IMED_CONFIG;
 const KEY = 'imed_session';
 
@@ -9,7 +11,7 @@ const write = (s) => { try { s ? localStorage.setItem(KEY, JSON.stringify(s)) : 
 async function call(path, { method = 'GET', body, token, headers = {}, timeout = 15000 } = {}) {
   const res = await fetch(C.supabaseUrl + path, {
     method,
-    headers: { apikey: C.supabaseAnonKey, Authorization: `Bearer ${token || C.supabaseAnonKey}`, ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    headers: C.supabaseHeaders(token, { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers }),
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeout),
   });
@@ -78,7 +80,7 @@ export async function signOut() {
   if (s) await call('/auth/v1/logout', { method: 'POST', token: s.access_token }).catch(() => {});
 }
 
-// Chamadas ao banco com a conta (quando logado) ou com a chave pública.
+// Chamadas ao banco com a conta (quando logado) ou só com a chave pública (visitante).
 export async function rpc(fn, args = {}) {
   return call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: args, token: await token() });
 }

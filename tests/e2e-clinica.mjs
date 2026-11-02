@@ -8,6 +8,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -252,10 +253,10 @@ const results = [];
 const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('reivindicar com ?cnes=: mostra o local, pede login, valida CPF/CNPJ e envia só dígitos', async () => {
   const { page, log, errors, context } = await newPage(browser);

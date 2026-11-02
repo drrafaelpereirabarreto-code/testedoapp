@@ -4,11 +4,11 @@
 //   npm ci --prefix tests/banco --ignore-scripts
 //
 //   configLocal()            endereços e segredo do Supabase LOCAL (nunca da produção)
-//   jwt(), tokenAnon(), ...  tokens assinados com o segredo do banco local, iguais aos do Auth
+//   jwt(), tokenUsuario()    tokens assinados com o segredo do banco local, iguais aos do Auth
 //   conectar()               conexão direta com o Postgres (recusa banco com dados da produção)
 //   rodarJuntos()            N transações que partem juntas (barreira com pg_advisory_lock)
 //   estatisticas()           p50, p95, máximo e erros por código (23P01, 23505, 40P01, 57014...)
-//   postgrest()              chamada HTTP no PostgREST local, como o site faz
+//   postgrest()              chamada HTTP no PostgREST local, com os cabeçalhos que o site manda (cabecalhosDoSite)
 //   anotar(), resumir()      avisos no topo da execução do GitHub e resumo (o registro do GitHub não é lido daqui)
 
 import { createHmac } from 'node:crypto';
@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import vm from 'node:vm';
 
 export const NO_GITHUB = process.env.GITHUB_ACTIONS === 'true';
 
@@ -108,9 +109,11 @@ export async function principal(nome, corpo) {
 /* ===================== Supabase LOCAL ===================== */
 
 /**
- * Endereços e segredo do Supabase local. Ordem: arquivo de $IMED_SUPABASE_STATUS (o banco.yml grava a saída de
- * "supabase status -o json"), depois o próprio "supabase status -o json", depois as variáveis DB_URL, API_URL,
- * JWT_SECRET e ANON_KEY. Recusa endereço que não seja desta máquina: os testes nunca falam com a produção.
+ * Endereços, chave e segredo do Supabase local. Ordem: arquivo de $IMED_SUPABASE_STATUS (o banco.yml grava a saída
+ * de "supabase status -o json"), depois o próprio "supabase status -o json", depois as variáveis DB_URL, API_URL,
+ * JWT_SECRET e PUBLISHABLE_KEY. Recusa endereço que não seja desta máquina: os testes nunca falam com a produção.
+ * A chave publishable LOCAL (sb_publishable_..., como a do site) vai no "apikey"; o gateway local (Kong) atende
+ * quem vem só com ela como o papel anon, igual à produção.
  */
 // A saída de "supabase status -o json" pode vir com avisos antes ou depois do JSON: pega só o objeto.
 export const jsonDaSaida = (texto) => JSON.parse(texto.slice(texto.indexOf('{'), texto.lastIndexOf('}') + 1));
@@ -129,7 +132,7 @@ export function configLocal() {
     dbUrl: st.DB_URL ?? process.env.DB_URL,
     apiUrl: st.API_URL ?? process.env.API_URL,
     jwtSecret: st.JWT_SECRET ?? process.env.JWT_SECRET,
-    anonKey: st.ANON_KEY ?? process.env.ANON_KEY,
+    publishableKey: st.PUBLISHABLE_KEY ?? process.env.PUBLISHABLE_KEY,
   };
   if (!cfg.dbUrl) throw new Error('Supabase local não encontrado: rode "supabase start" (ou defina DB_URL).');
   for (const [k, v] of Object.entries({ dbUrl: cfg.dbUrl, apiUrl: cfg.apiUrl })) {
@@ -165,7 +168,10 @@ export function jwt(claims, segredo, { validadeS = 3600 } = {}) {
   return `${base}.${createHmac('sha256', segredo).update(base).digest('base64url')}`;
 }
 
-/** Visitante (o que o site manda hoje sem login), assinado aqui com o segredo do Supabase local. */
+/**
+ * Token do papel anon, assinado aqui com o segredo do Supabase local. O site NÃO manda mais token de visitante (fase
+ * 0.1: visitante vai só com a chave publishable no "apikey"); fica para algum teste que precise do papel num token.
+ */
 export const tokenAnon = (cfg) => jwt({ role: 'anon', iss: 'supabase' }, cfg.jwtSecret);
 
 /** Pessoa logada pelo link do e-mail (amr "otp"), como o Auth emite. */
@@ -299,20 +305,39 @@ export const textoCodigos = (porCodigo) =>
 
 /* ===================== HTTP no PostgREST local ===================== */
 
+// A regra dos cabeçalhos do PRÓPRIO site (IMED_CONFIG.supabaseHeaders, em assets/js/config.js), carregada daqui num
+// navegador de mentira (node:vm), com a chave publishable do Supabase LOCAL no lugar da de produção.
+let regraDoSite = null;
 /**
- * Chamada no PostgREST local como o site faz (apikey + Authorization). Devolve status, código do erro e tempo.
- * `prefer: null` não manda o cabeçalho Prefer (chamada de função, rpc/...).
+ * Cabeçalhos exatamente como o site manda: "apikey" com a chave publishable sempre; "Authorization: Bearer" só com o
+ * token de quem entrou na conta (sem token = visitante, sem Authorization). `extra`: Content-Type, Prefer...
+ */
+export function cabecalhosDoSite(cfg, token, extra) {
+  if (!cfg.publishableKey) {
+    throw new Error('Sem a chave publishable do Supabase local (PUBLISHABLE_KEY de "supabase status -o json").');
+  }
+  if (!regraDoSite) {
+    const g = {};
+    g.window = g;
+    vm.createContext(g);
+    vm.runInContext(readFileSync(new URL('../../assets/js/config.js', import.meta.url), 'utf8'), g);
+    regraDoSite = g.IMED_CONFIG;
+    if (typeof regraDoSite?.supabaseHeaders !== 'function') throw new Error('assets/js/config.js sem IMED_CONFIG.supabaseHeaders');
+  }
+  regraDoSite.supabaseKey = cfg.publishableKey;
+  return { ...regraDoSite.supabaseHeaders(token ?? null, extra) };
+}
+
+/**
+ * Chamada no PostgREST local como o site faz (cabecalhosDoSite): visitante sem `token` (só a chave publishable no
+ * "apikey"); paciente logado com `token` (o JWT dele em "Authorization: Bearer"). Devolve status, código do erro e
+ * tempo. `prefer: null` não manda o cabeçalho Prefer (chamada de função, rpc/...).
  */
 export async function postgrest(cfg, caminho, { token, metodo = 'POST', corpo, prefer = 'return=minimal' } = {}) {
   const t0 = performance.now();
   const resp = await fetch(`${cfg.apiUrl}/rest/v1/${caminho}`, {
     method: metodo,
-    headers: {
-      apikey: cfg.anonKey ?? token,
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...(prefer ? { Prefer: prefer } : {}),
-    },
+    headers: cabecalhosDoSite(cfg, token, { 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) }),
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
   });
   const texto = await resp.text();

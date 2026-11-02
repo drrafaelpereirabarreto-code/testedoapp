@@ -10,6 +10,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -87,7 +88,7 @@ const results = [];
 const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 5).join('\n  ')}`); }
 }
 const text = (page) => page.evaluate(() => document.body.innerText);
@@ -112,7 +113,7 @@ async function checkFooter(page, name) {
   assert.ok(!/Criado por|contato@imed/.test(await text(page)), `${name}: sem "Criado por" nem e-mail que não é do IMED`);
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('Para clínicas: números reais do banco, passo a passo verdadeiro e nada inventado', async () => {
   const { page, log, errors, context } = await newPage(browser);

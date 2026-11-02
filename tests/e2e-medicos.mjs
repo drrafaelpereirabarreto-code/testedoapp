@@ -41,6 +41,7 @@ import { dirname, extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import { GRUPOS, rodapeHtml } from '../scripts/rodape.mjs';
 
 const require = createRequire(import.meta.url);
@@ -385,7 +386,7 @@ const results = [];
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
-  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
+  try { await comChaves(fn); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 6).join('\n  ')}`); }
 }
 const visible = (page, sel, timeout = 15000) => page.waitForSelector(sel, { state: 'visible', timeout });
@@ -519,7 +520,7 @@ function seedPanel(db) {
   return carla;
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 /* ======================= cenários ======================= */
 const FLOW = [

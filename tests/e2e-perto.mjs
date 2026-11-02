@@ -10,6 +10,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, PUBLISHABLE, vigiarChaves } from './regra-chaves.mjs';
 import { createHash } from 'node:crypto';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -238,11 +239,11 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !ONLY.test(name)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 4).join('\n  ')}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('localização permitida: parceiros IMED do banco + mapa, sem guardar coordenadas', async () => {
   const { page, log, errors, context } = await newPage(browser);
@@ -380,7 +381,9 @@ await scenario('detalhes e pedido de agendamento gravado no banco', async () => 
   assert.match(log.insert[0].headers.prefer, /return=minimal/);
   assert.match(await page.textContent('.ok .code'), /^IMED-[0-9A-F]{8}$/);
   assert.match(row.review_token_hash, /^[0-9a-f]{64}$/, 'manda só o resumo (SHA-256) do código do pedido');
-  assert.equal(log.insert[0].headers.authorization, `Bearer ${(await page.evaluate(() => window.IMED_CONFIG.supabaseAnonKey))}`, 'sem conta, usa a chave pública');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE, 'sem conta, usa a chave publishable');
+  assert.equal(log.insert[0].headers.authorization, undefined, 'sem conta, sem Authorization (a chave não vai em Bearer)');
+  assert.equal(await page.evaluate(() => window.IMED_CONFIG.supabaseKey), PUBLISHABLE);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
   assert.equal(saved[0].type, 'pedido');
   assert.equal(saved[0].status, 'pendente');
@@ -470,7 +473,8 @@ await scenario('pedido com conta: grava pelo login e não oferece criar conta', 
   await page.click('#bkBtn');
   await page.waitForSelector('.ok h3');
   assert.equal(log.insert.length, 1);
-  assert.equal(log.insert[0].headers.authorization, 'Bearer tok-paciente');
+  assert.equal(log.insert[0].headers.authorization, 'Bearer tok-paciente', 'com conta: o token da pessoa em Bearer');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE, 'e a chave publishable no apikey');
   assert.match(log.insert[0].body.review_token_hash, /^[0-9a-f]{64}$/);
   assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 0);
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
@@ -493,6 +497,8 @@ await scenario('sessão vencida que não renova: pedido vai sem conta e oferece 
   await page.waitForSelector('.ok h3');
   assert.equal(log.insert.length, 1);
   assert.notEqual(log.insert[0].headers.authorization, 'Bearer tok-velho', 'não usa o token vencido');
+  assert.equal(log.insert[0].headers.authorization, undefined, 'vai como visitante: sem Authorization');
+  assert.equal(log.insert[0].headers.apikey, PUBLISHABLE);
   assert.equal(await page.locator('.ok a[href="conta.html"]').count(), 1, 'oferece criar conta');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('imed_appts')));
   assert.equal(saved[0].exam, 'consulta', 'guarda o código da consulta para o preparo nas outras páginas');
@@ -976,7 +982,8 @@ await scenario('contador de visitas (?visitas=teste): a busca conta exame, tipo 
   assert.ok(!/Ana Teste|98765|2077485|Hospital|-23\.|-46\./.test(all), 'nenhum dado da pessoa, do local ou da posição');
   for (const t of log.track) {
     assert.deepEqual(Object.keys(t.body).filter((k) => !['p_path', 'p_event', 'p_detail'].includes(k)), []);
-    assert.equal(t.headers.authorization, `Bearer ${await page.evaluate(() => window.IMED_CONFIG.supabaseAnonKey)}`);
+    assert.equal(t.headers.apikey, PUBLISHABLE, 'contador: só a chave publishable');
+    assert.equal(t.headers.authorization, undefined, 'contador: sem Authorization');
     assert.equal(t.headers.referer, undefined);
   }
   assert.deepEqual(errors, []);
@@ -2114,6 +2121,47 @@ await scenario('exame na busca no celular (360 px): as opções do "eco" e os av
   assert.ok(caixas2.every(([l, r, h]) => l >= 0 && r <= 360 && h >= 44), JSON.stringify(caixas2));
   await page.evaluate(() => window.scrollTo(0, 0));
   await shot(page, '46-hemograma-celular-360');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+// Aparelhos do CNES: o banco já devolve services com o exame do aparelho em uso (nome OU aparelho) e o site busca
+// as colunas equip_* para o aviso. Nunca promete que o local faz o exame.
+const EQ_ROWS = [
+  { ...estRow(9001, 300, 0, 'clinica', true, 'Clínica Aparelho Teste'), services: ['rm'] },
+  { ...estRow(9002, -400, 100, 'imagem', false, 'Imagem Sem Ressonância Teste'), services: ['rx', 'usg'], phone: '(11) 3000-1111' },
+];
+const EQ_EQUIP = { [EQ_ROWS[0].cnes]: { equip_exams: ['rm'], equip_exams_sus: ['rm'], equip_competencia: '2026-09-01' } };
+const eqFn = (r, b) => (b.action !== 'search' ? defaultFn(r, b) : json(r, { ok: true, provider: 'osm', radius_m: b.radius_m, warnings: [], imed: [],
+  cnes: pageOf(areaRows(EQ_ROWS, { p_lat: b.lat, p_lng: b.lng, p_radius_m: b.radius_m }), 0, 250), places: [], coverage: { status: 'done', city: 'São Paulo', uf: 'SP' } }));
+const eqRest = (route, u) => {
+  if (!u.pathname.endsWith('/establishments')) return json(route, []);
+  const ids = (u.searchParams.get('cnes') ?? '').replace(/^in\.\(|\)$/g, '').replace(/^eq\./, '').split(',');
+  return json(route, ids.filter((c) => EQ_EQUIP[c]).map((c) => ({ cnes: c, ...EQ_EQUIP[c] })));
+};
+
+await scenario('aparelhos do CNES: ressonância pelo aparelho em uso, com o aviso para confirmar', async () => {
+  const { page, context, log, errors } = await newPage(browser, { fn: eqFn, data: EQ_ROWS, rest: eqRest, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=rm`);
+  await page.waitForSelector('.pc-equip');
+  assert.deepEqual(await names(page), ['Clínica Aparelho Teste']);
+  assert.equal((await page.textContent('.pc-equip')).trim(), 'Tem aparelho de ressonância em uso (cadastro oficial). Confirme com o local.');
+  assert.match(await cardSpeech(page, '.pc'), /Confirme com o local/);
+  assert.ok(log.rest.some((r) => r.startsWith('establishments?select=cnes,equip_exams')), 'busca os aparelhos dos locais na tela');
+  assert.ok(!/faz (o|a) (exame|ressonância)/i.test(await page.textContent('#list')), 'não promete o exame');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('aparelhos do CNES: nenhum local com o exame mostra os centros de imagem perto para ligar e confirmar', async () => {
+  const { page, context, errors } = await newPage(browser, { fn: eqFn, data: EQ_ROWS, rest: eqRest, rpc: (r) => json(r, []) });
+  await page.goto(`${BASE}perto.html?usar=localizacao&exame=mamo`);
+  await page.waitForSelector('[data-near] .eq-near li');
+  const st = await page.textContent('.st');
+  assert.match(st, /Nenhum local com esse exame aqui/);
+  assert.match(st, /Ligue e confirme se fazem o exame/);
+  assert.match(st, /Imagem Sem Ressonância Teste/);
+  assert.ok(!/Clínica Aparelho Teste/.test(st), 'só centros de diagnóstico por imagem');
   assert.deepEqual(errors, []);
   await context.close();
 });

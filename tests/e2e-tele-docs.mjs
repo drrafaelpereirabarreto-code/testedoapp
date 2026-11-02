@@ -7,7 +7,7 @@
 // PDF assinado; documento.html mostra só o mínimo. Também: "Falta assinar", rascunho não emitido ao sair, bloqueios e
 // alerta da receita, foco do teclado, XSS, celular 390 px e nenhum erro no console.
 // Rodar com: node tests/e2e-tele-docs.mjs   (precisa do pacote "playwright" instalado)
-// Opcional: SHOTS=pasta salva capturas; E2E_PORT muda a porta; ONLY="trecho" roda só alguns cenários.
+// Opcional: TEMA=escuro (aparelho no escuro). SHOTS=pasta salva capturas; E2E_PORT muda a porta; ONLY="trecho" roda só alguns cenários.
 import http from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID, randomInt } from 'node:crypto';
@@ -15,6 +15,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, PUBLISHABLE, vigiarChaves } from './regra-chaves.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -472,6 +473,7 @@ const json = (route, body, status = 200) => route.fulfill({ status, contentType:
 /* ======================= páginas ======================= */
 async function newPage(browser, db, { mobile = false, store = null } = {}) {
   const context = await browser.newContext({
+    ...(process.env.TEMA === 'escuro' ? { colorScheme: 'dark' } : {}), // TEMA=escuro: aparelho no escuro (o Automático do site segue), para as capturas
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 }, deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile,
     locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', permissions: ['camera', 'microphone'], acceptDownloads: true,
   });
@@ -498,7 +500,7 @@ async function newPage(browser, db, { mobile = false, store = null } = {}) {
     const fn = m[1];
     const args = JSON.parse(req.postData() || '{}');
     const uid = USERS[auth]?.id || null;
-    db.calls.push({ fn, args, uid, auth, at: Date.now() });
+    db.calls.push({ fn, args, uid, auth, apikey: req.headers().apikey, at: Date.now() });
     if (fn === 'tele_painel_medico' && !db.painel) return json(route, { code: 'PGRST202', details: null, hint: null, message: 'Could not find the function public.tele_painel_medico without parameters in the schema cache' }, 404);
     if (DOCTOR_FNS.has(fn) && !uid) return json(route, { code: '42501', message: `permission denied for function ${fn}` }, 401);
     if (db.delay[fn]) await new Promise((r) => { setTimeout(r, db.delay[fn]); });
@@ -541,7 +543,7 @@ const results = [];
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
   const t0 = Date.now();
-  try { await fn(); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
+  try { await comChaves(fn); results.push(['ok', name]); console.log(`ok - ${name} (${((Date.now() - t0) / 1000).toFixed(1)} s)`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 8).join('\n  ')}`); }
 }
 const waitFor = async (fn, ms = 15000, what = 'condição') => {
@@ -588,7 +590,7 @@ const docsOf = (db, c) => [...db.docs.values()].filter((d) => d.consultation_id 
 const lastDoc = (db) => [...db.docs.values()].at(-1);
 const PROFILE = { prof_address: 'Rua das Flores, 100, São Paulo/SP', prof_contact: '1134567890' };
 
-const browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
+const browser = vigiarChaves(await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] }));
 
 /* ======================= cenários ======================= */
 await scenario('médico: perfil, dados do paciente e identidade antes de emitir; bloqueios e alerta da receita; emite os 7 tipos (declaração depois de encerrar)', async () => {
@@ -1041,7 +1043,9 @@ await scenario('documento.html: mostra só o mínimo, cancelado, prazo de 7 dias
   for (const s of ['Ana Maria', '529.982.247', 'J11', 'Repouso', 'Recife', 'Rua']) assert.ok(!res.includes(s), `não mostra: ${s}`);
   assert.equal(await page.locator('#dcRes i').evaluateAll((is) => is.filter((i) => i.textContent === 'Mendes').length), 0, 'nome do médico escapado');
   assert.equal(await page.inputValue('#dcCode'), `${d.code.slice(0, 5)}-${d.code.slice(5)}`);
-  assert.equal(db.called('tele_doc_verify').at(-1).auth.startsWith('eyJ'), true, 'só com a chave pública');
+  const conferencia = db.called('tele_doc_verify').at(-1);
+  assert.equal(conferencia.auth, '', 'só com a chave pública: como visitante, sem Authorization');
+  assert.equal(conferencia.apikey, PUBLISHABLE, 'a chave publishable no apikey');
   assert.equal(await page.locator('meta[http-equiv="Content-Security-Policy"]').count(), 1);
   assert.equal(await page.locator('h1').count(), 1);
   await shot(page, 'docs-05-conferencia');

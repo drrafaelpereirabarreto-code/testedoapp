@@ -19,7 +19,9 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PORT = Number(process.env.E2E_PORT) || 8779; // E2E_PORT: outra porta para rodar em paralelo
 const SUPA = 'https://pyoqiecupxhdzigjudyd.supabase.co';
 const TRACK = `${SUPA}/rest/v1/rpc/track`;
-const ANON = readFileSync(join(ROOT, 'assets/js/config.js'), 'utf8').match(/supabaseAnonKey:\s*'([^']+)'/)[1];
+// Chave publishable do site: o contador manda só ela, no "apikey", sem "Authorization" (a chave nova não é um token:
+// nunca vai em Bearer; e a sessão de quem entrou na conta nunca vai para o contador).
+const PUBLISHABLE = readFileSync(join(ROOT, 'assets/js/config.js'), 'utf8').match(/supabaseKey:\s*'([^']+)'/)[1];
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json', '.webmanifest': 'application/manifest+json' };
 const UA_DESKTOP = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const UA_PHONE = 'Mozilla/5.0 (Linux; Android 14; SM-A546E) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
@@ -64,7 +66,7 @@ async function newPage(browser, { real = true, gpc = false, dnt = false, track =
       if (o.session && !sessionStorage.getItem('__seeded')) { localStorage.setItem('imed_session', JSON.stringify(o.session)); sessionStorage.setItem('__seeded', '1'); }
     } catch { /* sem armazenamento */ }
   }, [{ real, gpc, dnt, session }]);
-  const log = { track: [], other: [] };
+  const log = { track: [], other: [], otherHeaders: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -81,6 +83,7 @@ async function newPage(browser, { real = true, gpc = false, dnt = false, track =
       return json(route, true);
     }
     log.other.push(url);
+    log.otherHeaders.push({ url, apikey: req.headers().apikey, authorization: req.headers().authorization });
     if (url.includes('/auth/v1/user')) return json(route, { id: 'uuuuuuuu-0000-4000-8000-000000000001', email: 'paciente@exemplo.com' });
     if (url.includes('/functions/v1/')) return json(route, { ok: false, error: 'unavailable' }, 502);
     return json(route, []);
@@ -142,8 +145,8 @@ await scenario('no domínio do site: cada página aberta manda 1 visita, só com
     const [t] = got;
     assert.equal(t.method, 'POST');
     assert.deepEqual(JSON.parse(t.body), { p_path: expected }, `${path}: só o caminho, sem "?" nem "#"`);
-    assert.equal(t.headers.apikey, ANON);
-    assert.equal(t.headers.authorization, `Bearer ${ANON}`, 'chave pública');
+    assert.equal(t.headers.apikey, PUBLISHABLE, 'chave publishable');
+    assert.equal(t.headers.authorization, undefined, 'sem Authorization (visitante)');
     assert.match(t.headers['content-type'], /application\/json/);
     assert.equal(t.headers.cookie, undefined, `${path}: sem cookie`);
     assert.equal(t.headers.referer, undefined, `${path}: o banco não recebe o endereço da página`);
@@ -169,8 +172,16 @@ await scenario('com a conta aberta: a visita vai com a chave pública, nunca com
   await waitTrack(log, 1);
   const [t] = log.track;
   assert.deepEqual(JSON.parse(t.body), { p_path: '/conta.html' });
-  assert.equal(t.headers.authorization, `Bearer ${ANON}`);
-  assert.ok(!t.body.includes('paciente') && !t.headers.authorization.includes('tok-da-pessoa'));
+  assert.equal(t.headers.apikey, PUBLISHABLE, 'só a chave publishable');
+  assert.equal(t.headers.authorization, undefined, 'nunca a sessão da pessoa (nem a chave em Bearer)');
+  assert.ok(!t.body.includes('paciente') && !JSON.stringify(t.headers).includes('tok-da-pessoa'));
+  // As outras chamadas da página (a conta da pessoa) vão com o token dela em Bearer e a chave publishable no apikey.
+  // A conta só chama o banco depois de alguns passos (e a visita pode chegar antes, com a máquina ocupada): espera
+  // até 8 s, como o waitTrack.
+  const daPessoa = (o) => o.authorization === 'Bearer tok-da-pessoa' && o.apikey === PUBLISHABLE;
+  const fim = Date.now() + 8000;
+  while (!log.otherHeaders.some(daPessoa) && Date.now() < fim) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(log.otherHeaders.some(daPessoa), 'a conta usa o token da pessoa');
   await context.close();
 });
 

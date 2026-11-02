@@ -96,8 +96,12 @@ test('ícones: todo ícone usado nas páginas do IMED está no recorte (CSS e fo
 });
 
 test('nenhum script trava a primeira pintura (defer ou módulo) nas páginas do IMED', () => {
+  // Única exceção, de propósito: assets/js/tema.js (síncrono no <head> para marcar o tema antes da primeira pintura,
+  // sem piscar). Pequeno e sem esperar CSS nenhum (vem antes de todos); tests/tema.test.mjs confere o lugar dele.
+  assert.ok(statSync(join(ROOT, 'assets/js/tema.js')).size < 10000, 'tema.js pequeno (trava a pintura por pouco tempo)');
   for (const f of PAGINAS) {
     for (const tag of read(f).matchAll(/<script\b[^>]*\bsrc="[^"]+"[^>]*>/g)) {
+      if (/^<script src="[^"]*assets\/js\/tema\.js">$/.test(tag[0])) continue;
       assert.match(tag[0], /\b(defer|async)\b|type="module"/, `${f}: ${tag[0]}`);
     }
   }

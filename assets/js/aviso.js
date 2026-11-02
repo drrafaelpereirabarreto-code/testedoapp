@@ -18,13 +18,16 @@
   // Enquanto o aviso está na tela, a página rola deixando o espaço dele livre: o que recebe o foco pelo Tab
   // nunca fica escondido atrás do aviso.
   var root = document.documentElement;
-  var pad = function () { if (!d.isConnected) return; var t = d.getBoundingClientRect().top; root.style.scrollPaddingBottom = Math.max(0, Math.round(innerHeight - t + 28)) + 'px'; };
+  // No fim da página (o rodapé com o tema) não há para onde rolar: um espaço vazio do tamanho do aviso, só enquanto
+  // ele está aberto, deixa o último item subir acima dele.
+  var sp = document.createElement('div'); sp.setAttribute('aria-hidden', 'true'); sp.className = 'lgpd-espaco';
+  var pad = function () { if (!d.isConnected) return; var t = d.getBoundingClientRect().top; var h = Math.max(0, Math.round(innerHeight - t + 28)); root.style.scrollPaddingBottom = h + 'px'; sp.style.height = h + 'px'; };
   d.querySelector('button').onclick = function () {
     try { localStorage.setItem('imed_lgpd', '1'); } catch (e) {}
-    d.remove(); removeEventListener('resize', pad); root.style.removeProperty('scroll-padding-bottom');
+    d.remove(); sp.remove(); removeEventListener('resize', pad); root.style.removeProperty('scroll-padding-bottom');
   };
   var shown = false;
-  var add = function () { if (shown) return; shown = true; document.body.appendChild(d); pad(); addEventListener('resize', pad); };
+  var add = function () { if (shown) return; shown = true; document.body.appendChild(sp); document.body.appendChild(d); pad(); addEventListener('resize', pad); };
   var show = function () { if (document.body) add(); else addEventListener('DOMContentLoaded', add); };
   // Página que pede a localização ao abrir (a inicial, com data-lgpd-depois no <html>): o aviso espera a resposta
   // do pedido, para não cobrir a tela junto com a pergunta do navegador. A página chama IMED_LGPD.mostrar(); se ela

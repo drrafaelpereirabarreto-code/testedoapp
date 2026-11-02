@@ -43,7 +43,7 @@ const cnesHref = (code) => (/^\d{7}$/.test(code ?? '') && /^\d{6}$/.test(cityCod
 async function fetchPage(k, offset) {
   const res = await fetch(`${C.supabaseUrl}/rest/v1/rpc/city_establishments`, {
     method: 'POST',
-    headers: { apikey: C.supabaseAnonKey, Authorization: `Bearer ${C.supabaseAnonKey}`, 'Content-Type': 'application/json' },
+    headers: C.supabaseHeaders(null, { 'Content-Type': 'application/json' }), // visitante: só a chave publishable
     body: JSON.stringify({ p_city: city, p_kind: k || null, p_limit: PAGE, p_offset: offset }),
     signal: AbortSignal.timeout(15000),
   });

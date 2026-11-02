@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import * as G from '../assets/js/geo-core.js';
 
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -161,7 +162,7 @@ const results = [];
 const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok - ${name}`); }
   catch (err) { results.push(['FALHOU', name]); console.log(`FALHOU - ${name}\n  ${err.stack?.split('\n').slice(0, 4).join('\n  ')}`); }
 }
 const ld = (page) => page.$eval('script[type="application/ld+json"]', (s) => JSON.parse(s.textContent));
@@ -172,7 +173,7 @@ const fillPerson = async (page) => {
   await page.check('input[name="consent"]');
 };
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 
 await scenario('ficha do CNES: dados reais, SUS, turno com ressalva, mapa, avaliações e SEO', async () => {
   // Navegador em outro fuso: datas continuam as de São Paulo. Localização vem como EWKB (texto hexadecimal).
@@ -257,6 +258,25 @@ await scenario('ficha do CNES sem avaliações e sem localização: sem nota, se
   assert.equal(await page.locator('#atendimento').count(), 0, 'SUS sem informação não aparece');
   assert.match(await page.textContent('#horario'), /Horário não informado/);
   assert.match(await page.textContent('#contato'), /não informou telefone/);
+  await context.close();
+  assert.deepEqual(errors, []);
+});
+
+await scenario('ficha do CNES: aparelhos informados ao CNES, com SUS, fonte e competência, sem prometer o exame', async () => {
+  const row = { ...EST['2077485'], services: [], equip_exams: ['rm', 'tc'], equip_exams_sus: ['tc'], equip_competencia: '2026-09-01' };
+  const est = (route, u) => json(route, u.searchParams.get('cnes') === 'eq.2077485' ? [row] : []);
+  const { page, errors, context } = await newPage(browser, { est });
+  await page.goto(`${BASE}local.html?cnes=2077485`);
+  await page.waitForSelector('[data-equip]');
+  const t = await page.textContent('[data-equip]');
+  assert.match(t, /Aparelhos informados ao CNES/);
+  assert.match(t, /Aparelho de ressonância\s*O local informou que este aparelho não atende pelo SUS/);
+  assert.match(t, /Aparelho de tomografia\s*O local informou que este aparelho atende pelo SUS/);
+  assert.match(t, /Confirme com o local/);
+  assert.match(t, /Isso não garante que ele faça o exame para o público/);
+  assert.match(t, /Fonte: CNES\/DATASUS – Ministério da Saúde, competência 09\/2026/);
+  assert.ok(!/particular/i.test(t));
+  assert.match(await page.textContent('#exames'), /Ressonância/);
   await context.close();
   assert.deepEqual(errors, []);
 });

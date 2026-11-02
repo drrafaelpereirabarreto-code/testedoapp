@@ -17,20 +17,44 @@
 .pv th{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.06em}
 .pv td small{display:block;color:var(--muted);font-size:13px;margin-top:4px}
 .pv a{color:var(--primary-d);font-weight:600;text-decoration:underline;text-underline-offset:2px}
-.pv .toc{margin:24px 0 0;padding:16px 18px;border-radius:18px;border:1px solid var(--line);background:#fff}
+.pv .toc{margin:24px 0 0;padding:16px 18px;border-radius:18px;border:1px solid var(--line);background:var(--card)}
 .pv .toc b{display:block;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .pv .toc ol{margin-top:0;gap:4px}
-.pv .box{display:flex;gap:12px;align-items:flex-start;margin-top:16px;padding:14px 16px;border-radius:16px;background:var(--primary-s);color:#0A4E63;line-height:1.6}
+.pv .box{display:flex;gap:12px;align-items:flex-start;margin-top:16px;padding:14px 16px;border-radius:16px;background:var(--primary-s);color:var(--conta-info-txt,#0A4E63);line-height:1.6}
 .pv .box>i{margin-top:4px;color:var(--primary)}
-.pv .box.warn{background:var(--coral-s);color:#8a2f1a}
+.pv .box.warn{background:var(--coral-s);color:var(--conta-erro-txt,#8a2f1a)}
 .pv .box.warn>i{color:var(--coral-d)}
-.pv .box.ok{background:var(--green-s);color:#145F3A}
+.pv .box.ok{background:var(--green-s);color:var(--conta-ok-txt,#145F3A)}
 .pv .box.ok>i{color:var(--green)}
 .pv .box p{font-size:15.5px}
 .pv .tag{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:8px;vertical-align:1px}
-.pv .tag.imed{background:#FFF6E3;color:#9A5B00}
-.pv .tag.cnes{background:#E8F1FF;color:#1F5FBF}
+.pv .tag.imed{background:var(--gold-s);color:var(--conta-aviso-txt,#9A5B00)}
+.pv .tag.cnes{background:var(--conta-azul-s,#E8F1FF);color:var(--conta-azul-txt,#1F5FBF)}
 @media (max-width:640px){.pv{padding-top:32px}.pv .sum{grid-template-columns:1fr}.pv table,.pv thead,.pv tbody,.pv tr,.pv th,.pv td{display:block}.pv thead{display:none}.pv td{border:0;padding:4px 0}.pv tr{padding:12px 0;border-bottom:1px solid var(--line)}.pv td[data-l]::before{content:attr(data-l);display:block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}}
+
+/* ---------- Tema escuro (grupo "conta": conta, painel, reivindicar, parceiros, contato, páginas de texto) ----------
+   Tokens --conta-* existem SÓ no escuro: no claro, cada var(--conta-x,#cor) usa a cor de reserva, que é a de sempre
+   (nada muda no claro). Os dois blocos são iguais (tests/tema-conta.test.mjs confere); só na tela (impressão clara). */
+@media screen and (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --conta-ok-txt:var(--green); --conta-ok-borda:#2A6A47; --conta-erro-txt:var(--coral-d); --conta-erro-borda:#7A3A2B;
+    --conta-info-txt:var(--primary-d); --conta-info-borda:#245A6E; --conta-aviso-txt:var(--gold-d); --conta-aviso-borda:#6B5424;
+    --conta-aviso-s:var(--gold-s); --conta-aviso-suave:#2A2414; --conta-azul-s:#142A4A; --conta-azul-txt:#9EC2FF; --conta-roxo-txt:var(--purple);
+    --conta-neutro-s:#1C3A48; --conta-neutro-txt:var(--text); --conta-campo-borda:var(--line2); --conta-div:var(--line);
+    --conta-suave:var(--bg2); --conta-sel-borda:#2F6A80; --conta-hover:#173544; --conta-estrela:var(--line2);
+    --conta-skel1:var(--card); --conta-skel2:var(--elev); --conta-seta:var(--line2); --conta-aviso-forte:var(--gold);
+  }
+}
+@media screen{
+  :root[data-theme="dark"]{
+    --conta-ok-txt:var(--green); --conta-ok-borda:#2A6A47; --conta-erro-txt:var(--coral-d); --conta-erro-borda:#7A3A2B;
+    --conta-info-txt:var(--primary-d); --conta-info-borda:#245A6E; --conta-aviso-txt:var(--gold-d); --conta-aviso-borda:#6B5424;
+    --conta-aviso-s:var(--gold-s); --conta-aviso-suave:#2A2414; --conta-azul-s:#142A4A; --conta-azul-txt:#9EC2FF; --conta-roxo-txt:var(--purple);
+    --conta-neutro-s:#1C3A48; --conta-neutro-txt:var(--text); --conta-campo-borda:var(--line2); --conta-div:var(--line);
+    --conta-suave:var(--bg2); --conta-sel-borda:#2F6A80; --conta-hover:#173544; --conta-estrela:var(--line2);
+    --conta-skel1:var(--card); --conta-skel2:var(--elev); --conta-seta:var(--line2); --conta-aviso-forte:var(--gold);
+  }
+}
 
 /* Celular e telas de toque: os links do sumário ("Nesta página") com pelo menos 44 px de altura. */
 @media (max-width:860px),(pointer:coarse){

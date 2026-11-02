@@ -237,7 +237,8 @@ export function rowDistance(r, origin) {
 // A distância é a do banco (a partir da mesma origem da busca), quando vem.
 export function normalizeCnes(r, origin) {
   const hours = r.open_24h ? ['Aberto 24 horas'] : r.shift ? [r.shift] : null;
-  const services = r.services ?? [];
+  const equip = normalizeEquip(r);
+  const services = [...new Set([...(r.services ?? []), ...(equip?.exams ?? [])])];
   return {
     id: `cnes:${r.cnes}`, clinic_id: null, source: 'cnes', name: r.name, kind: KINDS[r.kind] ? r.kind : 'clinica',
     address: [r.address_line, r.neighborhood, r.city && r.uf ? `${r.city} - ${r.uf}` : r.city].filter(Boolean).join(' · ') || null,
@@ -247,8 +248,38 @@ export function normalizeCnes(r, origin) {
     description: null, services, services_source: services.length ? 'mapa' : null, specialties: r.specialties ?? [],
     hours, hours_source: hours ? 'cnes' : null, prices: null, accepts_online_booking: false, is_demo: false,
     approx: r.location_source === 'endereco', sus: r.sus === true, updated_at: r.cnes_updated_at ?? null,
+    equip,
   };
 }
+
+// Aparelhos em uso informados ao CNES (colunas equip_* de establishments). Sem as colunas na linha: null.
+export const EQUIP_FIELDS = 'equip_exams,equip_exams_sus,equip_competencia';
+export const EQUIP_EXAMS = ['rm', 'tc', 'mamo', 'rx', 'dens', 'usg', 'ecg'];
+export function normalizeEquip(r) {
+  if (!r || !Array.isArray(r.equip_exams)) return null;
+  const ok = (a) => (Array.isArray(a) ? a.filter((c) => EQUIP_EXAMS.includes(c)) : []);
+  const comp = typeof r.equip_competencia === 'string' && /^\d{4}-\d{2}/.test(r.equip_competencia) ? r.equip_competencia.slice(0, 7) : null;
+  return { exams: ok(r.equip_exams), sus: ok(r.equip_exams_sus), competencia: comp };
+}
+export const equipPath = (cnesList) => {
+  const ok = [...new Set(cnesList)].filter(isCnesCode).slice(0, 150);
+  return ok.length ? `establishments?select=cnes,${EQUIP_FIELDS}&cnes=in.(${ok.join(',')})` : null;
+};
+// "de ressonância": o aparelho do exame, para o aviso.
+export const APARELHO = {
+  rm: 'de ressonância', tc: 'de tomografia', mamo: 'de mamografia', rx: 'de raio-X', dens: 'de densitometria',
+  usg: 'de ultrassom', ecg: 'de eletrocardiograma',
+};
+export const hasEquip = (p, exam) => !!(exam && p?.equip?.exams?.includes(exam));
+// Aviso do cartão e da ficha. Nunca diz que o local faz o exame.
+export function equipNote(p, exam) {
+  if (!hasEquip(p, exam)) return '';
+  return `Tem aparelho ${APARELHO[exam]} em uso (cadastro oficial). Confirme com o local.`;
+}
+// Competência AAAA-MM -> mm/aaaa.
+export const formatComp = (c) => (c && /^\d{4}-\d{2}$/.test(c) ? `${c.slice(5, 7)}/${c.slice(0, 4)}` : null);
+// Exames de imagem: quando nenhum local tem o exame, mostramos os centros de diagnóstico por imagem perto.
+export const IMAGING_EXAMS = ['rm', 'tc', 'mamo', 'rx', 'dens', 'usg'];
 
 // Clínica cadastrada no IMED, como vem da função nearby_clinics do banco.
 // Preço e horário só aparecem quando a clínica informou; nada é estimado. Distância: a do banco, quando vem.
@@ -463,7 +494,7 @@ export function normalizePoints(rows) {
 
 // Detalhe de um ponto do mapa: a linha da tabela establishments, sem a coluna de localização
 // (a posição já veio com o ponto).
-export const POINT_DETAIL_SELECT = 'cnes,name,kind,cnes_type,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,municipalities(name,uf,cnes_code)';
+export const POINT_DETAIL_SELECT = 'cnes,name,kind,cnes_type,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,equip_exams,equip_exams_sus,equip_competencia,municipalities(name,uf,cnes_code)';
 export const pointDetailPath = (cnes) => (isCnesCode(cnes) ? `establishments?select=${POINT_DETAIL_SELECT}&cnes=eq.${cnes}` : null);
 
 // Linha do detalhe + ponto do mapa → local no mesmo formato da lista, com a distância a partir da origem.
@@ -852,7 +883,7 @@ export function localUrl(p) {
   return null;
 }
 
-export const ESTABLISHMENT_SELECT = 'cnes,name,legal_name,kind,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,location,city_ibge,municipalities(name,uf,cnes_code)';
+export const ESTABLISHMENT_SELECT = 'cnes,name,legal_name,kind,address_line,neighborhood,cep,phone,shift,open_24h,sus,services,specialties,cnes_updated_at,location_source,location,city_ibge,equip_exams,equip_exams_sus,equip_competencia,municipalities(name,uf,cnes_code)';
 export const CLINIC_SELECT = '*,clinic_exams(exam_code,price_cents,price_updated_at)';
 
 // Consultas REST (PostgREST) para abrir um local pela referência.
@@ -991,6 +1022,7 @@ export function callQuestions(p, exam = '') {
   if (kind === 'lab') add('faz', 'Vocês fazem todos os exames do meu pedido médico?');
   else if (name) add('faz', `Vocês fazem ${name}?`);
   else add('faz', exams ? 'Vocês fazem o exame do meu pedido médico?' : 'Vocês fazem o exame ou a consulta de que eu preciso?');
+  if (hasEquip(p, ex)) add('aparelho', 'O aparelho atende pacientes de fora (não internados)?');
   add('agenda', 'Precisa agendar ou é por ordem de chegada?');
   if (kind === 'lab') add('preparo', 'Precisa de jejum? De quantas horas?');
   else add('preparo', name ? `Precisa de jejum ou de outro preparo para ${art} ${name}?` : 'Precisa de jejum ou de outro preparo?');

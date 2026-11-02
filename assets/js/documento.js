@@ -12,11 +12,11 @@ const esc = T.esc;
 const CFM = '<a class="link" href="https://portal.cfm.org.br/busca-medicos/" target="_blank" rel="noopener">conferir no CFM<span class="sr"> (abre em outra aba)</span></a>';
 const ITI = '<a class="link" href="https://validar.iti.gov.br/" target="_blank" rel="noopener">validar.iti.gov.br<span class="sr"> (abre em outra aba)</span></a>';
 
-// Chamada só com a chave pública (não usa a conta de quem estiver logado neste aparelho).
+// Chamada só com a chave pública, como visitante (não usa a conta de quem estiver logado neste aparelho).
 async function verify(code) {
   const res = await fetch(`${C.supabaseUrl}/rest/v1/rpc/tele_doc_verify`, {
     method: 'POST',
-    headers: { apikey: C.supabaseAnonKey, Authorization: `Bearer ${C.supabaseAnonKey}`, 'Content-Type': 'application/json' },
+    headers: C.supabaseHeaders(null, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ p_code: code }),
     signal: AbortSignal.timeout(15000),
   });

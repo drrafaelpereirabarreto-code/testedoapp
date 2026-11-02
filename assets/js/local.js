@@ -36,12 +36,13 @@ const S = {
 };
 
 /* ======================= banco ======================= */
-const anonHeaders = () => ({ apikey: CFG.supabaseAnonKey, Authorization: `Bearer ${CFG.supabaseAnonKey}` });
+// Como visitante: só a chave publishable (pedido com conta vai pelo auth.js, com o token da pessoa).
+const anonHeaders = (extra) => CFG.supabaseHeaders(null, extra);
 
 async function request(path, { method = 'GET', body, headers = {} } = {}) {
   const res = await fetch(`${CFG.supabaseUrl}/rest/v1/${path}`, {
     method,
-    headers: { ...anonHeaders(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    headers: anonHeaders({ ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers }),
     body: body !== undefined ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000),
   });
@@ -209,8 +210,24 @@ function examsHTML(p) {
   }).join('');
   const src = p.source === 'imed'
     ? 'Exames e preços informados pela clínica ao IMED. Sem preço informado, o valor é passado pela clínica.'
-    : 'Serviços identificados pelo nome do estabelecimento no cadastro oficial. Confirme com ele.';
-  return `<ul class="dt-svc">${items}</ul><p class="src">${src}</p>`;
+    : p.equip?.exams?.length ? 'Serviços identificados pelo nome do estabelecimento ou pelos aparelhos informados ao cadastro oficial. Confirme com ele.'
+      : 'Serviços identificados pelo nome do estabelecimento no cadastro oficial. Confirme com ele.';
+  return `<ul class="dt-svc">${items}</ul><p class="src">${src}</p>${equipHTML(p)}`;
+}
+
+// Aparelhos em uso informados ao CNES (DATASUS). Nunca diz que o local faz o exame.
+function equipHTML(p) {
+  const ex = p.source === 'cnes' ? p.equip?.exams ?? [] : [];
+  if (!ex.length) return '';
+  const comp = G.formatComp(p.equip.competencia);
+  const items = ex.map((c) => `<li><b>Aparelho ${esc(G.APARELHO[c])}</b><span>${p.equip.sus.includes(c)
+    ? 'O local informou que este aparelho atende pelo SUS' : 'O local informou que este aparelho não atende pelo SUS'}</span></li>`).join('');
+  return `<div class="dt-equip" data-equip>
+      <h3>Aparelhos informados ao CNES</h3>
+      <ul class="dt-svc">${items}</ul>
+      <p>${ex.length === 1 ? esc(G.equipNote(p, ex[0])) : `Tem aparelhos em uso (cadastro oficial): ${esc(ex.map((c) => G.EXAMS[c].n.toLowerCase()).join(', '))}. Confirme com o local.`}</p>
+      <p class="src">Isso não garante que ele faça o exame para o público: o aparelho pode ser só para internados ou emergência. Fonte: CNES/DATASUS – Ministério da Saúde${comp ? `, competência ${comp}` : ''}. A ligação aparelho → exame é do IMED.</p>
+    </div>`;
 }
 
 function hoursHTML(p) {

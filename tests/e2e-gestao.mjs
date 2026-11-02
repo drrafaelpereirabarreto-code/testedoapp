@@ -20,7 +20,7 @@
 // (AXE_PATH ou node_modules), audita a página da equipe no computador e no celular, com as tabelas abertas, o bloco
 // "Agora" com o aviso de nenhum médico e os quadros de pagamento e de voltar para pendente (falha com violação grave).
 // Rodar com: node tests/e2e-gestao.mjs   (precisa do pacote "playwright" instalado)
-// Opcional: SHOTS=pasta salva capturas de tela (para mostrar o teste); E2E_PORT muda a porta (padrão 4761);
+// Opcional: TEMA=escuro (aparelho no escuro). SHOTS=pasta salva capturas de tela (para mostrar o teste); E2E_PORT muda a porta (padrão 4761);
 //           ONLY="trecho" roda só os cenários com esse texto no nome; AXE_PATH=<pasta>/node_modules/axe-core.
 import http from 'node:http';
 import { readFile, mkdir } from 'node:fs/promises';
@@ -30,6 +30,7 @@ import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -183,6 +184,7 @@ const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(
 
 async function newPage(browser, { mobile = false, width = 390, logged = false, email = 'equipe@imed.com.br', expired = false, db: dbOpts = {}, bypassCSP = false } = {}) {
   const context = await browser.newContext({
+    ...(process.env.TEMA === 'escuro' ? { colorScheme: 'dark' } : {}), // TEMA=escuro: aparelho no escuro (o Automático do site segue), para as capturas
     viewport: mobile ? { width, height: 844 } : { width: 1280, height: 900 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', serviceWorkers: 'block', acceptDownloads: true, bypassCSP,
   });
@@ -365,10 +367,10 @@ const LIMITE_MS = (Number(process.env.E2E_CENARIO_S) || 150) * 1000;
 const limite = (name) => new Promise((_, fail) => { const t = setTimeout(() => fail(new Error(`passou de ${LIMITE_MS / 1000} s (cenário travado): ${name}`)), LIMITE_MS); t.unref?.(); });
 async function scenario(name, fn) {
   if (ONLY && !name.includes(ONLY)) return;
-  try { await Promise.race([fn(), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
+  try { await Promise.race([comChaves(fn), limite(name)]); results.push(['ok', name]); console.log(`ok  ${name}`); } catch (e) { results.push(['FALHOU', name]); console.log(`FALHOU  ${name}\n   ${e.stack}`); }
 }
 
-const browser = await chromium.launch();
+const browser = vigiarChaves(await chromium.launch());
 const F30 = gestao(30, CHARGES);
 const F7 = gestao(7, CHARGES);
 
