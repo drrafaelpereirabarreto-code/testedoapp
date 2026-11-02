@@ -1,5 +1,6 @@
--- VOLTA da migração supabase/migrations/20261031100000_agenda_base.sql (iMed Agenda, fase 3.1; só se for preciso
--- desfazer). Tem o mesmo nome da migração: se a migração for renomeada, renomeie esta também.
+-- VOLTA ÚNICA das 5 partes da migração da fundação (supabase/migrations/*_agenda_base_parte_1 a 5; iMed
+-- Agenda, fase 3.1; só se for preciso desfazer). Desfaz as 5 partes juntas; as voltas das outras partes não
+-- fazem nada. Tem o mesmo nome da última parte: se ela for renomeada, renomeie esta também.
 -- Deixa o banco como estava antes dela (testado no CI, .github/workflows/banco.yml: depois desta volta a
 -- impressão digital do banco é IGUAL à da produção antes da 3.1, e a migração reaplicada volta a ficar igual):
 --   - as funções do pedido voltam às da migração 20261030143738_confianca (sem a marca de origem; o gatilho do

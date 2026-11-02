@@ -1,6 +1,6 @@
 // Laço rápido do banco (iMed Agenda, fases 3.0 e 3.1; arquitetura §3.4 e §13), SEM Docker: sobe um PostgreSQL
 // descartável desta máquina, cria a base mínima (base.sql), o ESPELHO da agenda gerado da própria migração da fundação
-// (supabase/migrations/*_agenda_base.sql: agenda.resources e agenda.occupancy, com a restrição de exclusão, os CHECKs e
+// (supabase/migrations/*_agenda_base_parte_N.sql: agenda.resources e agenda.occupancy, com a restrição de exclusão, os CHECKs e
 // os gatilhos de vagas e de capacidade, no schema prova) e o oráculo (prova.sql), e confere em segundos a restrição de
 // exclusão (EXCLUDE) que garante "nenhum horário vendido duas vezes para o mesmo recurso".
 //
@@ -31,13 +31,15 @@ const MIGRACOES = path.join(aqui, '..', '..', '..', 'supabase', 'migrations');
 
 /**
  * O espelho da agenda: os blocos entre "-- [espelho do laço local]" e "-- [fim do espelho]" da migração da fundação
- * (a mais nova *_agenda_base.sql), com agenda/private trocados por prova e sem as linhas "-- [só no banco]" (chaves
+ * (as partes *_agenda_base_parte_N.sql, em ordem), com agenda/private trocados por prova e sem as linhas "-- [só no banco]" (chaves
  * estrangeiras para tabelas que o laço local não tem). Sem os blocos, o laço reprova (a migração mudou de forma).
  */
 export function espelhoDaMigracao() {
-  const nome = readdirSync(MIGRACOES).filter((n) => /_agenda_base\.sql$/.test(n)).sort().at(-1);
-  if (!nome) throw new Error('migração *_agenda_base.sql não encontrada em supabase/migrations (o espelho do laço local vem dela)');
-  const sql = readFileSync(path.join(MIGRACOES, nome), 'utf8');
+  // A fundação foi aplicada na produção em partes (*_agenda_base_parte_N.sql): o espelho é lido delas todas, em ordem.
+  const nomes = readdirSync(MIGRACOES).filter((n) => /_agenda_base(_parte_\d+)?\.sql$/.test(n)).sort();
+  if (!nomes.length) throw new Error('migração *_agenda_base*.sql não encontrada em supabase/migrations (o espelho do laço local vem dela)');
+  const nome = nomes.join(' + ');
+  const sql = nomes.map((n) => readFileSync(path.join(MIGRACOES, n), 'utf8')).join('\n');
   const blocos = [...sql.matchAll(/^-- \[espelho do laço local\]\n([\s\S]*?)^-- \[fim do espelho\]$/gm)].map((m) => m[1]);
   if (blocos.length < 3 || !blocos.join('').includes('agenda.occupancy') || !blocos.join('').includes('agenda.resources')) {
     throw new Error(`${nome}: faltam os blocos "[espelho do laço local]" com agenda.resources, agenda.occupancy e os gatilhos`);

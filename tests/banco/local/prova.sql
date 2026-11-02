@@ -1,5 +1,5 @@
 -- Oráculo do laço rápido (tests/banco/local/). As tabelas prova.resources e prova.occupancy e os gatilhos delas NÃO
--- ficam aqui: o rodar.mjs os gera da própria migração da fundação (supabase/migrations/*_agenda_base.sql, blocos
+-- ficam aqui: o rodar.mjs os gera da própria migração da fundação (supabase/migrations/*_agenda_base_parte_N.sql, blocos
 -- "[espelho do laço local]"), trocando agenda/private por prova e sem as chaves estrangeiras para fora da agenda
 -- (linhas "[só no banco]"). Assim o laço local testa sempre a MESMA restrição de exclusão, os mesmos CHECKs e os
 -- mesmos gatilhos (vagas e capacidade) do banco de verdade. Este arquivo roda depois do espelho.

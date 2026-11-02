@@ -5,7 +5,7 @@ Confere em segundos, num PostgreSQL descartável desta máquina, a regra mais im
 (a restrição de exclusão `occupancy_no_overlap` da arquitetura, §2.5 e §3.4).
 
 Desde a fase 3.1 as tabelas do laço vêm da **própria migração da fundação**
-(`supabase/migrations/*_agenda_base.sql`): o `rodar.mjs` pega os blocos entre `-- [espelho do laço local]` e
+(`supabase/migrations/*_agenda_base_parte_N.sql`, aplicada em partes): o `rodar.mjs` pega os blocos entre `-- [espelho do laço local]` e
 `-- [fim do espelho]` (`agenda.resources`, `agenda.occupancy`, a restrição de exclusão, os CHECKs, os gatilhos de vagas
 e de capacidade), troca `agenda`/`private` por `prova` e tira as linhas marcadas `-- [só no banco]` (chaves
 estrangeiras para tabelas que o laço não tem). Mudou a ocupação na migração? O laço testa a mudança na hora; não há
