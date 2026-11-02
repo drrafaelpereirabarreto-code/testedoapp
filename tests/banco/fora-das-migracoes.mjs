@@ -14,16 +14,16 @@
 // Email: "Confirm email"; Settings → API → Exposed schemas) ou pelo mesmo GET público que este script faz aqui.
 // Não grava nada.
 
-import { afirmar, configLocal, conectar, principal, resumir, tokenAnon } from './lib.mjs';
+import { afirmar, cabecalhosDoSite, configLocal, conectar, principal, resumir } from './lib.mjs';
 
 await principal('fora-das-migracoes', async () => {
   const cfg = configLocal();
   const notas = [];
-  if (!cfg.apiUrl || !cfg.anonKey) throw new Error('Sem o endereço da API local ou a chave anon (supabase status)');
+  if (!cfg.apiUrl || !cfg.publishableKey) throw new Error('Sem o endereço da API local ou a chave publishable (supabase status)');
 
   // 1. Confirm email
   {
-    const r = await fetch(`${cfg.apiUrl}/auth/v1/settings`, { headers: { apikey: cfg.anonKey } });
+    const r = await fetch(`${cfg.apiUrl}/auth/v1/settings`, { headers: cabecalhosDoSite(cfg, null) });
     let j = null;
     try { j = await r.json(); } catch { /* sem JSON */ }
     afirmar(r.ok && j?.mailer_autoconfirm === false,
@@ -35,13 +35,12 @@ await principal('fora-das-migracoes', async () => {
 
   // 2. Schemas expostos
   {
-    const token = tokenAnon(cfg);
     const recusas = [];
     const abertos = [];
     let permitidos = '';
     for (const schema of ['agenda', 'private', 'net', 'auth', 'cron']) {
       const r = await fetch(`${cfg.apiUrl}/rest/v1/qualquer_tabela?select=*&limit=1`, {
-        headers: { apikey: cfg.anonKey, Authorization: `Bearer ${token}`, 'Accept-Profile': schema },
+        headers: cabecalhosDoSite(cfg, null, { 'Accept-Profile': schema }),  // visitante, como o site
       });
       let j = null;
       try { j = await r.json(); } catch { /* sem JSON */ }
