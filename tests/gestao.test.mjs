@@ -129,7 +129,7 @@ const RAW = {
   ],
   pacientes: {
     atendidos: 3,
-    pedidos: { total: 3, pendente: 1, contatado: 0, confirmado: 1, cancelado: 0, concluido: 1, parceiro: 2, concierge: 1 },
+    pedidos: { total: 3, pendente: 1, contatado: 0, confirmado: 1, cancelado: 0, concluido: 1, presente: 0, faltou: 0, remarcacao: 0, parceiro: 2, concierge: 1 },
     tele: { total: 3, aguardando: 0, aceita: 0, em_atendimento: 0, encerrada: 2, cancelada: 1, expirada: 0, espera_media_min: null, duracao_media_min: 12.5 },
     documentos: { total: 3, por_tipo: { exames: 2, receita: 1, atestado: 0, comparecimento: 0, encaminhamento: 0, relatorio: 0, orientacoes: 0 }, cancelados: 0, pdf_assinado: 1 },
     avaliacoes: { total: 0, media: null },
@@ -171,7 +171,7 @@ test('resposta do banco fora do formato: tudo vira null ("—"), nada é inventa
     assert.deepEqual(d.serie, []);
     assert.equal(d.de, null);
     assert.equal(d.pacientes.atendidos, null);
-    assert.deepEqual(Object.values(d.pacientes.pedidos), Array(8).fill(null));
+    assert.deepEqual(Object.values(d.pacientes.pedidos), Array(11).fill(null));
     assert.equal(d.funil.visitas, null);
     assert.deepEqual(d.medicos.aguardando, []);
     assert.equal(d.cobranca.faturado_cents, null);

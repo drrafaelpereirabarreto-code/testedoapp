@@ -135,7 +135,7 @@ function gestao(days, charges, agora = AGORA) {
     dias: days, de, ate: HOJE, gerado_em: NOW, serie,
     pacientes: {
       atendidos: te + concluido,
-      pedidos: { total: ped, pendente: ped - concluido - confirmado - cancelado - contatado, contatado, confirmado, cancelado, concluido, parceiro: Math.ceil(ped * 0.7), concierge: ped - Math.ceil(ped * 0.7) },
+      pedidos: { total: ped, pendente: ped - concluido - confirmado - cancelado - contatado - 3, contatado, confirmado, cancelado, concluido, presente: 1, faltou: 1, remarcacao: 1, parceiro: Math.ceil(ped * 0.7), concierge: ped - Math.ceil(ped * 0.7) },
       tele: { total: tp, aguardando: 1, aceita: 0, em_atendimento: 0, encerrada: te, cancelada: Math.floor(resto / 2), expirada: resto - Math.floor(resto / 2), espera_media_min: 7.5, duracao_media_min: 18.2 },
       documentos: { total: docs, por_tipo: { exames, receita, atestado, comparecimento: 0, encaminhamento: 0, relatorio: docs - exames - receita - atestado, orientacoes: 0 }, cancelados: 1, pdf_assinado: Math.max(0, docs - 2) },
       avaliacoes: { total: 3, media: 4.7 },
@@ -157,7 +157,7 @@ function gestaoZero(days) {
     serie: Array.from({ length: days }, (_, i) => ({ dia: addDays(de, i), visitas: 0, pedidos: 0, tele_pedidas: 0, tele_encerradas: 0, documentos: 0 })),
     pacientes: {
       atendidos: 0,
-      pedidos: z(['total', 'pendente', 'contatado', 'confirmado', 'cancelado', 'concluido', 'parceiro', 'concierge']),
+      pedidos: z(['total', 'pendente', 'contatado', 'confirmado', 'cancelado', 'concluido', 'presente', 'faltou', 'remarcacao', 'parceiro', 'concierge']),
       tele: { ...z(['total', 'aguardando', 'aceita', 'em_atendimento', 'encerrada', 'cancelada', 'expirada']), espera_media_min: null, duracao_media_min: null },
       documentos: { total: 0, por_tipo: z(['exames', 'receita', 'atestado', 'comparecimento', 'encaminhamento', 'relatorio', 'orientacoes']), cancelados: 0, pdf_assinado: 0 },
       avaliacoes: { total: 0, media: null },
@@ -515,7 +515,7 @@ await scenario('equipe do IMED: resumo, gráficos com resumo e tabela, funis, re
   const sp = page.locator('figure[data-fig="st-pedidos"]');
   await sp.locator('summary').click();
   assert.deepEqual((await sp.locator('tbody tr').allInnerTexts()).map(norm), [
-    ['Pendente', P.pedidos.pendente], ['Contatado', P.pedidos.contatado], ['Confirmado', P.pedidos.confirmado], ['Concluído', P.pedidos.concluido], ['Cancelado', P.pedidos.cancelado],
+    ['Pendente', P.pedidos.pendente], ['Contatado', P.pedidos.contatado], ['Confirmado', P.pedidos.confirmado], ['Paciente presente', P.pedidos.presente], ['Concluído', P.pedidos.concluido], ['Não compareceu', P.pedidos.faltou], ['Remarcação solicitada', P.pedidos.remarcacao], ['Cancelado', P.pedidos.cancelado],
   ].map(([n, v]) => `${n} ${v} ${pc(v, P.pedidos.total)}`));
   assert.equal(await page.locator('figure[data-fig="st-tele"] path.gs-bar').count(), ['aguardando', 'aceita', 'em_atendimento', 'encerrada', 'cancelada', 'expirada'].filter((k) => P.tele[k] > 0).length, 'situação com zero não desenha barra');
   assert.equal(await kpiV(page, 'espera'), '8 min');

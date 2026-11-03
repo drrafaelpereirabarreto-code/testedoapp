@@ -136,11 +136,11 @@ select is(
   '{}'::text[], 'as 23 tabelas da fase 3.1 existem');
 
 select is(
-  array(select t from unnest(array['agenda.member_invites', 'agenda.notifications', 'agenda.notification_rules',
+  array(select t from unnest(array['agenda.notifications', 'agenda.notification_rules',
           'agenda.outbox', 'agenda.payments', 'agenda.payment_events', 'agenda.integrations', 'agenda.external_refs',
           'agenda.sync_events', 'agenda.snapshot_seq']) t
         where to_regclass(t) is not null order by 1),
-  '{}'::text[], 'as tabelas das fases 3.4, 5.3, 5.4 e 6.1 ainda não existem (cada tabela nasce na fase que a usa)');
+  '{}'::text[], 'as tabelas das fases 5.3, 5.4 e 6.1 ainda não existem (cada tabela nasce na fase que a usa; member_invites nasceu na 3.4)');
 
 select is(
   (select contype::text || '|' || condeferrable::text || '|' || pg_get_constraintdef(oid)

@@ -143,7 +143,8 @@ export function sinceText(iso, now = Date.now()) {
 }
 
 /* ======================= nomes ======================= */
-export const PEDIDO_STATUS = [['pendente', 'Pendente'], ['contatado', 'Contatado'], ['confirmado', 'Confirmado'], ['concluido', 'Concluído'], ['cancelado', 'Cancelado']];
+// Situações do pedido (admin_gestao); presente, faltou e remarcação vêm da agenda nova (iMed Agenda 3.3/3.4).
+export const PEDIDO_STATUS = [['pendente', 'Pendente'], ['contatado', 'Contatado'], ['confirmado', 'Confirmado'], ['presente', 'Paciente presente'], ['concluido', 'Concluído'], ['faltou', 'Não compareceu'], ['remarcacao', 'Remarcação solicitada'], ['cancelado', 'Cancelado']];
 export const TELE_STATUS = [['aguardando', 'Na fila'], ['aceita', 'Aceita pelo médico'], ['em_atendimento', 'Em atendimento'], ['encerrada', 'Encerrada'], ['cancelada', 'Cancelada'], ['expirada', 'Expirada']];
 // Os mesmos tipos de documento da teleconsulta (tele-docs.js); o teste confere que nenhum fica sem nome.
 export const DOC_TIPOS = [['exames', 'Pedido de exames'], ['receita', 'Receita'], ['atestado', 'Atestado'], ['comparecimento', 'Comparecimento'], ['encaminhamento', 'Encaminhamento'], ['relatorio', 'Relatório'], ['orientacoes', 'Orientações']];
@@ -177,7 +178,7 @@ export function num(v) {
 }
 const pick = (o, list) => Object.fromEntries(list.map((k) => [k, num(o[k])]));
 const SERIE_KEYS = ['visitas', 'pedidos', 'tele_pedidas', 'tele_encerradas', 'documentos'];
-const PED_KEYS = ['total', 'pendente', 'contatado', 'confirmado', 'cancelado', 'concluido', 'parceiro', 'concierge'];
+const PED_KEYS = ['total', 'pendente', 'contatado', 'confirmado', 'cancelado', 'concluido', 'presente', 'faltou', 'remarcacao', 'parceiro', 'concierge'];
 const TELE_KEYS = ['total', 'aguardando', 'aceita', 'em_atendimento', 'encerrada', 'cancelada', 'expirada', 'espera_media_min', 'duracao_media_min'];
 const FUNIL_KEYS = ['visitas', ...FUNIL_AGENDA.map(([k]) => k), ...FUNIL_TELE.map(([k]) => k)];
 const MED_KEYS = ['inscritos_periodo', 'pendente', 'aprovado', 'recusado', 'suspenso', 'disponiveis_agora', 'aprovacao_media_horas'];
