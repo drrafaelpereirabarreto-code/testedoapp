@@ -44,6 +44,10 @@
 - RPCs públicas: `nearby_clinics`, `nearby_establishments` (filtros p_kind/p_exam/p_sus, p_offset e `total`),
   `establishment_points` (pontos leves da área toda para o mapa, até 5.000), `imported_cities`, `city_establishments`,
   `request_status`, `submit_review`, `place_ratings`, `place_reviews`, `available_slots`.
+- Agenda 3.3 (`..._agenda_operacao_parte_1..4`): `agenda_book` (anon), `agenda_cancel`, `agenda_reschedule`, `agenda_my_booking`,
+  `agenda_package_options` (anon/logado); `agenda_desk_book`, `agenda_desk_busy(_remove)`, `agenda_set_status` (logado);
+  `agenda_hold/confirm/release` (só service_role). INSERT direto com `slot_start` → 23P01; `set_my_schedule` com faixas →
+  `managed_by_agenda`. Job `imed-agenda-manutencao` (30 s, `call private.agenda_manutencao()`).
 - RPCs logadas: `set_request_status`, `update_my_clinic`, `set_my_clinic_exams`, `approve_claim`, `reject_claim`, `is_imed_admin`.
 - Teleconsulta (`..._teleconsulta`, `..._tele_documentos`): tabelas `doctors`, `doctor_checks`, `teleconsultations`,
   `tele_messages`, `tele_record_*`, `tele_access_log`, `tele_documents`, `tele_document_files`; tudo por funções `tele_*`
@@ -105,8 +109,8 @@ node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
   `supabase migration up --local` com as que têm volta; `supabase test db` (pgTAP em `supabase/tests/`: `000_catalogo`
   guardas de RLS, private fechada até por coluna, views, Realtime, extensões em public, as 23 colunas do pedido do site
   com INSERT, search_path, permissões de cada função de public, nada de endereço de internet no código, só a fila chama
-  `net.http_*`; `005_preparo`; `010_pedidos_atuais`); os scripts `tests/banco/*.mjs` (`concorrencia-atual.mjs` mostra
-  o defeito de hoje como FALHA ESPERADA até a 3.3; `pedido-do-site.mjs` monta o pedido com o próprio `geo-core.js` e
+  `net.http_*`; `005_preparo`; `010_pedidos_atuais`); os scripts `tests/banco/*.mjs` (`concorrencia-atual.mjs` agora prova que o defeito antigo
+  sumiu (invertido na 3.3); `concorrencia.mjs` = teste 1 (80 conexões, 300 POST; o CI usa `max_connections` 200); `pedido-do-site.mjs` monta o pedido com o próprio `geo-core.js` e
   manda pelo PostgREST como visitante e logado); a volta (`supabase/volta/<mesmo nome>.sql`) tem de deixar o banco
   igual a F0, e a reaplicação, igual a F1 (impressão digital); no fim, qualquer resposta da internet registrada pelo
   banco reprova. Migração mais nova que `20261030191354` sem volta reprova. Falhas viram avisos com as linhas do erro
