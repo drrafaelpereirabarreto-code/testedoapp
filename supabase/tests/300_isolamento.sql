@@ -44,6 +44,9 @@ insert into public.clinic_members (clinic_id, user_id, role) values
   (pg_temp.ca(), pg_temp.u(1), 'owner'), (pg_temp.cb(), pg_temp.u(2), 'owner'),
   (pg_temp.ca(), pg_temp.u(3), 'finance'), (pg_temp.ca(), pg_temp.u(4), 'professional');
 
+insert into agenda.holidays (scope, day, name, source)
+select 'nacional', make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1), 'Confraternização Universal', 'Lei 662/1949'
+where not exists (select 1 from agenda.holidays where scope = 'nacional' and day = make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1));
 -- a clínica B com agenda, um aparelho, um procedimento e um agendamento de balcão
 select pg_temp.como(2);
 select public.agenda_unit_save(pg_temp.cb(), jsonb_build_object('holidays_checked_until', pg_temp.dia() + 200, 'min_notice_min', 0, 'step_min', 30));

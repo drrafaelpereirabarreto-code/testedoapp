@@ -204,11 +204,12 @@ select pg_temp.entrar('postgres');
 insert into agenda.conflicts (clinic_id, kind, request_id, item_id, details)
 select pg_temp.clinica(), 'grade_mudou', i.request_id, i.id, jsonb_build_object('starts_at', i.starts_at)
 from agenda.appointment_items i where i.request_id = pg_temp.id('b1');
+select set_config('teste.k1', (select id::text from agenda.conflicts where request_id = pg_temp.id('b1')), true);
 select pg_temp.como(2);
 select is(jsonb_array_length(public.agenda_conflicts(pg_temp.clinica()) -> 'conflicts'), 1, 'agenda_conflicts: o conflito aberto aparece');
-select is(public.agenda_conflict_resolve((select id from agenda.conflicts where request_id = pg_temp.id('b1')), 'resolvido') ->> 'status',
+select is(public.agenda_conflict_resolve(pg_temp.id('k1'), 'resolvido') ->> 'status',
           'reason_required', 'resolver exige o código da resolução');
-select is(public.agenda_conflict_resolve((select id from agenda.conflicts where request_id = pg_temp.id('b1')), 'resolvido', 'confirmado_com_paciente') ->> 'status',
+select is(public.agenda_conflict_resolve(pg_temp.id('k1'), 'resolvido', 'confirmado_com_paciente') ->> 'status',
           'ok', 'a recepção resolve o conflito');
 select is(concat_ws('|', jsonb_array_length(public.agenda_conflicts(pg_temp.clinica()) -> 'conflicts'),
                     jsonb_array_length(public.agenda_conflicts(pg_temp.clinica(), true) -> 'conflicts')),

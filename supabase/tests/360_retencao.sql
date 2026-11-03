@@ -23,6 +23,9 @@ insert into public.clinics (id, name, kind, address_line, city, state, location,
 values ('c3600000-0000-4000-8000-000000000001', 'Clínica da Retenção', 'imagem', 'Rua da Retenção, 1', 'São Paulo', 'SP',
         extensions.st_setsrid(extensions.st_makepoint(-46.63, -23.55), 4326)::extensions.geography, 'published', true, false);
 insert into public.clinic_members (clinic_id, user_id, role) values ('c3600000-0000-4000-8000-000000000001', 'a3600000-0000-4000-8000-000000000001', 'owner');
+insert into agenda.holidays (scope, day, name, source)
+select 'nacional', make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1), 'Confraternização Universal', 'Lei 662/1949'
+where not exists (select 1 from agenda.holidays where scope = 'nacional' and day = make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1));
 select set_config('request.jwt.claims', '{"role": "authenticated", "sub": "a3600000-0000-4000-8000-000000000001", "email": "dona.retencao@exemplo.test", "aud": "authenticated", "amr": [{"method": "otp", "timestamp": 1}]}', true),
        set_config('role', 'authenticated', true);
 select public.agenda_unit_save('c3600000-0000-4000-8000-000000000001', jsonb_build_object('holidays_checked_until', pg_temp.dia() + 200, 'min_notice_min', 0, 'step_min', 30));
