@@ -91,7 +91,7 @@ begin
     return jsonb_build_object('status', 'invalid');
   end if;
   perform private.agenda_lock_config(p_clinic, true);
-  select * into v_c from public.clinics c where c.id = p_clinic for update;
+  select * into v_c from public.clinics c where c.id = p_clinic for no key update;
   if not found then return jsonb_build_object('status', 'not_found'); end if;
   select * into v_old from agenda.unit_settings u where u.clinic_id = p_clinic for update;
   if not found and exists (select 1 from public.clinic_schedules s where s.clinic_id = p_clinic) then
