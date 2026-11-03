@@ -54,6 +54,11 @@ select set_config('teste.pb', public.agenda_procedure_save(pg_temp.cb(), jsonb_b
     jsonb_build_array(jsonb_build_object('resource_id', current_setting('teste.rb')::uuid)))))) ->> 'id', true);
 select public.agenda_rules_set(pg_temp.cb(), null,
          (select jsonb_agg(jsonb_build_object('weekday', d, 'start', '00:00', 'end', '24:00')) from generate_series(0, 6) d));
+select pg_temp.entrar('postgres');
+select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'teste_agenda', true);
+update public.clinics set agenda_mode = 'nativa', timezone_confirmed_at = now() where id = pg_temp.cb();
+select set_config('imed.origin', '', true), set_config('imed.reason', '', true);
+select pg_temp.como(2);
 select set_config('teste.bb', public.agenda_desk_book(pg_temp.cb(),
          jsonb_build_array(jsonb_build_object('procedure_id', current_setting('teste.pb')::uuid,
                                               'starts_at', (pg_temp.dia() + time '09:00') at time zone 'America/Sao_Paulo')),

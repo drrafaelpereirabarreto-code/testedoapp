@@ -328,6 +328,8 @@ revoke all on function private.agenda_price_from() from public, anon, authentica
 create or replace trigger procedures_price_from
   after insert or update of price_cents, active, archived_at, exam_code or delete on agenda.procedures
   for each row execute function private.agenda_price_from();
+-- (como as outras guardas da agenda: vale também com session_replication_role = replica)
+alter table agenda.procedures enable always trigger procedures_price_from;
 
 /* ===================== 4. Funções antigas por permissão (§12) ===================== */
 

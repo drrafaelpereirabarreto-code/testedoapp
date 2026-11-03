@@ -5,7 +5,7 @@
 --   - a rotina de 30 s (agenda_manutencao) chama a retenção.
 -- Tudo é desfeito no fim (rollback).
 begin;
-select plan(7);
+select plan(11);
 
 create function pg_temp.entrar(p_papel text) returns void language plpgsql as $$
 begin
@@ -52,9 +52,10 @@ begin
   perform pg_temp.entrar('postgres');
   return v;
 end $$;
-select pg_temp.reservar(1, '09:00'), pg_temp.reservar(2, '10:00'), pg_temp.reservar(3, '11:00');
+select ok(j ->> 'status' = 'ok', 'reserva ' || n || ': ' || j::text)
+from (select n, pg_temp.reservar(n, h) as j from (values (1, '09:00'), (2, '10:00'), (3, '11:00')) v (n, h)) x order by n;
 select pg_temp.entrar('service_role');
-select public.agenda_confirm(pg_temp.pid(3));
+select ok(j ->> 'status' = 'ok', 'a reserva 3 é confirmada: ' || j::text) from (select public.agenda_confirm(pg_temp.pid(3)) as j) x;
 select pg_temp.entrar('postgres');
 update public.appointment_requests set notes = 'Observação do pedido' where id = pg_temp.pid(1);
 insert into agenda.notes (clinic_id, request_id, kind, text) values ('c3600000-0000-4000-8000-000000000001', pg_temp.pid(1), 'observacao', 'Nota livre');
@@ -74,9 +75,9 @@ select is(private.agenda_anonimizar(), 1, 'a retenção apaga os dados de 1 rese
 select is((select concat_ws('|', status, patient_name, patient_phone, coalesce(patient_email, '-'), coalesce(notes, '-'),
                             coalesce(user_id::text, '-'), coalesce(review_token_hash, '-'), anonymized_at is not null, slot_start is not null)
            from public.appointment_requests where id = pg_temp.pid(1)),
-          'expired|Removido|0000000000|-|-|-|-|true|true', 'sem nome, telefone, e-mail, observação, conta e código; situação e horário ficam');
+          'expired|Removido|0000000000|-|-|-|-|t|t', 'sem nome, telefone, e-mail, observação, conta e código; situação e horário ficam');
 select is((select concat_ws('|', deleted_at is not null, coalesce(text, '-')) from agenda.notes where request_id = pg_temp.pid(1)),
-          'true|-', 'a nota livre do pedido também some');
+          't|-', 'a nota livre do pedido também some');
 select is((select string_agg(patient_name, ',' order by id) from public.appointment_requests where id in (pg_temp.pid(2), pg_temp.pid(3))),
           'Paciente Retido 2,Paciente Retido 3', 'expirada há 6 dias e agendamento confirmado não mudam');
 select is(private.agenda_anonimizar(), 0, 'rodar de novo não mexe em nada');

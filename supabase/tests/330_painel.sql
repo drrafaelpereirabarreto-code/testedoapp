@@ -104,8 +104,10 @@ select is((select concat_ws('|', jsonb_array_length(j -> 'items'), j #>> '{items
           '2|Maria L.|João T.|true', 'agenda_view: a recepção vê os 2 agendamentos com o nome curto ("Maria L.")');
 select ok(public.agenda_view(pg_temp.clinica(), pg_temp.dia(), 1)::text !~ '(Souza|98888|7777)',
           'agenda_view: nem sobrenome do meio nem telefone na grade');
+select pg_temp.entrar('postgres');
 select is((select reads from agenda.access_log where user_id = pg_temp.u(2) and fn = 'agenda_view' and clinic_id = pg_temp.clinica()),
           2, 'access_log: duas leituras da grade no mesmo dia = uma linha com reads 2');
+select pg_temp.como(2);
 select is(public.agenda_view(pg_temp.clinica(), pg_temp.dia(), 8) ->> 'status', 'invalid', 'agenda_view: no máximo 7 dias');
 select is(jsonb_array_length(public.agenda_view(pg_temp.clinica(), pg_temp.dia() - 3, 7) -> 'items'), 2, 'agenda_view: a semana');
 select pg_temp.como(3);
@@ -131,8 +133,10 @@ select is((select concat_ws('|', jsonb_array_length(j -> 'results'), j #>> '{res
           '1|Maria Souza Lima|7777', 'agenda_search: acha pelo nome (maiúscula ou minúscula) e mostra só o fim do telefone');
 select is(jsonb_array_length(public.agenda_search(pg_temp.clinica(), '97777') -> 'results'), 1, 'agenda_search: acha pelos dígitos do telefone');
 select is(jsonb_array_length(public.agenda_search(pg_temp.clinica(), '%%%') -> 'results'), 0, 'agenda_search: curinga do LIKE não vale');
+select pg_temp.entrar('postgres');
 select ok(exists (select 1 from agenda.access_log where user_id = pg_temp.u(2) and fn = 'agenda_search' and scope = 'busca'),
           'agenda_search fica no access_log');
+select pg_temp.como(2);
 select pg_temp.como(3);
 select is((select concat_ws('|', jsonb_array_length(public.agenda_search(pg_temp.clinica(), 'maria') -> 'results'),
                             jsonb_array_length(public.agenda_search(pg_temp.clinica(), '97777') -> 'results'),
@@ -160,8 +164,10 @@ select is(public.agenda_request_detail(pg_temp.id('b1'), 'Suporte ao paciente') 
           'detalhe: justificativa só em código');
 select is(public.agenda_request_detail(pg_temp.id('b1'), 'paciente_pediu_ajuda') #>> '{patient,phone}', '11988887777',
           'detalhe: com a justificativa, abre');
+select pg_temp.entrar('postgres');
 select is((select justification_code from agenda.access_log where user_id = pg_temp.u(6) and fn = 'agenda_request_detail'),
           'paciente_pediu_ajuda', 'access_log guarda a justificativa da equipe do IMED');
+select pg_temp.como(6);
 select pg_temp.como(2);
 select is((select concat_ws('|', h ->> 'to', h ->> 'actor_kind', h ->> 'origin')
            from jsonb_array_elements(public.agenda_history(pg_temp.id('b1')) -> 'history') h limit 1),

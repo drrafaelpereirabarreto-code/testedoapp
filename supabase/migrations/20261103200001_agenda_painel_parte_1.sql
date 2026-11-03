@@ -520,9 +520,10 @@ begin
     select r.id, r.name, r.kind, r.capacity from agenda.resources r
     where r.clinic_id = p_clinic and r.archived_at is null and (v_res is null or r.id = v_res)
   ), livre as (
-    select f.resource_id, sum(coalesce((select sum(extract(epoch from (upper(x) - lower(x))))
-                                        from unnest(f.free) x), 0)) / 60 as minutos
+    select f.resource_id, sum(m.s) / 60 as minutos
     from private.agenda_free_map(p_clinic, (select coalesce(array_agg(rec.id), '{}') from rec), v_ini, v_fim, now()) f
+    cross join lateral (select coalesce(sum(extract(epoch from (upper(x.r) - lower(x.r)))), 0) as s
+                        from unnest(f.free) x (r)) m
     group by f.resource_id
   ), uso as (
     select o.resource_id,

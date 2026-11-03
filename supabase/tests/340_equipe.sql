@@ -70,7 +70,7 @@ select is(public.agenda_me() #>> '{clinics,0,role}', 'professional', 'e entra na
 select is(public.agenda_invite_accept(current_setting('teste.i1')::uuid) ->> 'status', 'not_open', 'aceitar de novo: não');
 select pg_temp.entrar('postgres');
 select is((select concat_ws('|', status, accepted_by = pg_temp.u(3)) from agenda.member_invites where id = current_setting('teste.i1')::uuid),
-          'aceito|true', 'o convite fica preso à conta que aceitou');
+          'aceito|t', 'o convite fica preso à conta que aceitou');
 update agenda.member_invites set expires_at = now() - interval '1 minute', created_at = now() - interval '8 days'
 where clinic_id = pg_temp.c() and email = 'caixa.equipe@exemplo.test';
 select set_config('teste.i2', (select id::text from agenda.member_invites where clinic_id = pg_temp.c() and email = 'caixa.equipe@exemplo.test'), true);
