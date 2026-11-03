@@ -13,7 +13,7 @@
 
 import {
   afirmar, anotar, configLocal, conectar, criarClinicaAgenda, descreverErro, horaSP, limparClinicaAgenda, principal, resumir,
-  tokenAnon, tokenUsuario,
+  tokenUsuario,
 } from './lib.mjs';
 
 const A = 'cc000000-0000-4000-8000-0000000003d1';
@@ -105,26 +105,14 @@ await principal('tempo-real', async () => {
                             '{"provider": "email", "providers": ["email"]}', '{}', now(), now())`, [FIN_A.sub, FIN_A.email]);
     await db.query(`insert into public.clinic_members (clinic_id, user_id, role) values ($1, $2, 'finance')`, [A, FIN_A.sub]);
 
-    // A chave do site (publishable) no "apikey"; se o Realtime local não aceitar, o token anon (só para este teste).
-    const base = `${cfg.apiUrl.replace(/^http/, 'ws')}/realtime/v1/websocket?vsn=1.0.0&apikey=`;
+    // A chave do site (publishable) no "apikey", como o painel fará (fase 0.1: o site não tem token de visitante).
+    if (!cfg.publishableKey) throw new Error('Sem a chave publishable local (supabase status: PUBLISHABLE_KEY).');
+    const url = `${cfg.apiUrl.replace(/^http/, 'ws')}/realtime/v1/websocket?vsn=1.0.0&apikey=${encodeURIComponent(cfg.publishableKey)}`;
     const tA = tokenUsuario(cfg, DONA_A);
-    let url = `${base}${encodeURIComponent(cfg.publishableKey ?? tokenAnon(cfg))}`;
-    let ca = new Canal(url);
+    const ca = new Canal(url);
     canais.push(ca);
-    let entrouA = 'sem conexão';
-    try {
-      await ca.abrir();
-      entrouA = await ca.entrar(`agenda:clinica:${A}`, tA);
-    } catch (e) { entrouA = descreverErro(e); }
-    if (entrouA !== 'ok' && cfg.publishableKey) {
-      notas.push(`Com a chave publishable no apikey: ${entrouA}; tentando com o token anon.`);
-      ca.fechar();
-      url = `${base}${encodeURIComponent(tokenAnon(cfg))}`;
-      ca = new Canal(url);
-      canais.push(ca);
-      await ca.abrir();
-      entrouA = await ca.entrar(`agenda:clinica:${A}`, tA);
-    }
+    await ca.abrir();
+    const entrouA = await ca.entrar(`agenda:clinica:${A}`, tA);
     afirmar(entrouA === 'ok', 'a dona de A entra no canal privado agenda:clinica:A', entrouA);
 
     const cb = new Canal(url);
