@@ -193,6 +193,7 @@ insert into esperado_acl (fn, acl) values
     ('approve_claim(uuid)', 'authenticated'),
     ('available_slots(uuid, text, date, integer)', 'anon,authenticated'),
     ('cancel_request(uuid, text)', 'anon,authenticated'),
+    ('cat_cid_buscar(text)', 'authenticated'),
     ('check_appointment_request()', ''),
     ('check_establishment_claim()', ''),
     ('check_internal_token(text, text)', ''),
@@ -269,7 +270,15 @@ insert into esperado_acl (fn, acl) values
     ('touch_updated_at()', ''),
     ('track(text, text, text)', 'anon,authenticated'),
     ('update_my_clinic(uuid, jsonb)', 'authenticated'),
-    ('upsert_establishments(integer, timestamp with time zone, jsonb)', '');
+    ('upsert_establishments(integer, timestamp with time zone, jsonb)', ''),
+    -- prontuário (Workspace, fase 2): só quem está logado; cada função confere o médico da consulta e grava a trilha
+    ('ws_adendo_criar(uuid, text)', 'authenticated'),
+    ('ws_integridade_conferir()', 'authenticated'),
+    ('ws_registro_abrir(uuid, text)', 'authenticated'),
+    ('ws_registro_finalizar(uuid, integer)', 'authenticated'),
+    ('ws_registro_historico(uuid, text)', 'authenticated'),
+    ('ws_registro_salvar(uuid, jsonb, integer)', 'authenticated'),
+    ('ws_registro_versao(uuid, integer, text)', 'authenticated');
 
 create temp table atual_acl on commit drop as
 select format('%I(%s)', p.proname, oidvectortypes(p.proargtypes)) as fn,

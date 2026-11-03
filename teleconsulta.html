@@ -317,7 +317,7 @@
       <section class="tl-card tl-chat" aria-labelledby="chatTitle">
         <h2 id="chatTitle">Mensagens</h2>
         <p class="tl-muted">Para quando o vídeo falhar ou para mandar uma informação por escrito ao médico.</p>
-        <ol class="tl-msgs" id="chatList" role="log" aria-live="polite" aria-label="Mensagens da consulta"></ol>
+        <div role="log" aria-live="polite" aria-label="Mensagens da consulta"><ol class="tl-msgs" id="chatList"></ol></div>
         <form class="tl-chatform" id="chatForm" novalidate>
           <label class="sr" for="chatText">Sua mensagem</label>
           <textarea id="chatText" rows="2" maxlength="1000" placeholder="Escreva uma mensagem"></textarea>
