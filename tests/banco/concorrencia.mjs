@@ -100,12 +100,23 @@ await principal('concorrencia', async () => {
     if (cfg.apiUrl && cfg.publishableKey) {
       const desde = (await db.query('select now() as t')).rows[0].t;
       const t0 = performance.now();
+      let reenvios = 0;
       const resultados = await Promise.all(Array.from({ length: N_HTTP }, async (_, i) => {
-        const r = await postgrest(cfg, 'rpc/agenda_book', {
-          prefer: null,
-          corpo: { p_clinic: CLINICA, p_items: [item('p45', '13:00')], p_patient: paciente(5000 + i), p_id: randomUUID(),
-                   p_token: `codigo-http-${i}-${randomUUID()}` },
-        });
+        // Se a conexão HTTP cair (300 sockets ao mesmo tempo no gateway local), o "aparelho" reenvia o MESMO pedido
+        // (mesmo id e código), como o app fará: a idempotência devolve o resultado da primeira vez, sem duplicar.
+        const corpo = { p_clinic: CLINICA, p_items: [item('p45', '13:00')], p_patient: paciente(5000 + i), p_id: randomUUID(),
+                        p_token: `codigo-http-${i}-${randomUUID()}` };
+        let r;
+        for (let t = 0; ; t++) {
+          try {
+            r = await postgrest(cfg, 'rpc/agenda_book', { prefer: null, corpo });
+            break;
+          } catch (e) {
+            if (t >= 5) throw e;
+            reenvios++;
+            await new Promise((ok) => setTimeout(ok, 200 * (t + 1)));
+          }
+        }
         if (r.status !== 200) return { ok: false, code: r.code ?? `HTTP ${r.status}`, message: r.message, ms: r.ms };
         return { ok: true, valor: r.json, ms: r.ms };
       }));
@@ -116,6 +127,7 @@ await principal('concorrencia', async () => {
       afirmar(semErroDeBanco(e), '1b: nenhuma resposta de erro (0 40P01, 0 57014, nenhum HTTP de erro)',
         resultados.filter((r) => !r.ok && r.code !== 'slot_taken').slice(0, 5).map((r) => `${r.code}: ${r.message}`).join('\n'));
       afirmar(await confirmados(desde) === 1, '1b: 1 agendamento confirmado no banco');
+      notas.push(`1b: ${reenvios} reenvio(s) do mesmo pedido depois de queda da conexão HTTP (idempotência: sem duplicar)`);
     } else {
       anotar('warning', 'Sem o PostgREST local (API_URL): o 1b (300 POST) não rodou');
     }
