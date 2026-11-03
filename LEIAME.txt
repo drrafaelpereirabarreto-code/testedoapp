@@ -1,0 +1,6 @@
+CID-10 (Classificação Estatística Internacional de Doenças e Problemas Relacionados à Saúde, 10ª revisão).
+Fonte: DATASUS - Ministério da Saúde, arquivo CID10CSV.zip (versão 2008), www2.datasus.gov.br/cid10/V2008.
+Autoria: Organização Mundial da Saúde (OMS); tradução: Centro Colaborador da OMS para a Classificação de
+Doenças em Português (CBCD/FSP-USP). Distribuição gratuita, com os créditos acima.
+Só o que está no arquivo oficial: código sem ponto (A00 = categoria; A000 = subcategoria A00.0), capítulo,
+restrição por sexo (F/M), descrição e descrição abreviada. resumo.json traz as contagens e o SHA-256.
