@@ -8,7 +8,11 @@
 // o POST /rest/v1/appointment_requests com Prefer: return=minimal e os cabeçalhos da regra do site
 // (IMED_CONFIG.supabaseHeaders, fase 0.1): como visitante, só a chave publishable no "apikey" (sem Authorization); como
 // paciente logado, a chave no "apikey" e o token dele em "Authorization: Bearer". Casos: local não parceiro sem horário, parceiro com horário, para outra pessoa adulta e
-// menor, e o horário já ocupado (409, que o site reconhece com isSlotTaken).
+// menor.
+// Fase 3.3: o caminho antigo COM horário acabou. A grade antiga não oferece horário (available_slots e
+// clinics_with_schedule vazios) e o pedido com horário montado pelo site antigo é recusado com 409/23P01, que o site
+// reconhece como "este horário acabou de ser ocupado" (isSlotTaken); nada fica gravado. Horário agora só pelas funções
+// da agenda (agenda_book: tests/banco/concorrencia.mjs).
 // Confere: HTTP 201; cada coluna gravada igual à enviada; request_status e cancel_request com o código do pedido;
 // e que a lista "colunas do pedido do site" de supabase/tests/000_catalogo.sql é EXATAMENTE o que o bookingRow
 // manda, com INSERT para anon e authenticated em cada coluna (a fase 3.1 passa o INSERT para coluna por coluna).
@@ -109,10 +113,15 @@ await principal('pedido-do-site', async () => {
     const vagas = await postgrest(cfg, 'rpc/available_slots', {
       token: tokens.anon, prefer: null, corpo: { p_clinic: CLINICA, p_exam: 'usg', p_from: dia, p_days: 1 },
     });
-    const horarios = Array.isArray(vagas.json) ? vagas.json.map((r) => r.slot_start) : [];
-    afirmar(horarios.length === 4, 'available_slots (PostgREST, visitante) mostra os 4 horários da grade do dia',
-      `HTTP ${vagas.status}; horários: ${horarios.join(', ') || vagas.message}`);
-    if (horarios.length < 2) throw new Error('sem horários livres para o teste');
+    afirmar(vagas.status === 200 && Array.isArray(vagas.json) && vagas.json.length === 0,
+      'fase 3.3: a grade antiga não oferece horário (available_slots vazio, como visitante)',
+      `HTTP ${vagas.status}; ${JSON.stringify(vagas.json)?.slice(0, 200)}`);
+    const comAgenda = await postgrest(cfg, 'rpc/clinics_with_schedule', { token: tokens.anon, prefer: null, corpo: { p_ids: [CLINICA] } });
+    afirmar(Array.isArray(comAgenda.json) && comAgenda.json.length === 0,
+      'fase 3.3: clinics_with_schedule não lista a clínica da grade antiga (o site mostra o pedido sem horário)',
+      `HTTP ${comAgenda.status}; ${JSON.stringify(comAgenda.json)?.slice(0, 200)}`);
+    // Horários que o site ANTIGO teria oferecido (grade 08:00–10:00 de São Paulo, sem horário de verão).
+    const horarios = [`${dia}T08:00:00-03:00`, `${dia}T08:30:00-03:00`].map((t) => new Date(t).toISOString());
 
     const casos = [
       {
@@ -125,7 +134,7 @@ await principal('pedido-do-site', async () => {
         nome: 'visitante, parceiro com horário, para mim', quem: 'anon', local: parceiro,
         v: { exam: 'usg', slot: horarios[0], name: 'Teste do Site Dois', phone: '11987650002', email: '', notes: '',
              consent: true, forOther: false },
-        situacao: 'confirmed',
+        recusa: true,
       },
       {
         nome: 'visitante, local não parceiro, para outra pessoa adulta', quem: 'anon', local: naoParceiro,
@@ -139,7 +148,7 @@ await principal('pedido-do-site', async () => {
         v: { exam: 'usg', slot: horarios[1], name: 'Teste do Site Quatro', phone: '(11) 98765-0004',
              email: 'paciente.site@exemplo.test', notes: 'Criança de 8 anos', consent: true, forOther: true,
              otherName: 'João do Teste', relationship: 'Filho ou filha', otherMinor: true, guardianConsent: true },
-        situacao: 'confirmed',
+        recusa: true,
       },
       {
         nome: 'paciente logado, local não parceiro, sem horário, para mim', quem: 'usuario', local: naoParceiro,
@@ -159,6 +168,16 @@ await principal('pedido-do-site', async () => {
       const linha = G.bookingRow(c.local, c.v, id, { review_token_hash: sha256(codigo) });
       Object.keys(linha).forEach((k) => colunasEnviadas.add(k));
       const r = await postgrest(cfg, 'appointment_requests', { token: tokens[c.quem], corpo: linha });
+      if (c.recusa) {
+        // Fase 3.3: com horário, recusado com 23P01; o site (local.js) reconhece pelo erro e mostra "horário ocupado".
+        const erro = Object.assign(new Error(`http ${r.status}`), { status: r.status, data: r.json });
+        const { rows: [{ n }] } = await db.query('select count(*)::int as n from public.appointment_requests where id = $1', [id]);
+        afirmar(!r.ok && r.code === '23P01' && G.isSlotTaken(erro) && n === 0,
+          `fase 3.3: pedido COM horário pelo caminho antigo recusado (23P01; o site mostra "horário ocupado"; nada gravado): ${c.nome}`,
+          `HTTP ${r.status} ${r.code ?? ''}: ${r.message}; gravados: ${n}`);
+        notas.push(`pedido com horário pelo caminho antigo: HTTP ${r.status}, código ${r.code ?? '-'} (recusado; o site reconhece pelo código)`);
+        continue;
+      }
       tempos.push({ ok: r.status === 201, ms: r.ms, code: r.status === 201 ? undefined : (r.code ?? `HTTP ${r.status}`) });
       if (!afirmar(r.status === 201, `pedido aceito (HTTP 201): ${c.nome}`, `HTTP ${r.status} ${r.code ?? ''}: ${r.message}`)) continue;
 
@@ -206,19 +225,6 @@ await principal('pedido-do-site', async () => {
       }
     }
 
-    // O mesmo horário de novo: recusado, e o site reconhece como "horário ocupado" (isSlotTaken, com o erro no
-    // formato de local.js: status HTTP + corpo do PostgREST), em vez de "não foi possível enviar".
-    {
-      const linha = G.bookingRow(parceiro, { ...casos[1].v, name: 'Teste do Site Seis' }, randomUUID(),
-        { review_token_hash: sha256(randomBytes(32).toString('hex')) });
-      const r = await postgrest(cfg, 'appointment_requests', { token: tokens.anon, corpo: linha });
-      const erro = Object.assign(new Error(`http ${r.status}`), { status: r.status, data: r.json });
-      afirmar(!r.ok && G.isSlotTaken(erro),
-        'horário já ocupado: recusado e o site mostra "este horário acabou de ser ocupado" (isSlotTaken)',
-        `HTTP ${r.status} ${r.code ?? ''}: ${r.message}`);
-      notas.push(`horário já ocupado: HTTP ${r.status}, código ${r.code ?? '-'} (o site reconhece pelo código)`);
-    }
-
     // O aparelho guarda id e código; a página inicial e a conta perguntam a situação com eles (request_status).
     {
       const meus = enviados.filter((e) => e.quem === 'anon');
@@ -236,18 +242,15 @@ await principal('pedido-do-site', async () => {
         `HTTP ${errado.status}: ${JSON.stringify(errado.json)?.slice(0, 200)}`);
     }
 
-    // Cancelar pelo site (cancel_request com o código): o horário volta a ficar livre.
+    // Cancelar pelo site (cancel_request com o código), como hoje.
     {
-      const alvo = enviados.find((e) => e.quem === 'anon' && e.v.slot);
+      const alvo = enviados.find((e) => e.quem === 'anon');
       if (alvo) {
         const r = await postgrest(cfg, 'rpc/cancel_request', { token: tokens.anon, prefer: null, corpo: { p_id: alvo.id, p_token: alvo.codigo } });
-        const livres = await postgrest(cfg, 'rpc/available_slots', {
-          token: tokens.anon, prefer: null, corpo: { p_clinic: CLINICA, p_exam: 'usg', p_from: dia, p_days: 1 },
-        });
-        const deNovo = (Array.isArray(livres.json) ? livres.json : [])
-          .some((x) => new Date(x.slot_start).getTime() === new Date(alvo.v.slot).getTime());
-        afirmar(r.json === 'ok' && deNovo, 'cancel_request com o código: ok, e o horário volta a ficar livre',
-          `cancel_request: HTTP ${r.status} ${JSON.stringify(r.json)}; horário livre de novo: ${deNovo}`);
+        const { rows: [x] } = await db.query('select status, cancelled_by from public.appointment_requests where id = $1', [alvo.id]);
+        afirmar(r.json === 'ok' && x?.status === 'cancelled' && x?.cancelled_by === 'patient',
+          'cancel_request com o código: ok, cancelado pelo paciente (como hoje)',
+          `cancel_request: HTTP ${r.status} ${JSON.stringify(r.json)}; situação ${x?.status}, quem ${x?.cancelled_by}`);
       }
     }
 
@@ -267,9 +270,9 @@ await principal('pedido-do-site', async () => {
       semInsert.map((x) => x.falta).join(', '));
 
     const e = estatisticas(tempos);
-    notas.push(`${enviados.length} de ${casos.length} pedidos do site aceitos (bookingRow → PostgREST, visitante e logado; `
+    notas.push(`${enviados.length} de ${casos.filter((c) => !c.recusa).length} pedidos do site sem horário aceitos (bookingRow → PostgREST, visitante e logado; `
       + `${enviadas.length} colunas conferidas); p95 ${e.p95} ms, máx ${e.max} ms`);
-    resumir('pedido-do-site', { enviados: enviados.length, casos: casos.length, colunas: enviadas, ...e }, notas);
+    resumir('pedido-do-site', { enviados: enviados.length, casos: casos.filter((c) => !c.recusa).length, colunas: enviadas, ...e }, notas);
   } finally {
     await limpar(db).catch((err) => anotar('warning', 'Não deu para apagar os dados de teste (pedido-do-site)', descreverErro(err)));
     await db.end();

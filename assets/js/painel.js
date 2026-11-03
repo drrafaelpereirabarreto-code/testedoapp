@@ -744,7 +744,10 @@ async function saveAgenda(e) {
     loadPreview();
   } catch (err) {
     if (lost()) return;
-    const m = err.result === 'forbidden' ? 'Sua conta não pode mudar a agenda desta clínica.' : friendlyError(err, 'Não foi possível salvar a agenda agora. Tente de novo em instantes.');
+    const m = err.result === 'forbidden' ? 'Sua conta não pode mudar a agenda desta clínica.'
+      // Desde a fase 3.3 do banco, os horários vêm da agenda nova do IMED (os cadastros chegam ao painel na fase 4.1).
+      : err.result === 'managed_by_agenda' ? 'Os horários com agenda agora ficam na agenda nova do IMED, que ainda está em preparação. Por enquanto, os pacientes enviam o pedido sem horário e a clínica liga para combinar.'
+        : friendlyError(err, 'Não foi possível salvar a agenda agora. Tente de novo em instantes.');
     const box = $('#agMsg');
     if (box && state.agenda?.clinicId === a.clinicId) box.innerHTML = note(esc(m), 'err');
     else toast(m);

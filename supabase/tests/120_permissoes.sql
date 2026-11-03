@@ -10,9 +10,11 @@
 --   - clínica: fuso, modalidade e venda online só pelas funções (nem o PATCH do admin); clínica nova nasce no modelo
 --     de pedido, com o fuso sugerido pela UF (Fernando de Noronha pelo CNES);
 --   - o schema agenda e as funções internas fora do alcance de anon, authenticated e service_role.
+-- Fase 3.3: o pedido com horário pelo caminho antigo acabou (23P01); o pedido do site aqui é o SEM horário, e o
+-- "reabrir com horário pego" (slot_taken) passou para o motor novo (400_estados.sql).
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(65);
+select plan(66);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -68,10 +70,9 @@ select pg_temp.entrar('anon');
 
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b1200000-0000-4000-8000-000000000001', 'c1200000-0000-4000-8000-000000000001', 'imed', 'Clínica das Permissões',
-    'usg', current_setting('teste.dia')::date, 'Paciente Um', '11999991201', true,
-    current_setting('teste.h0900')::timestamptz, current_setting('teste.hash'))
+    'usg', current_setting('teste.dia')::date, 'Paciente Um', '11999991201', true, current_setting('teste.hash'))
 $$, 'visitante grava o pedido com as colunas do site');
 select throws_ok($$
   insert into public.appointment_requests (place_source, place_name, preferred_date, patient_name, patient_phone, consent, channel)
@@ -102,7 +103,7 @@ select is((select concat_ws('|', status, channel, version, uses_resources::text,
                             coalesce(slot_end::text, '-'), coalesce(hold_expires_at::text, '-'), coalesce(cancel_reason, '-'),
                             coalesce(total_cents::text, '-'))
            from public.appointment_requests where id = 'b1200000-0000-4000-8000-000000000001'),
-          'confirmed|imed_app|1|false|no_local|{}|-|-|-|-', 'o pedido do site nasce com as colunas novas no padrão');
+          'pending|imed_app|1|false|no_local|{}|-|-|-|-', 'o pedido do site nasce com as colunas novas no padrão');
 
 insert into public.appointment_requests (id, place_source, place_name, preferred_date, patient_name, patient_phone, consent,
                                          channel, version, uses_resources, status)
@@ -233,7 +234,7 @@ select pg_temp.entrar('postgres');
 select is((select concat_ws('|', h.from_status, h.to_status, h.origin, h.actor_kind, coalesce(h.actor_user::text, '-'),
                             coalesce(h.actor_role, '-'), h.request_version)
            from agenda.status_history h where h.request_id = 'b1200000-0000-4000-8000-000000000001'),
-          'confirmed|cancelled|app|paciente|-|-|2', 'cancelamento do paciente no histórico (origem app)');
+          'pending|cancelled|app|paciente|-|-|2', 'cancelamento do paciente no histórico (origem app)');
 select is((select status || '|' || cancelled_by || '|' || version from public.appointment_requests
            where id = 'b1200000-0000-4000-8000-000000000001'), 'cancelled|patient|2', 'o pedido cancelado como antes, versão 2');
 
@@ -257,22 +258,24 @@ select is(
 select is((select version from public.appointment_requests where id = 'b1200000-0000-4000-8000-000000000002'), 4,
           'a repetição sem mudança também não sobe a versão');
 
--- Reabrir um cancelado cujo horário outro pegou: slot_taken, sem histórico e sem marca sobrando.
+-- O caminho antigo com horário acabou (3.3): recusado; reabrir o pedido sem horário: ok, e a marca de quem chamou volta.
 select pg_temp.entrar('anon');
-insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date, patient_name,
-                                         patient_phone, consent, slot_start)
-values ('b1200000-0000-4000-8000-000000000005', 'c1200000-0000-4000-8000-000000000001', 'imed', 'Clínica das Permissões', 'usg',
-        current_setting('teste.dia')::date, 'Paciente Cinco', '11999991211', true, current_setting('teste.h0900')::timestamptz);
+select throws_ok($$
+  insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date, patient_name,
+                                           patient_phone, consent, slot_start)
+  values ('b1200000-0000-4000-8000-000000000005', 'c1200000-0000-4000-8000-000000000001', 'imed', 'Clínica das Permissões', 'usg',
+          current_setting('teste.dia')::date, 'Paciente Cinco', '11999991211', true, current_setting('teste.h0900')::timestamptz)
+$$, '23P01', 'Este horário não está mais livre. Escolha outro.', 'pedido com horário pelo caminho antigo: recusado (3.3)');
 select pg_temp.marca('sql', 'marca_de_fora');
 select pg_temp.entrar('authenticated', 'a1200000-0000-4000-8000-000000000003', 'admin.permissoes@exemplo.test');
-select is(public.set_request_status('b1200000-0000-4000-8000-000000000001', 'confirmed'), 'slot_taken',
-          'admin reabre pedido cujo horário outro pegou: slot_taken, como antes');
+select is(public.set_request_status('b1200000-0000-4000-8000-000000000001', 'confirmed'), 'ok',
+          'admin reabre o pedido sem horário cancelado pelo paciente: ok, como antes');
 select is(current_setting('imed.origin', true) || '|' || current_setting('imed.reason', true), 'sql|marca_de_fora',
-          'depois do slot_taken, a marca de quem chamou continua a mesma');
+          'depois, a marca de quem chamou continua a mesma');
 select pg_temp.marca(null);
 select pg_temp.entrar('postgres');
-select is((select count(*)::int from agenda.status_history where request_id = 'b1200000-0000-4000-8000-000000000001'), 1,
-          'o slot_taken não grava histórico');
+select is((select count(*)::int from agenda.status_history where request_id = 'b1200000-0000-4000-8000-000000000001'), 2,
+          'a reabertura vai para o histórico');
 
 /* ===================== E. Clínica: fuso, modalidade e venda online ===================== */
 select pg_temp.entrar('authenticated', 'a1200000-0000-4000-8000-000000000003', 'admin.permissoes@exemplo.test');

@@ -311,6 +311,24 @@ test('contrato: o banco aceita todas as páginas do site e os eventos que o site
   // admin_stats: pedidos e teleconsultas das próprias tabelas.
   const stats = fnBody('public.admin_stats');
   assert.match(stats, /from public\.appointment_requests a where a\.created_at >= v_from_ts and a\.created_at < v_to_ts/);
+  // iMed Agenda 3.3: a versão em vigor (a da migração mais nova que define a função) não conta reserva temporária nem
+  // reserva expirada como pedido, em admin_stats e em admin_gestao (o mesmo filtro nos dois lugares de admin_gestao).
+  const ultima = (nome) => {
+    const arq = readdirSync(join(ROOT, 'supabase/migrations')).filter((f) => f.endsWith('.sql')).sort()
+      .filter((f) => read(`supabase/migrations/${f}`).includes(`create or replace function ${nome}(`)).at(-1);
+    return { arq, corpo: fnBody(nome, read(`supabase/migrations/${arq}`)) };
+  };
+  const st = ultima('public.admin_stats');
+  assert.match(st.arq, /_agenda_operacao_parte_3\.sql$/, 'admin_stats em vigor: a da 3.3');
+  assert.match(st.corpo, /from public\.appointment_requests a where a\.created_at >= v_from_ts and a\.created_at < v_to_ts\s+and a\.status not in \('hold', 'expired'\)/);
+  assert.match(st.corpo, /if not coalesce\(public\.is_imed_admin\(\), false\) then\s+raise exception 'forbidden' using errcode = '42501'/);
+  const ge = ultima('public.admin_gestao');
+  assert.equal(ge.arq, st.arq, 'admin_gestao em vigor: a da 3.3');
+  assert.equal((ge.corpo.match(/and a\.status not in \('hold', 'expired'\)/g) || []).length, 2, 'admin_gestao: filtro na série por dia e no total');
+  for (const k of ['presente', 'faltou', 'remarcacao']) assert.match(ge.corpo, new RegExp(`'${k}', count\\(\\*\\) filter`), `admin_gestao: balde ${k}`);
+  const sqlUltima = read(`supabase/migrations/${st.arq}`);
+  assert.match(sqlUltima, /revoke all on function public\.admin_stats\(integer\) from public, anon;\ngrant execute on function public\.admin_stats\(integer\) to authenticated;/);
+  assert.match(sqlUltima, /revoke all on function public\.admin_gestao\(integer\) from public, anon;\ngrant execute on function public\.admin_gestao\(integer\) to authenticated;/);
   assert.match(stats, /select count\(\*\) from public\.teleconsultations t where t\.created_at >= \$1 and t\.created_at < \$2/);
   // Cidade da busca: "UF/Cidade" vinda do servidor ou do estabelecimento mais próximo; nada da posição.
   assert.equal(G.searchCity({ status: 'done', city: 'São Paulo', uf: 'SP' }, []), 'SP/São Paulo');

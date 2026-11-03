@@ -1,7 +1,8 @@
 -- O pedido de agendamento de HOJE continua funcionando (iMed Agenda, fase 3.0; arquitetura §13, 010_pedidos_atuais).
 -- É o contrato que o site no ar usa e que nenhuma fase da agenda pode quebrar:
 --   - o visitante (anon) grava o pedido direto na tabela, com consentimento (geo-core.js bookingRow, return=minimal);
---   - na clínica com agenda, horário livre sai "confirmed" e horário ocupado ou fora da grade é recusado (23P01);
+--   - desde a fase 3.3, horário só pelas funções da agenda: o INSERT direto COM horário é recusado (23P01, a mensagem de
+--     sempre, que o site reconhece) e a grade antiga não oferece horário; o pedido SEM horário continua igual;
 --   - request_status e cancel_request com o código do pedido (o aparelho guarda o código; o banco, o SHA-256);
 --   - set_request_status pela clínica (membro) e pela equipe do IMED (admin), com as regras de quem cancelou;
 --   - o pedido COMPLETO (as 23 colunas do bookingRow: endereço e telefone do local, e-mail, observação e o pedido
@@ -10,8 +11,10 @@
 -- Todos os dados são criados aqui e desfeitos no fim (rollback). E-mails no domínio reservado .test.
 -- Fase 3.1: as respostas e o que fica gravado continuam iguais; só a preparação "horário que já passou" (seção E),
 -- um UPDATE direto pelo SQL, passou a usar a marca de emergência (a guarda nova recusa mudança sem marca).
+-- Fase 3.3: os pedidos da clínica parceira daqui são SEM horário (o com horário passou para 230_marcar.sql e
+-- 400_estados.sql); reabrir pela equipe um pedido sem horário cancelado pelo paciente: ok, como sempre foi.
 begin;
-select plan(50);
+select plan(49);
 
 -- Troca de papel como o PostgREST faz: role + request.jwt.claims (só até o fim da transação).
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
@@ -66,7 +69,7 @@ values
 insert into public.clinic_exams (clinic_id, exam_code) values ('c1000000-0000-4000-8000-000000000001', 'usg');
 insert into public.clinic_members (clinic_id, user_id, role)
 values ('c1000000-0000-4000-8000-000000000001', 'a1000000-0000-4000-8000-000000000001', 'owner');
--- Grade da clínica no dia do teste: 08:00, 08:30, 09:00 e 09:30 (30 min).
+-- Grade ANTIGA da clínica no dia do teste (08:00 a 10:00, 30 min): desde a 3.3 ela não oferece mais horário.
 insert into public.clinic_schedules (clinic_id, weekday, start_time, end_time, slot_minutes, exam_codes)
 values ('c1000000-0000-4000-8000-000000000001', extract(dow from current_setting('teste.dia')::date)::smallint,
         '08:00', '10:00', 30, '{}');
@@ -98,11 +101,10 @@ $$, '22023', 'Esta clínica não recebe pedidos de agendamento pelo site',
 
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b2000000-0000-4000-8000-000000000002', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Dois', '11999990002', true,
-    current_setting('teste.h0900')::timestamptz, current_setting('teste.hash_r2'))
-$$, 'visitante marca um horário livre (09:00)');
+    'usg', current_setting('teste.dia')::date, 'Paciente Dois', '11999990002', true, current_setting('teste.hash_r2'))
+$$, 'visitante pede agendamento SEM horário na clínica parceira');
 
 select throws_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
@@ -110,27 +112,21 @@ select throws_ok($$
   values ('b3000000-0000-4000-8000-000000000003', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
     'usg', current_setting('teste.dia')::date, 'Paciente Tres', '11999990003', true,
     current_setting('teste.h0900')::timestamptz)
-$$, '23P01', 'Este horário não está mais livre. Escolha outro.', 'o mesmo horário de novo é recusado (23P01)');
-
-select throws_ok($$
-  insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start)
-  values ('b3000000-0000-4000-8000-000000000003', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Tres', '11999990003', true,
-    current_setting('teste.h0910')::timestamptz)
-$$, '23P01', 'Este horário não está mais livre. Escolha outro.', 'horário fora da grade (09:10) é recusado (23P01)');
+$$, '23P01', 'Este horário não está mais livre. Escolha outro.',
+   'pedido COM horário pelo INSERT direto: recusado (23P01, a mensagem que o site reconhece)');
 
 select is(
-  array(select a.slot_start from public.available_slots('c1000000-0000-4000-8000-000000000001', 'usg',
-                                                          current_setting('teste.dia')::date, 1) a order by 1),
-  array[current_setting('teste.h0800'), current_setting('teste.h0830'), current_setting('teste.h0930')]::timestamptz[],
-  'available_slots mostra 08:00, 08:30 e 09:30 (09:00 está ocupado)');
+  (select count(*)::int from public.available_slots('c1000000-0000-4000-8000-000000000001', 'usg',
+                                                     current_setting('teste.dia')::date, 1)),
+  0, 'available_slots: a grade antiga não oferece mais horário (o site mostra o pedido sem horário)');
+select is((select count(*)::int from public.clinics_with_schedule(array['c1000000-0000-4000-8000-000000000001']::uuid[])), 0,
+          'clinics_with_schedule: a clínica da grade antiga não aparece');
 
 select is((select count(*)::int from public.appointment_requests), 0, 'o visitante não lê pedidos (RLS)');
 
 select is((select s.status || '|' || s.reviewed from public.request_status(
              array['b2000000-0000-4000-8000-000000000002']::uuid[], array['codigo-r2']) s),
-          'confirmed|false', 'request_status com o código do pedido: confirmado');
+          'pending|false', 'request_status com o código do pedido: aguardando contato');
 
 select is((select count(*)::int from public.request_status(
              array['b2000000-0000-4000-8000-000000000002']::uuid[], array['codigo-errado'])),
@@ -142,9 +138,9 @@ select is((select status || '|' || coalesce(user_id::text, '-') || '|' || coales
            from public.appointment_requests where id = 'b1000000-0000-4000-8000-000000000001'),
           'pending|-|-', 'pedido sem horário fica pendente e sem conta');
 
-select is((select status || '|' || preferred_period || '|' || preferred_date
+select is((select status || '|' || preferred_period || '|' || preferred_date || '|' || coalesce(slot_start::text, '-')
            from public.appointment_requests where id = 'b2000000-0000-4000-8000-000000000002'),
-          'confirmed|manha|' || current_setting('teste.dia'), 'horário livre sai confirmado, com dia e período do horário');
+          'pending|qualquer|' || current_setting('teste.dia') || '|-', 'pedido da clínica parceira: pendente, sem horário');
 
 /* ===================== B. O paciente cancela com o código (anon) ===================== */
 select pg_temp.entrar('anon');
@@ -155,17 +151,12 @@ select is(public.cancel_request('b2000000-0000-4000-8000-000000000002', 'codigo-
           'cancelar com o código do pedido: ok');
 select is(public.cancel_request('b2000000-0000-4000-8000-000000000002', 'codigo-r2'), 'already_cancelled',
           'cancelar de novo: already_cancelled');
-select ok(current_setting('teste.h0900')::timestamptz = any (array(
-            select a.slot_start from public.available_slots('c1000000-0000-4000-8000-000000000001', 'usg',
-                                                            current_setting('teste.dia')::date, 1) a)),
-          'o horário cancelado (09:00) volta a ficar livre');
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b4000000-0000-4000-8000-000000000004', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Quatro', '11999990004', true,
-    current_setting('teste.h0900')::timestamptz, current_setting('teste.hash_r4'))
-$$, 'outro visitante marca o horário que foi liberado (09:00)');
+    'usg', current_setting('teste.dia')::date, 'Paciente Quatro', '11999990004', true, current_setting('teste.hash_r4'))
+$$, 'outro visitante pede agendamento na mesma clínica');
 
 select pg_temp.entrar('postgres');
 
@@ -173,7 +164,7 @@ select is((select status || '|' || cancelled_by || '|' || (cancelled_at is not n
            from public.appointment_requests where id = 'b2000000-0000-4000-8000-000000000002'),
           'cancelled|patient|true', 'cancelamento do paciente grava quem e quando');
 select is((select status from public.appointment_requests where id = 'b4000000-0000-4000-8000-000000000004'),
-          'confirmed', 'o novo pedido no horário liberado sai confirmado');
+          'pending', 'o novo pedido fica pendente');
 
 /* ===================== C. A clínica e a equipe do IMED mudam a situação ===================== */
 select pg_temp.entrar('anon');
@@ -200,8 +191,8 @@ select is((select count(*)::int from public.appointment_requests where clinic_id
 
 select pg_temp.entrar('authenticated', 'a3000000-0000-4000-8000-000000000003', 'admin.teste@exemplo.test');
 select ok(public.is_imed_admin(), 'admin (e-mail confirmado, sessão pelo link) é reconhecido');
-select is(public.set_request_status('b2000000-0000-4000-8000-000000000002', 'confirmed'), 'slot_taken',
-          'admin reabre pedido cancelado cujo horário já foi pego: slot_taken');
+select is(public.set_request_status('b2000000-0000-4000-8000-000000000002', 'confirmed'), 'ok',
+          'admin reabre pedido sem horário cancelado pelo paciente: ok');
 select is(public.set_request_status('b1000000-0000-4000-8000-000000000001', 'contacted'), 'ok',
           'admin marca "em contato" no pedido concierge');
 select is(public.set_request_status('b4000000-0000-4000-8000-000000000004', 'cancelled'), 'ok',
@@ -210,11 +201,10 @@ select is(public.set_request_status('b4000000-0000-4000-8000-000000000004', 'can
 select pg_temp.entrar('anon');
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b5000000-0000-4000-8000-000000000005', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Cinco', '11999990005', true,
-    current_setting('teste.h0800')::timestamptz, current_setting('teste.hash_r5'))
-$$, 'visitante marca 08:00');
+    'usg', current_setting('teste.dia')::date, 'Paciente Cinco', '11999990005', true, current_setting('teste.hash_r5'))
+$$, 'visitante pede agendamento (5)');
 
 select pg_temp.entrar('authenticated', 'a1000000-0000-4000-8000-000000000001', 'clinica.teste@exemplo.test');
 select is(public.set_request_status('b5000000-0000-4000-8000-000000000005', 'cancelled'), 'ok',
@@ -226,18 +216,17 @@ select is((select status || '|' || cancelled_by from public.appointment_requests
 select is((select status || '|' || cancelled_by from public.appointment_requests
            where id = 'b5000000-0000-4000-8000-000000000005'), 'cancelled|clinic', 'cancelado pela clínica: cancelled_by = clinic');
 select is((select status || '|' || cancelled_by from public.appointment_requests
-           where id = 'b2000000-0000-4000-8000-000000000002'), 'cancelled|patient',
-          'depois do slot_taken o pedido continua cancelado pelo paciente');
+           where id = 'b2000000-0000-4000-8000-000000000002'), 'confirmed|patient',
+          'reaberto pela equipe: confirmado, e o registro de quem cancelou antes continua');
 
 /* ===================== D. Paciente com conta (authenticated) ===================== */
 select pg_temp.entrar('authenticated', 'a4000000-0000-4000-8000-000000000004', 'paciente.teste@exemplo.test');
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b6000000-0000-4000-8000-000000000006', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Seis', '11999990006', true,
-    current_setting('teste.h0830')::timestamptz, current_setting('teste.hash_r6'))
-$$, 'paciente logado marca 08:30');
+    'usg', current_setting('teste.dia')::date, 'Paciente Seis', '11999990006', true, current_setting('teste.hash_r6'))
+$$, 'paciente logado pede agendamento');
 select is((select user_id::text from public.appointment_requests where id = 'b6000000-0000-4000-8000-000000000006'),
           'a4000000-0000-4000-8000-000000000004', 'o pedido fica ligado à conta de quem está logado (e ele o lê)');
 
@@ -253,13 +242,12 @@ select is(public.cancel_request('b6000000-0000-4000-8000-000000000006', null), '
 select pg_temp.entrar('anon');
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_name, exam_code, preferred_date,
-    patient_name, patient_phone, consent, slot_start, review_token_hash)
+    patient_name, patient_phone, consent, review_token_hash)
   values ('b7000000-0000-4000-8000-000000000007', 'c1000000-0000-4000-8000-000000000001', 'imed', 'Clínica de Teste do CI',
-    'usg', current_setting('teste.dia')::date, 'Paciente Sete', '11999990007', true,
-    current_setting('teste.h0930')::timestamptz, current_setting('teste.hash_r7'))
-$$, 'visitante marca 09:30');
+    'usg', current_setting('teste.dia')::date, 'Paciente Sete', '11999990007', true, current_setting('teste.hash_r7'))
+$$, 'visitante pede agendamento (7)');
 
--- O horário "passa": mudança à mão pelo SQL. Desde a fase 3.1 a guarda do pedido só deixa mudar o horário com a
+-- Um horário combinado que "passa": mudança à mão pelo SQL. Desde a fase 3.1 a guarda do pedido só deixa mudar o horário com a
 -- marca de emergência (imed.origin = 'sql' + motivo), que fica registrada em agenda.audit_log.
 select pg_temp.entrar('postgres');
 do $$
@@ -302,18 +290,17 @@ select lives_ok($$
     true, 'Mãe do Paciente Oito', 'Pai ou mãe', false, false, true, current_setting('teste.hash_r8'))
 $$, 'visitante pede para outra pessoa adulta, com todas as colunas que o site manda');
 
--- Paciente logado, clínica parceira com horário (09:30, livre de novo), para um menor (com o responsável).
+-- Paciente logado, clínica parceira (sem horário), para um menor (com o responsável).
 select pg_temp.entrar('authenticated', 'a4000000-0000-4000-8000-000000000004', 'paciente.teste@exemplo.test');
 select lives_ok($$
   insert into public.appointment_requests (id, clinic_id, place_source, place_ref, place_name, place_address, place_phone,
-    exam_code, preferred_date, preferred_period, patient_name, patient_phone, patient_email, notes, consent, slot_start,
+    exam_code, preferred_date, preferred_period, patient_name, patient_phone, patient_email, notes, consent,
     for_other, other_name, relationship, other_minor, guardian_consent, other_consent, review_token_hash)
   values ('b9000000-0000-4000-8000-000000000009', 'c1000000-0000-4000-8000-000000000001', 'imed', null,
     'Clínica de Teste do CI', 'Rua do Teste, 100 · São Paulo - SP', '(11) 3000-0000', 'usg',
     current_setting('teste.dia')::date, 'manha', 'Paciente Nove', '11999990009', null, null, true,
-    current_setting('teste.h0930')::timestamptz,
     true, 'Filho do Paciente Nove', 'Filho ou filha', true, true, false, current_setting('teste.hash_r9'))
-$$, 'paciente logado marca horário para um menor de idade, com todas as colunas que o site manda');
+$$, 'paciente logado pede agendamento para um menor de idade, com todas as colunas que o site manda (menos o horário)');
 
 select pg_temp.entrar('postgres');
 select is(
@@ -326,14 +313,14 @@ select is(
   'pedido do visitante gravado como o site mandou (pendente, sem conta)');
 select is(
   (select concat_ws('|', status, user_id::text, coalesce(place_ref, '-'), place_address, place_phone,
-                    (slot_start = current_setting('teste.h0930')::timestamptz)::text, preferred_period,
+                    coalesce(slot_start::text, 'sem horário'), preferred_period,
                     coalesce(patient_email, '-'), coalesce(notes, '-'), for_other::text, other_name, relationship,
                     other_minor::text, guardian_consent::text, other_consent::text,
                     (review_token_hash = current_setting('teste.hash_r9'))::text)
    from public.appointment_requests where id = 'b9000000-0000-4000-8000-000000000009'),
-  'confirmed|a4000000-0000-4000-8000-000000000004|-|Rua do Teste, 100 · São Paulo - SP|(11) 3000-0000|true|manha|-|-'
+  'pending|a4000000-0000-4000-8000-000000000004|-|Rua do Teste, 100 · São Paulo - SP|(11) 3000-0000|sem horário|manha|-|-'
     || '|true|Filho do Paciente Nove|Filho ou filha|true|true|false|true',
-  'pedido do paciente logado gravado como o site mandou (confirmado, ligado à conta)');
+  'pedido do paciente logado gravado como o site mandou (pendente, ligado à conta)');
 
 select * from finish();
 rollback;

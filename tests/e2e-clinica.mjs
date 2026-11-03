@@ -1425,6 +1425,14 @@ await scenario('agenda: carrega, adiciona faixa, copia segunda para os dias úte
   await page.waitForSelector('#agMsg .cl-note.err');
   assert.match(await page.textContent('#agMsg'), /Sua conta não pode mudar a agenda desta clínica/);
   assert.ok(await page.isEnabled('#agSave'));
+  // fase 3.3 do banco: o editor antigo não grava mais horários (managed_by_agenda); a mensagem diz o que vale agora
+  db.scheduleResult = 'managed_by_agenda';
+  await page.click('#agday-0 [data-add]');
+  await page.click('#agSave');
+  await page.waitForFunction(() => /agenda nova do IMED/.test(document.querySelector('#agMsg')?.textContent || ''));
+  assert.match(await page.textContent('#agMsg'), /pacientes enviam o pedido sem horário e a clínica liga para combinar/);
+  assert.equal(await page.locator('#agMsg .cl-note.err').count(), 1);
+  assert.ok(await page.isEnabled('#agSave'));
   assert.deepEqual(errors, []);
   await context.close();
 });

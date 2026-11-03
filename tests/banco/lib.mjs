@@ -345,3 +345,109 @@ export async function postgrest(cfg, caminho, { token, metodo = 'POST', corpo, p
   try { json = texto ? JSON.parse(texto) : null; } catch { /* resposta sem JSON */ }
   return { status: resp.status, ok: resp.ok, code: json?.code, message: json?.message ?? texto.slice(0, 300), json, ms: performance.now() - t0 };
 }
+
+/* ===================== Agenda: clínica de teste (fase 3.3) ===================== */
+
+/**
+ * Roda `sql` como a pessoa logada (role authenticated + request.jwt.claims, como o PostgREST faz), numa transação
+ * própria. Devolve a primeira coluna da primeira linha.
+ */
+export async function comoUsuario(db, { sub, email }, sql, params = []) {
+  await db.query('begin');
+  try {
+    await db.query(`select set_config('request.jwt.claims', $1, true), set_config('role', 'authenticated', true)`,
+      [JSON.stringify({ role: 'authenticated', aud: 'authenticated', sub, email, amr: [{ method: 'otp', timestamp: 1 }] })]);
+    const { rows } = await db.query(sql, params);
+    await db.query('commit');
+    return rows[0] ? Object.values(rows[0])[0] : undefined;
+  } catch (e) {
+    await db.query('rollback').catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Cria uma clínica de teste na agenda nova, pelas funções de verdade (como a dona), com a venda online ligada (marca
+ * de emergência, registrada: nenhuma função liga antes da 5.1). `recursos`: [{ chave, kind, name, capacity }];
+ * `procedimentos`: [{ chave, exam_code, name, duration_min, step_min, grupos: [[chaves dos recursos], ...] }].
+ * Aberta todos os dias, o dia inteiro, sem antecedência mínima, de 5 em 5 minutos. Devolve { recursos, procedimentos }.
+ */
+export async function criarClinicaAgenda(db, { clinica, dona, email, nome, recursos, procedimentos }) {
+  await db.query(`insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+                  values ('00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2, now(),
+                          '{"provider": "email", "providers": ["email"]}', '{}', now(), now())`, [dona, email]);
+  await db.query(`insert into public.clinics (id, name, kind, address_line, city, state, location, status, accepts_online_booking, is_demo)
+                  values ($1, $2, 'imagem', 'Rua do Teste da Agenda, 1', 'São Paulo', 'SP',
+                          extensions.st_setsrid(extensions.st_makepoint(-46.63, -23.55), 4326)::extensions.geography, 'published', true, false)`,
+  [clinica, nome]);
+  await db.query(`insert into public.clinic_members (clinic_id, user_id, role) values ($1, $2, 'owner')`, [clinica, dona]);
+  await db.query(`insert into agenda.holidays (scope, day, name, source)
+                  select 'nacional', make_date(extract(year from now())::integer + 1, 1, 1), 'Confraternização Universal', 'Lei 662/1949'
+                  where not exists (select 1 from agenda.holidays where scope = 'nacional' and day = make_date(extract(year from now())::integer + 1, 1, 1))`);
+  const u = { sub: dona, email };
+  const status = (j, o) => { if (j?.status !== 'ok') throw new Error(`${o}: ${JSON.stringify(j)}`); return j; };
+  status(await comoUsuario(db, u, `select public.agenda_unit_save($1, jsonb_build_object('holidays_checked_until', current_date + 300,
+                                     'min_notice_min', 0, 'step_min', 5, 'max_advance_days', 365))`, [clinica]), 'unidade');
+  const rec = {};
+  for (const r of recursos) {
+    rec[r.chave] = status(await comoUsuario(db, u, 'select public.agenda_resource_save($1, $2)',
+      [clinica, JSON.stringify({ kind: r.kind ?? 'equipamento', name: r.name, capacity: r.capacity ?? 1 })]), r.name).id;
+  }
+  const proc = {};
+  for (const p of procedimentos) {
+    proc[p.chave] = status(await comoUsuario(db, u, 'select public.agenda_procedure_save($1, $2)', [clinica, JSON.stringify({
+      exam_code: p.exam_code ?? 'usg', name: p.name, duration_min: p.duration_min, step_min: p.step_min ?? 5,
+      requirements: p.grupos.map((g) => ({
+        resource_kind: recursos.find((r) => r.chave === g[0]).kind ?? 'equipamento',
+        options: g.map((k, i) => ({ resource_id: rec[k], priority: i + 1 })),
+      })),
+    })]), p.name).id;
+  }
+  const regras = Array.from({ length: 7 }, (_, d) => ({ weekday: d, start: '00:00', end: '24:00' }));
+  status(await comoUsuario(db, u, 'select public.agenda_rules_set($1, null, $2)', [clinica, JSON.stringify(regras)]), 'regras');
+  await db.query('begin');
+  await db.query(`select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'teste_ci', true)`);
+  await db.query(`update public.clinics set agenda_mode = 'nativa', timezone_confirmed_at = now(), agenda_online_since = now() where id = $1`, [clinica]);
+  await db.query('commit');
+  return { recursos: rec, procedimentos: proc };
+}
+
+/** Apaga a clínica de teste e tudo dela (pedidos, ocupação, "ocupados", bloqueios), com a marca de emergência. */
+export async function limparClinicaAgenda(db, { clinica, dona }) {
+  await db.query('begin');
+  await db.query(`select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'limpeza_teste_ci', true)`);
+  await db.query('delete from public.appointment_requests where clinic_id = $1', [clinica]);
+  await db.query('delete from agenda.occupancy where clinic_id = $1', [clinica]);
+  await db.query('delete from agenda.busy_marks where clinic_id = $1', [clinica]);
+  await db.query('delete from public.clinic_blocks where clinic_id = $1', [clinica]);
+  await db.query('commit');
+  await db.query('delete from public.clinics where id = $1', [clinica]);
+  if (dona) await db.query('delete from auth.users where id = $1', [dona]);
+}
+
+/** Horário de São Paulo (sem horário de verão) de daqui a `dias` dias: "HH:MM" → ISO. */
+export function horaSP(dias, hhmm) {
+  const d = new Date(Date.now() + dias * 86400000 - 3 * 3600000).toISOString().slice(0, 10);
+  return new Date(`${d}T${hhmm}:00-03:00`).toISOString();
+}
+
+/**
+ * Oráculo da regra fundamental (§3.1), sem olhar a vaga: por recurso, o máximo de usos ativos ao mesmo tempo não passa
+ * da capacidade, e nenhum uso ativo cruza um fechamento ativo. Devolve as violações (lista vazia = tudo certo).
+ */
+export async function violacoesAgenda(db, clinica) {
+  const { rows } = await db.query(`
+    with usos as (
+      select o.resource_id, o.during from agenda.occupancy o where o.clinic_id = $1 and o.active and o.kind <> 'bloqueio'
+    ), pico as (
+      select u.resource_id, (select count(*) from usos x where x.resource_id = u.resource_id and x.during @> lower(u.during)) as n
+      from usos u
+    )
+    select 'capacidade: ' || r.name || ' com ' || max(p.n) || ' ao mesmo tempo (capacidade ' || r.capacity || ')' as v
+    from pico p join agenda.resources r on r.id = p.resource_id group by r.id, r.name, r.capacity having max(p.n) > r.capacity
+    union all
+    select 'fechamento: uso ' || u.id || ' dentro do bloqueio ' || b.id
+    from agenda.occupancy u join agenda.occupancy b on b.resource_id = u.resource_id and b.kind = 'bloqueio' and b.active
+    where u.clinic_id = $1 and u.active and u.kind <> 'bloqueio' and u.during && b.during`, [clinica]);
+  return rows.map((r) => r.v);
+}

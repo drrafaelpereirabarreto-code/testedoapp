@@ -161,8 +161,8 @@ select is((select count(*)::integer from public.available_slots('c3250000-0000-4
           'available_slots: sem venda online, nenhum horário (nada muda para o site)');
 select is(array(select clinic_id from public.clinics_with_schedule(array['c3250000-0000-4000-8000-000000000001',
                                                                           'c3250000-0000-4000-8000-000000000004']::uuid[])),
-          array['c3250000-0000-4000-8000-000000000004'::uuid],
-          'clinics_with_schedule: a clínica antiga com grade continua; a da agenda nova sem venda online, não');
+          '{}'::uuid[],
+          'clinics_with_schedule: a da agenda nova sem venda online, não; a antiga com grade também não (3.3: a grade antiga não oferece horário)');
 select pg_temp.dona();
 select set_config('teste.pd', public.agenda_procedure_save('c3250000-0000-4000-8000-000000000001', jsonb_build_object(
   'exam_code', 'usg', 'name', 'Ultrassom padrão', 'duration_min', 60, 'step_min', 60, 'default_for_exam', true,
@@ -180,8 +180,8 @@ select is(array(select to_char(a.slot_start at time zone 'America/Sao_Paulo', 'H
           'available_slots com a venda online: o motor, pelo procedimento PADRÃO da categoria (60 min de 60 em 60)');
 select is(array(select clinic_id from public.clinics_with_schedule(array['c3250000-0000-4000-8000-000000000001',
                                                                           'c3250000-0000-4000-8000-000000000004']::uuid[]) order by 1),
-          array['c3250000-0000-4000-8000-000000000001', 'c3250000-0000-4000-8000-000000000004']::uuid[],
-          'clinics_with_schedule: com a venda online, a clínica da agenda nova entra');
+          array['c3250000-0000-4000-8000-000000000001']::uuid[],
+          'clinics_with_schedule: com a venda online, a clínica da agenda nova entra (só ela)');
 select is((select count(*)::integer from public.available_slots('c3250000-0000-4000-8000-000000000001', 'rm', pg_temp.dia(), 1)), 0,
           'categoria sem procedimento: nenhum horário');
 

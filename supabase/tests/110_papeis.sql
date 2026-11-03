@@ -267,7 +267,7 @@ select throws_ok($$ insert into agenda.status_transitions (from_status, to_statu
 select throws_ok($$ insert into agenda.status_transitions (from_status, to_status, actor_kind, permission)
                     values ('pending', 'completed', 'paciente', 'agenda.atender') $$,
                  '23514', null, 'transição do paciente não leva permissão de papel');
-select is((select count(*)::int from agenda.status_transitions), 58, 'as 58 transições da arquitetura §5');
+select is((select count(*)::int from agenda.status_transitions), 59, 'as 58 transições da arquitetura §5 + a da integração que solta a reserva (3.3)');
 
 /* ===================== E. Referências fora do alcance da API ===================== */
 select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000001', 'dono.papeis@exemplo.test');
