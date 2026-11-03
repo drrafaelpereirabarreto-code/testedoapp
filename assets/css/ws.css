@@ -19,12 +19,12 @@
 .ws-split,.ws-recolher{display:none}
 /* Botão "Mostrar": só o escolhido aparece; o vídeo (sem data-ws-aba) fica sempre, compacto e preso no alto. */
 @media (max-width:1023.98px){
-  .ws-grid[data-ws-mostra="pac"] [data-ws-aba]:not([data-ws-aba="pac"]),
-  .ws-grid[data-ws-mostra="reg"] [data-ws-aba]:not([data-ws-aba="reg"]),
-  .ws-grid[data-ws-mostra="msg"] [data-ws-aba]:not([data-ws-aba="msg"]),
-  .ws-grid[data-ws-mostra="fer"] [data-ws-aba]:not([data-ws-aba="fer"]){display:none}
-  .ws-grid[data-ws-mostra]:not([data-ws-mostra="tudo"]) #cVideoCard{position:sticky;top:0;z-index:5;padding:10px}
-  .ws-grid[data-ws-mostra]:not([data-ws-mostra="tudo"]) #cVideoCard .tl-stage{max-height:30vh;margin-top:0;aspect-ratio:16/10}
+  .ws-grid[data-mostra="pac"] [data-ws-aba]:not([data-ws-aba="pac"]),
+  .ws-grid[data-mostra="reg"] [data-ws-aba]:not([data-ws-aba="reg"]),
+  .ws-grid[data-mostra="msg"] [data-ws-aba]:not([data-ws-aba="msg"]),
+  .ws-grid[data-mostra="fer"] [data-ws-aba]:not([data-ws-aba="fer"]){display:none}
+  .ws-grid[data-mostra]:not([data-mostra="tudo"]) #cVideoCard{position:sticky;top:0;z-index:5;padding:10px}
+  .ws-grid[data-mostra]:not([data-mostra="tudo"]) #cVideoCard .tl-stage{max-height:30vh;margin-top:0;aspect-ratio:16/10}
 }
 
 /* ---------- computador: 3 colunas ---------- */

@@ -204,10 +204,10 @@ select is((select array_agg(x ->> 'tipo' order by x ->> 'tipo') from jsonb_array
            where x ->> 'tipo' in ('adendo', 'finalizado', 'diagnostico')),
           array['adendo', 'diagnostico', 'diagnostico', 'finalizado'], 'linha do tempo: finalização, diagnósticos e adendo');
 select pg_temp.entrar('postgres');
-select is((select array_agg(format('%s %s %s', tipo, quem_mediu, como_obtido) order by ordem) from prontuario.medidas m
+select is((select array_agg(format('%s %s %s', m.tipo, m.quem_mediu, m.como_obtido) order by m.ordem) from prontuario.medidas m
            join prontuario.evolucoes e on e.id = m.evolucao_id where e.teleconsulta_id = 'c2000000-0000-4000-8000-000000000001'),
           array['temperatura paciente relato', 'fr medico contado_pelo_medico_no_video'], 'medidas gravadas com a origem de cada número');
-select is((select array_agg(coalesce(cid, '-') || ' ' || papel || ' ' || situacao order by ordem) from prontuario.diagnosticos d
+select is((select array_agg(coalesce(d.cid, '-') || ' ' || d.papel || ' ' || d.situacao order by d.ordem) from prontuario.diagnosticos d
            join prontuario.evolucoes e on e.id = d.evolucao_id where e.teleconsulta_id = 'c2000000-0000-4000-8000-000000000001'),
           array['J069 principal suspeito', '- hipotese descartado'], 'diagnósticos gravados como o médico escolheu');
 select is((select array_agg(operacao order by id) from prontuario.trilha_escrita where teleconsulta_id = 'c2000000-0000-4000-8000-000000000001'),

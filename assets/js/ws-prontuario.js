@@ -584,7 +584,7 @@ function pedirFinalizar() {
   if (erro) { msg(textoCampo(erro), 'err'); return; }
   const n = (c.exame?.medidas || []).length;
   const d = (c.diagnosticos || []).length;
-  box.innerHTML = `<p id="wsFinQ"><b>Finalizar o registro?</b> Depois disso ele não muda: correções só por adendo, com data e hora. Vão ${n} sinal${n === 1 ? '' : 'is'} vita${n === 1 ? 'l' : 'is'} e ${d} diagnóstico${d === 1 ? '' : 's'}. Registro não assinado digitalmente.</p>
+  box.innerHTML = `<p id="wsFinQ"><b>Finalizar o registro?</b> Depois disso ele não muda: correções só por adendo, com data e hora. Vão ${n} ${n === 1 ? 'sinal vital' : 'sinais vitais'} e ${d} diagnóstico${d === 1 ? '' : 's'}. Registro não assinado digitalmente.</p>
     <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" data-ws="fin-sim">Sim, finalizar</button><button class="btn btn-ghost btn-sm" type="button" data-ws="fin-nao">Voltar</button></div>`;
   box.hidden = false;
   box.querySelector('[data-ws="fin-sim"]').focus();

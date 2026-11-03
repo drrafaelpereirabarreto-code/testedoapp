@@ -97,11 +97,8 @@ function teclas(lado, e) {
 function mostrar(qual) {
   const g = grade();
   if (!g) return;
-  g.dataset.wsMostra = qual;
-  for (const b of g.querySelectorAll('[data-ws-mostra]')) {
-    if (b === g) continue;
-    b.setAttribute('aria-pressed', String(b.dataset.wsMostra === qual));
-  }
+  g.dataset.mostra = qual;
+  for (const b of g.querySelectorAll('[data-ws-mostra]')) b.setAttribute('aria-pressed', String(b.dataset.wsMostra === qual));
 }
 
 export function iniciarLayout() {
