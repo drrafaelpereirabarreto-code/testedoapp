@@ -33,6 +33,11 @@ shadow_port = 54320
 # A produção roda PostgreSQL 17.11.
 major_version = 17
 
+[db.settings]
+# Só no CI: o teste obrigatório 1 (tests/banco/concorrencia.mjs) abre 80 conexões diretas ao mesmo tempo, além das do
+# PostgREST, Auth e Realtime (o padrão de 100 não cabe; o papel postgres não é superusuário no Supabase).
+max_connections = 200
+
 [db.pooler]
 enabled = false
 
