@@ -69,10 +69,12 @@ update agenda.occupancy o set hold_until = now() - interval '15 minutes'
 where o.active and o.item_id in (select i.id from agenda.appointment_items i where i.request_id in (pg_temp.pid(1), pg_temp.pid(2)));
 select set_config('imed.origin', '', true), set_config('imed.reason', '', true);
 select private.agenda_expire(pg_temp.pid(1)), private.agenda_expire(pg_temp.pid(2));
+set constraints all immediate;   -- (as conferências adiadas rodam agora: ALTER TABLE não aceita eventos pendentes)
 alter table public.appointment_requests disable trigger appointment_requests_touch;
 update public.appointment_requests set updated_at = now() - interval '8 days' where id = pg_temp.pid(1);
 update public.appointment_requests set updated_at = now() - interval '6 days' where id = pg_temp.pid(2);
 alter table public.appointment_requests enable trigger appointment_requests_touch;
+set constraints all deferred;
 
 select is(private.agenda_anonimizar(), 1, 'a retenção apaga os dados de 1 reserva (a expirada há mais de 7 dias)');
 select is((select concat_ws('|', status, patient_name, patient_phone, coalesce(patient_email, '-'), coalesce(notes, '-'),
