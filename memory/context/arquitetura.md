@@ -48,6 +48,15 @@
   `agenda_package_options` (anon/logado); `agenda_desk_book`, `agenda_desk_busy(_remove)`, `agenda_set_status` (logado);
   `agenda_hold/confirm/release` (só service_role). INSERT direto com `slot_start` → 23P01; `set_my_schedule` com faixas →
   `managed_by_agenda`. Job `imed-agenda-manutencao` (30 s, `call private.agenda_manutencao()`).
+- Agenda 3.4 (`..._agenda_painel_parte_1..3`; parte 1 na produção): leituras do painel só por função e permissão —
+  `agenda_me`, `agenda_version`, `agenda_view` (1–7 dias, "Maria S."), `agenda_month`, `agenda_search` (POST, ≥3 letras),
+  `agenda_request_detail` (profissional sem telefone; equipe do IMED com justificativa), `agenda_history`, `agenda_dashboard`,
+  `agenda_dashboard_financeiro`, `agenda_conflicts`/`_resolve`; leitura de paciente → `agenda.access_log`. Parte 2: equipe
+  (`agenda.member_invites`, `agenda_invite/_cancel/_accept`, `agenda_my_invites`, `agenda_team`, `agenda_member_role/_remove`,
+  último dono protegido), `agenda_touch` manda `{v}` por `realtime.send` (tópicos privados `agenda:clinica:<id>` e
+  `agenda:imed`; policy em `realtime.messages` via `agenda_realtime_ok`), preço "a partir de" (gatilho em `agenda.procedures`),
+  `update_my_clinic`/`set_my_clinic_exams` por permissão, `agenda_anonimizar` (reserva expirada > 7 dias) na manutenção.
+  Parte 3: papéis manager/reception/professional/finance em `clinic_members` e policies antigas por `has_clinic_perm`.
 - RPCs logadas: `set_request_status`, `update_my_clinic`, `set_my_clinic_exams`, `approve_claim`, `reject_claim`, `is_imed_admin`.
 - Teleconsulta (`..._teleconsulta`, `..._tele_documentos`): tabelas `doctors`, `doctor_checks`, `teleconsultations`,
   `tele_messages`, `tele_record_*`, `tele_access_log`, `tele_documents`, `tele_document_files`; tudo por funções `tele_*`
