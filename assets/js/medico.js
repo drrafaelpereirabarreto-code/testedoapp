@@ -821,6 +821,7 @@ async function openConsult(row, mode) {
   renderChosen(); renderMsgs(true);
   setLive(mode === 'live');
   docsOpen(row);
+  wsAbrir(row);
   $('#cTitle').focus();
   // Dados atuais (exames, orientações, situação).
   try {
@@ -989,6 +990,7 @@ function closeConsult(silent = false) {
   $('#cPatBox').innerHTML = ''; $('#cMsgs').innerHTML = ''; $('#cNotes').value = ''; $('#cGuide').value = ''; $('#exInd').value = '';
   $('#cOldNotes').innerHTML = '';
   docsClose();
+  wsFechar();
   removeEventListener('beforeunload', warnUnsaved);
   if (!silent) { S.queueSig = ''; renderQueue(); }
 }
@@ -1577,6 +1579,19 @@ async function finish() {
     $('#cEndConfirm').hidden = true;
   }
 }
+
+/* ======================= prontuário (Workspace, fase 2) ======================= */
+// Módulo à parte (assets/js/ws-prontuario.js), baixado na primeira consulta aberta. Sem ele (ou sem as funções no
+// banco), a consulta segue igual: o registro continua no campo "Registro da consulta".
+let wsP = null;
+const ws = () => (wsP ||= import('./ws-prontuario.js').catch(() => { wsP = null; return null; }));
+function wsAbrir(row) {
+  ws().then((m) => {
+    if (m && S.c?.id === row.id) m.abrir({ id: row.id, patient: row });
+    else if (!m && S.c?.id === row.id) $('#wsRegBox').innerHTML = '<p class="tl-msg warn">Não foi possível abrir o prontuário agora. O registro da consulta continua no campo “Registro da consulta”.</p>';
+  });
+}
+function wsFechar() { if (wsP) wsP.then((m) => m?.fechar()); }
 
 /* ======================= histórico ======================= */
 async function loadHistory() {

@@ -1,0 +1,55 @@
+# CID-10 para o prontuário (iMed Medical Workspace, fase 2; arquitetura §4.10). Baixa do DATASUS o arquivo oficial
+# CID10CSV.zip (versão 2008: OMS; tradução CBCD/FSP-USP; distribuição gratuita com crédito), confere e grava um
+# arquivo compacto (cid10.tsv, UTF-8, separado por TAB) no ramo dados/cid10. Nada é gravado no banco aqui (sem
+# segredo no GitHub): o banco busca o arquivo do ramo (pg_net, pelo conector) e grava com private.cid10_carregar.
+# Avisos saem como anotações (gh api repos/<repo>/check-runs/<job>/annotations).
+name: CID-10 do DATASUS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci/prontuario']
+    paths:
+      - 'scripts/cid10/**'
+      - '.github/workflows/cid10.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cid10
+  cancel-in-progress: false
+
+jobs:
+  gerar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Testes do gerador
+        run: python3 -I scripts/cid10/test_gerar.py
+      - name: Baixar do DATASUS
+        run: python3 -I scripts/cid10/gerar.py baixar "$RUNNER_TEMP/cid"
+      - name: Gerar o arquivo compacto
+        run: python3 -I scripts/cid10/gerar.py gerar "$RUNNER_TEMP/cid/CID10CSV.zip" "$RUNNER_TEMP/saida"
+      - name: Publicar no ramo dados/cid10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/saida"
+          cat > LEIAME.txt <<'TXT'
+          CID-10 (Classificação Estatística Internacional de Doenças e Problemas Relacionados à Saúde, 10ª revisão).
+          Fonte: DATASUS - Ministério da Saúde, arquivo CID10CSV.zip (versão 2008), www2.datasus.gov.br/cid10/V2008.
+          Autoria: Organização Mundial da Saúde (OMS); tradução: Centro Colaborador da OMS para a Classificação de
+          Doenças em Português (CBCD/FSP-USP). Distribuição gratuita, com os créditos acima.
+          Só o que está no arquivo oficial: código sem ponto (A00 = categoria; A000 = subcategoria A00.0), capítulo,
+          restrição por sexo (F/M), descrição e descrição abreviada. resumo.json traz as contagens e o SHA-256.
+          TXT
+          git init -q -b dados/cid10
+          git add -A .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -qm "CID-10 do DATASUS (execução ${GITHUB_RUN_NUMBER})"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/dados/cid10"
+          echo "::notice title=CID-10: publicado::ramo dados/cid10, $(wc -l < cid10.tsv) linhas, $(wc -c < cid10.tsv) bytes, $(tr -d '\n ' < resumo.json)"
