@@ -24,6 +24,7 @@
 <link rel="stylesheet" href="assets/vendor/fa/css/icones.min.css">
 <link rel="stylesheet" href="assets/css/perto.css">
 <link rel="stylesheet" href="assets/css/tele.css">
+<link rel="stylesheet" href="assets/css/ws.css">
 <link rel="stylesheet" href="assets/css/rodape.css">
 </head>
 <body class="tl-page md-page">
@@ -197,8 +198,32 @@
           <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="cBackYes">Sair e descartar o rascunho</button><button class="btn btn-ghost btn-sm" type="button" id="cBackNo">Voltar</button></div>
         </div>
       </div>
-      <div class="md-grid">
-        <div class="md-col">
+      <div class="md-grid ws-grid" id="wsGrid">
+        <div class="ws-abas" id="wsAbas" role="group" aria-label="Mostrar na tela (o vídeo continua)">
+          <button type="button" class="ws-aba" data-ws-mostra="tudo" aria-pressed="true">Tudo</button>
+          <button type="button" class="ws-aba" data-ws-mostra="pac" aria-pressed="false">Paciente</button>
+          <button type="button" class="ws-aba" data-ws-mostra="reg" aria-pressed="false">Prontuário</button>
+          <button type="button" class="ws-aba" data-ws-mostra="msg" aria-pressed="false">Mensagens</button>
+          <button type="button" class="ws-aba" data-ws-mostra="fer" aria-pressed="false">Exames e documentos</button>
+        </div>
+        <aside class="ws-pane ws-pac" id="wsPac" aria-label="Paciente e linha do tempo">
+          <button class="ws-recolher" type="button" id="wsPacBtn" aria-expanded="true" aria-controls="wsPacBody"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i><span>Recolher a coluna do paciente</span></button>
+          <div class="md-col ws-body" id="wsPacBody">
+            <div class="tl-card md-patient" id="cPatient" data-ws-aba="pac" aria-labelledby="cPatTitle">
+              <h3 id="cPatTitle">Paciente</h3>
+              <div id="cPatBox"></div>
+            </div>
+
+            <section class="tl-card ws-hist" id="wsHist" data-ws-aba="pac" aria-labelledby="wsHistTitle">
+              <h3 id="wsHistTitle">Linha do tempo</h3>
+              <div class="ws-filtros" id="wsFiltros" role="group" aria-label="Mostrar na linha do tempo"></div>
+              <ol class="ws-tempo" id="wsTempo" aria-live="polite"></ol>
+              <p class="tl-small" id="wsTempoNota"></p>
+            </section>
+          </div>
+        </aside>
+        <div class="ws-split" id="wsSplitPac" role="separator" aria-orientation="vertical" aria-controls="wsPac" aria-label="Largura da coluna do paciente" aria-valuemin="200" aria-valuemax="480" aria-valuenow="280" tabindex="0"></div>
+        <div class="md-col ws-pane ws-cons" id="wsCons">
           <div class="tl-card" id="cVideoCard">
             <div class="tl-stage" id="cStage">
               <video id="cRemote" class="tl-remote" playsinline autoplay aria-label="Vídeo do paciente"></video>
@@ -224,97 +249,105 @@
             </div>
           </div>
 
-          <div class="tl-card md-patient" id="cPatient" aria-labelledby="cPatTitle">
-            <h3 id="cPatTitle">Paciente</h3>
-            <div id="cPatBox"></div>
-          </div>
-
-          <div class="tl-card tl-chat" id="cChat" aria-labelledby="cChatTitle">
-            <h3 id="cChatTitle">Mensagens com o paciente</h3>
-            <ol class="tl-msgs" id="cMsgs" role="log" aria-live="polite" aria-label="Mensagens da consulta"></ol>
-            <form class="tl-chatform" id="cChatForm" novalidate>
-              <label class="sr" for="cChatText">Mensagem para o paciente</label>
-              <textarea id="cChatText" rows="2" maxlength="1000" placeholder="Escreva uma mensagem para o paciente"></textarea>
-              <button class="btn btn-primary" type="submit" id="cChatBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar</button>
-            </form>
-            <p class="tl-msg err" id="cChatErr" role="alert"></p>
-          </div>
-        </div>
-
-        <div class="md-col">
-          <div class="tl-card md-exams" id="cExams" aria-labelledby="cExTitle">
-            <h3 id="cExTitle">Pedido de exames</h3>
-            <div class="fld"><label for="exSearch">Buscar exame</label><input id="exSearch" type="search" placeholder="Ex.: hemograma, tórax, tireoide" autocomplete="off" aria-describedby="exHits"><small class="h" id="exHits" aria-live="polite"></small></div>
-            <div class="md-catalog" id="exCatalog"></div>
-            <fieldset class="md-other">
-              <legend>Outro exame (texto livre)</legend>
-              <div class="fld"><label for="exOther">Nome do exame</label><input id="exOther" maxlength="120"></div>
-              <div class="fld"><label for="exOtherType">Tipo, para achar locais perto do paciente <small class="h">(opcional)</small></label><select id="exOtherType"><option value="">Nenhum</option></select></div>
-              <button class="btn btn-ghost btn-sm" type="button" id="exOtherAdd"><i class="fa-solid fa-plus" aria-hidden="true"></i>Adicionar</button>
-              <span class="err" id="exOtherErr" role="alert"></span>
-            </fieldset>
-            <h4>Exames escolhidos (<span id="exCount">0</span>)</h4>
-            <ol class="md-chosen" id="exChosen"></ol>
-            <div class="fld"><label for="exInd">Indicação clínica</label><textarea id="exInd" rows="2" maxlength="1000"></textarea></div>
-            <div class="tl-row"><button class="btn btn-primary" type="button" id="exSend"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar exames ao paciente</button></div>
-            <p class="tl-small" id="cExNote" hidden>A consulta saiu do ar: os exames escolhidos vão junto quando você tocar em “Registrar e encerrar”.</p>
-            <p class="tl-msg" id="exMsg" role="status"></p>
-          </div>
-
-          <div class="tl-card md-docs" id="cDocs" aria-labelledby="cDocsTitle">
-            <h3 id="cDocsTitle" tabindex="-1">Documentos</h3>
-            <p class="tl-small">O IMED monta o documento com os dados obrigatórios e um código de conferência. Você gera o PDF, assina com o seu certificado ICP-Brasil, fora do IMED, e envia o PDF assinado. O paciente vê o rascunho na hora e baixa o PDF assinado quando você enviar.</p>
-            <details class="md-help">
-              <summary>Como assinar o PDF</summary>
-              <ol>
-                <li>No documento emitido, toque em “Gerar PDF para assinar” e guarde o arquivo.</li>
-                <li>Assine com o seu certificado digital ICP-Brasil (assinatura qualificada): no Assinador SERPRO (opção “Assinar PDF”), no Adobe Acrobat Reader (“Usar um certificado”) ou no programa do seu certificado em nuvem. O CFM oferece certificado ICP-Brasil em nuvem gratuito: peça no CRM Virtual.</li>
-                <li>A assinatura do gov.br é “avançada”, não “qualificada”: não serve para atestado, e o CFM pede a qualificada nos documentos eletrônicos.</li>
-                <li>Confira o arquivo assinado em <a class="link" href="https://validar.iti.gov.br/" target="_blank" rel="noopener">validar.iti.gov.br<span class="sr"> (abre em outra aba)</span></a>: o resultado deve ser “Aprovado”. Depois de assinar, não edite, não comprima e não imprima o PDF: qualquer mudança quebra a assinatura.</li>
-                <li>Toque em “Enviar PDF assinado” (arquivo .pdf de até 3 MB, até 7 dias depois de emitir). Cada documento recebe um PDF assinado só, que não pode ser trocado: para corrigir, cancele e emita outro. O IMED só aceita o PDF gerado para aquele documento (ele traz o código).</li>
-              </ol>
-            </details>
-            <p class="md-note" id="dState" hidden></p>
-            <div id="dPre">
-              <section class="md-dbox" id="dProf" aria-labelledby="dProfT">
-                <h4 id="dProfT">Seu endereço e contato profissionais</h4>
-                <p class="tl-small md-profsum" id="dProfSum"></p>
-                <div id="dProfForm"></div>
-              </section>
-              <section class="md-dbox" id="dPat" aria-labelledby="dPatT">
-                <h4 id="dPatT">Dados do paciente para os documentos</h4>
-                <p class="tl-small">Pergunte na chamada. O paciente também pode preencher na página dele.</p>
-                <div class="fld"><label for="dCpf">CPF do paciente</label><input id="dCpf" inputmode="numeric" maxlength="14" autocomplete="off" aria-describedby="dCpfErr"><span class="err" id="dCpfErr"></span></div>
-                <label class="tl-check"><input type="checkbox" id="dNoCpf"><span>O paciente não possui CPF</span></label>
-                <div class="fld"><label for="dAddr">Endereço do paciente</label><textarea id="dAddr" rows="2" maxlength="200" aria-describedby="dAddrH dAddrErr"></textarea><small class="h" id="dAddrH">Receita: endereço residencial completo (rua, número, bairro, cidade/UF), exigido por lei. Outros documentos: pode ser só a cidade/UF onde o paciente está agora.</small><span class="err" id="dAddrErr"></span></div>
-                <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="dPatSave">Salvar dados do paciente</button></div>
-                <p class="tl-msg" id="dPatMsg" role="status"></p>
-              </section>
-              <label class="consent md-idok"><input type="checkbox" id="dIdOk"><span>Conferi na câmera um documento oficial com foto e o CPF do paciente (e do responsável, se for o caso), sem gravar nem fotografar (Res. CFM 2.381/2024). A data e a hora da conferência ficam registradas no prontuário.</span></label>
+          <section class="tl-card ws-reg" id="wsReg" data-ws-aba="reg" aria-labelledby="wsRegTitle">
+            <div class="ws-reghead">
+              <h3 id="wsRegTitle" tabindex="-1">Prontuário</h3>
+              <p class="ws-salvo" id="wsSalvo" role="status" aria-live="polite"></p>
             </div>
-            <div class="md-dtabs" role="tablist" aria-label="Tipo de documento" id="dTabs"></div>
-            <div id="dPanels"></div>
-            <h4>Emitidos nesta consulta (<span id="dCount">0</span>)</h4>
-            <ol class="md-dlist" id="dList"></ol>
-            <p class="tl-msg" id="dMsg" role="status"></p>
-          </div>
-
-          <div class="tl-card md-record" id="cRecord" aria-labelledby="cRecTitle">
-            <h3 id="cRecTitle">Orientações e registro</h3>
-            <div class="fld"><label for="cGuide">Orientações ao paciente <small class="h">(o paciente vê no resumo)</small></label><textarea id="cGuide" rows="4" maxlength="4000"></textarea></div>
-            <div class="md-notes-old" id="cOldNotes" hidden></div>
-            <div class="fld"><label for="cNotes" id="cNotesLbl">Registro da consulta (prontuário)</label><textarea id="cNotes" rows="8" maxlength="20000" aria-describedby="hNotes"></textarea>
-              <small class="h" id="hNotes">Privado: só você e a equipe médica do IMED abrem (cada acesso da equipe fica anotado). Registre motivo, história, hipóteses, conduta, orientações, exames, encaminhamentos e se a consulta continuou por telefone ou mensagem. Mudanças em exames e orientações já enviados ficam guardadas com a versão anterior.</small></div>
-            <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="cTpl">Inserir roteiro</button><button class="btn btn-ghost btn-sm" type="button" id="cPhoneNote">Registrar: continuou por telefone ou mensagem</button></div>
-            <div class="tl-row md-endrow"><button class="btn btn-coral" type="button" id="cEnd"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i><span>Encerrar consulta</span></button></div>
-            <div class="tl-confirm" id="cEndConfirm" role="group" aria-labelledby="cEndQ" hidden>
-              <p id="cEndQ">Encerrar a consulta? O vídeo é desligado e o paciente vê as orientações e os exames enviados. Você pode complementar em até 24 horas.</p>
-              <div class="md-draftwarn" id="cEndDocs" hidden></div>
-              <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="cEndYes">Sim, encerrar</button><button class="btn btn-ghost btn-sm" type="button" id="cEndNo">Voltar</button></div>
-            </div>
-            <p class="bk-err" id="cEndErr" role="alert"></p>
-          </div>
+            <p class="tl-small ws-assin" id="wsAssin">Registro não assinado digitalmente. Só você e a equipe médica do IMED (com justificativa registrada) abrem este registro.</p>
+            <div id="wsRegBox"><p class="tl-load"><span class="spin" aria-hidden="true"></span>Carregando o prontuário…</p></div>
+          </section>
         </div>
+        <div class="ws-split" id="wsSplitFer" role="separator" aria-orientation="vertical" aria-controls="wsFer" aria-label="Largura da coluna de ferramentas" aria-valuemin="280" aria-valuemax="640" aria-valuenow="400" tabindex="0"></div>
+        <aside class="ws-pane ws-fer" id="wsFer" aria-label="Ferramentas da consulta">
+          <button class="ws-recolher" type="button" id="wsFerBtn" aria-expanded="true" aria-controls="wsFerBody"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i><span>Recolher a coluna de ferramentas</span></button>
+          <div class="md-col ws-body" id="wsFerBody">
+            <div class="tl-card tl-chat" id="cChat" data-ws-aba="msg" aria-labelledby="cChatTitle">
+              <h3 id="cChatTitle">Mensagens com o paciente</h3>
+              <ol class="tl-msgs" id="cMsgs" role="log" aria-live="polite" aria-label="Mensagens da consulta"></ol>
+              <form class="tl-chatform" id="cChatForm" novalidate>
+                <label class="sr" for="cChatText">Mensagem para o paciente</label>
+                <textarea id="cChatText" rows="2" maxlength="1000" placeholder="Escreva uma mensagem para o paciente"></textarea>
+                <button class="btn btn-primary" type="submit" id="cChatBtn"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar</button>
+              </form>
+              <p class="tl-msg err" id="cChatErr" role="alert"></p>
+            </div>
+
+            <div class="tl-card md-exams" id="cExams" data-ws-aba="fer" aria-labelledby="cExTitle">
+              <h3 id="cExTitle">Pedido de exames</h3>
+              <div class="fld"><label for="exSearch">Buscar exame</label><input id="exSearch" type="search" placeholder="Ex.: hemograma, tórax, tireoide" autocomplete="off" aria-describedby="exHits"><small class="h" id="exHits" aria-live="polite"></small></div>
+              <div class="md-catalog" id="exCatalog"></div>
+              <fieldset class="md-other">
+                <legend>Outro exame (texto livre)</legend>
+                <div class="fld"><label for="exOther">Nome do exame</label><input id="exOther" maxlength="120"></div>
+                <div class="fld"><label for="exOtherType">Tipo, para achar locais perto do paciente <small class="h">(opcional)</small></label><select id="exOtherType"><option value="">Nenhum</option></select></div>
+                <button class="btn btn-ghost btn-sm" type="button" id="exOtherAdd"><i class="fa-solid fa-plus" aria-hidden="true"></i>Adicionar</button>
+                <span class="err" id="exOtherErr" role="alert"></span>
+              </fieldset>
+              <h4>Exames escolhidos (<span id="exCount">0</span>)</h4>
+              <ol class="md-chosen" id="exChosen"></ol>
+              <div class="fld"><label for="exInd">Indicação clínica</label><textarea id="exInd" rows="2" maxlength="1000"></textarea></div>
+              <div class="tl-row"><button class="btn btn-primary" type="button" id="exSend"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i>Enviar exames ao paciente</button></div>
+              <p class="tl-small" id="cExNote" hidden>A consulta saiu do ar: os exames escolhidos vão junto quando você tocar em “Registrar e encerrar”.</p>
+              <p class="tl-msg" id="exMsg" role="status"></p>
+            </div>
+
+            <div class="tl-card md-docs" id="cDocs" data-ws-aba="fer" aria-labelledby="cDocsTitle">
+              <h3 id="cDocsTitle" tabindex="-1">Documentos</h3>
+              <p class="tl-small">O IMED monta o documento com os dados obrigatórios e um código de conferência. Você gera o PDF, assina com o seu certificado ICP-Brasil, fora do IMED, e envia o PDF assinado. O paciente vê o rascunho na hora e baixa o PDF assinado quando você enviar.</p>
+              <details class="md-help">
+                <summary>Como assinar o PDF</summary>
+                <ol>
+                  <li>No documento emitido, toque em “Gerar PDF para assinar” e guarde o arquivo.</li>
+                  <li>Assine com o seu certificado digital ICP-Brasil (assinatura qualificada): no Assinador SERPRO (opção “Assinar PDF”), no Adobe Acrobat Reader (“Usar um certificado”) ou no programa do seu certificado em nuvem. O CFM oferece certificado ICP-Brasil em nuvem gratuito: peça no CRM Virtual.</li>
+                  <li>A assinatura do gov.br é “avançada”, não “qualificada”: não serve para atestado, e o CFM pede a qualificada nos documentos eletrônicos.</li>
+                  <li>Confira o arquivo assinado em <a class="link" href="https://validar.iti.gov.br/" target="_blank" rel="noopener">validar.iti.gov.br<span class="sr"> (abre em outra aba)</span></a>: o resultado deve ser “Aprovado”. Depois de assinar, não edite, não comprima e não imprima o PDF: qualquer mudança quebra a assinatura.</li>
+                  <li>Toque em “Enviar PDF assinado” (arquivo .pdf de até 3 MB, até 7 dias depois de emitir). Cada documento recebe um PDF assinado só, que não pode ser trocado: para corrigir, cancele e emita outro. O IMED só aceita o PDF gerado para aquele documento (ele traz o código).</li>
+                </ol>
+              </details>
+              <p class="md-note" id="dState" hidden></p>
+              <div id="dPre">
+                <section class="md-dbox" id="dProf" aria-labelledby="dProfT">
+                  <h4 id="dProfT">Seu endereço e contato profissionais</h4>
+                  <p class="tl-small md-profsum" id="dProfSum"></p>
+                  <div id="dProfForm"></div>
+                </section>
+                <section class="md-dbox" id="dPat" aria-labelledby="dPatT">
+                  <h4 id="dPatT">Dados do paciente para os documentos</h4>
+                  <p class="tl-small">Pergunte na chamada. O paciente também pode preencher na página dele.</p>
+                  <div class="fld"><label for="dCpf">CPF do paciente</label><input id="dCpf" inputmode="numeric" maxlength="14" autocomplete="off" aria-describedby="dCpfErr"><span class="err" id="dCpfErr"></span></div>
+                  <label class="tl-check"><input type="checkbox" id="dNoCpf"><span>O paciente não possui CPF</span></label>
+                  <div class="fld"><label for="dAddr">Endereço do paciente</label><textarea id="dAddr" rows="2" maxlength="200" aria-describedby="dAddrH dAddrErr"></textarea><small class="h" id="dAddrH">Receita: endereço residencial completo (rua, número, bairro, cidade/UF), exigido por lei. Outros documentos: pode ser só a cidade/UF onde o paciente está agora.</small><span class="err" id="dAddrErr"></span></div>
+                  <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="dPatSave">Salvar dados do paciente</button></div>
+                  <p class="tl-msg" id="dPatMsg" role="status"></p>
+                </section>
+                <label class="consent md-idok"><input type="checkbox" id="dIdOk"><span>Conferi na câmera um documento oficial com foto e o CPF do paciente (e do responsável, se for o caso), sem gravar nem fotografar (Res. CFM 2.381/2024). A data e a hora da conferência ficam registradas no prontuário.</span></label>
+              </div>
+              <div class="md-dtabs" role="tablist" aria-label="Tipo de documento" id="dTabs"></div>
+              <div id="dPanels"></div>
+              <h4>Emitidos nesta consulta (<span id="dCount">0</span>)</h4>
+              <ol class="md-dlist" id="dList"></ol>
+              <p class="tl-msg" id="dMsg" role="status"></p>
+            </div>
+
+            <div class="tl-card md-record" id="cRecord" data-ws-aba="fer" aria-labelledby="cRecTitle">
+              <h3 id="cRecTitle">Orientações e registro</h3>
+              <div class="fld"><label for="cGuide">Orientações ao paciente <small class="h">(o paciente vê no resumo)</small></label><textarea id="cGuide" rows="4" maxlength="4000"></textarea></div>
+              <div class="md-notes-old" id="cOldNotes" hidden></div>
+              <div class="fld"><label for="cNotes" id="cNotesLbl">Registro da consulta (prontuário)</label><textarea id="cNotes" rows="8" maxlength="20000" aria-describedby="hNotes"></textarea>
+                <small class="h" id="hNotes">Privado: só você e a equipe médica do IMED abrem (cada acesso da equipe fica anotado). Registre motivo, história, hipóteses, conduta, orientações, exames, encaminhamentos e se a consulta continuou por telefone ou mensagem. Mudanças em exames e orientações já enviados ficam guardadas com a versão anterior.</small></div>
+              <div class="tl-row"><button class="btn btn-ghost btn-sm" type="button" id="cTpl">Inserir roteiro</button><button class="btn btn-ghost btn-sm" type="button" id="cPhoneNote">Registrar: continuou por telefone ou mensagem</button></div>
+              <div class="tl-row md-endrow"><button class="btn btn-coral" type="button" id="cEnd"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i><span>Encerrar consulta</span></button></div>
+              <div class="tl-confirm" id="cEndConfirm" role="group" aria-labelledby="cEndQ" hidden>
+                <p id="cEndQ">Encerrar a consulta? O vídeo é desligado e o paciente vê as orientações e os exames enviados. Você pode complementar em até 24 horas.</p>
+                <div class="md-draftwarn" id="cEndDocs" hidden></div>
+                <p class="md-draftwarn ws-endnote" id="wsEndNote" hidden></p>
+                <div class="tl-row"><button class="btn btn-coral btn-sm" type="button" id="cEndYes">Sim, encerrar</button><button class="btn btn-ghost btn-sm" type="button" id="cEndNo">Voltar</button></div>
+              </div>
+              <p class="bk-err" id="cEndErr" role="alert"></p>
+            </div>
+          </div>
+        </aside>
       </div>
     </section>
 

@@ -1,0 +1,126 @@
+/* Workspace do médico (iMed Medical Workspace, fase 2): 3 colunas na consulta (paciente | consulta com o vídeo |
+   ferramentas), redimensionáveis e recolhíveis no computador; no celular, uma coluna com botões "Mostrar" que nunca
+   escondem nem movem o vídeo. Prontuário (registro clínico) e linha do tempo. Só tokens do tema (assets/css/tema.css):
+   claro e escuro sem regra própria. Os <video> (#cRemote, #cLocal) nunca mudam de lugar: tudo aqui é CSS. */
+
+/* ---------- consulta mais larga no computador ---------- */
+@media (min-width:1024px){
+  body[data-view="consult"] .md .tl-wrap{max-width:1640px}
+}
+
+/* ---------- celular e tablet: uma coluna, vídeo sempre em cima ---------- */
+.md-grid.ws-grid{display:flex;flex-direction:column;gap:16px;min-width:0}
+.ws-grid .ws-pane,.ws-grid .ws-body{display:contents}
+.ws-grid #cVideoCard{order:-2}
+.ws-abas{order:-1;display:flex;flex-wrap:wrap;gap:6px}
+.ws-aba{min-height:44px;padding:8px 12px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font-weight:700;font-size:14px;cursor:pointer}
+.ws-aba[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.ws-aba:focus-visible,.ws-filtro:focus-visible,.ws-recolher:focus-visible,.ws-split:focus-visible{outline:3px solid var(--focus);outline-offset:2px;box-shadow:0 0 0 2px var(--focus-halo)}
+.ws-split,.ws-recolher{display:none}
+/* Botão "Mostrar": só o escolhido aparece; o vídeo (sem data-ws-aba) fica sempre, compacto e preso no alto. */
+@media (max-width:1023.98px){
+  .ws-grid[data-ws-mostra="pac"] [data-ws-aba]:not([data-ws-aba="pac"]),
+  .ws-grid[data-ws-mostra="reg"] [data-ws-aba]:not([data-ws-aba="reg"]),
+  .ws-grid[data-ws-mostra="msg"] [data-ws-aba]:not([data-ws-aba="msg"]),
+  .ws-grid[data-ws-mostra="fer"] [data-ws-aba]:not([data-ws-aba="fer"]){display:none}
+  .ws-grid[data-ws-mostra]:not([data-ws-mostra="tudo"]) #cVideoCard{position:sticky;top:0;z-index:5;padding:10px}
+  .ws-grid[data-ws-mostra]:not([data-ws-mostra="tudo"]) #cVideoCard .tl-stage{max-height:30vh;margin-top:0;aspect-ratio:16/10}
+}
+
+/* ---------- computador: 3 colunas ---------- */
+@media (min-width:1024px){
+  .md-grid.ws-grid{display:grid;align-items:start;gap:0;
+    grid-template-columns:var(--ws-pac,280px) 14px minmax(360px,1fr) 14px var(--ws-fer,400px)}
+  .ws-abas{display:none}
+  .ws-grid #cVideoCard{order:0}
+  .ws-grid .ws-pane{display:block;min-width:0}
+  .ws-grid .ws-body{display:grid;gap:16px;min-width:0}
+  .ws-grid .ws-cons{display:grid;gap:16px}
+  .ws-split{display:block;align-self:stretch;min-height:120px;position:relative;cursor:col-resize;border-radius:8px;touch-action:none}
+  .ws-split::before{content:"";position:absolute;left:6px;top:8px;bottom:8px;width:2px;border-radius:2px;background:var(--line)}
+  .ws-split:hover::before,.ws-split.ativo::before,.ws-split:focus-visible::before{background:var(--primary);width:4px;left:5px}
+  .ws-recolher{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;margin-bottom:10px;padding:8px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--muted);font-weight:700;font-size:13px;cursor:pointer;text-align:left}
+  .ws-recolher:hover{color:var(--ink);background:var(--bg2)}
+  /* coluna recolhida: vira uma faixa estreita só com o botão de abrir */
+  .ws-grid[data-pac="fechado"]{--ws-pac:52px}
+  .ws-grid[data-fer="fechado"]{--ws-fer:52px}
+  .ws-grid[data-pac="fechado"] #wsPacBody,.ws-grid[data-fer="fechado"] #wsFerBody{display:none}
+  .ws-grid[data-pac="fechado"] #wsSplitPac,.ws-grid[data-fer="fechado"] #wsSplitFer{visibility:hidden}
+  .ws-grid[data-pac="fechado"] #wsPacBtn span,.ws-grid[data-fer="fechado"] #wsFerBtn span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .ws-grid[data-pac="fechado"] #wsPacBtn,.ws-grid[data-fer="fechado"] #wsFerBtn{justify-content:center;min-height:120px;padding:8px 0}
+  .ws-grid[data-pac="fechado"] #wsPacBtn i,.ws-grid[data-fer="fechado"] #wsFerBtn i{transform:rotate(180deg)}
+}
+@media (min-width:1024px) and (max-width:1279.98px){
+  .md-grid.ws-grid{grid-template-columns:var(--ws-pac,240px) 14px minmax(340px,1fr) 14px var(--ws-fer,360px)}
+}
+
+/* ---------- prontuário ---------- */
+.ws-reghead{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
+.ws-reghead h3{margin:0}
+.ws-salvo{font-size:13px;font-weight:700;color:var(--muted);margin:0}
+.ws-salvo.ok{color:var(--tl-ok-t)}
+.ws-salvo.warn{color:var(--tl-warn-t)}
+.ws-salvo.err{color:var(--tl-err-t)}
+.ws-assin{margin-top:6px}
+.ws-reg .md-dtabs{margin-top:12px}
+.ws-painel{margin-top:6px}
+.ws-painel .fld{margin-top:12px}
+.ws-painel textarea{min-height:64px}
+.ws-grade{display:grid;gap:0 12px;grid-template-columns:minmax(0,1fr)}
+@media (min-width:700px){.ws-grade.dois{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.ws-nota{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--bg2);color:var(--text);font-size:13.5px;line-height:1.5}
+.ws-alerta{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--gold-s);color:var(--tl-note-t);font-size:14px;line-height:1.5}
+.ws-alerta .tl-row{margin-top:8px}
+
+/* sinais vitais */
+.ws-meds{list-style:none;display:grid;gap:8px;margin:12px 0 0;padding:0}
+.ws-med{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.ws-med b{color:var(--ink)}
+.ws-origem{display:inline-block;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--primary-s);color:var(--ink);overflow-wrap:anywhere;white-space:normal}
+.ws-medform{margin-top:12px;padding:12px;border:1px dashed var(--line2);border-radius:14px}
+.ws-medform legend{font-weight:700;color:var(--ink);font-size:14px;padding:0 4px}
+.ws-imc{margin-top:10px;font-size:14px;line-height:1.5;color:var(--text)}
+
+/* CID-10 */
+.ws-cid{position:relative}
+.ws-cidlista{list-style:none;margin:6px 0 0;padding:4px;border:1px solid var(--line2);border-radius:12px;background:var(--elev);box-shadow:var(--sh2);max-height:280px;overflow:auto}
+.ws-cidlista:empty{display:none}
+.ws-cidop{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;line-height:1.4;color:var(--text);overflow-wrap:anywhere}
+.ws-cidop b{color:var(--ink);margin-right:6px}
+.ws-cidop[aria-selected="true"],.ws-cidop:hover{background:var(--primary-s)}
+.ws-diags{list-style:none;display:grid;gap:10px;margin:12px 0 0;padding:0}
+.ws-diag{padding:10px 12px;border:1px solid var(--line);border-radius:12px}
+.ws-diag p{margin:0 0 6px;overflow-wrap:anywhere}
+.ws-diag .ws-grade{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+.ws-diag select{width:100%}
+
+/* evolução */
+.ws-modo{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;border:0;padding:0}
+.ws-modo legend{font-weight:700;color:var(--ink);font-size:14px;margin-bottom:6px}
+.ws-modo label{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:8px 14px;border:1px solid var(--line2);border-radius:999px;cursor:pointer;font-weight:700;font-size:14px;color:var(--ink)}
+.ws-modo input{accent-color:var(--primary);width:18px;height:18px}
+
+/* pré-visualização e registro finalizado */
+.ws-prev{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--bg2)}
+.ws-prev h4{margin:14px 0 4px;font-size:15px;color:var(--ink)}
+.ws-prev h4:first-child{margin-top:0}
+.ws-prev p,.ws-prev li{font-size:14.5px;line-height:1.55;color:var(--text);overflow-wrap:anywhere}
+.ws-prev ul{margin:4px 0 0;padding-left:18px}
+.ws-prev .ws-hash{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.ws-fim{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--green-s);color:var(--tl-ok-t);font-weight:700;font-size:14px}
+.ws-adendos{list-style:none;display:grid;gap:10px;margin:12px 0 0;padding:0}
+.ws-adendo{padding:10px 12px;border-left:4px solid var(--primary);border-radius:8px;background:var(--card)}
+.ws-adendo p{margin:0;overflow-wrap:anywhere}
+
+/* ---------- linha do tempo ---------- */
+.ws-filtros{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.ws-filtro{min-height:36px;padding:6px 11px;border-radius:999px;border:1px solid var(--line2);background:var(--card);color:var(--ink);font-weight:700;font-size:13px;cursor:pointer}
+.ws-filtro[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.ws-tempo{list-style:none;margin:12px 0 0;padding:0 0 0 14px;border-left:2px solid var(--line);display:grid;gap:10px}
+.ws-tempo li{position:relative;font-size:14px;line-height:1.45;color:var(--text);overflow-wrap:anywhere}
+.ws-tempo li::before{content:"";position:absolute;left:-20px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--primary);box-shadow:0 0 0 3px var(--card)}
+.ws-tempo time{display:block;font-size:12.5px;font-weight:700;color:var(--muted)}
+.ws-tempo .tl-small{margin:4px 0 0}
+.ws-tempo .btn{margin-top:6px}
+
+@media print{.ws-split,.ws-recolher,.ws-abas{display:none!important}}

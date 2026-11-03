@@ -249,29 +249,29 @@ revoke all on function private.ws_guard() from public, anon, authenticated, serv
 revoke all on function private.ws_so_acrescimo() from public, anon, authenticated, service_role;
 revoke all on function private.ws_filha_guard() from public, anon, authenticated, service_role;
 
-create trigger evolucoes_guard before update or delete on prontuario.evolucoes
+create or replace trigger evolucoes_guard before update or delete on prontuario.evolucoes
   for each row execute function private.ws_guard();
-create trigger evolucoes_guard_truncate before truncate on prontuario.evolucoes
+create or replace trigger evolucoes_guard_truncate before truncate on prontuario.evolucoes
   for each statement execute function private.ws_guard();
-create trigger medidas_guard before insert or update or delete on prontuario.medidas
+create or replace trigger medidas_guard before insert or update or delete on prontuario.medidas
   for each row execute function private.ws_filha_guard();
-create trigger medidas_guard_truncate before truncate on prontuario.medidas
+create or replace trigger medidas_guard_truncate before truncate on prontuario.medidas
   for each statement execute function private.ws_so_acrescimo();
-create trigger diagnosticos_guard before insert or update or delete on prontuario.diagnosticos
+create or replace trigger diagnosticos_guard before insert or update or delete on prontuario.diagnosticos
   for each row execute function private.ws_filha_guard();
-create trigger diagnosticos_guard_truncate before truncate on prontuario.diagnosticos
+create or replace trigger diagnosticos_guard_truncate before truncate on prontuario.diagnosticos
   for each statement execute function private.ws_so_acrescimo();
-create trigger evolucao_versoes_guard before update or delete on prontuario.evolucao_versoes
+create or replace trigger evolucao_versoes_guard before update or delete on prontuario.evolucao_versoes
   for each row execute function private.ws_so_acrescimo();
-create trigger evolucao_versoes_guard_truncate before truncate on prontuario.evolucao_versoes
+create or replace trigger evolucao_versoes_guard_truncate before truncate on prontuario.evolucao_versoes
   for each statement execute function private.ws_so_acrescimo();
-create trigger trilha_acesso_guard before update or delete on prontuario.trilha_acesso
+create or replace trigger trilha_acesso_guard before update or delete on prontuario.trilha_acesso
   for each row execute function private.ws_so_acrescimo();
-create trigger trilha_acesso_guard_truncate before truncate on prontuario.trilha_acesso
+create or replace trigger trilha_acesso_guard_truncate before truncate on prontuario.trilha_acesso
   for each statement execute function private.ws_so_acrescimo();
-create trigger trilha_escrita_guard before update or delete on prontuario.trilha_escrita
+create or replace trigger trilha_escrita_guard before update or delete on prontuario.trilha_escrita
   for each row execute function private.ws_so_acrescimo();
-create trigger trilha_escrita_guard_truncate before truncate on prontuario.trilha_escrita
+create or replace trigger trilha_escrita_guard_truncate before truncate on prontuario.trilha_escrita
   for each statement execute function private.ws_so_acrescimo();
 -- As guardas valem sempre, também com session_replication_role = replica.
 alter table prontuario.evolucoes enable always trigger evolucoes_guard;
