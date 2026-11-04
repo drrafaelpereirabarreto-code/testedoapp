@@ -48,7 +48,7 @@
   `agenda_package_options` (anon/logado); `agenda_desk_book`, `agenda_desk_busy(_remove)`, `agenda_set_status` (logado);
   `agenda_hold/confirm/release` (só service_role). INSERT direto com `slot_start` → 23P01; `set_my_schedule` com faixas →
   `managed_by_agenda`. Job `imed-agenda-manutencao` (30 s, `call private.agenda_manutencao()`).
-- Agenda 3.4 (`..._agenda_painel_parte_1..3`; parte 1 na produção): leituras do painel só por função e permissão —
+- Agenda 3.4 (`..._agenda_painel_parte_1..3`, na produção): leituras do painel só por função e permissão —
   `agenda_me`, `agenda_version`, `agenda_view` (1–7 dias, "Maria S."), `agenda_month`, `agenda_search` (POST, ≥3 letras),
   `agenda_request_detail` (profissional sem telefone; equipe do IMED com justificativa), `agenda_history`, `agenda_dashboard`,
   `agenda_dashboard_financeiro`, `agenda_conflicts`/`_resolve`; leitura de paciente → `agenda.access_log`. Parte 2: equipe
