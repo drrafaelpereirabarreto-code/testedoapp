@@ -82,7 +82,11 @@ async function mapa3d(browser) {
       await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 90000 });
       if (await page.evaluate(() => document.body.dataset.hero) !== '3d') throw new Error('a página abriu a versão leve (sem o mapa 3D)');
       await page.waitForFunction(() => (window.HERO?.info?.().predios || 0) > 0, null, { timeout: 60000 });
-      await pausa(6000); // a câmera termina a entrada e as sombras longas chegam
+      await pausa(6000); // a câmera termina a entrada
+      // As sombras longas são calculadas aos pedaços entre um quadro e outro: sem placa de vídeo (aqui no GitHub) os
+      // quadros demoram e elas chegam depois.
+      await page.waitForFunction(() => (window.HERO?.info?.().sombras || 0) > 0, null, { timeout: 40000 }).catch(() => {});
+      await pausa(1500);
       if (tela === 'celular') { await page.evaluate(() => { const h = document.querySelector('#hero3d'); window.scrollTo(0, h.getBoundingClientRect().top + scrollY - 260); }); await pausa(1500); }
       const info = await page.evaluate(() => window.HERO.info());
       const pbf = ladrilhos.filter((l) => /\.pbf$/.test(l.url));
