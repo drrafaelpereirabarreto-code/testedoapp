@@ -14,7 +14,7 @@
 -- Fase 3.3: os pedidos da clínica parceira daqui são SEM horário (o com horário passou para 230_marcar.sql e
 -- 400_estados.sql); reabrir pela equipe um pedido sem horário cancelado pelo paciente: ok, como sempre foi.
 begin;
-select plan(49);
+select plan(50);
 
 -- Troca de papel como o PostgREST faz: role + request.jwt.claims (só até o fim da transação).
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
@@ -177,7 +177,10 @@ select is(public.set_request_status('b4000000-0000-4000-8000-000000000004', 'con
 select is(public.set_request_status('b4000000-0000-4000-8000-000000000004', 'nada'), 'invalid_status',
           'situação desconhecida: invalid_status');
 select is((select count(*)::int from public.appointment_requests where clinic_id = 'c1000000-0000-4000-8000-000000000001'),
-          2, 'membro da clínica lê os pedidos da clínica');
+          0, 'a partir da 4.2 a clínica não lê os pedidos direto pela REST (leitura fechada)');
+select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'requests'))
+           from (select public.agenda_requests('c1000000-0000-4000-8000-000000000001') as j) x),
+          'ok|2', 'membro da clínica lê os pedidos da clínica pela função agenda_requests (fica registrado)');
 select is((select count(*)::int from public.appointment_requests where id = 'b1000000-0000-4000-8000-000000000001'),
           0, 'membro da clínica não lê pedido de outro local');
 select is(public.set_request_status('b2000000-0000-4000-8000-000000000002', 'confirmed'), 'cancelled_by_patient',

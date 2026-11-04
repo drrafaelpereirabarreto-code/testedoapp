@@ -7,7 +7,7 @@
 -- A parte do WebSocket de verdade (entrar no canal) está em tests/banco/tempo-real.mjs.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(18);
+select plan(19);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -92,9 +92,20 @@ select is(array(select x from unnest(array[
     'member_role ' || (public.agenda_member_role(pg_temp.cb(), pg_temp.u(2), 'manager') ->> 'status'),
     'member_remove ' || (public.agenda_member_remove(pg_temp.cb(), pg_temp.u(2)) ->> 'status'),
     'set_status ' || (public.agenda_set_status(current_setting('teste.bb')::uuid, 'cancelled', 'clinica_indisponivel') ->> 'status'),
-    'cancel ' || (public.agenda_cancel(current_setting('teste.bb')::uuid, 'clinica_indisponivel') ->> 'status')]) x
+    'cancel ' || (public.agenda_cancel(current_setting('teste.bb')::uuid, 'clinica_indisponivel') ->> 'status'),
+    -- 4.2
+    'catalog ' || (public.agenda_catalog(pg_temp.cb()) ->> 'status'),
+    'free ' || (public.agenda_free(pg_temp.cb(), pg_temp.dia(), 1) ->> 'status'),
+    'desk_slots ' || (public.agenda_desk_slots(pg_temp.cb(), current_setting('teste.pb')::uuid, pg_temp.dia()) ->> 'status'),
+    'blocks ' || (public.agenda_blocks(pg_temp.cb()) ->> 'status'),
+    'requests ' || (public.agenda_requests(pg_temp.cb()) ->> 'status'),
+    'block_force ' || (public.agenda_block_force(pg_temp.cb(), null, (pg_temp.dia() + time '08:00') at time zone 'America/Sao_Paulo',
+                                                 (pg_temp.dia() + time '12:00') at time zone 'America/Sao_Paulo') ->> 'status'),
+    'block_force_confirm ' || (public.agenda_block_force(pg_temp.cb(), null, (pg_temp.dia() + time '08:00') at time zone 'America/Sao_Paulo',
+                                                 (pg_temp.dia() + time '12:00') at time zone 'America/Sao_Paulo', 'bloqueio', null, 'x') ->> 'status'),
+    'attend ' || (public.agenda_attend(current_setting('teste.bb')::uuid, 'checked_in') ->> 'status')]) x
   where x !~ ' (forbidden|not_found)$' order by 1), '{}'::text[],
-  'todas as funções do painel e da equipe com ids da clínica B respondem forbidden/not_found para a dona de A');
+  'todas as funções do painel, da equipe e da recepção (4.2) com ids da clínica B respondem forbidden/not_found para a dona de A');
 select pg_temp.entrar('postgres');
 select is((select concat_ws('|', status, (select count(*) from public.clinic_members where clinic_id = pg_temp.cb()),
                             (select status from agenda.member_invites where id = current_setting('teste.ib')::uuid))
@@ -108,9 +119,10 @@ select is((select count(*)::int from public.appointment_requests where clinic_id
 select throws_ok($$ select count(*) from agenda.appointment_items $$, '42501', null, 'REST: agenda.* negado');
 select throws_ok($$ select count(*) from agenda.member_invites $$, '42501', null, 'REST: convites negados');
 select pg_temp.como(3);
-select is((select count(*)::int from public.clinic_schedules where clinic_id = pg_temp.ca())
-          + (select count(*)::int from public.appointment_requests where clinic_id = pg_temp.ca()), 0,
-          'REST: o financeiro de A não lê pedidos (pedidos.ver) nem horários (agenda.ver) da própria clínica');
+select throws_ok($$ select count(*) from public.clinic_schedules where clinic_id = pg_temp.ca() $$, '42501', null,
+                 'REST: horários da clínica só pelas funções (a leitura direta fecha na 4.2)');
+select is((select count(*)::int from public.appointment_requests where clinic_id = pg_temp.ca()), 0,
+          'REST: o financeiro de A não lê os pedidos da própria clínica');
 
 /* ===================== Canal do Realtime ===================== */
 select pg_temp.como(1);
@@ -135,7 +147,11 @@ select is((select count(*)::int from pg_policies where schemaname = 'realtime' a
 /* ===================== Visitante ===================== */
 select is(array(select f from unnest(array['public.agenda_me()', 'public.agenda_view(uuid,date,integer)',
                   'public.agenda_request_detail(uuid,text)', 'public.agenda_search(uuid,text)', 'public.agenda_team(uuid)',
-                  'public.agenda_invite_accept(uuid)', 'public.agenda_realtime_ok(text)', 'public.agenda_version(uuid)']) f
+                  'public.agenda_invite_accept(uuid)', 'public.agenda_realtime_ok(text)', 'public.agenda_version(uuid)',
+                  'public.agenda_catalog(uuid)', 'public.agenda_free(uuid,date,integer)',
+                  'public.agenda_desk_slots(uuid,uuid,date,date,uuid,uuid)', 'public.agenda_blocks(uuid,date,date)',
+                  'public.agenda_requests(uuid,text,text)', 'public.agenda_block_force(uuid,uuid,timestamptz,timestamptz,text,text,text)',
+                  'public.agenda_attend(uuid,text,text,integer,uuid)']) f
                 where has_function_privilege('anon', f, 'EXECUTE')), '{}'::text[], 'visitante não executa nenhuma função do painel');
 
 select * from finish();

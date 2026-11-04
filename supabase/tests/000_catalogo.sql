@@ -209,6 +209,14 @@ insert into esperado_acl (fn, acl) values
     -- 4.1: ler a configuração e trocar a modalidade (só quem está logado; a função confere a permissão por dentro)
     ('agenda_config(uuid)', 'authenticated'),
     ('agenda_mode_set(uuid, text, boolean)', 'authenticated'),
+    -- 4.2: agenda visual e recepção (só quem está logado; cada função confere a permissão na clínica por dentro)
+    ('agenda_attend(uuid, text, text, integer, uuid)', 'authenticated'),
+    ('agenda_block_force(uuid, uuid, timestamp with time zone, timestamp with time zone, text, text, text)', 'authenticated'),
+    ('agenda_blocks(uuid, date, date)', 'authenticated'),
+    ('agenda_catalog(uuid)', 'authenticated'),
+    ('agenda_desk_slots(uuid, uuid, date, date, uuid, uuid)', 'authenticated'),
+    ('agenda_free(uuid, date, integer)', 'authenticated'),
+    ('agenda_requests(uuid, text, text)', 'authenticated'),
     ('admin_cobranca_salvar(jsonb)', 'authenticated'),
     ('admin_cobranca_status(uuid, text, text)', 'authenticated'),
     ('admin_gestao(integer)', 'authenticated'),

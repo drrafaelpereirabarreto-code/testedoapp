@@ -147,8 +147,9 @@ select is((select (o.hold_until - a.hold_expires_at)::text from agenda.occupancy
           'a ocupação segura até o prazo + a carência (5 min)');
 select ok(not ('09:00' = any (pg_temp.horas('rm'))), 'o horário reservado sai da lista');
 select pg_temp.dona();
-select is((select count(*)::integer from public.appointment_requests where id = pg_temp.pid(1)), 0,
-          'a clínica não vê a reserva na leitura direta (é da integração)');
+select is((select count(*)::integer from jsonb_array_elements(public.agenda_requests('c3210000-0000-4000-8000-000000000001') -> 'requests') r
+           where (r ->> 'id')::uuid = pg_temp.pid(1)), 0,
+          'a clínica não vê a reserva na lista de pedidos (é da integração)');
 select pg_temp.entrar('anon');
 select is(pg_temp.marcar(2, pg_temp.itens('rm', '09:00')) ->> 'status', 'slot_taken', 'outro paciente no horário reservado: slot_taken');
 select pg_temp.servidor();
@@ -159,7 +160,8 @@ select is((select concat_ws('|', a.status, coalesce(a.hold_expires_at::text, '-'
            from public.appointment_requests a join agenda.appointment_items i on i.request_id = a.id join agenda.occupancy o on o.item_id = i.id
            where a.id = pg_temp.pid(1)), 'confirmed|-|-|t', 'confirmado: sem prazo no cabeçalho nem na ocupação');
 select pg_temp.dona();
-select is((select count(*)::integer from public.appointment_requests where id = pg_temp.pid(1)), 1, 'confirmado, a clínica vê');
+select is((select count(*)::integer from jsonb_array_elements(public.agenda_requests('c3210000-0000-4000-8000-000000000001') -> 'requests') r
+           where (r ->> 'id')::uuid = pg_temp.pid(1)), 1, 'confirmado, a clínica vê (lista de pedidos pela função, 4.2)');
 
 /* ===================== Reserva vencida: liberação preguiçosa ===================== */
 select pg_temp.servidor();

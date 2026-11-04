@@ -161,9 +161,9 @@ select pg_temp.entrar('anon');
 select throws_ok($$ select pg_temp.balcao(pg_temp.itens('rm', '12:00'), 'Visitante') $$, '42501', null, 'visitante não executa o balcão');
 select pg_temp.admin();
 select set_config('teste.b2', pg_temp.balcao(pg_temp.itens('rm', '12:00'), 'Pela Equipe') ->> 'id', true);
+select pg_temp.entrar('postgres');
 select is((select a.channel from public.appointment_requests a where a.id = pg_temp.id('b2')), 'imed_equipe',
           'a equipe do IMED marca pelo canal imed_equipe');
-select pg_temp.entrar('postgres');
 select is((select count(*)::integer from public.appointment_requests where clinic_id = 'c3310000-0000-4000-8000-000000000001'), 3,
           'três agendamentos (nada duplicado)');
 

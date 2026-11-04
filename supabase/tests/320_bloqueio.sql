@@ -144,7 +144,8 @@ select is(public.agenda_block_add('c3320000-0000-4000-8000-000000000001', gen_ra
           'not_found', 'recurso de fora: not_found');
 
 /* ===================== Remover ===================== */
-select set_config('teste.manut', (select b.id::text from public.clinic_blocks b, pg_temp.id('rm1') r where b.resource_id = r), true);
+select set_config('teste.manut', (select b ->> 'id' from jsonb_array_elements(public.agenda_blocks('c3320000-0000-4000-8000-000000000001') -> 'blocks') b
+                                   where (b ->> 'resource_id')::uuid = pg_temp.id('rm1')), true);
 select is(public.agenda_block_remove(pg_temp.id('manut')) ->> 'status', 'ok', 'a dona tira a manutenção da RM-1');
 select pg_temp.entrar('postgres');
 select is(pg_temp.horas('pa'), array['08:00', '08:30', '09:00', '09:30', '10:00', '10:30'], 'os horários da RM-1 voltam');
@@ -166,11 +167,11 @@ select is((select count(*)::integer from agenda.occupancy where block_id = pg_te
           '... vira bloqueio da unidade (fechamento nos 2 recursos)');
 select ok(not '08:00' = any (pg_temp.horas('pb')), '... e o 08:00 some');
 select pg_temp.staff();
-select is((select count(*)::integer from public.clinic_blocks where clinic_id = 'c3320000-0000-4000-8000-000000000001'), 2,
-          'a recepção lê os 2 bloqueios ativos, não o removido (leitura direta, como o painel de hoje)');
+select is(jsonb_array_length(public.agenda_blocks('c3320000-0000-4000-8000-000000000001') -> 'blocks'), 2,
+          'a recepção lê os 2 bloqueios ativos, não o removido (pela função agenda_blocks; a leitura direta fecha na 4.2)');
 select is(public.remove_my_block(pg_temp.id('antigo')), 'ok', 'remove_my_block na agenda nova: ok');
-select is((select count(*)::integer from public.clinic_blocks where clinic_id = 'c3320000-0000-4000-8000-000000000001'), 1,
-          'a leitura direta não mostra o recém-removido');
+select is(jsonb_array_length(public.agenda_blocks('c3320000-0000-4000-8000-000000000001') -> 'blocks'), 1,
+          'a lista de bloqueios não mostra o recém-removido');
 select is(public.remove_my_block(pg_temp.id('antigo')), 'not_found', 'remover de novo: not_found (o painel de hoje aceita)');
 select pg_temp.entrar('postgres');
 select ok(exists (select 1 from public.clinic_blocks where id = pg_temp.id('antigo') and removed_at is not null)
