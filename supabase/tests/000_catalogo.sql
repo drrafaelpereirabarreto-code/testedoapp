@@ -206,6 +206,9 @@ insert into esperado_acl (fn, acl) values
     ('agenda_team(uuid)', 'authenticated'),
     ('agenda_version(uuid)', 'authenticated'),
     ('agenda_view(uuid, date, integer)', 'authenticated'),
+    -- 4.1: ler a configuração e trocar a modalidade (só quem está logado; a função confere a permissão por dentro)
+    ('agenda_config(uuid)', 'authenticated'),
+    ('agenda_mode_set(uuid, text, boolean)', 'authenticated'),
     ('admin_cobranca_salvar(jsonb)', 'authenticated'),
     ('admin_cobranca_status(uuid, text, text)', 'authenticated'),
     ('admin_gestao(integer)', 'authenticated'),
