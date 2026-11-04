@@ -214,7 +214,7 @@ main[tabindex="-1"]:focus{outline:none}
 .ac-sum dt{font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .ac-sum dd{color:var(--ink);font-size:14.5px;overflow-wrap:anywhere}
 .ac-toc{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-.ac-toc a{padding:6px 11px;border-radius:999px;border:1px solid var(--line2);font-size:13.5px;font-weight:600;color:var(--primary)}
+.ac-toc a{display:inline-flex;align-items:center;min-height:44px;padding:6px 13px;border-radius:999px;border:1px solid var(--line2);font-size:14px;font-weight:600;color:var(--primary)}
 .ac-toc a:hover{background:var(--bg2)}
 .ac-modes{display:grid;gap:8px;background:transparent;border:0;padding:0;margin-top:4px}
 .ac-mode{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line2);border-radius:14px;background:var(--card);cursor:pointer}
@@ -249,7 +249,9 @@ main[tabindex="-1"]:focus{outline:none}
 .ac-list small{display:block;color:var(--muted);font-size:13px;margin-top:3px}
 .ac-list .ac-full{flex-basis:100%}
 .ac-mrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ac-mrow select{width:auto;min-width:150px;padding:8px 10px;font-size:15px}
+.ac-mrow select{width:auto;min-width:150px;min-height:44px;padding:8px 10px;font-size:16px}
+/* Campo com erro também mostra o foco (a borda vermelha esconderia o anel de foco). */
+.cl [aria-invalid="true"]:focus{outline:3px solid var(--focus)!important;outline-offset:2px}
 .ac-form{margin-top:14px;border:1px solid var(--line2);border-radius:16px;padding:14px;background:var(--card)}
 .ac-form h4{font-size:15.5px;margin-bottom:10px}
 .ac-right{margin-left:auto}
