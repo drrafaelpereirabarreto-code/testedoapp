@@ -1,0 +1,40 @@
+{
+ "info": {
+  "pronto": true,
+  "predios": 473,
+  "ladrilhos": 4,
+  "rumo": -23.200000000000045,
+  "zoom": 15.9,
+  "inclinacao": 60,
+  "centro": [
+   -46.65199999999854,
+   -23.565000000002243
+  ],
+  "tema": "escuro",
+  "sombras": 6000,
+  "msSombras": 69,
+  "msSombrasTotal": 5040
+ },
+ "ladrilhos": [
+  {
+   "url": "https://tiles.openfreemap.org/planet",
+   "bytes": 2427
+  },
+  {
+   "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/6068/9295.pbf",
+   "bytes": 391758
+  },
+  {
+   "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/6068/9296.pbf",
+   "bytes": 330806
+  },
+  {
+   "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/6069/9296.pbf",
+   "bytes": 343074
+  },
+  {
+   "url": "https://tiles.openfreemap.org/planet/20261101_080013_pt/14/6069/9295.pbf",
+   "bytes": 395390
+  }
+ ]
+}

@@ -1,0 +1,25 @@
+{
+  "url": "https://drrafaelpereirabarreto-code.github.io/testedoapp/",
+  "feitos": [
+    {
+      "nome": "mapa3d-celular-claro",
+      "desc": "Mapa 3D do topo (celular, tema claro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-claro.png"
+    },
+    {
+      "nome": "mapa3d-celular-escuro",
+      "desc": "Mapa 3D do topo (celular, tema escuro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-escuro.png"
+    },
+    {
+      "nome": "mapa3d-computador-claro",
+      "desc": "Mapa 3D do topo (computador, tema claro): 474 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras",
+      "arquivo": "mapa3d-computador-claro.png"
+    },
+    {
+      "nome": "mapa3d-computador-escuro",
+      "desc": "Mapa 3D do topo (computador, tema escuro): 473 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras",
+      "arquivo": "mapa3d-computador-escuro.png"
+    }
+  ]
+}
