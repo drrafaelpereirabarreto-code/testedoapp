@@ -62,7 +62,7 @@ select pg_temp.como(1);
 select is((select concat_ws('|', j ->> 'status', j ->> 'active', j #>> '{unit,agenda_mode}', j #>> '{unit,timezone}',
                             j #>> '{unit,timezone_confirmed_at}' is null, jsonb_array_length(j -> 'resources'))
            from (select public.agenda_config(pg_temp.c()) j) x),
-          'ok|false|pedido|America/Sao_Paulo|true|0', 'a dona lê: agenda ainda não ativa, modo pedido, fuso não confirmado');
+          'ok|false|pedido|America/Sao_Paulo|t|0', 'a dona lê: agenda ainda não ativa, modo pedido, fuso não confirmado');
 
 /* ===================== C. Modalidade antes de ativar ===================== */
 select is(public.agenda_mode_set(pg_temp.c(), 'nativa', false) ->> 'status', 'agenda_not_started', 'sem a agenda ativa não sai do pedido');
@@ -78,7 +78,7 @@ select is(public.agenda_mode_set(pg_temp.c(), 'manual', true) ->> 'status', 'ok'
 select is((select concat_ws('|', j #>> '{unit,agenda_mode}', j #>> '{unit,manual_commitment_at}' is not null,
                             j #>> '{unit,timezone_confirmed_at}' is not null, j #>> '{unit,step_min}', j ->> 'active')
            from (select public.agenda_config(pg_temp.c()) j) x),
-          'manual|true|true|10|true', 'a leitura mostra manual, compromisso, fuso confirmado e o passo');
+          'manual|t|t|10|true', 'a leitura mostra manual, compromisso, fuso confirmado e o passo');
 select pg_temp.entrar('postgres');
 select ok((select version from agenda.clinic_versions where clinic_id = pg_temp.c()) > current_setting('teste.v0')::bigint,
           'trocar a modalidade sobe a versão da agenda');
@@ -98,7 +98,7 @@ select is((select concat_ws('|', jsonb_array_length(j -> 'resources'), j #>> '{r
                             j #>> '{procedures,0,requirements,0,options,0,resource_id}' = current_setting('teste.r'),
                             jsonb_array_length(j -> 'rules'), j #>> '{rules,0,start}', j #>> '{rules,1,kind}', j #>> '{rules,1,label}')
            from (select public.agenda_config(pg_temp.c()) j) x),
-          '1|5|Ultrassom A|20|true|true|2|08:00|pausa|Café', 'o gestor lê recursos, procedimento com grupo e regras');
+          '1|5|Ultrassom A|20|t|t|2|08:00|pausa|Café', 'o gestor lê recursos, procedimento com grupo e regras');
 select is((select count(*)::int from jsonb_path_query(public.agenda_config(pg_temp.c()), 'strict $.**.patient_name')), 0,
           'a leitura não tem campo de paciente');
 
@@ -107,7 +107,7 @@ select is(public.agenda_mode_set(pg_temp.c(), 'externa', false) ->> 'status', 'f
 select pg_temp.como(1);
 select is(public.agenda_mode_set(pg_temp.c(), 'externa', false) ->> 'status', 'ok', 'a dona liga a externa');
 select is((select concat_ws('|', j #>> '{unit,agenda_mode}', j #>> '{unit,manual_commitment_at}' is null)
-           from (select public.agenda_config(pg_temp.c()) j) x), 'externa|true', 'saiu da manual: o compromisso some');
+           from (select public.agenda_config(pg_temp.c()) j) x), 'externa|t', 'saiu da manual: o compromisso some');
 select pg_temp.como(2);
 select is(public.agenda_mode_set(pg_temp.c(), 'nativa', false) ->> 'status', 'forbidden', 'o gestor também não tira da externa');
 select pg_temp.como(7);
