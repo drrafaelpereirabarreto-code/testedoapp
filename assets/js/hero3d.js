@@ -384,10 +384,13 @@ export function initHero3D(el, api) {
     const meOn = pronto && naFaixa(pe, 6);
     eu.style.transform = `translate3d(${pe.x.toFixed(1)}px,${pe.y.toFixed(1)}px,0)`;
     eu.classList.toggle('on', meOn);
-    meLabel.style.transform = `translate3d(${pe.x.toFixed(1)}px,${(pe.y - 16).toFixed(1)}px,0) translate(-50%,-100%)`;
+    // "Você está aqui" embaixo do ponto: o espaço de cima fica para os pinos e rótulos dos locais (os mais perto
+    // costumam estar a poucos metros).
+    meLabel.style.transform = `translate3d(${pe.x.toFixed(1)}px,${(pe.y + 15).toFixed(1)}px,0) translateX(-50%)`;
     meLabel.classList.toggle('on', meOn);
     if (!meW) { meW = meLabel.offsetWidth || 110; meH = meLabel.offsetHeight || 26; }
-    const meBox = meOn ? { l: pe.x - meW / 2, r: pe.x + meW / 2, t: pe.y - 16 - meH, b: pe.y } : null;
+    const meBox = meOn ? { l: pe.x - meW / 2, r: pe.x + meW / 2, t: pe.y + 15, b: pe.y + 15 + meH } : null;
+    const meDot = meOn ? { l: pe.x - 13, r: pe.x + 13, t: pe.y - 13, b: pe.y + 13 } : null;
     // No computador, o lado esquerdo é do texto do topo: pinos e rótulos só à direita dele.
     const minX = lim.minX;
     const hl = api.highlighted(), cands = maxCands();
@@ -405,10 +408,14 @@ export function initHero3D(el, api) {
       if (!o.lw) { o.lw = o.label.offsetWidth || 180; o.lh = o.label.offsetHeight || 48; }
       if (o.sy - PIN - o.lh < 4) return; // o rótulo inteiro precisa caber acima do pino (pode subir na faixa do alto)
       // Rótulo inteiro dentro da tela e fora do texto do topo: empurra para dentro (a seta continua apontando o pino).
-      const half = Math.min(o.lw, W - 12) / 2;
-      o.cx = Math.min(Math.max(o.sx, half + 6, minX + half), W - half - 6);
-      if (Math.abs(o.cx - o.sx) > half - 18) return; // a seta sairia do rótulo
-      o.box = { l: o.cx - half, r: o.cx + half, t: o.sy - PIN - o.lh, b: o.sy - PIN + 8 };
+      // Lugares possíveis: centrado no pino ou deslocado para um lado (a seta sempre dentro do rótulo); o que já
+      // estava em uso vem primeiro (o rótulo não fica pulando enquanto o mapa gira).
+      const half = Math.min(o.lw, W - 12) / 2, folga = half - 18;
+      const cabe = (cx) => Math.min(Math.max(cx, half + 6, minX + half), W - half - 6);
+      const lugares = [0, -(folga - 4), folga - 4].map((d) => cabe(o.sx + d)).filter((cx, k, a) => Math.abs(cx - o.sx) <= folga && a.indexOf(cx) === k);
+      if (!lugares.length) return; // a seta sairia do rótulo
+      if (o.vis && Number.isFinite(o.dx)) lugares.sort((a, b) => Math.abs(a - o.sx - o.dx) - Math.abs(b - o.sx - o.dx));
+      o.lugares = lugares.map((cx) => ({ cx, box: { l: cx - half, r: cx + half, t: o.sy - PIN - o.lh, b: o.sy - PIN + 8 } }));
       // Ordem: o que a pessoa aponta ou abriu, o que já estava na tela (não fica piscando) e o mais perto.
       o.rank = (hoverId === o.id ? 0 : hl === o.id ? 1 : o.vis ? 2 : 3) * 1000 + i;
       shown.push(o);
@@ -418,9 +425,11 @@ export function initHero3D(el, api) {
     const cabeca = (o) => ({ l: o.sx - 15, r: o.sx + 15, t: o.sy - 36, b: o.sy });
     shown.forEach((o) => {
       if (kept.length >= max) return;
-      if (kept.some((k) => overlaps(k.box, o.box) || overlaps0(k.box, cabeca(o)) || overlaps0(o.box, cabeca(k)))) return;
-      if (lim.caixas.some((c) => overlaps(c, o.box))) return;
-      if (meBox && !o.forced && (overlaps(meBox, o.box) || overlaps0(meBox, cabeca(o)))) return;
+      if (!o.forced && meOn && (overlaps0(meBox, cabeca(o)) || overlaps0(meDot, cabeca(o)))) return;
+      const livre = o.lugares.find(({ box }) => !kept.some((k) => overlaps(k.box, box) || overlaps0(k.box, cabeca(o)) || overlaps0(box, cabeca(k)))
+        && !lim.caixas.some((c) => overlaps(c, box)) && !(meOn && !o.forced && (overlaps(meBox, box) || overlaps0(meDot, box))));
+      if (!livre) return;
+      o.cx = livre.cx; o.box = livre.box; o.dx = livre.cx - o.sx;
       kept.push(o);
     });
     // Pinos sem bagunça (muitos locais ficam a poucos metros uns dos outros): fica à vista o pino de cada rótulo e,
@@ -428,7 +437,7 @@ export function initHero3D(el, api) {
     // pino que já ficou (encostar um pouco pode).
     const estreita = (b, m) => ({ l: b.l + m, r: b.r - m, t: b.t + m, b: b.b - m });
     const ocupados = [...kept.map((k) => estreita(cabeca(k), 4))];
-    if (meBox) ocupados.push(meBox, { l: pe.x - 13, r: pe.x + 13, t: pe.y - 13, b: pe.y + 13 });
+    if (meOn) ocupados.push(meBox, meDot);
     locais.forEach((o) => {
       if (kept.includes(o) || !o.pin.classList.contains('on')) { o.pin.classList.remove('sob'); return; }
       const c = estreita(cabeca(o), 4);
