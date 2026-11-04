@@ -1,0 +1,25 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "feitos": [
+    {
+      "nome": "mapa3d-celular-claro",
+      "desc": "Mapa 3D do topo (celular, tema claro): 270 prédios na tela, 4 ladrilhos (1376 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-claro.png"
+    },
+    {
+      "nome": "mapa3d-celular-escuro",
+      "desc": "Mapa 3D do topo (celular, tema escuro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-escuro.png"
+    },
+    {
+      "nome": "mapa3d-computador-claro",
+      "desc": "Mapa 3D do topo (computador, tema claro): 479 prédios na tela, 4 ladrilhos (1427 KB pela rede), 0 sombras",
+      "arquivo": "mapa3d-computador-claro.png"
+    },
+    {
+      "nome": "mapa3d-computador-escuro",
+      "desc": "Mapa 3D do topo (computador, tema escuro): 478 prédios na tela, 4 ladrilhos (1427 KB pela rede), 0 sombras",
+      "arquivo": "mapa3d-computador-escuro.png"
+    }
+  ]
+}
