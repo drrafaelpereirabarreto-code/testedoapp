@@ -51,12 +51,12 @@ function where() {
 }
 
 // Cores iguais às das abas e da lista (inicio-core.TIPOS): escuras o bastante para as letras brancas dos rótulos
-// do 3D (contraste de pelo menos 4,5:1).
+// e dos pinos do mapa 3D (contraste de pelo menos 4,5:1).
 const KINDS = {
-  imagem: { n: 'Diagnóstico por imagem', plural: 'Imagem', color: TIPOS.imagem.cor, h: 2.3 },
-  laboratorio: { n: 'Laboratório', plural: 'Laboratórios', color: TIPOS.laboratorio.cor, h: 1.8 },
-  clinica: { n: 'Clínica', plural: 'Clínicas', color: TIPOS.clinica.cor, h: 1.5 },
-  hospital: { n: 'Hospital', plural: 'Hospitais', color: TIPOS.hospital.cor, h: 2.9 },
+  imagem: { n: 'Diagnóstico por imagem', plural: 'Imagem', color: TIPOS.imagem.cor },
+  laboratorio: { n: 'Laboratório', plural: 'Laboratórios', color: TIPOS.laboratorio.cor },
+  clinica: { n: 'Clínica', plural: 'Clínicas', color: TIPOS.clinica.cor },
+  hospital: { n: 'Hospital', plural: 'Hospitais', color: TIPOS.hospital.cor },
 };
 const kindOf = (k) => KINDS[k] || KINDS.clinica;
 // Página de cada local: parceiro pelo id, estabelecimento do CNES pelo código de 7 dígitos.
@@ -518,7 +518,8 @@ async function nearbyAll(o, radius, limit) {
 }
 
 /* ======================= MAPA 3D ======================= */
-// Estabelecimentos reais do CNES perto da origem. Enquanto carrega (ou se falhar), o 3D mostra só a cidade.
+// Mapa 3D com os prédios de verdade da região (assets/js/hero3d.js, MapLibre + ladrilhos do OpenFreeMap) e os
+// estabelecimentos reais do CNES perto da origem. Enquanto os locais carregam (ou se falharem), o mapa fica sem pinos.
 let heroList = [], heroSeq = 0, heroWanted = false, heroLite = false, heroLoaded = false;
 const STOP = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'a', 'o', 'em', 'para', '-', '&']);
 function initials(name) {
@@ -549,7 +550,7 @@ async function loadHeroPlaces() {
     const partners = rows.filter((r) => r.partner).slice(0, 6);
     heroList = [...partners, ...pickVaried(rows.filter((r) => !r.partner), 14 - partners.length)].sort((a, b) => a.distance_m - b.distance_m).map((r) => {
       const k = kindOf(r.kind);
-      return { id: r.key, n: r.name, ini: initials(r.name), c: k.color, lat: r.lat, lng: r.lng, open: true, r: 4.5, sup: false, kind: r.kind, h: k.h, row: r };
+      return { id: r.key, n: r.name, ini: initials(r.name), c: k.color, lat: r.lat, lng: r.lng, open: true, kind: r.kind, row: r };
     });
     if (window.HERO) window.HERO.setOrigin();
     if (heroLite) renderHeroLite();
@@ -632,15 +633,30 @@ function openPlaceDetail(id) {
   </div>`, 'sm', r.name);
 }
 window.HERO = null;
+// Tema que vale agora (tema.js marca o <html> antes da primeira pintura).
+const temaAtual = () => (document.documentElement.dataset.theme === 'dark' ? 'escuro' : 'claro');
 const API = {
   clinics: () => heroList,
-  origin,
+  // Ponto de partida arredondado (~110 m), o mesmo da busca dos locais: é dele que o mapa 3D parte.
+  origin: () => { const o = origin(); return { ...o, lat: round3(o.lat), lng: round3(o.lng) }; },
+  // O mapa só abre quando a origem é conhecida (não baixa ladrilhos de um lugar enquanto espera a localização).
+  pronto: () => !!topo().modo,
+  modo: () => topo().modo,
   highlighted: () => S.hl,
   meLabel: () => where().me,
   onPick: (id) => openPlaceDetail(id),
   meta: (c) => `${c.row.partner ? 'Parceiro · ' : ''}${kindOf(c.kind).n} · ${distRow(c.row)}`,
+  tema: temaAtual,
+  aoFicarPronto: () => {
+    document.body.dataset.hero = '3d';
+    $('#hero3d')?.setAttribute('aria-label', 'Mapa 3D da região, com os prédios do OpenStreetMap e estabelecimentos de saúde reais perto do ponto escolhido');
+    pauseButton();
+  },
+  // Sem ladrilhos do mapa (sem internet, serviço fora do ar) ou sem WebGL 2: a versão leve, com a mesma lista real.
+  falhou: (motivo) => { window.HERO = null; goLite(motivo === 'webgl' ? 'webgl' : 'mapa'); },
 };
-// Aparelho simples, economia de dados ou "reduzir movimento": não baixa o 3D (three.js tem ~650 KB).
+document.addEventListener('imed:tema', (e) => { window.HERO?.setTema?.(e.detail?.tema === 'escuro' ? 'escuro' : 'claro'); });
+// Aparelho simples, economia de dados ou "reduzir movimento": não baixa o 3D (a biblioteca do mapa tem ~1,6 MB).
 function liteReason() {
   if (reduceMotion) return 'movimento';
   const n = navigator, con = n.connection || {};
@@ -659,10 +675,12 @@ const LITE = liteReason();
 // LITE não diz 'economia'.
 const SAVE_DATA = (() => { const con = navigator.connection || {}; return !!con.saveData || /(^|-)2g$/.test(con.effectiveType || ''); })();
 function goLite(why) {
+  if (window.HERO) { try { window.HERO.destroy(); } catch { /* ignora */ } window.HERO = null; }
   heroLite = true;
   document.body.classList.add('lite');
   document.body.dataset.hero = 'leve';
   if (why === 'webgl') document.body.classList.add('no-webgl');
+  $('#hero3d')?.setAttribute('aria-label', 'Estabelecimentos de saúde reais perto do ponto escolhido');
   renderHeroLite();
   if (!heroWanted) loadHeroPlaces();
 }
@@ -699,13 +717,14 @@ function startHero() {
   // Primeiro o conteúdo aparece (dois quadros); depois, com o navegador livre e o topo na tela, baixa o 3D.
   requestAnimationFrame(() => requestAnimationFrame(() => whenIdle(() => whenVisible(el, load3D))));
   function load3D() {
+    // O mapa 3D (MapLibre) precisa de WebGL 2; sem ele, a versão leve.
     let ok = false;
-    try { const c = document.createElement('canvas'); ok = !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch { ok = false; }
+    try { const c = document.createElement('canvas'); ok = !!(window.WebGL2RenderingContext && c.getContext('webgl2')); } catch { ok = false; }
     if (!ok) { goLite('webgl'); return; }
     document.body.dataset.hero = 'carregando';
     loadHeroPlaces();
-    const fontsReady = document.fonts && document.fonts.load ? Promise.race([document.fonts.load('800 46px Sora'), new Promise((r) => setTimeout(r, 1500))]) : Promise.resolve();
-    fontsReady.then(() => import('./hero3d.js')).then((m) => { window.HERO = m.initHero3D(el, API); document.body.dataset.hero = '3d'; pauseButton(); })
+    // "3d" só quando o mapa aparece (aoFicarPronto); se falhar antes, a versão leve.
+    import('./hero3d.js').then((m) => { if (!heroLite) window.HERO = m.initHero3D(el, API); })
       .catch((err) => { console.warn('Mapa 3D indisponível', err); goLite('webgl'); });
   }
 }

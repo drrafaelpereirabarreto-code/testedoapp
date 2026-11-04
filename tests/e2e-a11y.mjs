@@ -25,6 +25,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import { simularGeo } from './geo-simulado.mjs';
+import { simularMapa } from './mapa-simulado.mjs';
 import { ROLE_PERMS } from '../assets/js/agenda-core.js';
 
 const OWNER_PERMS = ROLE_PERMS.owner;
@@ -303,6 +304,7 @@ async function newPage(browser, { mobile = false, motion = 'no-preference', sess
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
+  await simularMapa(context); // ladrilhos do mapa 3D do topo (OpenFreeMap), simulados
   await context.route(/overpass/, (r) => json(r, { elements: [] }));
   await context.addInitScript(([s, list, aviso]) => {
     try {
@@ -1099,7 +1101,7 @@ await scenario('reduzir movimento: nada se mexe sozinho, a rolagem não desliza 
   }
 });
 
-await scenario('cidade em 3D: o botão "Pausar animação" para o giro e a escolha fica guardada no aparelho', async () => {
+await scenario('mapa 3D: o botão "Pausar animação" para o giro e a escolha fica guardada no aparelho', async () => {
   const { page, errors, context } = await newPage(browser);
   await page.goto(`${BASE}index.html`);
   await page.waitForSelector('#heroPause:not([hidden]), body[data-hero="leve"]', { timeout: 45000 });
@@ -1109,18 +1111,19 @@ await scenario('cidade em 3D: o botão "Pausar animação" para o giro e a escol
     await context.close();
     return;
   }
-  const pos = () => page.evaluate(() => document.querySelector('.h3d-me')?.style.transform || '');
-  await page.waitForTimeout(1500); // a entrada da cena termina
+  // Para onde a câmera do mapa aponta (graus): muda enquanto o mapa gira.
+  const pos = () => page.evaluate(() => window.HERO?.info?.().rumo ?? null);
+  await page.waitForTimeout(3200); // a entrada da cena termina
   const a = await pos();
-  await page.waitForTimeout(700);
-  assert.notEqual(await pos(), a, 'antes de pausar, a cena gira');
+  await page.waitForTimeout(1200);
+  assert.notEqual(await pos(), a, 'antes de pausar, o mapa gira');
   await page.focus('#heroPause');
   await page.keyboard.press('Enter');
   assert.equal((await page.textContent('#heroPause')).trim(), 'Continuar animação');
   await page.waitForTimeout(300);
   const b = await pos();
-  await page.waitForTimeout(700);
-  assert.equal(await pos(), b, 'pausada, a cena fica parada');
+  await page.waitForTimeout(1200);
+  assert.equal(await pos(), b, 'pausado, o mapa fica parado');
   await page.reload();
   await page.waitForSelector('#heroPause:not([hidden])', { timeout: 45000 });
   assert.equal((await page.textContent('#heroPause')).trim(), 'Continuar animação', 'lembra da escolha');

@@ -1,7 +1,9 @@
 // Capturas de tela do site no ar, com dados reais, para mostrar ao dono como está ficando (Actions → "Capturas do
 // site"). Roda no GitHub porque o banco e o mapa abrem de lá. Só navega e digita: não envia pedido nem conta visita
 // (o contador e qualquer escrita no banco são barrados aqui). Uso:
-//   node scripts/capturas.mjs --url=https://.../testedoapp/ --saida=/pasta
+//   node scripts/capturas.mjs --url=https://.../testedoapp/ --saida=/pasta [--telas=todas|mapa3d]
+// --telas=mapa3d: só o mapa 3D do topo (prédios do OpenStreetMap), no celular e no computador, claro e escuro, com o
+// movimento ligado e um aparelho capaz (sem isso a página abre a versão leve).
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -9,6 +11,7 @@ import path from 'node:path';
 const arg = (k, d) => process.argv.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3) ?? d;
 const URL_SITE = arg('url', 'https://drrafaelpereirabarreto-code.github.io/testedoapp/').replace(/\/?$/, '/');
 const SAIDA = arg('saida', 'capturas');
+const QUAIS = arg('telas', 'todas');
 mkdirSync(SAIDA, { recursive: true });
 
 const PAULISTA = { latitude: -23.5650, longitude: -46.6520 };
@@ -52,8 +55,48 @@ async function digitar(page, sel, texto) {
   await page.keyboard.type(texto, { delay: 60 });
 }
 
+// Mapa 3D do topo: espera os prédios aparecerem e a câmera terminar a entrada; anota os ladrilhos baixados.
+async function mapa3d(browser) {
+  for (const tela of Object.keys(TELAS)) for (const tema of ['claro', 'escuro']) {
+    await passo(`mapa3d-${tela}-${tema}`, async () => {
+      const ctx = await browser.newContext({
+        ...TELAS[tela], locale: 'pt-BR', timezoneId: 'America/Sao_Paulo', geolocation: PAULISTA, permissions: ['geolocation'],
+        serviceWorkers: 'block', reducedMotion: 'no-preference', colorScheme: tema === 'escuro' ? 'dark' : 'light',
+      });
+      await ctx.addInitScript(() => {
+        try { localStorage.setItem('imed_lgpd', '1'); } catch (e) { /* sem armazenamento */ }
+        // Aparelho capaz (a máquina do GitHub tem 4 núcleos: no celular, a página abriria a versão leve).
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8, configurable: true });
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8, configurable: true });
+      });
+      await ctx.route('**/rest/v1/**', (r) => {
+        const req = r.request();
+        const leitura = req.method() === 'GET' || req.method() === 'HEAD' || (req.method() === 'POST' && /\/rest\/v1\/rpc\//.test(req.url()));
+        if (/\/rpc\/track\b/.test(req.url()) || !leitura) return r.fulfill({ status: 204, body: '' });
+        return r.continue();
+      });
+      const page = await ctx.newPage();
+      const ladrilhos = [];
+      page.on('requestfinished', async (req) => { if (/tiles\.openfreemap\.org/.test(req.url())) { const t = await req.sizes().catch(() => null); ladrilhos.push({ url: req.url(), bytes: t ? t.responseBodySize : 0 }); } });
+      await page.goto(URL_SITE, { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 90000 });
+      if (await page.evaluate(() => document.body.dataset.hero) !== '3d') throw new Error('a página abriu a versão leve (sem o mapa 3D)');
+      await page.waitForFunction(() => (window.HERO?.info?.().predios || 0) > 0, null, { timeout: 60000 });
+      await pausa(6000); // a câmera termina a entrada e as sombras longas chegam
+      if (tela === 'celular') { await page.evaluate(() => { const h = document.querySelector('#hero3d'); window.scrollTo(0, h.getBoundingClientRect().top + scrollY - 260); }); await pausa(1500); }
+      const info = await page.evaluate(() => window.HERO.info());
+      const pbf = ladrilhos.filter((l) => /\.pbf$/.test(l.url));
+      const kb = Math.round(pbf.reduce((t, l) => t + (l.bytes || 0), 0) / 1024);
+      await foto(page, `mapa3d-${tela}-${tema}`, `Mapa 3D do topo (${tela}, tema ${tema}): ${info.predios} prédios na tela, ${pbf.length} ladrilhos (${kb} KB pela rede), ${info.sombras} sombras`);
+      writeFileSync(path.join(SAIDA, `mapa3d-${tela}-${tema}.json`), JSON.stringify({ info, ladrilhos }, null, 1));
+      await ctx.close();
+    });
+  }
+}
+
 const browser = await chromium.launch();
-for (const tela of Object.keys(TELAS)) {
+if (QUAIS === 'mapa3d') await mapa3d(browser);
+for (const tela of QUAIS === 'mapa3d' ? [] : Object.keys(TELAS)) {
   const ctx = await contexto(browser, tela);
   const page = await ctx.newPage();
 
@@ -106,6 +149,7 @@ for (const tela of Object.keys(TELAS)) {
 
   await ctx.close();
 }
+if (QUAIS === 'todas') await mapa3d(browser);
 await browser.close();
 
 writeFileSync(path.join(SAIDA, 'resumo.json'), JSON.stringify({ url: URL_SITE, feitos }, null, 2));

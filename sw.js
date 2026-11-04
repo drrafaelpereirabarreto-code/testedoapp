@@ -1,9 +1,11 @@
 // Service worker do IMED: deixa o site abrir rápido e funcionar sem internet.
 // Ao mudar arquivos do site, aumente a versão para os celulares baixarem a nova.
-// A cidade 3D (hero3d.js e three.module.min.js) fica fora do CORE: aparelhos fracos não a baixam;
-// nos demais ela entra no cache no primeiro uso. O mesmo vale para o pdf-lib e o gerador de QR (só o médico usa)
-// e para o Font Awesome completo (só baixa se faltar algum ícone no recorte icones.min.css).
-const VERSION = 'imed-v28';
+// O mapa 3D do topo (hero3d.js e a biblioteca MapLibre, assets/vendor/maplibre, ~1,6 MB) fica fora do CORE: aparelhos
+// fracos, com economia de dados ou "reduzir movimento" não o baixam; nos demais ele entra no cache no primeiro uso.
+// O mesmo vale para o pdf-lib e o gerador de QR (só o médico usa) e para o Font Awesome completo (só baixa se faltar
+// algum ícone no recorte icones.min.css). Os ladrilhos do mapa (OpenFreeMap) são de outro site: vão sempre pela
+// internet (o navegador guarda no cache dele).
+const VERSION = 'imed-v29';
 const CORE = [
   './', './index.html', './perto.html', './parceiros.html', './privacidade.html', './exames/',
   './conta.html', './reivindicar.html', './painel.html', './cidades/', './local.html', './sobre.html',

@@ -11,6 +11,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import * as G from '../assets/js/geo-core.js';
 import { simularGeo, PAULISTA, contagemGeo, mudarGeo, responderGeo } from './geo-simulado.mjs';
+import { simularMapa } from './mapa-simulado.mjs';
 
 import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 const { chromium } = createRequire(import.meta.url)('playwright');
@@ -105,7 +106,10 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 
 // device: { memory, cores, saveData, effectiveType } simula o aparelho (navigator.deviceMemory, hardwareConcurrency,
 // connection.saveData e connection.effectiveType). dpr: densidade da tela. sw: liga o service worker.
-// tz: fuso do aparelho. ua: navegador (por exemplo, o do iPhone). now: relógio fixo. three: rota para o three.js.
+// tz: fuso do aparelho. ua: navegador (por exemplo, o do iPhone). now: relógio fixo.
+// mapa: ladrilhos do mapa 3D (tests/mapa-simulado.mjs): 'ok' (simulados, padrão) ou 'falha' (sem resposta);
+// mapaLog: guarda os endereços pedidos ao OpenFreeMap. lib3d: rota para a biblioteca do mapa (MapLibre).
+// escuro: aparelho no tema escuro.
 // points: resposta de establishment_points. spyMap: guarda em window.__maps os mapas do Leaflet criados pela página.
 // cnesDate: resposta de cnes_last_update; cancel: de cancel_request; geocode: da Edge Function (centro da cidade);
 // store: chaves do localStorage gravadas antes de abrir (ex.: { imed_cidade: {...} }).
@@ -113,15 +117,17 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 // (-23.56512, -46.65234, que arredonda para -23.565, -46.652, o ponto que os cenários do 3D conferem). geo: null deixa
 // o Chromium sem permissão (ele recusa sem mostrar o pedido: a página cai em "naoapareceu" e usa o exemplo).
 // lgpd: true abre como na 1ª visita, com o aviso de privacidade (sem o imed_lgpd guardado).
-async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, tele, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, three = null, spyMap = false, cnesDate, cancel, geocode, store = null, geo = { estado: 'granted', pos: PAULISTA }, lgpd = false } = {}) {
+async function newPage(browser, { mobile = false, cities, cnes, points, partners, status, waitlist, tele, whatsapp = '', appts, motion = 'reduce', device = null, dpr = 1, sw = false, tz = 'America/Sao_Paulo', ua, now = null, viewport = null, mapa = 'ok', mapaLog = null, lib3d = null, spyMap = false, cnesDate, cancel, geocode, store = null, geo = { estado: 'granted', pos: PAULISTA }, lgpd = false, escuro = false } = {}) {
   const context = await browser.newContext({
     viewport: viewport || (mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 }),
     deviceScaleFactor: dpr, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId: tz,
     serviceWorkers: sw ? 'allow' : 'block', reducedMotion: motion, acceptDownloads: true, ...(ua ? { userAgent: ua } : {}),
+    ...(escuro ? { colorScheme: 'dark' } : {}),
   });
   if (geo) await simularGeo(context, geo);
   if (now) await context.clock.setFixedTime(new Date(now));
-  if (three) await context.route(`${BASE}assets/vendor/three.module.min.js`, three);
+  await simularMapa(context, { falha: mapa === 'falha', log: mapaLog });
+  if (lib3d) await context.route(`${BASE}assets/vendor/maplibre/maplibre-gl.js`, lib3d);
   const log = { cities: 0, cnes: [], points: [], partners: [], status: [], waitlist: [], tele: 0, cnesDate: 0, cnesDateArgs: [], cancel: [], geocode: [], track: [] };
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
@@ -481,18 +487,40 @@ await scenario('sem dado do banco: pílula com texto neutro, sem número e sem e
   await context.close();
 });
 
-await scenario('mapa 3D: estabelecimentos reais perto, com tipo e distância, e painel do local', async () => {
-  const { page, log, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 } });
+await scenario('mapa 3D: prédios do mapa (OpenFreeMap) e estabelecimentos reais perto, com tipo e distância, e painel do local', async () => {
+  const mapaLog = [];
+  const { page, log, errors, context, requests } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 }, mapaLog });
   await page.goto(BASE);
-  const supported = await page.evaluate(() => { try { const c = document.createElement('canvas'); return !!(c.getContext('webgl2') || c.getContext('webgl')); } catch { return false; } });
-  const r3 = await page.waitForFunction(() => document.querySelector('#hero3d').classList.contains('h3d-ready') || document.body.classList.contains('no-webgl'), null, { timeout: 15000 }).then(() => true);
+  const supported = await page.evaluate(() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } });
+  const r3 = await page.waitForFunction(() => document.querySelector('#hero3d').classList.contains('h3d-ready') || document.body.classList.contains('no-webgl'), null, { timeout: 45000 }).then(() => true);
   assert.ok(r3);
   const call = log.cnes.find((a) => a.p_radius_m === 3000);
   assert.ok(call, 'pede os locais num raio de ~3 km');
   assert.deepEqual([call.p_lat, call.p_lng], [-23.565, -46.652]);
   if (supported && !(await page.evaluate(() => document.body.classList.contains('no-webgl')))) {
     await page.waitForFunction(() => document.querySelectorAll('.h3d-label').length === 4);
+    assert.equal(await page.evaluate(() => document.body.dataset.hero), '3d');
     assert.equal(await page.getAttribute('#hero3d', 'role'), 'region', 'botões do 3D não ficam dentro de role=img');
+    assert.match(await page.getAttribute('#hero3d', 'aria-label'), /^Mapa 3D da região, com os prédios do OpenStreetMap/);
+    // Prédios de verdade desenhados (aqui, os ladrilhos simulados), em 3D: mapa inclinado e girando devagar.
+    await page.waitForFunction(() => window.HERO?.info?.().predios > 20, null, { timeout: 30000 });
+    const info = await page.evaluate(() => window.HERO.info());
+    assert.ok(info.inclinacao >= 50, `câmera inclinada (${info.inclinacao}°)`);
+    // O mapa parte do ponto arredondado (~110 m), o mesmo da busca; o OpenFreeMap só recebe a lista e os ladrilhos.
+    assert.deepEqual(info.centro.map((v) => Math.round(v * 1000) / 1000), [-46.652, -23.565]);
+    assert.ok(mapaLog.length >= 2 && mapaLog.every((u) => u === 'https://tiles.openfreemap.org/planet' || /^https:\/\/tiles\.openfreemap\.org\/planet\/teste\/14\/\d+\/\d+\.pbf$/.test(u)), mapaLog.join(' '));
+    assert.ok(mapaLog.filter((u) => /\.pbf$/.test(u)).length <= 4, `no máximo 4 ladrilhos de 2 km (${mapaLog.length - 1})`);
+    assert.ok(!requests.some((u) => /fonts\/|sprites\/|glyphs/.test(u) && /openfreemap/.test(u)), 'sem fontes nem ícones do OpenFreeMap');
+    // A biblioteca vem do próprio site (CSP script-src 'self'), sem modulepreload.
+    assert.ok(requests.some((u) => u.startsWith(BASE) && /assets\/vendor\/maplibre\/maplibre-gl\.js$/.test(u)), 'maplibre-gl.js do próprio site');
+    assert.ok(requests.some((u) => u.startsWith(BASE) && /assets\/vendor\/maplibre\/maplibre-gl-worker\.js/.test(u)), 'trabalhador do mapa do próprio site');
+    // Créditos do mapa à vista, com o link do OpenStreetMap.
+    assert.ok(await page.isVisible('#heroAttrib'), 'créditos do mapa visíveis');
+    assert.equal(await page.getAttribute('#heroAttrib a[href="https://www.openstreetmap.org/copyright"]', 'rel'), 'noopener');
+    assert.match(await page.textContent('#heroAttrib'), /OpenStreetMap.*OpenMapTiles.*OpenFreeMap/);
+    // O desenho do mapa fica fora do leitor de tela e do Tab.
+    assert.equal(await page.getAttribute('#hero3d canvas', 'aria-hidden'), 'true');
+    assert.equal(await page.getAttribute('#hero3d canvas', 'tabindex'), '-1');
     const hiddenFocusable = await page.$$eval('.h3d-label:not(.on)', (els) => els.filter((e) => e.tabIndex !== -1 || e.getAttribute('aria-hidden') !== 'true').length);
     assert.equal(hiddenFocusable, 0, 'rótulo escondido fora do Tab e do leitor de tela');
     const labels = await page.$$eval('.h3d-label', (els) => els.map((e) => e.textContent));
@@ -531,8 +559,9 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   await page.waitForSelector('#heroLite li a');
   await page.waitForTimeout(1500);
   assert.equal(await page.evaluate(() => document.body.dataset.hero), 'leve');
-  assert.ok(!requests.some((u) => /three\.module\.min\.js|hero3d\.js/.test(u)), 'three.js e hero3d.js não são baixados');
+  assert.ok(!requests.some((u) => /maplibre|hero3d\.js|openfreemap/.test(u)), 'nem a biblioteca do mapa, nem hero3d.js, nem os ladrilhos');
   assert.equal(await page.locator('#hero3d canvas').count(), 0);
+  assert.ok(await page.isHidden('#heroAttrib'), 'sem mapa, sem os créditos do mapa');
   assert.ok(await page.locator('#heroLite').isVisible());
   const items = await page.$$eval('#heroLite li a', (els) => els.map((e) => [e.getAttribute('href'), e.textContent]));
   assert.ok(items.length >= 1 && items.length <= 4, `até 4 locais no celular (${items.length})`);
@@ -569,7 +598,7 @@ await scenario('aparelho fraco (deviceMemory=1): não baixa o 3D e mostra fundo 
   const b = await newPage(browser, { mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8, saveData: true } });
   await b.page.goto(BASE);
   await b.page.waitForSelector('#heroLite li a');
-  assert.ok(!b.requests.some((u) => /three\.module/.test(u)));
+  assert.ok(!b.requests.some((u) => /maplibre|openfreemap/.test(u)));
   await b.context.close();
   assert.deepEqual(errors, []);
   await context.close();
@@ -594,18 +623,21 @@ await scenario('cabeçalho: transparente no topo e com fundo escuro ao rolar den
   }
 });
 
-await scenario('aparelho normal: baixa o 3D só depois do H1 aparecer', async () => {
+await scenario('aparelho normal: baixa o 3D (biblioteca e ladrilhos) só depois do H1 aparecer', async () => {
   const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 } });
   await page.goto(BASE);
-  await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /three\.module\.min\.js/.test(e.name)), null, { timeout: 15000 });
+  await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /maplibre-gl\.js/.test(e.name)), null, { timeout: 15000 });
   const t = await page.evaluate(() => {
     const fcp = performance.getEntriesByType('paint').find((e) => e.name === 'first-contentful-paint');
-    const three = performance.getEntriesByType('resource').find((e) => /three\.module\.min\.js/.test(e.name));
-    return { fcp: fcp ? fcp.startTime : null, three: three.startTime, preload: !!document.querySelector('link[href*="three.module"]') };
+    const lib = performance.getEntriesByType('resource').find((e) => /maplibre-gl\.js/.test(e.name));
+    return { fcp: fcp ? fcp.startTime : null, lib: lib.startTime, preload: !!document.querySelector('link[href*="maplibre"],link[href*="hero3d"]') };
   });
-  assert.equal(t.preload, false, 'sem modulepreload do three.js');
-  assert.ok(t.fcp != null && t.three > t.fcp, `three.js (${Math.round(t.three)} ms) depois da primeira pintura com o H1 (${Math.round(t.fcp)} ms)`);
-  console.log(`  primeira pintura ${Math.round(t.fcp)} ms; three.js pedido em ${Math.round(t.three)} ms`);
+  assert.equal(t.preload, false, 'sem modulepreload da biblioteca do mapa');
+  assert.ok(t.fcp != null && t.lib > t.fcp, `biblioteca do mapa (${Math.round(t.lib)} ms) depois da primeira pintura com o H1 (${Math.round(t.fcp)} ms)`);
+  await page.waitForFunction(() => performance.getEntriesByType('resource').some((e) => /openfreemap/.test(e.name)), null, { timeout: 30000 });
+  const lad = await page.evaluate(() => performance.getEntriesByType('resource').find((e) => /openfreemap/.test(e.name)).startTime);
+  assert.ok(lad > t.fcp, 'ladrilhos depois da primeira pintura');
+  console.log(`  primeira pintura ${Math.round(t.fcp)} ms; biblioteca do mapa pedida em ${Math.round(t.lib)} ms; 1º pedido ao OpenFreeMap em ${Math.round(lad)} ms`);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -671,6 +703,41 @@ await scenario('cidade em 3D: o botão "Pausar animação" fica inteiro à vista
     assert.deepEqual(errors, []);
     await context.close();
   }
+});
+
+await scenario('mapa 3D sem os ladrilhos (sem internet para o OpenFreeMap): versão leve com a lista real, sem erro', async () => {
+  const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 }, mapa: 'falha' });
+  await page.goto(BASE);
+  await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 45000 });
+  if (await page.evaluate(() => !document.createElement('canvas').getContext('webgl2'))) { console.log('  (sem WebGL 2 neste navegador)'); await context.close(); return; }
+  assert.equal(await page.evaluate(() => document.body.dataset.hero), 'leve', 'sem ladrilhos, a versão leve');
+  await page.waitForSelector('#heroLite li a');
+  const items = await page.$$eval('#heroLite li a', (els) => els.map((e) => e.getAttribute('href')));
+  assert.ok(items.includes('local.html?cnes=2077485'), 'a mesma lista real');
+  assert.equal(await page.locator('#hero3d canvas, .h3d-pin, .h3d-label').count(), 0, 'o mapa e os rótulos saem da página');
+  assert.ok(await page.isHidden('#heroAttrib'), 'sem os créditos do mapa');
+  assert.ok(await page.isHidden('#heroPause'), 'sem o botão de pausar');
+  assert.equal(await page.evaluate(() => window.HERO), null);
+  assert.match(await page.getAttribute('#hero3d', 'aria-label'), /^Estabelecimentos de saúde reais/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('mapa 3D acompanha o tema: escuro no aparelho escuro e muda na hora pelo botão do tema', async () => {
+  const { page, errors, context } = await newPage(browser, { motion: 'no-preference', device: { memory: 8, cores: 8 }, escuro: true });
+  await page.goto(BASE);
+  await page.waitForFunction(() => ['3d', 'leve'].includes(document.body.dataset.hero), null, { timeout: 45000 });
+  if (await page.evaluate(() => document.body.dataset.hero) !== '3d') { console.log('  (sem WebGL 2 neste navegador)'); await context.close(); return; }
+  assert.equal(await page.evaluate(() => window.HERO.info().tema), 'escuro');
+  await shot(page, 'inicio-3d-escuro');
+  // Botão do tema do cabeçalho: Automático (escuro, como o aparelho) → Claro.
+  await page.click('.top [data-tema]');
+  await page.waitForFunction(() => window.HERO.info().tema === 'claro');
+  assert.equal(await page.evaluate(() => document.body.dataset.hero), '3d', 'o mesmo mapa, sem recarregar');
+  await page.waitForTimeout(600);
+  await shot(page, 'inicio-3d-claro');
+  assert.deepEqual(errors, []);
+  await context.close();
 });
 
 await scenario('Meus pedidos: só pedidos reais, situação do banco, avaliar e lembrete .ics', async () => {
@@ -2514,7 +2581,7 @@ await scenario('service worker ligado: com economia de dados ou 2G, não instala
   // Os outros cenários bloqueiam o service worker; aqui ele fica livre, e quem conta os arquivos é o servidor.
   const swSrc = await readFile(join(ROOT, 'sw.js'), 'utf8');
   const core = (swSrc.match(/const CORE = \[([\s\S]*?)\];/) || ['', ''])[1];
-  const HEAVY_3D = /three\.module\.min\.js|hero3d\.js/;
+  const HEAVY_3D = /maplibre-gl(-worker)?\.js|hero3d\.js/;
   const OTHER = /leaflet\.js|geo-core\.js|painel\.js|\/local\.js|\/perto\.js/; // inicio-perto.js é da página inicial
   for (const [name, device, wantSW] of [
     ['economia de dados', { memory: 8, cores: 8, saveData: true }, false],
@@ -2534,14 +2601,14 @@ await scenario('service worker ligado: com economia de dados ou 2G, não instala
     const got = served.slice(from);
     const got3d = got.filter((p) => HEAVY_3D.test(p));
     if (!wantSW) {
-      assert.deepEqual(got3d, [], `${name}: three.js e hero3d.js não são baixados`);
+      assert.deepEqual(got3d, [], `${name}: a biblioteca do mapa e hero3d.js não são baixadas`);
       assert.deepEqual(got.filter((p) => OTHER.test(p)), [], `${name}: nada de Leaflet, geo-core ou scripts de outras páginas`);
     } else if (HEAVY_3D.test(core)) {
       // Pouca memória sem economia de dados: o service worker continua (site abre sem internet), mas a lista
       // CORE do sw.js ainda pré-baixa o 3D. A correção é tirar esses arquivos do CORE (fora desta frente).
       console.log(`  aviso (${name}): o CORE do sw.js ainda pré-baixa ${got3d.join(', ') || 'o 3D'}; tirar do CORE (integrador)`);
     } else {
-      assert.deepEqual(got3d, [], `${name}: three.js e hero3d.js não são baixados`);
+      assert.deepEqual(got3d, [], `${name}: a biblioteca do mapa e hero3d.js não são baixadas`);
     }
     assert.deepEqual(errors, []);
     await context.close();
@@ -2583,11 +2650,12 @@ await scenario('computador em modo leve: nome comprido na lista do topo não pas
 });
 
 await scenario('lista leve não fica em "Carregando…" quando o banco falha antes de o 3D falhar', async () => {
-  // Aparelho normal: pede os locais e começa a baixar o 3D. O banco responde erro na hora; o three.js falha depois.
+  // Aparelho normal: pede os locais e começa a baixar o 3D. O banco responde erro na hora; a biblioteca do mapa
+  // falha depois.
   const { page, errors, context } = await newPage(browser, {
     mobile: true, motion: 'no-preference', device: { memory: 8, cores: 8 },
     cnes: (r) => json(r, { message: 'erro' }, 500),
-    three: async (route) => { await new Promise((ok) => setTimeout(ok, 800)); await route.abort(); },
+    lib3d: async (route) => { await new Promise((ok) => setTimeout(ok, 800)); await route.abort(); },
   });
   await page.goto(BASE);
   await page.waitForFunction(() => document.body.classList.contains('no-webgl'), null, { timeout: 20000 });
@@ -2614,11 +2682,11 @@ await scenario('iPhone (o Safari informa 4 núcleos em todo iPhone) recebe o 3D;
     if (want === '3d') {
       assert.ok(['carregando', '3d'].includes(mode), `${name}: 3D (${mode})`);
       await page.waitForFunction(() => document.body.dataset.hero === '3d', null, { timeout: 30000 });
-      assert.ok(served.slice(from).some((p) => /three\.module\.min\.js/.test(p)), `${name}: baixa o three.js`);
+      assert.ok(served.slice(from).some((p) => /maplibre-gl\.js/.test(p)), `${name}: baixa a biblioteca do mapa`);
     } else {
       assert.equal(mode, 'leve', `${name}: modo leve`);
       await page.waitForTimeout(1000);
-      assert.ok(!served.slice(from).some((p) => /three\.module\.min\.js|hero3d\.js/.test(p)), `${name}: não baixa o 3D`);
+      assert.ok(!served.slice(from).some((p) => /maplibre|hero3d\.js/.test(p)), `${name}: não baixa o 3D`);
     }
     assert.deepEqual(errors, []);
     await context.close();

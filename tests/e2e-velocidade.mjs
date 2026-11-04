@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { simularGeo } from './geo-simulado.mjs';
+import { simularMapa } from './mapa-simulado.mjs';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -70,6 +71,7 @@ async function newPage(browser, { mobile = true, width = 390, height = 844, slow
   context.on('request', (r) => requests.push(r.url()));
   await context.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
+  await simularMapa(context); // ladrilhos do mapa 3D do topo (OpenFreeMap), simulados
   await context.route((u) => u.href.startsWith(REST), async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });

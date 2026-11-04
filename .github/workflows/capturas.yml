@@ -3,6 +3,9 @@
 # Tira fotos das telas novas no celular e no computador (scripts/capturas.mjs), com a localização simulada na
 # Av. Paulista. Só navega e digita: não envia pedido, não conta visita e barra qualquer escrita no banco.
 # O resultado vai para um ramo próprio, "capturas/execucao-<número>" (o site publicado, que sai da main, não muda).
+# Para ver um ramo antes de publicar: rode no ramo com "local" ligado (o código do ramo é servido aqui mesmo, com o
+# banco e os mapas de verdade). Pela API: gh api -X POST repos/<repo>/actions/workflows/capturas.yml/dispatches
+#   -f ref=<ramo> -f 'inputs[local]=true' -f 'inputs[telas]=mapa3d'
 name: Capturas do site
 
 on:
@@ -11,6 +14,13 @@ on:
       url:
         description: Endereço do site (troque quando tiver o domínio próprio)
         default: https://drrafaelpereirabarreto-code.github.io/testedoapp/
+      local:
+        description: Fotografar o código deste ramo, servido aqui mesmo (em vez do site no ar)
+        type: boolean
+        default: false
+      telas:
+        description: 'O que fotografar: todas ou mapa3d (só o mapa 3D do topo, claro e escuro)'
+        default: todas
 
 # Escrita só para criar o ramo das capturas.
 permissions:
@@ -61,9 +71,18 @@ jobs:
       - name: Capturar
         env:
           URL_SITE: ${{ inputs.url }}
+          LOCAL: ${{ inputs.local }}
+          TELAS: ${{ inputs.telas }}
         run: |
           mkdir -p "$RUNNER_TEMP/capturas"
-          node scripts/capturas.mjs --url="$URL_SITE" --saida="$RUNNER_TEMP/capturas" 2>&1 | tee "$RUNNER_TEMP/capturas/registro.txt"
+          if [ "$LOCAL" = "true" ]; then
+            # O código deste ramo, servido só nesta máquina (o site publicado não muda).
+            python3 -m http.server 8080 --bind 127.0.0.1 > /dev/null 2>&1 &
+            sleep 2
+            URL_SITE="http://127.0.0.1:8080/"
+          fi
+          case "$TELAS" in todas|mapa3d) ;; *) TELAS=todas ;; esac
+          node scripts/capturas.mjs --url="$URL_SITE" --saida="$RUNNER_TEMP/capturas" --telas="$TELAS" 2>&1 | tee "$RUNNER_TEMP/capturas/registro.txt"
           # Cada erro vira aviso na página da execução (os registros completos ficam no ramo).
           grep '^ERRO ' "$RUNNER_TEMP/capturas/registro.txt" | while IFS= read -r l; do echo "::warning title=Captura que falhou::$l"; done || true
           echo "::notice title=Capturas::$(tail -1 "$RUNNER_TEMP/capturas/registro.txt")"
