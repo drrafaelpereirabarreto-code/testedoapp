@@ -691,7 +691,7 @@ function whenVisible(el, fn) {
   const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); fn(); } });
   io.observe(el);
 }
-// "Pausar animação": a cidade em 3D gira sozinha; quem quiser para o movimento (fica guardado neste aparelho).
+// "Pausar animação": o mapa 3D gira sozinho; quem quiser para o movimento (fica guardado neste aparelho).
 function pauseButton() {
   const b = $('#heroPause');
   if (!b || !window.HERO?.setPaused) return;

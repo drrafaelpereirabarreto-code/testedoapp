@@ -3,7 +3,7 @@
 ## Páginas
 | Arquivo | Para quê |
 |---------|----------|
-| `index.html` | Início: cidade 3D (`assets/js/hero3d.js`), "Clínicas perto de você" (#reais: os 10 mais perto, abas por tipo, mapa e seletor "Onde você está?"), agendados, lista de espera |
+| `index.html` | Início: mapa 3D com os prédios reais (`assets/js/hero3d.js`), "Clínicas perto de você" (#reais: os 10 mais perto, abas por tipo, mapa e seletor "Onde você está?"), agendados, lista de espera |
 | `assets/js/inicio-perto.js` + `inicio-core.js` | Início "perto de você": pede a localização ao abrir (1 vez por aba; não pede sozinho depois de 2 recusas ou pedidos sem resposta), lista e mapa (no celular, mapa em tela cheia só depois do toque), seletor de cidade. Regras puras em `inicio-core.js` (testadas em `tests/inicio-core.test.mjs`; posição simulada nos e2e com `tests/geo-simulado.mjs`) |
 | `perto.html` + `assets/js/perto.js` | Busca por localização/CEP: mapa, lista, filtros, detalhes, pedido |
 | `assets/js/geo-core.js` | Regras puras (normalizar, filtrar, ordenar, pedido) — testadas em `tests/geo-core.test.mjs` |
@@ -35,6 +35,32 @@
   (depois da resposta do pedido de localização), ou aparece sozinho em 15 s.
 - Botão voltar do celular: mapa em tela cheia e seletor de cidade entram no histórico (`history.pushState` com
   `imedMapa` / `imedCid`), então "voltar" fecha o que está aberto em vez de sair da página.
+
+## Mapa 3D do topo (04/11)
+- `assets/js/hero3d.js` (contrato com `inicio.js`: `initHero3D(el, API)` → `setPaused`, `setOrigin`, `refreshLabels`,
+  `setTema`, `destroy`, `info`). Biblioteca: **MapLibre GL JS 6.16.0** em `assets/vendor/maplibre` (módulos ES renomeados
+  para `.js`, `setWorkerUrl` para o trabalhador do próprio site; LEIA-ME com origem, SHA-256 e licença BSD-3-Clause).
+  O three.js saiu do repositório.
+- Dados: ladrilhos vetoriais do **OpenFreeMap** (`https://tiles.openfreemap.org/planet`, esquema OpenMapTiles, grátis,
+  sem chave, sem cookies; prédios = camada `building`, `render_height`/`render_min_height`, sem `hide_3d`). Prédio sem
+  altura no OSM fica com a altura padrão da camada. Estilo feito em JS (`estilo(tema, limites)`), sem letras: não baixa
+  fontes nem ícones de lá. Só ladrilhos z14 (`minzoom: 14`), inteiros (`zoomLevelsToOverscale: undefined`), numa área
+  de ~1,1 km (computador) ou ~750 m (celular) em volta do ponto (`bounds`): 1 a 4 ladrilhos; no centro de São Paulo cada
+  um tem ~250–400 KB pela rede (guardados 10 anos no cache do navegador). Zoom fixo (15,9 / 15,45) dentro do nível 15.
+- Desenho: luz do sol presa ao mapa (oeste-sudoeste), sombra de contato (contorno borrado) e sombras longas (polígonos
+  calculados em pedaços de 8 ms a partir das alturas, camada `sombras` com `fill-layer-opacity`); claro = dia, escuro =
+  noite com ruas âmbar; troca de tema na hora (evento `imed:tema` → `setTema`). Pinos e rótulos são HTML por cima
+  (`map.project`), com as mesmas regras de antes (até 2 no celular e 4 no computador, sem cobrir o texto do topo, os
+  botões, os créditos ou o "Você está aqui"). Círculo de ~110 m no chão no modo "perto".
+- Privacidade: o mapa só abre quando a origem é conhecida (não baixa ladrilhos de outro lugar enquanto espera a
+  localização) e parte do ponto arredondado (~110 m). O OpenFreeMap recebe IP e os pedidos dos ladrilhos (está na
+  política de privacidade). Créditos à vista em `#heroAttrib` (© OpenStreetMap, © OpenMapTiles, OpenFreeMap).
+- CSP do index.html: só `connect-src` ganhou `https://tiles.openfreemap.org` (sem `blob:`, sem `unsafe-eval`).
+- Quando falha (sem WebGL 2, biblioteca não baixou, sem a lista de ladrilhos ou nenhum ladrilho em 15 s): `goLite`,
+  a versão leve de antes. Aparelho fraco, economia de dados e "reduzir movimento" nem baixam o mapa.
+- Testes sem internet: `tests/mapa-simulado.mjs` (TileJSON e ladrilhos MVT de teste montados no próprio teste) nos e2e
+  do início, a11y e velocidade; `tests/hero3d.test.mjs` (estilo, área, sombras, CSP, créditos). Fotos reais: Actions →
+  "Capturas do site" com `local` (serve o ramo no próprio GitHub) e `telas=mapa3d`.
 
 ## Supabase (`pyoqiecupxhdzigjudyd`)
 - Migrações em `supabase/migrations` com o **mesmo número de versão aplicado no banco** (confira `list_migrations` e renomeie o arquivo).
@@ -94,7 +120,8 @@
 - O registro das execuções do GitHub (logs e artifacts) fica num armazenamento bloqueado daqui. Para ver por que um
   teste falhou: `gh api repos/<repo>/check-runs/<job>/annotations` — o testes.yml põe em cada aviso até 14 linhas do erro.
   Cada envio para a main cancela a execução de testes anterior que ainda estiver rodando (concurrency).
-- Os mapas (OpenStreetMap) também ficam bloqueados daqui: o vídeo de divulgação é gravado no GitHub.
+- Os mapas (OpenStreetMap, OpenFreeMap) também ficam bloqueados daqui: o vídeo de divulgação e as fotos do mapa 3D
+  são feitos no GitHub (capturas.yml com `local` para um ramo).
 
 ## Vídeo de divulgação
 - `scripts/gravar-video.mjs` (Playwright + ffmpeg) grava o site no ar com dados reais: início, mapa com locais reais,

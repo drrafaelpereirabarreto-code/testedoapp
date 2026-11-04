@@ -341,7 +341,9 @@ export function initHero3D(el, api) {
       const tx = document.createElement('span'); tx.className = 'tx';
       const nb = document.createElement('b'); nb.textContent = c.n;
       const sm = document.createElement('small'); sm.textContent = api.meta(c);
-      tx.append(nb, sm); label.append(lg, tx);
+      // Espaço entre o nome e o tipo: o texto visível ("Nome Tipo · distância") fica igual ao nome lido pelo leitor
+      // de tela (regra label-content-name-mismatch do axe).
+      tx.append(nb, ' ', sm); label.append(lg, tx);
       label.setAttribute('aria-label', `${c.n}, ${api.meta(c)}`);
       label.addEventListener('click', () => api.onPick(c.id));
       labelsEl.append(pin, label);
@@ -418,13 +420,24 @@ export function initHero3D(el, api) {
       if (kept.length >= max) return;
       if (kept.some((k) => overlaps(k.box, o.box) || overlaps0(k.box, cabeca(o)) || overlaps0(o.box, cabeca(k)))) return;
       if (lim.caixas.some((c) => overlaps(c, o.box))) return;
-      if (meBox && !o.forced && overlaps(meBox, o.box)) return;
+      if (meBox && !o.forced && (overlaps(meBox, o.box) || overlaps0(meBox, cabeca(o)))) return;
       kept.push(o);
     });
-    // Pino de outro local embaixo de um rótulo fica apagado (o rótulo não fica em cima de um pino).
+    // Pinos sem bagunça (muitos locais ficam a poucos metros uns dos outros): fica à vista o pino de cada rótulo e,
+    // dos outros, o mais perto do ponto; some o pino que cairia em cima de um rótulo, do "Você está aqui" ou de um
+    // pino que já ficou (encostar um pouco pode).
+    const estreita = (b, m) => ({ l: b.l + m, r: b.r - m, t: b.t + m, b: b.b - m });
+    const ocupados = [...kept.map((k) => estreita(cabeca(k), 4))];
+    if (meBox) ocupados.push(meBox, { l: pe.x - 13, r: pe.x + 13, t: pe.y - 13, b: pe.y + 13 });
+    locais.forEach((o) => {
+      if (kept.includes(o) || !o.pin.classList.contains('on')) { o.pin.classList.remove('sob'); return; }
+      const c = estreita(cabeca(o), 4);
+      const sob = !o.forced && (kept.some((k) => overlaps0(k.box, cabeca(o))) || ocupados.some((b) => overlaps0(b, c)));
+      o.pin.classList.toggle('sob', sob);
+      if (!sob) ocupados.push(c);
+    });
     locais.forEach((o) => {
       const vis = kept.includes(o);
-      o.pin.classList.toggle('sob', !vis && kept.some((k) => k !== o && overlaps0(k.box, cabeca(o))));
       const cx = vis ? o.cx : o.sx;
       o.label.style.setProperty('--ax', `${(o.sx - cx).toFixed(1)}px`);
       o.label.style.transform = `translate3d(${cx.toFixed(1)}px,${o.sy.toFixed(1)}px,0) translate(-50%,calc(-100% - ${PIN}px))`;

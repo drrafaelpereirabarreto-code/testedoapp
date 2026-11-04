@@ -265,7 +265,7 @@ await scenario('Privacidade: responsável, base legal, serviços fora do Brasil,
   assert.match(t, /art\. 11, I/);
   assert.match(t, /Lista de espera da teleconsulta/);
   assert.match(t, /Serviços fora do Brasil/);
-  for (const s of ['OpenStreetMap', 'Photon', 'Overpass', 'FOSSGIS', 'STUN', 'Cloudflare']) assert.ok(t.includes(s), s);
+  for (const s of ['OpenStreetMap', 'OpenFreeMap', 'Photon', 'Overpass', 'FOSSGIS', 'STUN', 'Cloudflare']) assert.ok(t.includes(s), s);
   // Igual ao código: as letras são do próprio site em todas as páginas; o aviso de erro não liga à conta;
   // o contador conta páginas abertas, não pessoas; a cidade escolhida também fica no aparelho.
   assert.ok(!/Google Fonts/.test(t), 'nenhuma página usa mais as letras do Google');

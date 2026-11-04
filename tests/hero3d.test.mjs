@@ -53,27 +53,32 @@ test('área dos ladrilhos: quadrado de ~raio metros em volta do ponto', () => {
   assert.ok(w < PAULISTA.lng && e > PAULISTA.lng && s < PAULISTA.lat && n > PAULISTA.lat);
 });
 
-test('sombras longas: só prédios altos, do lado oposto ao sol, do tamanho da altura; sem repetir', () => {
+test('sombras longas: só prédios altos, do lado oposto ao sol, do tamanho da altura; as mais perto primeiro', () => {
   const lado = 20 / 110574; // ~20 m
   const quadrado = (o) => [[m(o, 0, 0), m(o, 0, lado), m(o, -lado, lado), m(o, -lado, 0), m(o, 0, 0)]];
   const f = (h, h0 = 0, extra = {}) => ({ properties: { render_height: h, render_min_height: h0, ...extra }, geometry: { type: 'Polygon', coordinates: quadrado(PAULISTA) } });
-  const fc = sombras([f(40), f(40), f(5), f(30, 0, { hide_3d: true }), { properties: { render_height: 50 }, geometry: { type: 'Point', coordinates: [0, 0] } }], PAULISTA);
-  assert.equal(fc.features.length, 1, 'o prédio repetido (em dois ladrilhos) conta uma vez; baixo, escondido e ponto ficam de fora');
-  const anel = fc.features[0].geometry.coordinates[0];
-  assert.deepEqual(anel[0], anel[anel.length - 1], 'anel fechado');
-  // O ponto mais longe da sombra fica a ~altura × tan(polar) metros do prédio.
+  const fc = sombras([f(40), f(5), f(30, 0, { hide_3d: true }), { properties: { render_height: 50 }, geometry: { type: 'Point', coordinates: [0, 0] } }], PAULISTA);
+  assert.equal(fc.features.length, 1, 'baixo, escondido (hide_3d) e ponto ficam de fora');
+  const g = fc.features[0].geometry;
+  assert.equal(g.type, 'MultiPolygon');
+  assert.equal(g.coordinates.length, 2, 'o fim da sombra e a faixa que liga o prédio a ele');
+  for (const [anel] of g.coordinates) assert.deepEqual(anel[0], anel[anel.length - 1], 'anel fechado');
+  // O ponto mais longe da sombra fica a ~altura × tan(polar) metros do prédio, do lado oposto ao sol (oeste-sudoeste).
   const kx = 111320 * Math.cos(PAULISTA.lat * Math.PI / 180), ky = 110574;
-  const dist = Math.max(...anel.map(([x, y]) => Math.hypot((x - PAULISTA.lng) * kx, (y - PAULISTA.lat) * ky)));
+  const pts = g.coordinates.flatMap(([anel]) => anel);
+  const dist = Math.max(...pts.map(([x, y]) => Math.hypot((x - PAULISTA.lng) * kx, (y - PAULISTA.lat) * ky)));
   assert.ok(dist > 40 && dist < 120, `comprimento da sombra (${dist.toFixed(0)} m)`);
+  const longe = pts.reduce((a, b) => (Math.hypot((b[0] - PAULISTA.lng) * kx, (b[1] - PAULISTA.lat) * ky) > Math.hypot((a[0] - PAULISTA.lng) * kx, (a[1] - PAULISTA.lat) * ky) ? b : a));
+  assert.ok(longe[0] > PAULISTA.lng, 'sombra para o leste (sol a oeste)');
   // Parte suspensa (render_min_height): a sombra começa longe do pé.
-  const alta = sombras([f(60, 40)], PAULISTA).features[0].geometry.coordinates[0];
+  const alta = sombras([f(60, 40)], PAULISTA).features[0].geometry.coordinates.flatMap(([anel]) => anel);
   const perto = Math.min(...alta.map(([x, y]) => Math.hypot((x - PAULISTA.lng) * kx, (y - PAULISTA.lat) * ky)));
   assert.ok(perto > 20, `sombra da parte suspensa longe do pé (${perto.toFixed(0)} m)`);
   // Limite: ficam as dos prédios mais perto do ponto.
   const muitos = Array.from({ length: 30 }, (_, i) => ({ properties: { render_height: 20 + i }, geometry: { type: 'Polygon', coordinates: quadrado({ lat: PAULISTA.lat + i * .001, lng: PAULISTA.lng }) } }));
   const poucos = sombras(muitos, PAULISTA, 5).features;
   assert.equal(poucos.length, 5);
-  assert.ok(poucos.every((g) => Math.abs(g.geometry.coordinates[0][0][1] - PAULISTA.lat) < .006), 'os mais perto do ponto');
+  assert.ok(poucos.every((x) => x.geometry.coordinates.flatMap(([a]) => a).every(([, y]) => Math.abs(y - PAULISTA.lat) < .006)), 'os mais perto do ponto');
 });
 
 test('página: CSP abre só o OpenFreeMap no connect-src, biblioteca do próprio site, créditos do mapa', () => {
