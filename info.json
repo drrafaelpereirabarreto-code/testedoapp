@@ -1,0 +1,818 @@
+{
+ "modelo": "https://tiles.openfreemap.org/planet/20261101_080013_pt/{z}/{x}/{y}.pbf",
+ "total": 116,
+ "info": [
+  {
+   "zxy": "14/6067/9295",
+   "bytes": 614353,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6067/9296",
+   "bytes": 469926,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6068/9295",
+   "bytes": 627571,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6067/9297",
+   "bytes": 245973,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6068/9296",
+   "bytes": 530228,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6069/9295",
+   "bytes": 621295,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6068/9297",
+   "bytes": 369412,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6069/9297",
+   "bytes": 500366,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6069/9296",
+   "bytes": 524038,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3033/4647",
+   "bytes": 223486,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3033/4649",
+   "bytes": 101010,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3033/4648",
+   "bytes": 173182,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3034/4648",
+   "bytes": 209785,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3034/4647",
+   "bytes": 240591,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3034/4649",
+   "bytes": 166415,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3035/4647",
+   "bytes": 185859,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3035/4648",
+   "bytes": 199972,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3035/4649",
+   "bytes": 81546,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1516/2324",
+   "bytes": 289273,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1516/2323",
+   "bytes": 256846,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1516/2325",
+   "bytes": 162431,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1517/2323",
+   "bytes": 313238,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1517/2324",
+   "bytes": 288621,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1517/2325",
+   "bytes": 166983,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1518/2324",
+   "bytes": 229581,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1518/2323",
+   "bytes": 209678,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1518/2325",
+   "bytes": 265298,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "10/379/581",
+   "bytes": 167032,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "11/758/1162",
+   "bytes": 137345,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6049/9262",
+   "bytes": 144642,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6049/9263",
+   "bytes": 135686,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6050/9262",
+   "bytes": 160570,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6049/9264",
+   "bytes": 78577,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6050/9263",
+   "bytes": 151250,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6050/9264",
+   "bytes": 69394,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6051/9262",
+   "bytes": 72028,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6051/9264",
+   "bytes": 58414,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3024/4630",
+   "bytes": 42234,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6051/9263",
+   "bytes": 62749,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3024/4631",
+   "bytes": 82129,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3024/4632",
+   "bytes": 65588,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3025/4630",
+   "bytes": 77985,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3025/4631",
+   "bytes": 80698,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3025/4632",
+   "bytes": 59043,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3026/4630",
+   "bytes": 44715,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3026/4632",
+   "bytes": 43407,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3026/4631",
+   "bytes": 43983,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1511/2314",
+   "bytes": 90313,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1511/2315",
+   "bytes": 95591,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1511/2316",
+   "bytes": 97800,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1512/2314",
+   "bytes": 73770,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1512/2315",
+   "bytes": 170993,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1512/2316",
+   "bytes": 126936,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1513/2314",
+   "bytes": 38207,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1513/2315",
+   "bytes": 77219,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1513/2316",
+   "bytes": 92338,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "11/756/1157",
+   "bytes": 87547,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "10/378/578",
+   "bytes": 95726,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6603/8559",
+   "bytes": 305428,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6603/8560",
+   "bytes": 289872,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6603/8558",
+   "bytes": 277200,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6604/8558",
+   "bytes": 210389,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6604/8559",
+   "bytes": 392872,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6605/8558",
+   "bytes": 113896,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6605/8559",
+   "bytes": 43666,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6604/8560",
+   "bytes": 348777,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6605/8560",
+   "bytes": 26881,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3301/4278",
+   "bytes": 76285,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3301/4279",
+   "bytes": 126934,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3301/4280",
+   "bytes": 125533,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3302/4279",
+   "bytes": 98717,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3302/4280",
+   "bytes": 65326,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3302/4278",
+   "bytes": 72568,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3303/4278",
+   "bytes": 29914,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3303/4279",
+   "bytes": 6441,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3303/4280",
+   "bytes": 2680,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1650/2138",
+   "bytes": 57171,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1650/2139",
+   "bytes": 150903,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1650/2140",
+   "bytes": 175485,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1651/2138",
+   "bytes": 84039,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1651/2139",
+   "bytes": 95093,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1651/2140",
+   "bytes": 44053,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1652/2138",
+   "bytes": 5202,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1652/2139",
+   "bytes": 5138,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1652/2140",
+   "bytes": 3849,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "11/825/1069",
+   "bytes": 67336,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "10/412/534",
+   "bytes": 96690,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6225/9266",
+   "bytes": 176878,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6225/9267",
+   "bytes": 245547,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6225/9265",
+   "bytes": 135604,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6226/9265",
+   "bytes": 540317,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6226/9266",
+   "bytes": 243875,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6226/9267",
+   "bytes": 108126,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6227/9265",
+   "bytes": 147879,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6227/9266",
+   "bytes": 86874,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "14/6227/9267",
+   "bytes": 3105,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3112/4633",
+   "bytes": 103496,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3112/4634",
+   "bytes": 7654,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3112/4632",
+   "bytes": 100719,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3113/4632",
+   "bytes": 137828,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3113/4634",
+   "bytes": 5041,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3113/4633",
+   "bytes": 66905,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3114/4632",
+   "bytes": 28193,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3114/4634",
+   "bytes": 1633,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "13/3114/4633",
+   "bytes": 9934,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1555/2315",
+   "bytes": 196016,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1555/2316",
+   "bytes": 99783,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1556/2315",
+   "bytes": 159581,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1555/2317",
+   "bytes": 42019,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1556/2316",
+   "bytes": 172303,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1557/2315",
+   "bytes": 119211,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1557/2316",
+   "bytes": 53943,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1556/2317",
+   "bytes": 14068,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "11/778/1158",
+   "bytes": 81943,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "12/1557/2317",
+   "bytes": 8353,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  },
+  {
+   "zxy": "10/389/579",
+   "bytes": 56652,
+   "enc": "gzip",
+   "tipo": "application/vnd.mapbox-vector-tile",
+   "cors": "*"
+  }
+ ]
+}
