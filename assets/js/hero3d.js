@@ -10,12 +10,28 @@
 // Contrato com inicio.js (api): clinics(), origin(), pronto(), modo(), highlighted(), meLabel(), meta(c), onPick(id),
 // tema() ('claro' | 'escuro'), aoFicarPronto(), falhou(motivo). Devolve { setPaused, setOrigin, refreshLabels,
 // setTema, destroy, info }.
-import { Map as MapaGL, setWorkerUrl } from '../vendor/maplibre/maplibre-gl.js';
+import { Map as MapaGL, setWorkerUrl, addProtocol } from '../vendor/maplibre/maplibre-gl.js';
 
 const MAPLIBRE = '6.16.0';
 setWorkerUrl(new URL(`../vendor/maplibre/maplibre-gl-worker.js?v=${MAPLIBRE}`, import.meta.url).href);
 
 export const FONTE = 'https://tiles.openfreemap.org/planet';
+// Cada ladrilho é baixado uma vez só por página: o mapa às vezes pede o mesmo ladrilho duas vezes ao mesmo tempo (para
+// níveis de detalhe diferentes) e o cache do navegador não junta os dois pedidos. Os ladrilhos passam por "ofm://"
+// (transformRequest) e este atalho guarda a resposta; a próxima visita usa o cache do navegador (10 anos).
+const LADRILHOS = new Map();
+addProtocol('ofm', async ({ url }) => {
+  const https = url.replace(/^ofm:/, 'https:');
+  let pedido = LADRILHOS.get(https);
+  if (!pedido) {
+    pedido = fetch(https).then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status} ${https}`); return r.arrayBuffer(); });
+    LADRILHOS.set(https, pedido);
+    if (LADRILHOS.size > 12) LADRILHOS.delete(LADRILHOS.keys().next().value); // guarda só os mais recentes
+    pedido.catch(() => LADRILHOS.delete(https)); // falhou: a próxima tentativa pede de novo
+  }
+  return { data: (await pedido).slice(0) };
+});
+const pelaPonte = (url, tipo) => (tipo === 'Tile' && url.startsWith('https://tiles.openfreemap.org/') ? { url: `ofm${url.slice(5)}` } : undefined);
 const RAD = Math.PI / 180;
 const VAZIO = { type: 'FeatureCollection', features: [] };
 // Sol de fim de tarde vindo do oeste-sudoeste (ângulos da luz do MapLibre: azimute a partir do norte; polar a partir do
@@ -240,6 +256,7 @@ export function initHero3D(el, api) {
         pixelRatio: Math.min(devicePixelRatio || 1, pequeno() ? 1.5 : 1.75),
         canvasContextAttributes: { antialias: true, powerPreference: 'high-performance' },
         fadeDuration: 0, refreshExpiredTiles: false, cancelPendingTileRequestsWhileZooming: true,
+        transformRequest: pelaPonte,
       });
     } catch (e) {
       falhar('webgl', e);

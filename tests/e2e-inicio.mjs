@@ -509,7 +509,9 @@ await scenario('mapa 3D: prédios do mapa (OpenFreeMap) e estabelecimentos reais
     // O mapa parte do ponto arredondado (~110 m), o mesmo da busca; o OpenFreeMap só recebe a lista e os ladrilhos.
     assert.deepEqual(info.centro.map((v) => Math.round(v * 1000) / 1000), [-46.652, -23.565]);
     assert.ok(mapaLog.length >= 2 && mapaLog.every((u) => u === 'https://tiles.openfreemap.org/planet' || /^https:\/\/tiles\.openfreemap\.org\/planet\/teste\/14\/\d+\/\d+\.pbf$/.test(u)), mapaLog.join(' '));
-    assert.ok(mapaLog.filter((u) => /\.pbf$/.test(u)).length <= 4, `no máximo 4 ladrilhos de 2 km (${mapaLog.length - 1})`);
+    const pbfs = mapaLog.filter((u) => /\.pbf$/.test(u));
+    assert.ok(pbfs.length <= 4, `no máximo 4 ladrilhos de 2 km (${pbfs.length})`);
+    assert.equal(new Set(pbfs).size, pbfs.length, `cada ladrilho baixado uma vez só (${pbfs.join(' ')})`);
     assert.ok(!requests.some((u) => /fonts\/|sprites\/|glyphs/.test(u) && /openfreemap/.test(u)), 'sem fontes nem ícones do OpenFreeMap');
     // A biblioteca vem do próprio site (CSP script-src 'self'), sem modulepreload.
     assert.ok(requests.some((u) => u.startsWith(BASE) && /assets\/vendor\/maplibre\/maplibre-gl\.js$/.test(u)), 'maplibre-gl.js do próprio site');
