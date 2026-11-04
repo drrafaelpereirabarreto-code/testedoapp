@@ -10,6 +10,8 @@
 | `assets/js/exames-nomes.js` | Dicionário de nomes de exames (nome popular, sigla, uma letra errada → código da busca; "eco" e doença sozinha perguntam). Baixado só quando a pessoa digita (início, busca e área do médico); testes em `tests/exames-nomes.test.mjs` |
 | `assets/js/auth.js` | Login por link mágico (Supabase Auth via REST) para conta, painel e reivindicação |
 | `parceiros.html` | Cadastro de clínicas/médicos parceiros (`partner_leads`) |
+| `painel.html` + `assets/js/painel.js` | Área da clínica. Quem sou por `agenda_me` (só os próprios vínculos; banco sem a função: `clinic_members` filtrado pelo `user_id`); abas por permissão (`agenda-core.js` `clinicTabs`): Pedidos, Agenda, Dados, Exames e preços, Equipe; convites para a conta (`agenda_my_invites`/`_accept`) no topo. Profissional e financeiro ainda sem abas (4.2/4.3) |
+| `assets/js/agenda-config.js` + `agenda-core.js` | iMed Agenda 4.1: aba Agenda (configuração rápida que cria unidade, recursos, procedimentos e regras de verdade; unidade e fuso; modalidade com compromisso; horários da unidade; aparelhos/salas/profissionais; exames com grupos e preço com conferência L11; conferir horários livres por `agenda_slots`) e aba Equipe (convites, papéis, último dono). Mudança que tira agendamento do lugar mostra quantos e pede "Salvar mesmo assim" (`p_confirm`). Bloqueios da unidade continuam no `painel.js` (`add_my_block`). Regras puras testadas em `tests/agenda-core.test.mjs`; tela em `tests/e2e-agenda-config.mjs` (1024 e 390 px, teclado, tema escuro, relógio fixo). MFA desligado: **decisão 17 pendente do dono** (quando decidir, entra no `auth.js` e as funções de equipe/integração passam a exigir `aal2`) |
 | `exames/` | Guias de preparo dos exames |
 | `privacidade.html` | Política de privacidade (LGPD) |
 | `sw.js` | Service worker: scripts/páginas pela internet primeiro; suba `VERSION` a cada mudança |
@@ -57,6 +59,11 @@
   `agenda:imed`; policy em `realtime.messages` via `agenda_realtime_ok`), preço "a partir de" (gatilho em `agenda.procedures`),
   `update_my_clinic`/`set_my_clinic_exams` por permissão, `agenda_anonimizar` (reserva expirada > 7 dias) na manutenção.
   Parte 3: papéis manager/reception/professional/finance em `clinic_members` e policies antigas por `has_clinic_perm`.
+- Agenda 4.1 (`20261104184120_agenda_config`, na produção): `agenda_config(p_clinic)` (a configuração inteira para o painel:
+  unidade, fuso e confirmação, modalidade, recursos, procedimentos com grupos, regras abre/pausa, regras de pacote, aberturas em
+  feriado; só `agenda.configurar` ou `imed.clinicas.configurar`; sem dado de paciente) e `agenda_mode_set(p_clinic, p_mode,
+  p_commitment)` (pedido/nativa/manual/externa; `agenda_not_started`, `timezone_not_confirmed`, `commitment_required`,
+  externa só com `integracao.gerenciar`, `online_active`; não liga a venda online). pgTAP `370_config.sql`.
 - RPCs logadas: `set_request_status`, `update_my_clinic`, `set_my_clinic_exams`, `approve_claim`, `reject_claim`, `is_imed_admin`.
 - Teleconsulta (`..._teleconsulta`, `..._tele_documentos`): tabelas `doctors`, `doctor_checks`, `teleconsultations`,
   `tele_messages`, `tele_record_*`, `tele_access_log`, `tele_documents`, `tele_document_files`; tudo por funções `tele_*`

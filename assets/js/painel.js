@@ -8,6 +8,8 @@ import {
 } from './clinica.js';
 import * as T from './confianca.js';
 import * as V from './estatisticas.js';
+import * as A from './agenda-core.js';
+import { renderConfig, renderTeam, loadMyInvites, myInvitesHtml, acceptInvite } from './agenda-config.js';
 
 const STATUSES = ['pending', 'contacted', 'confirmed', 'completed', 'cancelled'];
 const ACTIONS = ['contacted', 'confirmed', 'completed', 'cancelled'];
@@ -31,7 +33,7 @@ const STATUS_ERR = {
 };
 
 // priceOk: valores acima do limite largo do exame que a pessoa já conferiu nesta página ("clínica:exame" → centavos).
-const state = { admin: false, clinics: [], memberIds: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null, priceOk: {} };
+const state = { admin: false, clinics: [], memberIds: [], perms: {}, invites: [], clinicId: null, tab: null, lists: {}, filter: { pedidos: '', concierge: '', when: '' }, agenda: null, priceOk: {} };
 const app = () => $('#app');
 const clinic = () => state.clinics.find((c) => c.id === state.clinicId) || null;
 const uuidOk = (v) => /^[0-9a-f-]{36}$/i.test(String(v));
@@ -94,15 +96,37 @@ function lost() {
   return true;
 }
 
+// Quem sou e o que posso em cada clínica: agenda_me (3.4), só com os MEUS vínculos. Antes, a lista vinha de
+// clinic_members sem filtro, e a conta da equipe do IMED (que lê todos os vínculos) via as clínicas dos outros como
+// "minhas". Banco sem agenda_me (troca de versão): os meus vínculos pelo user_id, com as permissões do papel.
+const noFn = (err) => err?.status === 404 || err?.data?.code === 'PGRST202' || err?.data?.code === '42883';
+async function myClinics() {
+  try {
+    const me = await auth.rpc('agenda_me');
+    if (me?.status === 'ok' && Array.isArray(me.clinics)) return me.clinics.map((c) => ({ clinic_id: c.clinic_id, role: c.role, permissions: c.permissions || {} }));
+    if (me?.status === 'forbidden') return [];
+  } catch (err) {
+    if (!noFn(err)) throw err;
+  }
+  const uid = auth.user()?.id;
+  if (!uuidOk(uid)) return [];
+  const rows = await auth.select(`clinic_members?select=clinic_id,role&user_id=eq.${uid}`);
+  return (rows || []).map((m) => ({ clinic_id: m.clinic_id, role: m.role, permissions: A.permsOf(m.role) }));
+}
+
 async function loadAll() {
   app().innerHTML = `<section class="cl-card">${loading('Carregando sua área…')}</section>`;
   try {
-    const [admin, members] = await Promise.all([
+    const [admin, members, invites] = await Promise.all([
       auth.rpc('is_imed_admin').then((v) => v === true).catch(() => false),
-      auth.select('clinic_members?select=clinic_id,role'),
+      myClinics(),
+      loadMyInvites(),
     ]);
     state.admin = admin;
-    const ids = [...new Set((members || []).map((m) => m.clinic_id).filter(uuidOk))];
+    state.invites = invites;
+    const ids = [...new Set(members.map((m) => m.clinic_id).filter(uuidOk))];
+    state.perms = Object.fromEntries(members.filter((m) => uuidOk(m.clinic_id)).map((m) => [m.clinic_id, m.permissions]));
+    state.myRoles = Object.fromEntries(members.filter((m) => uuidOk(m.clinic_id)).map((m) => [m.clinic_id, m.role]));
     // A equipe do IMED também abre qualquer clínica (agenda, pedidos, dados): o banco libera para is_imed_admin.
     const [mine, all] = await Promise.all([
       ids.length ? auth.select(`clinics?select=*&id=in.(${ids.join(',')})&order=name`) : [],
@@ -118,11 +142,13 @@ async function loadAll() {
     $('#retry').onclick = loadAll;
     return;
   }
+  const inv = myInvitesHtml(state.invites);
   if (!state.clinics.length && !state.admin) {
-    app().innerHTML = `<section class="cl-card" aria-labelledby="noneTitle"><h2 id="noneTitle">Nenhuma clínica nesta conta</h2>
+    app().innerHTML = `${inv}${inv ? '' : `<section class="cl-card" aria-labelledby="noneTitle"><h2 id="noneTitle">Nenhuma clínica nesta conta</h2>
       <p class="cl-help">Esta conta ainda não cuida de nenhuma clínica no IMED. Se você é responsável por uma clínica, laboratório ou hospital, peça para assumir o cadastro: a equipe do IMED confere os dados e responde pelo contato informado.</p>
-      <p class="cl-help">Já fez o pedido? Confira se entrou com o mesmo e-mail usado nele.</p>
-      <div class="cl-actions"><a class="btn btn-coral" href="reivindicar.html" id="goClaim">Assumir o cadastro da minha clínica</a></div></section>`;
+      <p class="cl-help">Já fez o pedido? Confira se entrou com o mesmo e-mail usado nele. Foi convidado por uma clínica? Entre com o e-mail do convite.</p>
+      <div class="cl-actions"><a class="btn btn-coral" href="reivindicar.html" id="goClaim">Assumir o cadastro da minha clínica</a></div></section>`}`;
+    bindInvites();
     return;
   }
   // Começa pela primeira clínica da própria conta; a equipe do IMED sem clínica começa nas abas da equipe.
@@ -131,10 +157,21 @@ async function loadAll() {
   renderShell();
 }
 
+// Convites para a pessoa logada (agenda_my_invites): aceitar recarrega a área com a clínica nova.
+function bindInvites() {
+  const box = $('#myInvites');
+  if (!box) return;
+  box.onclick = async (e) => {
+    const b = e.target.closest('button[data-accept]');
+    if (b && await acceptInvite(b)) loadAll();
+  };
+}
+
 // ---------- abas ----------
 function tabs() {
   const t = [];
-  if (clinic()) t.push(['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['dados', 'Dados da clínica'], ['exames', 'Exames e preços']);
+  const c = clinic();
+  if (c) t.push(...A.clinicTabs(state.perms[c.id], state.admin).map((id) => [id, A.TAB_LABEL[id]]));
   if (state.admin) t.push(['cadastros', 'Pedidos de cadastro'], ['concierge', 'Pedidos ao IMED'], ['mensagens', 'Mensagens'], ['avisos', 'Avisos de erro'], ['visitas', 'Visitas']);
   return t;
 }
@@ -152,7 +189,7 @@ const GESTAO_LINK = '<div class="cl-actions"><a class="btn btn-ghost btn-sm" hre
 function renderShell() {
   const c = clinic();
   const list = tabs();
-  if (!list.some(([id]) => id === state.tab)) state.tab = list[0][0];
+  if (!list.some(([id]) => id === state.tab)) state.tab = list[0]?.[0] ?? null;
   const opt = (x) => `<option value="${esc(x.id)}"${x.id === state.clinicId ? ' selected' : ''}>${esc(x.name)}${x.status !== 'published' ? ' (rascunho)' : ''}</option>`;
   const own = state.clinics.filter((x) => state.memberIds.includes(x.id));
   const others = state.clinics.filter((x) => !state.memberIds.includes(x.id));
@@ -166,10 +203,11 @@ function renderShell() {
     picker = `<label class="cl-lbl sr" for="clinicPick">Clínica</label><select id="clinicPick" class="cl-pick">${state.clinics.map(opt).join('')}</select>`;
   }
   const asAdmin = c && state.admin && !state.memberIds.includes(c.id);
-  app().innerHTML = `<section class="cl-card" aria-labelledby="clinicTitle">
+  const role = c && state.memberIds.includes(c.id) ? A.ROLE_LABEL[state.myRoles?.[c.id]] : '';
+  app().innerHTML = `${myInvitesHtml(state.invites)}<section class="cl-card" aria-labelledby="clinicTitle">
       <div class="cl-bar">
         <div><h2 id="clinicTitle">${c ? esc(c.name) : 'Equipe do IMED'}</h2>
-          ${c ? `<p class="cl-help" style="margin:4px 0 0">${esc([kindName(c.kind), c.city && `${c.city} - ${c.state}`, c.cnes && `CNES ${c.cnes}`].filter(Boolean).join(' · '))}</p>` : '<p class="cl-help" style="margin:4px 0 0">Você entrou como equipe do IMED.</p>'}
+          ${c ? `<p class="cl-help" style="margin:4px 0 0">${esc([kindName(c.kind), c.city && `${c.city} - ${c.state}`, c.cnes && `CNES ${c.cnes}`, role && `Seu papel: ${role}`].filter(Boolean).join(' · '))}</p>` : '<p class="cl-help" style="margin:4px 0 0">Você entrou como equipe do IMED.</p>'}
         </div>
         ${picker}
       </div>
@@ -177,12 +215,15 @@ function renderShell() {
       <div id="clinicNotes">${clinicNotes(c)}</div>
       ${state.admin ? GESTAO_LINK : ''}
     </section>
-    <div class="cl-tabs" role="tablist" aria-label="Seções da área da clínica">
+    ${list.length ? `<div class="cl-tabs" role="tablist" aria-label="Seções da área da clínica">
       ${list.map(([id, label]) => `<button class="cl-tab" role="tab" type="button" id="tab-${id}" aria-controls="panel" aria-selected="${id === state.tab}" tabindex="${id === state.tab ? 0 : -1}" data-tab="${id}">${esc(label)}</button>`).join('')}
     </div>
-    <section class="cl-card cl-panel" role="tabpanel" id="panel" aria-labelledby="tab-${state.tab}" tabindex="0"></section>`;
+    <section class="cl-card cl-panel" role="tabpanel" id="panel" aria-labelledby="tab-${state.tab}" tabindex="0"></section>`
+    : `<section class="cl-card" id="noTabs">${note('Por enquanto não há nada para o seu papel nesta área. A agenda do profissional e os números do financeiro chegam nas próximas etapas.', 'info')}</section>`}`;
+  bindInvites();
   const pick = $('#clinicPick');
   if (pick) pick.onchange = () => { state.clinicId = pick.value || null; state.lists = {}; state.agenda = null; renderShell(); $('#clinicPick')?.focus(); };
+  if (!list.length) return;
   const tl = $('[role="tablist"]');
   tl.addEventListener('click', (e) => { const b = e.target.closest('[role="tab"]'); if (b) selectTab(b.dataset.tab, true); });
   tl.addEventListener('keydown', (e) => {
@@ -218,8 +259,8 @@ function selectTab(id, focus) {
 
 function renderTab() {
   const p = $('#panel');
-  p.onclick = null; p.oninput = null; p.onchange = null;
-  ({ pedidos: tabRequests, agenda: tabAgenda, dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge, mensagens: tabMessages, avisos: tabReports, visitas: tabVisits })[state.tab](p);
+  p.onclick = null; p.oninput = null; p.onchange = null; p.onsubmit = null;
+  ({ pedidos: tabRequests, agenda: tabAgenda, equipe: (x) => renderTeam(x, ctxOf(clinic())), dados: tabData, exames: tabExams, cadastros: tabClaims, concierge: tabConcierge, mensagens: tabMessages, avisos: tabReports, visitas: tabVisits })[state.tab](p);
 }
 
 // ---------- pedidos (clínica e IMED) ----------
@@ -375,78 +416,11 @@ function tabConcierge(p) {
   loadList(p, 'concierge', `appointment_requests?select=${IMED_COLS}&clinic_id=is.null&order=created_at.desc&limit=100`, () => renderRequestList(p, 'concierge', intro, true, 'concierge'));
 }
 
-// ---------- agenda com horário ----------
-// A clínica define faixas de atendimento por dia da semana (e por exame), bloqueios (feriado, folga,
-// manutenção) e confere os próximos horários livres, que são os mesmos que o paciente vê.
-const WD = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-const WD_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const WORKDAYS = [2, 3, 4, 5]; // terça a sexta, copiados da segunda
-const SLOT_OPTIONS = [10, 15, 20, 30, 45, 60];
-const PREVIEW_DAYS = 7;
-const PREVIEW_MAX = 30;
-const naDia = (wd) => `${wd === 0 || wd === 6 ? 'no' : 'na'} ${WD[wd].toLowerCase()}`;
+// ---------- agenda: configuração (agenda-config.js) e bloqueios ----------
+// Fase 4.1 do iMed Agenda: o editor antigo de faixas (set_my_schedule) saiu; a configuração da agenda nova (unidade,
+// modalidade, horários, aparelhos, salas, profissionais e exames) fica em agenda-config.js e só aparece para quem tem
+// agenda.configurar. Os bloqueios (add_my_block/remove_my_block) continuam aqui para quem tem agenda.bloquear.
 const toMin = (t) => { const m = /^(\d{2}):(\d{2})/.exec(t || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : NaN; };
-const fromMin = (n) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
-let agUid = 0;
-const newRow = (wd, o = {}) => ({ k: `r${++agUid}`, wd, start: '', end: '', slot: 30, mode: 'all', exams: [], ...o });
-
-// Linha de clinic_schedules → faixa editável.
-export function rowFromDb(x) {
-  const codes = Array.isArray(x.exam_codes) ? x.exam_codes : [];
-  return newRow(Number(x.weekday), {
-    start: String(x.start_time || '').slice(0, 5), end: String(x.end_time || '').slice(0, 5),
-    slot: Number(x.slot_minutes) || 30, mode: codes.length ? 'some' : 'all', exams: codes.filter((c) => EXAM_CODES.includes(c)),
-  });
-}
-
-// Tira das faixas os exames que a clínica não marca mais em “Exames e preços” e guarda quais saíram (r.dropped),
-// para avisar na faixa. Devolve true se alguma faixa “só alguns” perdeu exame.
-export function dropMissingExams(rows, offered) {
-  let any = false;
-  for (const r of rows) {
-    const gone = r.exams.filter((code) => !offered.includes(code));
-    if (!gone.length) continue;
-    r.exams = r.exams.filter((code) => offered.includes(code));
-    if (r.mode !== 'some') continue;
-    r.dropped = [...new Set([...(r.dropped || []), ...gone])];
-    any = true;
-  }
-  return any;
-}
-
-const sharesExam = (a, b) => a.mode === 'all' || b.mode === 'all' || a.exams.some((c) => b.exams.includes(c));
-
-// Erros por faixa ({ [k]: texto }); _all para erro geral.
-export function validateSchedule(rows) {
-  const errs = {};
-  const ok = [];
-  for (const r of rows) {
-    const s = toMin(r.start);
-    const e = toMin(r.end);
-    if (Number.isNaN(s) || Number.isNaN(e)) errs[r.k] = 'Preencha o início e o fim.';
-    else if (e <= s) errs[r.k] = 'O fim precisa ser depois do início.';
-    else if (!(r.slot >= 5 && r.slot <= 240)) errs[r.k] = 'Escolha a duração de cada horário.';
-    else if (e - s < r.slot) errs[r.k] = `A faixa precisa ter pelo menos ${r.slot} minutos (a duração de um horário).`;
-    else if (r.mode === 'some' && !r.exams.length) errs[r.k] = 'Marque pelo menos um exame ou escolha “Todos os exames”.';
-    else ok.push(r);
-  }
-  // Duas faixas do mesmo dia não podem se cruzar para o mesmo exame (o mesmo horário sairia duas vezes).
-  for (const wd of WD_ORDER) {
-    const day = ok.filter((r) => r.wd === wd).sort((a, b) => toMin(a.start) - toMin(b.start));
-    for (let j = 1; j < day.length; j++) {
-      const b = day[j];
-      const a = day.slice(0, j).find((x) => toMin(x.start) < toMin(b.end) && toMin(b.start) < toMin(x.end) && sharesExam(x, b));
-      if (a) errs[b.k] = `Esta faixa se cruza com a de ${a.start} às ${a.end} para o mesmo exame. Mude o horário ou os exames.`;
-    }
-  }
-  if (rows.length > 100) errs._all = 'Use até 100 faixas na semana.';
-  return errs;
-}
-
-// O que vai para set_my_schedule.
-export const scheduleRows = (rows) => [...rows]
-  .sort((a, b) => a.wd - b.wd || toMin(a.start) - toMin(b.start))
-  .map((r) => ({ weekday: r.wd, start: r.start, end: r.end, slot_minutes: r.slot, exams: r.mode === 'all' ? [] : EXAM_CODES.filter((c) => r.exams.includes(c)) }));
 
 // Bloqueio digitado (dias inteiros ou algumas horas de um dia) → início e fim com o fuso de São Paulo.
 export function blockRange({ kind, from, to, start, end }, now = Date.now()) {
@@ -484,83 +458,41 @@ export function blockWhen(b) {
   return `${fmtDateTime(b.starts_at)} até ${fmtDateTime(b.ends_at)}`;
 }
 
+const permsOf = (c) => (c ? state.perms[c.id] || {} : {});
+const ctxOf = (c) => ({ clinic: c, perms: permsOf(c), admin: state.admin, lost, reloadAll: loadAll });
+
 async function tabAgenda(p) {
   const c = clinic();
-  const cid = c.id;
-  const same = () => state.tab === 'agenda' && state.clinicId === cid && p.isConnected;
-  // Mudanças ainda não salvas continuam ao trocar de aba (e voltar).
-  const draft = state.agenda?.clinicId === cid && state.agenda.dirty ? state.agenda : null;
-  p.innerHTML = loading('Carregando a agenda…');
-  const exKey = `exames:${cid}`;
-  try {
-    const [sched, blocks, exams] = await Promise.all([
-      draft ? null : auth.select(`clinic_schedules?select=*&clinic_id=eq.${cid}&order=weekday,start_time`),
-      auth.select(`clinic_blocks?select=*&clinic_id=eq.${cid}&ends_at=gte.${new Date().toISOString()}&order=starts_at`),
-      state.lists[exKey] || auth.select(`clinic_exams?select=exam_code,price_cents&clinic_id=eq.${cid}`),
-    ]);
-    if (!same()) return;
-    state.lists[exKey] = exams || [];
-    const offered = EXAM_CODES.filter((code) => state.lists[exKey].some((x) => x.exam_code === code));
-    const rows = draft ? draft.rows : (sched || []).map(rowFromDb);
-    // Só os exames que a clínica faz hoje (marcados em “Exames e preços”). O que saiu de lá é tirado da faixa
-    // com um aviso nela, e a agenda fica com mudanças a salvar, para a clínica revisar.
-    const dropped = dropMissingExams(rows, offered);
-    const pv = draft && offered.includes(draft.previewExam) ? draft.previewExam : offered[0] || '';
-    state.agenda = { clinicId: cid, rows, dirty: !!draft || dropped, errs: draft?.errs || {}, offered, blocks: blocks || [], previewExam: pv, pvSeq: 0 };
-  } catch (err) {
-    if (lost() || !same()) return;
-    p.innerHTML = `${note(esc(friendlyError(err, 'Não foi possível carregar a agenda agora.')), 'err')}<div class="cl-actions"><button class="btn btn-ghost btn-sm" type="button" id="retryTab">Tentar de novo</button></div>`;
-    $('#retryTab').onclick = () => renderTab();
-    return;
-  }
-  renderAgenda(p);
+  const perms = permsOf(c);
+  const canConfig = state.admin || A.can(perms, 'agenda.configurar');
+  const canBlock = state.admin || A.can(perms, 'agenda.bloquear');
+  p.innerHTML = `<div id="agNote">${agendaNote(c)}</div><div id="acBox"></div><div id="blkBox"></div>`;
+  p.onclick = (e) => { const b = e.target.closest('button[data-go]'); if (b) selectTab(b.dataset.go, true); };
+  if (canConfig) renderConfig($('#acBox'), ctxOf(c));
+  if (canBlock) loadBlocks($('#blkBox'), c);
 }
 
 function agendaNote(c) {
   if (c.status !== 'published' || !c.accepts_online_booking) {
-    return note(`A agenda só aparece para os pacientes quando <b>“Aceito pedidos de agendamento pelo site”</b> estiver ligado em <button class="link" type="button" data-go="dados">Dados da clínica</button>${c.status !== 'published' ? ' e o cadastro estiver publicado pela equipe do IMED' : ''}.`, 'warn');
+    return note(`Os pedidos pelo site estão desligados. Ligue <b>“Aceito pedidos de agendamento pelo site”</b> em <button class="link" type="button" data-go="dados">Dados da clínica</button>${c.status !== 'published' ? ' (o cadastro também precisa ser publicado pela equipe do IMED)' : ''}.`, 'warn');
   }
-  return note('Os pacientes veem os horários livres e marcam direto pelo site. O pedido chega na aba “Pedidos” já confirmado.', 'info');
+  return '';
 }
 
-function rowHtml(r) {
-  const a = state.agenda;
-  const k = r.k;
-  const err = a.errs[k] || '';
-  const inv = err ? ' aria-invalid="true"' : '';
-  const opts = [...new Set([...SLOT_OPTIONS, r.slot])].sort((x, y) => x - y);
-  const exams = a.offered.map((code) => `<label class="cl-check"><input type="checkbox" data-f="ex" value="${code}" id="ag-x-${k}-${code}"${r.exams.includes(code) ? ' checked' : ''}><span>${esc(EXAMS[code].n)}</span></label>`).join('');
-  return `<li class="ag-row${err ? ' bad' : ''}" data-k="${k}">
-      <div class="ag-times">
-        <div><label class="cl-lbl" for="ag-s-${k}">Início</label><input type="time" id="ag-s-${k}" data-f="start" value="${esc(r.start)}" step="300" aria-describedby="ag-e-${k}"${inv}></div>
-        <div><label class="cl-lbl" for="ag-f-${k}">Fim</label><input type="time" id="ag-f-${k}" data-f="end" value="${esc(r.end)}" step="300" aria-describedby="ag-e-${k}"${inv}></div>
-        <div><label class="cl-lbl" for="ag-d-${k}">Cada horário</label><select id="ag-d-${k}" data-f="slot">${opts.map((m) => `<option value="${m}"${m === r.slot ? ' selected' : ''}>${m} min</option>`).join('')}</select></div>
-        <button class="btn btn-danger btn-sm ag-rm" type="button" data-rm="${k}"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Remover<span class="sr"> esta faixa ${naDia(r.wd)}${r.start ? `, ${esc(r.start)} às ${esc(r.end)}` : ''}</span></button>
-      </div>
-      <fieldset class="ag-ex"><legend>Exames nesta faixa</legend>
-        <div class="ag-mode">
-          <label class="cl-check"><input type="radio" name="ag-m-${k}" value="all" data-f="mode"${r.mode === 'all' ? ' checked' : ''}><span>Todos os exames</span></label>
-          <label class="cl-check"><input type="radio" name="ag-m-${k}" value="some" data-f="mode"${r.mode === 'some' ? ' checked' : ''}><span>Só alguns</span></label>
-        </div>
-        <div class="ag-exl"${r.mode === 'all' ? ' hidden' : ''}>${exams || '<span class="cl-hint">Nenhum exame marcado em “Exames e preços”.</span>'}</div>
-      </fieldset>
-      ${r.dropped?.length ? `<div class="ag-drop">${note(esc(`${listNames(r.dropped)} ${r.dropped.length === 1 ? 'saiu' : 'saíram'} de “Exames e preços” e ${r.dropped.length === 1 ? 'foi tirada' : 'foram tirados'} desta faixa. ${r.exams.length ? 'Confira e salve a agenda.' : 'Marque outro exame, escolha “Todos os exames” ou remova a faixa, e salve a agenda.'}`), 'warn')}</div>` : ''}
-      <p class="cl-err" id="ag-e-${k}">${esc(err)}</p>
-    </li>`;
-}
-
-const listNames = (codes) => {
-  const n = codes.map((code) => examName(code) || code);
-  return n.length > 1 ? `${n.slice(0, -1).join(', ')} e ${n.at(-1)}` : n[0];
-};
-
-function dayHtml(wd) {
-  const rows = state.agenda.rows.filter((r) => r.wd === wd);
-  return `<section class="ag-day${rows.length ? '' : ' closed'}" id="agday-${wd}" aria-labelledby="agd-${wd}">
-      <div class="ag-dh"><h4 id="agd-${wd}">${WD[wd]}</h4><span class="ag-sub">${rows.length ? `${rows.length} ${rows.length === 1 ? 'faixa' : 'faixas'}` : 'Sem horários pelo site'}</span>
-        <button class="btn btn-ghost btn-sm" type="button" data-add="${wd}"><i class="fa-solid fa-plus" aria-hidden="true"></i> Adicionar faixa<span class="sr"> ${naDia(wd)}</span></button></div>
-      ${rows.length ? `<ul class="ag-rows">${rows.map(rowHtml).join('')}</ul>` : ''}
-    </section>`;
+async function loadBlocks(box, c) {
+  const cid = c.id;
+  box.innerHTML = loading('Carregando os bloqueios…');
+  try {
+    const blocks = await auth.select(`clinic_blocks?select=*&clinic_id=eq.${cid}&ends_at=gte.${new Date().toISOString()}&order=starts_at`);
+    if (state.clinicId !== cid || !box.isConnected) return;
+    state.agenda = { clinicId: cid, blocks: blocks || [] };
+  } catch (err) {
+    if (lost() || !box.isConnected) return;
+    box.innerHTML = `${note(esc(friendlyError(err, 'Não foi possível carregar os bloqueios agora.')), 'err')}<div class="cl-actions"><button class="btn btn-ghost btn-sm" type="button" id="retryBlk">Tentar de novo</button></div>`;
+    $('#retryBlk').onclick = () => loadBlocks(box, c);
+    return;
+  }
+  renderBlocks(box);
 }
 
 function blocksHtml() {
@@ -570,29 +502,15 @@ function blocksHtml() {
       <button class="btn btn-ghost btn-sm" type="button" data-unblock="${esc(b.id)}">Remover<span class="sr"> o bloqueio de ${esc(blockWhen(b))}</span></button></li>`).join('')}</ul>`;
 }
 
-function renderAgenda(p) {
-  const c = clinic();
-  const a = state.agenda;
+function renderBlocks(box) {
   const today = spDay(Date.now());
   const dateField = (id, label, hint = '') => `<div class="cl-field" id="${id}Box"><label class="cl-lbl" for="${id}">${label}</label>
       <input id="${id}" type="date" min="${today}" aria-describedby="${id}Err${hint ? ` ${id}Hint` : ''}">${hint ? `<span class="cl-hint" id="${id}Hint">${hint}</span>` : ''}<span class="cl-err" id="${id}Err"></span></div>`;
   const timeField = (id, label) => `<div class="cl-field"><label class="cl-lbl" for="${id}">${label}</label>
       <input id="${id}" type="time" step="300" aria-describedby="${id}Err"><span class="cl-err" id="${id}Err"></span></div>`;
-  p.innerHTML = `<div id="agNote">${agendaNote(c)}</div>
-    <h3 class="ag-h" id="agWeekTitle">Horários de atendimento da semana</h3>
-    <p class="cl-help">Crie uma ou mais faixas em cada dia, por exemplo 08:00 às 12:00 com um horário a cada 30 minutos. Dias sem faixa não têm horários pelo site. Horários com menos de 2 horas de antecedência não aparecem para o paciente.</p>
-    ${a.offered.length ? '' : note('Nenhum exame marcado em <button class="link" type="button" data-go="exames">Exames e preços</button>. Marque os exames que a clínica faz para escolher quais entram em cada faixa.', 'warn')}
-    <form id="agForm" novalidate aria-labelledby="agWeekTitle">
-      <div class="cl-actions ag-tools"><button class="btn btn-ghost btn-sm" type="button" id="agCopy"><i class="fa-regular fa-copy" aria-hidden="true"></i> Copiar segunda para os dias úteis</button></div>
-      <div id="agCopyMsg" class="cl-msg" aria-live="polite"></div>
-      <div id="agWeek" class="ag-week">${WD_ORDER.map(dayHtml).join('')}</div>
-      <div id="agSum" aria-live="polite"></div>
-      <div class="cl-actions"><button class="btn btn-coral" type="submit" id="agSave">Salvar agenda</button><span class="ag-dirty" id="agDirty" aria-live="polite">${a.dirty ? 'Há mudanças ainda não salvas.' : ''}</span></div>
-      <div id="agMsg" aria-live="polite"></div>
-    </form>
-
-    <h3 class="ag-h" id="blkTitle">Bloqueios</h3>
-    <p class="cl-help">Feriados, folgas, manutenção do aparelho: nesses períodos nenhum horário aparece para o paciente. Bloquear não cancela pedidos já marcados; confira a aba “Pedidos”.</p>
+  box.innerHTML = `<section class="ac-sec" aria-labelledby="blkTitle">
+    <h3 class="ac-h" id="blkTitle">Bloqueios da clínica inteira</h3>
+    <p class="cl-help">Feriados da cidade, folgas, reformas: nesses períodos nenhum horário é oferecido. Se houver paciente marcado no período, o bloqueio não é salvo e a clínica precisa remarcar antes.</p>
     <div id="agBlocks">${blocksHtml()}</div>
     <div id="unblockMsg" aria-live="polite"></div>
     <form id="blkForm" class="ag-blk" novalidate aria-labelledby="blkNew">
@@ -607,155 +525,21 @@ function renderAgenda(p) {
         ${dateField('bFrom', 'Primeiro dia')}
         ${dateField('bTo', 'Último dia', 'Em branco: só o primeiro dia.')}
         <div class="ag-part full" id="bPart" hidden>${timeField('bStart', 'Das')}${timeField('bEnd', 'Às')}</div>
-        <div class="cl-field full"><label class="cl-lbl" for="bReason">Motivo <small>(opcional, só a clínica vê)</small></label>
-          <input id="bReason" type="text" maxlength="120" autocomplete="off" placeholder="Ex.: feriado, manutenção do aparelho"></div>
+        <div class="cl-field full"><label class="cl-lbl" for="bReason">Motivo <small>(opcional, só a clínica vê; não escreva dados de pacientes)</small></label>
+          <input id="bReason" type="text" maxlength="120" autocomplete="off"></div>
       </div>
       <div class="cl-actions"><button class="btn btn-primary" type="submit" id="bSave">Bloquear</button></div>
       <div id="bMsg" aria-live="polite"></div>
-    </form>
-
-    <h3 class="ag-h" id="pvTitle">Próximos horários livres</h3>
-    <p class="cl-help">Confira aqui o que o paciente vê nos próximos ${PREVIEW_DAYS} dias, já com os bloqueios e os horários marcados. Mostra a agenda salva.</p>
-    <div class="cl-filter">
-      ${a.offered.length ? `<label class="cl-lbl" for="pvExam" style="margin:0">Exame</label><select id="pvExam">${a.offered.map((code) => `<option value="${code}"${code === a.previewExam ? ' selected' : ''}>${esc(EXAMS[code].n)}</option>`).join('')}</select>` : ''}
-      <button class="btn btn-ghost btn-sm" type="button" id="pvRefresh"><i class="fa-solid fa-rotate-right" aria-hidden="true"></i> Atualizar horários</button>
-    </div>
-    <div id="pvBox" aria-live="polite"></div>`;
-
-  const markDirty = () => { a.dirty = true; $('#agDirty').textContent = 'Há mudanças ainda não salvas.'; $('#agMsg').innerHTML = ''; };
-  const rowOf = (el) => a.rows.find((r) => r.k === el.closest('.ag-row')?.dataset.k);
-  const onEdit = (e) => {
-    const t = e.target;
-    const r = t.dataset?.f ? rowOf(t) : null;
-    if (!r) return;
-    if (t.dataset.f === 'start' || t.dataset.f === 'end') r[t.dataset.f] = t.value;
-    else if (t.dataset.f === 'slot') r.slot = Number(t.value);
-    else if (t.dataset.f === 'mode') {
-      r.mode = t.value;
-      $('.ag-exl', t.closest('.ag-row')).hidden = r.mode === 'all';
-    } else if (t.dataset.f === 'ex') r.exams = $$('input[data-f="ex"]:checked', t.closest('.ag-row')).map((x) => x.value);
-    markDirty();
+    </form></section>`;
+  box.onchange = (e) => {
+    if (e.target.name !== 'blkKind') return;
+    const part = e.target.value === 'part';
+    $('#bPart').hidden = !part;
+    $('#bToBox').hidden = part;
+    $('label[for="bFrom"]').textContent = part ? 'Dia' : 'Primeiro dia';
   };
-  p.oninput = onEdit;
-  p.onchange = (e) => {
-    if (e.target.id === 'pvExam') { a.previewExam = e.target.value; loadPreview(); return; }
-    if (e.target.name === 'blkKind') {
-      const part = e.target.value === 'part';
-      $('#bPart').hidden = !part;
-      $('#bToBox').hidden = part;
-      $('label[for="bFrom"]').textContent = part ? 'Dia' : 'Primeiro dia';
-      return;
-    }
-  };
-  const redrawDay = (wd) => { $(`#agday-${wd}`).outerHTML = dayHtml(wd); };
-  p.onclick = async (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    if (b.dataset.go) { selectTab(b.dataset.go, true); return; }
-    if (b.dataset.add) {
-      const wd = Number(b.dataset.add);
-      const same = a.rows.filter((r) => r.wd === wd);
-      const last = same.at(-1);
-      let start = '08:00'; let end = '12:00';
-      if (last) {
-        const s = Number.isNaN(toMin(last.end)) ? NaN : toMin(last.end) + 60;
-        if (Number.isNaN(s) || s + 60 > 24 * 60 - 1) { start = ''; end = ''; } else { start = fromMin(s); end = fromMin(Math.min(s + 240, 23 * 60 + 55)); }
-      }
-      const r = newRow(wd, { start, end, slot: last?.slot || 30 });
-      a.rows.push(r);
-      redrawDay(wd);
-      markDirty();
-      $(`#ag-s-${r.k}`).focus();
-      return;
-    }
-    if (b.dataset.rm) {
-      const r = a.rows.find((x) => x.k === b.dataset.rm);
-      a.rows = a.rows.filter((x) => x !== r);
-      delete a.errs[r.k];
-      redrawDay(r.wd);
-      markDirty();
-      $(`#agday-${r.wd} [data-add]`).focus();
-      return;
-    }
-    if (b.id === 'agCopy') {
-      const mon = a.rows.filter((r) => r.wd === 1);
-      const msg = $('#agCopyMsg');
-      msg.className = 'cl-msg';
-      if (!mon.length) { msg.textContent = 'Segunda ainda não tem faixas. Adicione uma faixa na segunda primeiro.'; msg.classList.add('err'); return; }
-      const replaced = a.rows.some((r) => WORKDAYS.includes(r.wd));
-      a.rows = a.rows.filter((r) => !WORKDAYS.includes(r.wd))
-        .concat(WORKDAYS.flatMap((wd) => mon.map((r) => newRow(wd, { start: r.start, end: r.end, slot: r.slot, mode: r.mode, exams: [...r.exams] }))));
-      Object.keys(a.errs).forEach((k) => { if (k !== '_all' && !a.rows.some((r) => r.k === k)) delete a.errs[k]; });
-      WORKDAYS.forEach(redrawDay);
-      markDirty();
-      msg.textContent = `Pronto: terça a sexta agora têm os mesmos horários de segunda${replaced ? ' (as faixas que havia nesses dias foram trocadas)' : ''}. Falta salvar.`;
-      msg.classList.add('ok');
-      return;
-    }
-    if (b.dataset.unblock) { removeBlock(b); return; }
-    if (b.id === 'pvRefresh') loadPreview();
-  };
-  $('#agForm').onsubmit = saveAgenda;
+  box.onclick = (e) => { const b = e.target.closest('button[data-unblock]'); if (b) removeBlock(b); };
   $('#blkForm').onsubmit = saveBlock;
-  loadPreview();
-}
-
-async function saveAgenda(e) {
-  e.preventDefault();
-  const c = clinic();
-  const a = state.agenda;
-  a.errs = validateSchedule(a.rows);
-  WD_ORDER.forEach((wd) => { $(`#agday-${wd}`).outerHTML = dayHtml(wd); });
-  $('#agMsg').innerHTML = '';
-  const bad = Object.keys(a.errs).filter((k) => k !== '_all');
-  if (bad.length || a.errs._all) {
-    $('#agSum').innerHTML = note(esc(a.errs._all || (bad.length === 1 ? 'Confira a faixa marcada em vermelho.' : `Confira as ${bad.length} faixas marcadas em vermelho.`)), 'err');
-    $('.ag-row.bad input[data-f="start"]')?.focus();
-    return;
-  }
-  $('#agSum').innerHTML = '';
-  const btn = $('#agSave');
-  btn.disabled = true;
-  btn.textContent = 'Salvando…';
-  const rows = scheduleRows(a.rows);
-  const sent = JSON.stringify(rows);
-  try {
-    const res = await auth.rpc('set_my_schedule', { p_clinic: c.id, p_rows: rows });
-    if (res !== 'ok') throw Object.assign(new Error(res), { result: res });
-    // A pessoa pode ter mexido nos campos (ou trocado de aba e voltado) enquanto salvava:
-    // só fica “salvo” se a agenda na tela for igual à que foi enviada.
-    const cur = state.agenda?.clinicId === a.clinicId ? state.agenda : null;
-    if (cur) {
-      cur.dirty = JSON.stringify(scheduleRows(cur.rows)) !== sent;
-      if (!cur.dirty) {
-        const days = new Set(cur.rows.filter((r) => r.dropped?.length).map((r) => r.wd));
-        cur.rows.forEach((r) => { delete r.dropped; });
-        days.forEach((wd) => { const el = $(`#agday-${wd}`); if (el && state.agenda === cur) el.outerHTML = dayHtml(wd); });
-      }
-      const d = $('#agDirty');
-      if (d && state.agenda === cur) d.textContent = cur.dirty ? 'Há mudanças ainda não salvas.' : '';
-    }
-    const live = c.status === 'published' && c.accepts_online_booking;
-    const okText = !rows.length ? 'Agenda salva sem horários. Os pacientes voltam a fazer o pedido sem horário, e a clínica liga para combinar.'
-      : live ? 'Agenda salva. Os horários livres já aparecem para os pacientes.' : 'Agenda salva. Os horários aparecem para os pacientes quando “Aceito pedidos de agendamento pelo site” estiver ligado.';
-    const box = $('#agMsg');
-    if (box && state.agenda === cur) box.innerHTML = note(`${okText}${cur?.dirty ? ' As mudanças feitas enquanto salvava ainda não foram salvas.' : ''}`, 'ok');
-    toast('Agenda salva.');
-    loadPreview();
-  } catch (err) {
-    if (lost()) return;
-    const m = err.result === 'forbidden' ? 'Sua conta não pode mudar a agenda desta clínica.'
-      // Desde a fase 3.3 do banco, os horários vêm da agenda nova do IMED (os cadastros chegam ao painel na fase 4.1).
-      : err.result === 'managed_by_agenda' ? 'Os horários com agenda agora ficam na agenda nova do IMED, que ainda está em preparação. Por enquanto, os pacientes enviam o pedido sem horário e a clínica liga para combinar.'
-        : friendlyError(err, 'Não foi possível salvar a agenda agora. Tente de novo em instantes.');
-    const box = $('#agMsg');
-    if (box && state.agenda?.clinicId === a.clinicId) box.innerHTML = note(esc(m), 'err');
-    else toast(m);
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Salvar agenda';
-    if (btn.isConnected && (!document.activeElement || document.activeElement === document.body)) btn.focus();
-  }
 }
 
 // Busca de novo os bloqueios da clínica; vale para a agenda aberta agora, se for a mesma clínica.
@@ -798,12 +582,14 @@ async function saveBlock(e) {
     }
     await refreshBlocks(a.clinicId).catch(() => {});
     const box = $('#bMsg');
-    if (box && state.agenda === a) box.innerHTML = note('Bloqueio salvo. Nesse período nenhum horário aparece para os pacientes.', 'ok');
+    if (box && state.agenda === a) box.innerHTML = note('Bloqueio salvo. Nesse período nenhum horário é oferecido.', 'ok');
     toast('Bloqueio salvo.');
-    if (agendaOf(a.clinicId)) loadPreview();
   } catch (err) {
     if (lost()) return;
-    const m = err.result === 'forbidden' ? 'Sua conta não pode bloquear horários desta clínica.' : friendlyError(err, 'Não foi possível salvar o bloqueio agora. Tente de novo em instantes.');
+    const m = err.result === 'forbidden' ? 'Sua conta não pode bloquear horários desta clínica.'
+      : err.result === 'has_appointments' ? 'Há pacientes marcados nesse período. Remarque ou cancele esses agendamentos antes de bloquear.'
+        : err.result && A.STATUS_TEXT[err.result] ? A.STATUS_TEXT[err.result]
+          : friendlyError(err, 'Não foi possível salvar o bloqueio agora. Tente de novo em instantes.');
     const box = $('#bMsg');
     if (box && state.agenda === a) box.innerHTML = note(esc(m), 'err');
     else toast(m);
@@ -838,7 +624,6 @@ async function removeBlock(b) {
     list.innerHTML = blocksHtml();
     if (msg.isConnected) msg.innerHTML = note(esc(text), 'ok');
     ($(`#agBlocks [data-unblock="${CSS.escape(next || '')}"]`) || $('#bFrom'))?.focus();
-    loadPreview();
   } catch (err) {
     if (lost()) return;
     b.disabled = false;
@@ -846,44 +631,6 @@ async function removeBlock(b) {
     if (msg.isConnected) msg.innerHTML = note(esc(m), 'err');
     else toast(m);
   }
-}
-
-async function loadPreview() {
-  const box = $('#pvBox');
-  const a = state.agenda;
-  if (!box || !a) return;
-  const seq = ++a.pvSeq;
-  const exam = a.previewExam || null;
-  box.innerHTML = loading('Buscando horários livres…');
-  try {
-    const rows = (await auth.rpc('available_slots', { p_clinic: a.clinicId, p_exam: exam, p_from: null, p_days: PREVIEW_DAYS })) || [];
-    if (state.agenda !== a || seq !== a.pvSeq || !box.isConnected) return;
-    box.innerHTML = previewHtml(Array.isArray(rows) ? rows : [], exam);
-  } catch (err) {
-    if (lost() || state.agenda !== a || seq !== a.pvSeq || !box.isConnected) return;
-    box.innerHTML = note(esc(friendlyError(err, 'Não foi possível buscar os horários livres agora.')), 'err');
-  }
-}
-
-function previewHtml(rows, exam) {
-  const c = clinic();
-  const list = rows.map((r) => r?.slot_start).filter((x) => x && !Number.isNaN(Date.parse(x)));
-  if (!list.length) {
-    const why = c.status !== 'published' || !c.accepts_online_booking
-      ? 'Com “Aceito pedidos de agendamento pelo site” desligado ou o cadastro em rascunho, nenhum horário aparece.'
-      : 'Confira se a agenda está salva, se há faixas para este exame e se não há bloqueios nesses dias.';
-    return `<p class="cl-help">Nenhum horário livre nos próximos ${PREVIEW_DAYS} dias${exam ? ` para ${esc(examName(exam))}` : ''}. ${why}</p>`;
-  }
-  const top = list.slice(0, PREVIEW_MAX);
-  const groups = [];
-  for (const t of top) {
-    const d = spDay(t);
-    if (groups.at(-1)?.[0] !== d) groups.push([d, []]);
-    groups.at(-1)[1].push(t);
-  }
-  const head = list.length > PREVIEW_MAX ? `Mostrando os ${PREVIEW_MAX} primeiros de ${list.length} horários livres.` : `${list.length} ${list.length === 1 ? 'horário livre' : 'horários livres'}.`;
-  return `<p class="cl-help">${head}</p>
-    <div class="ag-pv">${groups.map(([d, ts]) => `<div class="ag-pv-day"><h4>${esc(fmtDate(d))}</h4><ul class="ag-slots">${ts.map((t) => `<li>${esc(spTime(t))}</li>`).join('')}</ul></div>`).join('')}</div>`;
 }
 
 // ---------- dados da clínica ----------

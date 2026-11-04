@@ -25,6 +25,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import { simularGeo } from './geo-simulado.mjs';
+import { ROLE_PERMS } from '../assets/js/agenda-core.js';
+
+const OWNER_PERMS = ROLE_PERMS.owner;
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -172,6 +175,18 @@ const SCHEDULES = [
   { id: 's1', clinic_id: C1, weekday: 1, start_time: '08:00:00', end_time: '12:00:00', slot_minutes: 30, exam_codes: [] },
   { id: 's2', clinic_id: C1, weekday: 3, start_time: '13:00:00', end_time: '17:00:00', slot_minutes: 20, exam_codes: ['rm'] },
 ];
+// Configuração da agenda (iMed Agenda 4.1): ativa (unidade, horários, cadastros) e ainda não ativa (configuração rápida).
+const AG_R1 = 'rsrcrsrc-0000-4000-8000-0000000000a1';
+const AG_UNIT = { timezone: 'America/Sao_Paulo', timezone_suggested: 'America/Sao_Paulo', timezone_confirmed_at: '2026-11-01T12:00:00Z', agenda_mode: 'manual', agenda_online_since: null,
+  manual_commitment_at: '2026-11-01T12:00:00Z', step_min: 10, min_notice_min: 120, max_advance_days: 60, holidays_checked_until: null, closes_on_holidays: true };
+const AG_CFG = { status: 'ok', active: true, old_schedule_exists: false, unit: AG_UNIT,
+  resources: [{ id: AG_R1, kind: 'equipamento', name: 'Aparelho de teste 1', capacity: 1, setup_min: 0, cleanup_min: 5, member_user_id: null, council: null, council_number: null, active: true }],
+  procedures: [{ id: 'procproc-0000-4000-8000-0000000000b1', exam_code: 'usg', name: 'Ultrassom de teste', duration_min: 20, price_cents: null, online_booking: true, active: true,
+    requirements: [{ group_no: 1, resource_kind: 'equipamento', options: [{ resource_id: AG_R1, priority: 1 }] }] }],
+  rules: [{ resource_id: null, weekday: 1, start: '08:00', end: '12:00', kind: 'abre', valid_from: null, valid_to: null, label: null, procedure_ids: [] },
+    { resource_id: null, weekday: 1, start: '10:00', end: '10:15', kind: 'pausa', valid_from: null, valid_to: null, label: null, procedure_ids: [] }],
+  pair_rules: [], holiday_openings: [] };
+const AG_RAPIDA = { ...AG_CFG, active: false, unit: { ...AG_UNIT, timezone_confirmed_at: null, agenda_mode: 'pedido', manual_commitment_at: null }, resources: [], procedures: [], rules: [] };
 const BLOCKS = [{ id: 'bbbbbbbb-0000-4000-8000-000000000001', clinic_id: C1, starts_at: `${spDay(10)}T03:00:00+00:00`, ends_at: `${spDay(11)}T03:00:00+00:00`, reason: 'Feriado' }];
 // 130 estabelecimentos de São Paulo para as páginas da cidade.
 const KINDS = ['clinica', 'laboratorio', 'imagem', 'hospital'];
@@ -202,7 +217,7 @@ function applyFilters(rows, q) {
 }
 
 // Banco, login e funções simulados (tudo o que as páginas pedem ao Supabase).
-async function mockSupabase(context, { admin = false, member = false } = {}) {
+async function mockSupabase(context, { admin = false, member = false, rapida = false } = {}) {
   const log = [];
   await context.route(`${SUPA}/**`, async (route) => {
     const req = route.request();
@@ -246,6 +261,12 @@ async function mockSupabase(context, { admin = false, member = false } = {}) {
       case 'rpc/admin_stats': return admin ? json(route, STATS) : json(route, { code: '42501', message: 'forbidden' }, 403);
       case 'rpc/send_contact': return json(route, 'IMED-20261030-AB2C');
       case 'clinic_members': return json(route, member && logged ? [{ clinic_id: C1, role: 'owner' }] : []);
+      case 'rpc/agenda_me': return json(route, { status: 'ok', clinics: member && logged ? [{ clinic_id: C1, role: 'owner', permissions: OWNER_PERMS }] : [] });
+      case 'rpc/agenda_my_invites': return json(route, { status: 'ok', invites: [] });
+      case 'rpc/agenda_config': return json(route, rapida ? AG_RAPIDA : AG_CFG);
+      case 'rpc/agenda_team': return json(route, { status: 'ok', members: [{ user_id: USER_ID, email: 'equipe@imed.com.br', role: 'owner', created_at: '2026-11-01T12:00:00Z', me: true },
+        { user_id: 'uuuuuuuu-0000-4000-8000-0000000000a2', email: 'recepcao@exemplo.test', role: 'reception', created_at: '2026-11-01T12:00:00Z', me: false }],
+        invites: [{ id: 'invinvin-0000-4000-8000-000000000001', email: 'convite@exemplo.test', role: 'professional', created_at: '2026-11-01T12:00:00Z', expires_at: '2026-11-08T12:00:00Z' }] });
       case 'clinics': return json(route, applyFilters([CLINIC, PARTNER_CLINIC], q));
       case 'clinic_exams': return json(route, applyFilters(CLINIC_EXAMS, q));
       case 'establishments': return json(route, applyFilters(ESTABLISHMENTS, q));
@@ -270,7 +291,7 @@ async function mockSupabase(context, { admin = false, member = false } = {}) {
 // geo: localização permitida pelo Playwright (false: o Chromium recusa sem perguntar). geoSim: no lugar dela, a
 // permissão e a localização simuladas (tests/geo-simulado.mjs), para a página inicial perguntar ({estado:'prompt'}),
 // ficar bloqueada ({estado:'denied'}) ou já ter a permissão ({estado:'granted'}), sempre no mesmo ponto.
-async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false } = {}) {
+async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, rapida = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false } = {}) {
   const context = await browser.newContext({
     ...(escuro ? { colorScheme: 'dark' } : {}), // escuro: aparelho no tema escuro (o Automático do site segue)
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
@@ -292,7 +313,7 @@ async function newPage(browser, { mobile = false, motion = 'no-preference', sess
       if (list) localStorage.setItem('imed_appts', JSON.stringify(list));
     } catch { /* sem armazenamento */ }
   }, [session ? { access_token: 'tok-a11y', refresh_token: 'ref', expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: USER_ID, email: 'equipe@imed.com.br' } } : null, appts, lgpd]);
-  const log = await mockSupabase(context, { admin, member });
+  const log = await mockSupabase(context, { admin, member, rapida });
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -311,7 +332,7 @@ async function openHome(page) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(200);
 }
-const PAINEL_TABS = ['pedidos', 'agenda', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas'];
+const PAINEL_TABS = ['pedidos', 'agenda', 'equipe', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas'];
 const PAGES = [
   { name: 'Início', url: 'index.html', open: openHome },
   { name: 'Início (modo leve)', url: 'index.html', motion: 'reduce', open: async (p) => { await p.waitForSelector('#heroLite li a'); await openHome(p); } },
@@ -342,6 +363,14 @@ const PAGES = [
     name: `Área da clínica · ${tab}`, url: 'painel.html', session: true, admin: true, member: true,
     open: async (p) => { await p.waitForSelector(`#tab-${tab}`); await p.click(`#tab-${tab}`); await waitIdle(p); await p.waitForTimeout(250); },
   })),
+  {
+    name: 'Área da clínica · agenda (configuração rápida)', url: 'painel.html', session: true, admin: true, member: true, rapida: true,
+    open: async (p) => { await p.waitForSelector('#tab-agenda'); await p.click('#tab-agenda'); await p.waitForSelector('#qcForm'); await p.click('#qcSave'); await p.waitForSelector('#qcMsg .cl-note'); await waitIdle(p); },
+  },
+  {
+    name: 'Área da clínica · agenda (formulários abertos)', url: 'painel.html', session: true, admin: true, member: true,
+    open: async (p) => { await p.waitForSelector('#tab-agenda'); await p.click('#tab-agenda'); await p.waitForSelector('#resNew'); await p.click('#resNew'); await p.click('#procNew'); await p.click('[data-hadd="2-open"]'); await waitIdle(p); },
+  },
   { name: 'Reivindicar', url: 'reivindicar.html?cnes=2077485', open: async (p) => { await p.waitForSelector('.cl-place h3'); } },
   { name: 'Reivindicar (com login)', url: 'reivindicar.html?cnes=2077485', session: true, open: async (p) => { await p.waitForSelector('#s3:not([hidden])'); await waitIdle(p); } },
   { name: 'Quem somos', url: 'sobre.html' },
@@ -364,7 +393,7 @@ const PAGES = [
   { name: 'Tipo: Clínicas em São Paulo', url: 'cidades/sp/sao-paulo/clinicas.html', open: async (p) => { await waitIdle(p); } },
 ];
 // Tema escuro (grupo "conta"): as mesmas páginas com o aparelho no escuro (Automático do site segue o aparelho).
-for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Área da clínica', 'Área da clínica · pedidos', 'Área da clínica · agenda', 'Área da clínica · visitas', 'Reivindicar', 'Quem somos', 'Termos', 'Privacidade', 'Para clínicas', 'Como funciona', 'Acessibilidade', 'Fale com o IMED', 'Para médicos']) {
+for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Área da clínica', 'Área da clínica · pedidos', 'Área da clínica · agenda', 'Área da clínica · agenda (configuração rápida)', 'Área da clínica · equipe', 'Área da clínica · visitas', 'Reivindicar', 'Quem somos', 'Termos', 'Privacidade', 'Para clínicas', 'Como funciona', 'Acessibilidade', 'Fale com o IMED', 'Para médicos']) {
   PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
 }
 
@@ -683,7 +712,7 @@ const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);

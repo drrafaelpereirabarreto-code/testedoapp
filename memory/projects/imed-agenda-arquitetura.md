@@ -1208,6 +1208,9 @@ site; `VERSION` do `sw.js` (arquivos novos no `CORE`); todos os testes; commit n
   `assets/js/agenda-core.js`, `assets/js/agenda-config.js`, `assets/css/clinica.css`; configuração rápida; confirmação do fuso;
   modalidade e compromisso; convites; MFA no `auth.js` (se decisão 17). Testes: `tests/agenda-core.test.mjs`,
   `tests/e2e-agenda-config.mjs`, `e2e-clinica`, a11y. Dono: 0.2 para funcionários reais.
+  **Feita em 04/11/2026:** faltavam funções de leitura da configuração e de troca da modalidade; entraram na migração
+  `20261104184120_agenda_config` (`agenda_config`, `agenda_mode_set`; só aditiva). MFA desligado: decisão 17 pendente do dono
+  (recomendação registrada: obrigatório para dono e gestor).
 - **4.2 Agenda visual e recepção.** `assets/js/agenda.js` (dia, semana, mês, legenda, filtros, busca, balcão, "só ocupar",
   detalhe e histórico, cancelar e remarcar, chegada e falta, bloqueios com a lista de afetados); rótulos novos do paciente em
   `geo-core.js` e `conta.js`; a lista de pedidos do painel passa a vir de função e a leitura direta pela REST fecha para a

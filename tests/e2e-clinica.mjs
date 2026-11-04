@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { comChaves, vigiarChaves } from './regra-chaves.mjs';
+import { ROLE_PERMS } from '../assets/js/agenda-core.js';
 
 const { chromium } = createRequire(import.meta.url)('playwright');
 
@@ -130,7 +131,7 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
     const rest = path.replace('/rest/v1/', '');
     const anon = !/^Bearer tok-/.test(entry.auth || '');
     // Sem a conta (chave pública), o banco recusa o que exige login.
-    if (anon && (['clinic_members', 'rpc/set_request_status', 'rpc/update_my_clinic'].includes(rest) || (rest === 'establishment_claims' && req.method() === 'POST'))) {
+    if (anon && (['clinic_members', 'rpc/set_request_status', 'rpc/update_my_clinic', 'rpc/agenda_me'].includes(rest) || (rest === 'establishment_claims' && req.method() === 'POST'))) {
       return json(route, { code: '42501', message: `permission denied for ${rest}` }, 401);
     }
     const delay = (db.delays || []).find((d) => rest === d.path && url.search.includes(d.match));
@@ -141,6 +142,13 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
       case 'rpc/imported_cities': return json(route, CITIES);
       case 'rpc/is_imed_admin': return json(route, db.admin);
       case 'clinic_members': return json(route, db.members);
+      // iMed Agenda (3.4 e 4.1): quem sou (só os MEUS vínculos, com as permissões do papel), convites e configuração.
+      case 'rpc/agenda_me': return json(route, { status: 'ok', user_id: USER_ID, clinics: db.members.map((m) => ({ clinic_id: m.clinic_id, role: m.role, permissions: ROLE_PERMS[m.role] || {} })), imed: { admin: db.admin, permissions: [] } });
+      case 'rpc/agenda_my_invites': return json(route, { status: 'ok', invites: [] });
+      case 'rpc/agenda_config': return json(route, db.agendaCfg || { status: 'ok', clinic_id: body.p_clinic, active: false, old_schedule_exists: false,
+        unit: { timezone: 'America/Sao_Paulo', timezone_suggested: 'America/Sao_Paulo', timezone_confirmed_at: null, agenda_mode: 'pedido', agenda_online_since: null, manual_commitment_at: null },
+        resources: [], procedures: [], rules: [], pair_rules: [], holiday_openings: [] });
+      case 'rpc/agenda_team': return json(route, { status: 'ok', members: [{ user_id: USER_ID, email, role: 'owner', created_at: '2026-10-01T12:00:00Z', me: true }], invites: [] });
       case 'clinics': return json(route, applyFilters(db.clinics, q));
       case 'clinic_exams': return json(route, applyFilters(db.exams, q));
       case 'appointment_requests':
@@ -479,9 +487,12 @@ await scenario('painel com clínica: pedidos, situação, dados e exames com pre
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
   assert.equal(await page.textContent('#clinicTitle'), 'Imagem Paulista');
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Equipe');
   const cl = calls(log, '/clinics')[0];
   assert.equal(cl.query.get('id'), `in.(${C1})`);
+  // fase 4.1: os vínculos vêm de agenda_me (só os da própria conta), nunca de clinic_members sem filtro
+  assert.equal(calls(log, '/rpc/agenda_me').length, 1);
+  assert.equal(calls(log, '/clinic_members').length, 0);
   const rq = calls(log, '/appointment_requests')[0];
   assert.equal(rq.query.get('clinic_id'), `eq.${C1}`);
   assert.equal(rq.query.get('select'), 'id,created_at,exam_code,preferred_date,preferred_period,patient_name,patient_phone,patient_email,notes,status,slot_start,for_other,other_name,relationship,other_minor,guardian_consent,other_consent,cancelled_at,cancelled_by');
@@ -1295,177 +1306,20 @@ async function pickWhen(page, v) {
   await page.selectOption('#flt-when', v);
   await page.waitForFunction(() => !document.querySelector('#panel .cl-state') && document.querySelector('#flt-when'));
 }
-const rowsOf = (page, wd) => page.$$eval(`#agday-${wd} .ag-row`, (rs) => rs.map((r) => ({
-  start: r.querySelector('[data-f=start]').value, end: r.querySelector('[data-f=end]').value, slot: r.querySelector('[data-f=slot]').value,
-  mode: r.querySelector('[data-f=mode]:checked').value, exams: [...r.querySelectorAll('[data-f=ex]:checked')].map((x) => x.value),
-})));
 
-await scenario('agenda: carrega, adiciona faixa, copia segunda para os dias úteis, valida sobreposição e salva o JSON certo', async () => {
-  const { page, log, errors, context, db } = await newPage(browser, { logged: true, now: NOW, db: agendaDb() });
+await scenario('agenda: editor antigo de faixas saiu (4.1); aviso com pedidos online desligados e atalho para Dados da clínica', async () => {
+  const { page, log, errors, context } = await newPage(browser, { logged: true, now: NOW, db: agendaDb({ clinics: [{ ...CLINIC, accepts_online_booking: false }], exams: [], blocks: [], slots: [] }) });
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
   await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  const sq = calls(log, '/clinic_schedules')[0];
-  assert.equal(sq.query.get('select'), '*');
-  assert.equal(sq.query.get('clinic_id'), `eq.${C1}`);
-  assert.equal(sq.query.get('order'), 'weekday,start_time');
-  const bq = calls(log, '/clinic_blocks')[0];
-  assert.equal(bq.query.get('clinic_id'), `eq.${C1}`);
-  assert.equal(bq.query.get('ends_at'), 'gte.2026-10-30T15:00:00.000Z', 'só bloqueios que ainda não acabaram');
-  assert.equal(bq.query.get('order'), 'starts_at');
-  assert.match(await page.textContent('#agNote'), /pacientes veem os horários livres e marcam direto/);
-  // dias na ordem segunda → domingo; faixas carregadas
-  assert.deepEqual(await page.$$eval('.ag-day h4', (h) => h.map((x) => x.textContent)), ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']);
-  assert.deepEqual(await rowsOf(page, 1), [
-    { start: '08:00', end: '12:00', slot: '30', mode: 'all', exams: [] },
-    { start: '13:00', end: '17:00', slot: '20', mode: 'some', exams: ['rm'] },
-  ]);
-  assert.deepEqual(await rowsOf(page, 6), [{ start: '08:00', end: '12:00', slot: '15', mode: 'some', exams: ['tc'] }]);
-  assert.match(await page.textContent('#agday-0'), /Sem horários pelo site/);
-  // só os exames que a clínica faz (mamografia não está em "Exames e preços"): sai da faixa com aviso
-  assert.deepEqual(await page.$$eval('#agday-1 .ag-row:nth-child(2) [data-f=ex]', (x) => x.map((i) => i.value)), ['usg', 'tc', 'rm']);
-  assert.match(await page.textContent('#agday-1 .ag-row:nth-child(2) .ag-drop'), /Mamografia saiu de “Exames e preços” e foi tirada desta faixa\. Confira e salve a agenda\./);
-  assert.equal(await page.locator('.ag-drop').count(), 1);
-  assert.match(await page.textContent('#agDirty'), /mudanças ainda não salvas/, 'aviso de revisar e salvar');
-  assert.ok(await page.isHidden('#agday-1 .ag-row:nth-child(1) .ag-exl'), '“Todos os exames” esconde a lista');
-  // bloqueios no horário de São Paulo, texto escapado; o antigo não aparece
-  const blocks = await page.$$eval('#agBlocks li', (li) => li.map((x) => x.querySelector('b').textContent));
-  assert.equal(blocks.length, 2);
-  assert.match(blocks[0], /02\/11\/2026 \(dia inteiro\)$/);
-  assert.match(blocks[1], /10\/11\/2026, das 08:00 às 12:00$/);
-  assert.match(await page.textContent('#agBlocks'), /Finados <b>feriado<\/b>/);
-  // prévia: primeiro exame da clínica, 7 dias, até 30 horários por dia
-  await page.waitForSelector('#pvBox .ag-pv');
-  assert.deepEqual(calls(log, '/rpc/available_slots')[0].body, { p_clinic: C1, p_exam: 'usg', p_from: null, p_days: 7 });
-  assert.match(await page.textContent('#pvBox'), /Mostrando os 30 primeiros de 35 horários livres/);
-  assert.equal(await page.locator('#pvBox .ag-slots li').count(), 30);
-  assert.deepEqual(await page.$$eval('#pvBox h4', (h) => h.map((x) => x.textContent.replace(/^\D+/, ''))), ['03/11/2026', '04/11/2026']);
-  assert.equal(await page.textContent('#pvBox .ag-slots li'), '08:00');
-  await page.selectOption('#pvExam', 'rm');
-  await page.waitForFunction(() => /Nenhum horário livre nos próximos 7 dias para Ressonância/.test(document.querySelector('#pvBox').textContent));
-  assert.equal(calls(log, '/rpc/available_slots').at(-1).body.p_exam, 'rm');
-  await shot(page, '15-painel-agenda');
-  // adicionar faixa na terça
-  await page.click('#agday-2 [data-add]');
-  assert.deepEqual(await rowsOf(page, 2), [{ start: '08:00', end: '12:00', slot: '30', mode: 'all', exams: [] }]);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.f), 'start', 'foco no início da faixa nova');
-  assert.match(await page.textContent('#agDirty'), /mudanças ainda não salvas/);
-  // copiar segunda para terça a sexta (troca a faixa que havia na terça)
-  await page.click('#agCopy');
-  assert.match(await page.textContent('#agCopyMsg'), /terça a sexta agora têm os mesmos horários de segunda \(as faixas que havia nesses dias foram trocadas\)/);
-  for (const wd of [2, 3, 4, 5]) assert.deepEqual(await rowsOf(page, wd), await rowsOf(page, 1), `dia ${wd} igual à segunda`);
-  // terceira faixa na segunda: começa 1 h depois da última e herda a duração
-  await page.click('#agday-1 [data-add]');
-  assert.deepEqual((await rowsOf(page, 1))[2], { start: '18:00', end: '22:00', slot: '20', mode: 'all', exams: [] });
-  const third = page.locator('#agday-1 .ag-row').nth(2);
-  await third.locator('[data-f=start]').fill('11:00');
-  await third.locator('[data-f=end]').fill('12:30');
-  // domingo com fim antes do início
-  await page.click('#agday-0 [data-add]');
-  const sun = page.locator('#agday-0 .ag-row').first();
-  await sun.locator('[data-f=start]').fill('10:00');
-  await sun.locator('[data-f=end]').fill('09:00');
-  await page.click('#agSave');
-  assert.equal(calls(log, '/rpc/set_my_schedule').length, 0, 'não salva com erro');
-  assert.match(await page.textContent('#agSum'), /Confira as 2 faixas marcadas em vermelho/);
-  assert.match(await page.locator('#agday-1 .ag-row').nth(2).locator('.cl-err').textContent(), /se cruza com a de 08:00 às 12:00 para o mesmo exame/);
-  assert.match(await page.textContent('#agday-0 .cl-err'), /O fim precisa ser depois do início/);
-  assert.equal(await page.evaluate(() => document.activeElement.closest('.ag-day')?.id), 'agday-1', 'foco na primeira faixa com erro');
-  assert.equal(await page.locator('#agday-1 .ag-row').nth(2).locator('[data-f=start]').getAttribute('aria-invalid'), 'true');
-  await shot(page, '16-painel-agenda-erros');
-  // mesma hora, exame diferente: pode (14:00–15:00 só tomografia cruza 13:00–17:00 só ressonância)
-  const t2 = page.locator('#agday-1 .ag-row').nth(2);
-  await t2.locator('[data-f=start]').fill('14:00');
-  await t2.locator('[data-f=end]').fill('15:00');
-  await t2.locator('[data-f=mode][value=some]').check();
-  assert.ok(await t2.locator('.ag-exl').isVisible());
-  await page.click('#agSave');
-  assert.match(await page.locator('#agday-1 .ag-row').nth(2).locator('.cl-err').textContent(), /Marque pelo menos um exame/);
-  await page.locator('#agday-1 .ag-row').nth(2).locator('[data-f=ex][value=tc]').check();
-  // menos tempo que um horário
-  await page.locator('#agday-0 .ag-row [data-f=end]').fill('10:10');
-  await page.selectOption('#agday-0 .ag-row [data-f=slot]', '15');
-  await page.click('#agSave');
-  assert.match(await page.textContent('#agday-0 .cl-err'), /pelo menos 15 minutos/);
-  assert.match(await page.textContent('#agSum'), /Confira a faixa marcada em vermelho/);
-  // remove a faixa de domingo: o foco vai para "Adicionar faixa" do domingo
-  await page.click('#agday-0 [data-rm]');
-  assert.equal(await page.locator('#agday-0 .ag-row').count(), 0);
-  assert.equal(await page.evaluate(() => document.activeElement.dataset.add), '0');
-  await page.click('#agSave');
-  await page.waitForSelector('#agMsg .cl-note.ok');
-  const two = (wd) => [
-    { weekday: wd, start: '08:00', end: '12:00', slot_minutes: 30, exams: [] },
-    { weekday: wd, start: '13:00', end: '17:00', slot_minutes: 20, exams: ['rm'] },
-  ];
-  assert.deepEqual(calls(log, '/rpc/set_my_schedule')[0].body, { p_clinic: C1, p_rows: [
-    two(1)[0], two(1)[1], { weekday: 1, start: '14:00', end: '15:00', slot_minutes: 20, exams: ['tc'] },
-    ...two(2), ...two(3), ...two(4), ...two(5),
-    { weekday: 6, start: '08:00', end: '12:00', slot_minutes: 15, exams: ['tc'] },
-  ] });
-  assert.match(await page.textContent('#agMsg'), /Agenda salva\. Os horários livres já aparecem para os pacientes/);
-  assert.equal(await page.textContent('#agDirty'), '');
-  assert.equal(await page.locator('.ag-drop').count(), 0, 'aviso de exame tirado some depois de salvar');
-  assert.equal(await page.textContent('#agSum'), '');
-  for (let i = 0; i < 50 && calls(log, '/rpc/available_slots').length < 3; i++) await page.waitForTimeout(50);
-  assert.equal(calls(log, '/rpc/available_slots').length, 3, 'prévia atualizada depois de salvar');
-  // mudanças não salvas continuam ao trocar de aba e voltar
-  await page.click('#agday-0 [data-add]');
-  await page.click('#tab-dados');
-  await page.waitForSelector('#dataForm');
-  await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.equal(await page.locator('#agday-0 .ag-row').count(), 1);
-  assert.match(await page.textContent('#agDirty'), /não salvas/);
-  assert.equal(calls(log, '/clinic_schedules').length, 1, 'não busca de novo por cima do rascunho');
-  // erro do servidor
-  db.scheduleResult = 'forbidden';
-  await page.click('#agday-0 [data-rm]');
-  await page.click('#agSave');
-  await page.waitForSelector('#agMsg .cl-note.err');
-  assert.match(await page.textContent('#agMsg'), /Sua conta não pode mudar a agenda desta clínica/);
-  assert.ok(await page.isEnabled('#agSave'));
-  // fase 3.3 do banco: o editor antigo não grava mais horários (managed_by_agenda); a mensagem diz o que vale agora
-  db.scheduleResult = 'managed_by_agenda';
-  await page.click('#agday-0 [data-add]');
-  await page.click('#agSave');
-  await page.waitForFunction(() => /agenda nova do IMED/.test(document.querySelector('#agMsg')?.textContent || ''));
-  assert.match(await page.textContent('#agMsg'), /pacientes enviam o pedido sem horário e a clínica liga para combinar/);
-  assert.equal(await page.locator('#agMsg .cl-note.err').count(), 1);
-  assert.ok(await page.isEnabled('#agSave'));
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
-await scenario('agenda: aviso com pedidos online desligados e sem exames; atalho para Dados da clínica', async () => {
-  const { page, log, errors, context } = await newPage(browser, { logged: true, now: NOW, db: agendaDb({ clinics: [{ ...CLINIC, accepts_online_booking: false }], exams: [], blocks: [], slots: [],
-    schedules: [{ id: 's9', clinic_id: C1, weekday: 2, start_time: '08:00:00', end_time: '10:00:00', slot_minutes: 30, exam_codes: ['mamo', 'dens'] }] }) });
-  await page.goto(`${BASE}painel.html`);
-  await page.waitForSelector('.rq');
-  await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.match(await page.textContent('#agNote'), /A agenda só aparece para os pacientes quando “Aceito pedidos de agendamento pelo site” estiver ligado/);
-  assert.match(await page.textContent('#panel'), /Nenhum exame marcado em Exames e preços/);
-  assert.equal(await page.locator('#pvExam').count(), 0);
-  await page.waitForSelector('#pvBox .cl-help');
-  assert.equal(calls(log, '/rpc/available_slots')[0].body.p_exam, null);
-  assert.match(await page.textContent('#pvBox'), /desligado ou o cadastro em rascunho/);
-  // faixa salva só com exames que saíram de "Exames e preços": aviso na faixa e não salva sem revisar
-  assert.match(await page.textContent('#agday-2 .ag-drop'), /Mamografia e Densitometria saíram de “Exames e preços” e foram tirados desta faixa\. Marque outro exame, escolha “Todos os exames” ou remova a faixa/);
-  assert.match(await page.textContent('#agDirty'), /não salvas/);
-  await page.click('#agSave');
-  assert.match(await page.textContent('#agday-2 .cl-err'), /Marque pelo menos um exame/);
+  await page.waitForSelector('#qcForm');
+  await page.waitForSelector('#blkForm');
+  assert.match(await page.textContent('#agNote'), /Os pedidos pelo site estão desligados\. Ligue “Aceito pedidos de agendamento pelo site”/);
+  assert.equal(await page.locator('#agWeek, #agSave, #pvExam').count(), 0, 'sem o editor antigo');
+  assert.equal(calls(log, '/clinic_schedules').length, 0);
   assert.equal(calls(log, '/rpc/set_my_schedule').length, 0);
-  await page.click('#agday-2 [data-rm]');
-  // copiar sem faixas na segunda
-  await page.click('#agCopy');
-  assert.match(await page.textContent('#agCopyMsg'), /Segunda ainda não tem faixas/);
-  // sem nenhuma faixa: salva lista vazia
-  await page.click('#agSave');
-  await page.waitForSelector('#agMsg .cl-note.ok');
-  assert.deepEqual(calls(log, '/rpc/set_my_schedule')[0].body, { p_clinic: C1, p_rows: [] });
-  assert.match(await page.textContent('#agMsg'), /Agenda salva sem horários/);
+  assert.equal(calls(log, '/rpc/available_slots').length, 0);
+  assert.deepEqual(calls(log, '/rpc/agenda_config')[0].body, { p_clinic: C1 });
   await page.click('#agNote [data-go="dados"]');
   await page.waitForSelector('#dataForm');
   assert.equal(await page.getAttribute('#tab-dados', 'aria-selected'), 'true');
@@ -1479,7 +1333,8 @@ await scenario('agenda no celular (390px): bloqueios com fuso -03:00, validaçã
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
   await page.click('#tab-agenda');
-  await page.waitForSelector('#pvBox .ag-pv');
+  await page.waitForSelector('#agBlocks li');
+  await page.waitForSelector('#qcForm');
   await noOverflow(page);
   await shot(page, '17-celular-agenda');
   // sem dia
@@ -1540,8 +1395,6 @@ await scenario('agenda no celular (390px): bloqueios com fuso -03:00, validaçã
   assert.match(await page.textContent('#unblockMsg'), /não pode remover bloqueios/);
   assert.equal(await page.locator(`#blk-${B2}`).count(), 1);
   assert.ok(await page.isEnabled(`[data-unblock="${B2}"]`));
-  // faixa com "só alguns" exames no celular
-  await page.locator('#agday-1 .ag-row').nth(1).scrollIntoViewIfNeeded();
   await noOverflow(page);
   assert.deepEqual(errors, []);
   await context.close();
@@ -1643,14 +1496,11 @@ await scenario('fuso: aparelho em Tóquio às 23:30 de São Paulo (já 31/10 em 
   assert.deepEqual(calls(log, '/appointment_requests').at(-1).query.getAll('preferred_date'), ['gte.2026-10-30', 'lte.2026-11-05']);
   // agenda
   await page.click('#tab-agenda');
-  await page.waitForSelector('#pvBox .ag-pv');
+  await page.waitForSelector('#agBlocks li');
   assert.equal(calls(log, '/clinic_blocks')[0].query.get('ends_at'), 'gte.2026-10-31T02:30:00.000Z');
   assert.match(await page.textContent('#agBlocks b'), /31\/10\/2026 \(dia inteiro\)$/);
   assert.equal(await page.getAttribute('#bFrom', 'min'), '2026-10-30');
   assert.equal(await page.getAttribute('#bTo', 'min'), '2026-10-30');
-  // prévia agrupada pelo dia de São Paulo
-  assert.deepEqual(await page.$$eval('#pvBox h4', (h) => h.map((x) => x.textContent.replace(/^\D+/, ''))), ['31/10/2026', '01/11/2026']);
-  assert.deepEqual(await page.$$eval('#pvBox .ag-pv-day', (d) => d.map((x) => [...x.querySelectorAll('li')].map((l) => l.textContent))), [['01:00', '10:00', '23:30'], ['08:00']]);
   // bloqueio do dia inteiro de hoje (30/10 em São Paulo) ainda vale
   await page.fill('#bFrom', '2026-10-30');
   await page.click('#bSave');
@@ -1669,51 +1519,12 @@ await scenario('fuso: aparelho em Tóquio às 23:30 de São Paulo (já 31/10 em 
   await context.close();
 });
 
-await scenario('agenda: mudança feita enquanto salva continua marcada; sair da aba durante o salvamento não dá erro', async () => {
-  const { page, log, errors, context, db } = await newPage(browser, { logged: true, now: NOW, db: agendaDb({ exams: [...AG_EXAMS, { clinic_id: C1, exam_code: 'mamo', price_cents: null }] }) });
+await scenario('bloqueios: sair da aba durante o salvamento ou a remoção não dá erro', async () => {
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, now: NOW, db: agendaDb() });
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
   await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.equal(await page.locator('.ag-drop').count(), 0, 'sem aviso quando o exame continua em Exames e preços');
-  assert.equal(await page.textContent('#agDirty'), '');
-  // edição durante o salvamento
-  db.delays = [{ path: 'rpc/set_my_schedule', match: '', ms: 700 }];
-  await page.locator('#agday-6 .ag-row [data-f=end]').fill('11:00');
-  await page.click('#agSave');
-  await page.waitForFunction(() => document.querySelector('#agSave').disabled);
-  await page.locator('#agday-6 .ag-row [data-f=end]').fill('11:30');
-  await page.waitForSelector('#agMsg .cl-note.ok');
-  assert.equal(calls(log, '/rpc/set_my_schedule')[0].body.p_rows.at(-1).end, '11:00');
-  assert.match(await page.textContent('#agDirty'), /mudanças ainda não salvas/);
-  assert.match(await page.textContent('#agMsg'), /As mudanças feitas enquanto salvava ainda não foram salvas/);
-  await page.click('#agSave');
-  await page.waitForFunction(() => document.querySelector('#agDirty').textContent === '' && !document.querySelector('#agSave').disabled);
-  assert.equal(calls(log, '/rpc/set_my_schedule')[1].body.p_rows.at(-1).end, '11:30');
-  // salvar a agenda e sair da aba antes da resposta
-  const clearToast = () => page.evaluate(() => { document.querySelector('#toast').textContent = ''; });
-  await clearToast();
-  await page.locator('#agday-6 .ag-row [data-f=end]').fill('12:00');
-  await page.click('#agSave');
-  await page.click('#tab-dados');
-  await page.waitForSelector('#dataForm');
-  await page.waitForFunction(() => /Agenda salva/.test(document.querySelector('#toast').textContent));
-  assert.equal(calls(log, '/rpc/set_my_schedule').length, 3);
-  await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.equal(await page.textContent('#agDirty'), '', 'a agenda salva não fica marcada como pendente');
-  // salvar, sair e voltar antes da resposta: o aviso de pendente some quando a resposta chega
-  await clearToast();
-  await page.locator('#agday-6 .ag-row [data-f=end]').fill('11:45');
-  await page.click('#agSave');
-  await page.click('#tab-dados');
-  await page.waitForSelector('#dataForm');
-  await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.match(await page.textContent('#agDirty'), /não salvas/, 'rascunho enquanto o salvamento não volta');
-  await page.waitForFunction(() => /Agenda salva/.test(document.querySelector('#toast').textContent));
-  await page.waitForFunction(() => document.querySelector('#agDirty').textContent === '');
-  assert.equal(calls(log, '/rpc/set_my_schedule')[3].body.p_rows.at(-1).end, '11:45');
+  await page.waitForSelector('#agBlocks li');
   // bloqueio salvo e sair da aba antes da resposta
   db.delays = [{ path: 'rpc/add_my_block', match: '', ms: 600 }, { path: 'rpc/remove_my_block', match: '', ms: 600 }];
   await page.fill('#bFrom', '2026-12-24');
@@ -1764,13 +1575,11 @@ await scenario('equipe do IMED sem vínculo abre a agenda de qualquer clínica',
   await page.waitForSelector('.rq');
   assert.equal(await page.textContent('#clinicTitle'), 'Imagem Paulista');
   assert.match(await page.textContent('#app'), /Você está vendo esta clínica como equipe do IMED/);
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Pedidos de cadastro|Pedidos ao IMED|Mensagens|Avisos de erro|Visitas');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Equipe|Pedidos de cadastro|Pedidos ao IMED|Mensagens|Avisos de erro|Visitas');
   await page.click('#tab-agenda');
-  await page.waitForSelector('#agWeek');
-  assert.equal(calls(log, '/clinic_schedules')[0].query.get('clinic_id'), `eq.${C1}`);
-  await page.click('#agSave');
-  await page.waitForSelector('#agMsg .cl-note.ok');
-  assert.equal(calls(log, '/rpc/set_my_schedule')[0].body.p_clinic, C1);
+  await page.waitForSelector('#qcForm');
+  assert.deepEqual(calls(log, '/rpc/agenda_config')[0].body, { p_clinic: C1 });
+  await page.waitForSelector('#blkForm');
   // de volta às abas da equipe
   await page.selectOption('#clinicPick', '');
   await page.waitForSelector('#cl-kkkkkkkk-0000-4000-8000-000000000001');
@@ -1802,10 +1611,10 @@ await scenario('celular (390px): reivindicar e painel sem rolagem lateral', asyn
   } }));
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('.rq');
-  assert.equal(await page.locator('[role=tab]').count(), 9);
+  assert.equal(await page.locator('[role=tab]').count(), 10);
   await noOverflow(page);
   await shot(page, '13-celular-painel-pedidos');
-  for (const t of ['agenda', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas']) {
+  for (const t of ['agenda', 'equipe', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas']) {
     await page.click(`#tab-${t}`);
     await page.waitForFunction(() => !document.querySelector('#panel .cl-state'));
     await noOverflow(page);
