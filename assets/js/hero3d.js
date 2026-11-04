@@ -5,7 +5,7 @@
 // Privacidade: o mapa parte do ponto que a página já usa (arredondado, ~110 m) e só pede ao OpenFreeMap os ladrilhos
 // da área (cada um cobre ~2 km). Nada é gravado.
 // Prédio sem altura no OpenStreetMap fica com a altura padrão da camada (OpenMapTiles), sem fingir precisão. As
-// sombras são só desenho (luz de fim de tarde vinda do noroeste), calculadas das alturas da própria camada.
+// sombras são só desenho (luz de fim de tarde vinda do oeste-sudoeste), calculadas das alturas da própria camada.
 //
 // Contrato com inicio.js (api): clinics(), origin(), pronto(), modo(), highlighted(), meLabel(), meta(c), onPick(id),
 // tema() ('claro' | 'escuro'), aoFicarPronto(), falhou(motivo). Devolve { setPaused, setOrigin, refreshLabels,
@@ -104,7 +104,7 @@ export function estilo(tema, limites) {
         paint: { 'line-color': P.caminho, 'line-width': largura(.5, 3) } },
       { id: 'trilho', type: 'line', source: 'omt', 'source-layer': 'transportation', filter: ['all', linha, naoTunel, classe(['rail', 'transit'])],
         paint: { 'line-color': P.trilho, 'line-width': largura(.8, 3) } },
-      ...vias.flatMap((v) => [v[0]]), ...vias.flatMap((v) => [v[1]]),
+      ...vias.map((v) => v[0]), ...vias.map((v) => v[1]), // bordas embaixo de todas as vias
       // Sombra longa dos prédios mais altos (polígonos calculados aqui, uma camada só: não escurece duas vezes).
       { id: 'sombras', type: 'fill', source: 'sombras', paint: { 'fill-color': P.sombra, 'fill-antialias': false, 'fill-layer-opacity': P.sombraOp } },
       // Sombra de contato: um contorno borrado em volta da base de cada prédio.
@@ -127,7 +127,6 @@ export function estilo(tema, limites) {
 
 // Pinta as camadas com as cores do tema (sem recarregar os ladrilhos).
 function pintar(map, tema) {
-  const P = TEMAS[tema] || TEMAS.claro;
   const novo = estilo(tema);
   for (const camada of novo.layers) {
     for (const [k, v] of Object.entries(camada.paint || {})) {
@@ -136,7 +135,6 @@ function pintar(map, tema) {
     }
   }
   map.setLight(novo.light);
-  return P;
 }
 
 // Sombra longa de cada prédio alto, no chão: o contorno levado na direção da sombra (o "fim" da sombra) e a faixa que

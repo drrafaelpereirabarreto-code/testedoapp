@@ -51,7 +51,8 @@
   calculados em pedaços de 8 ms a partir das alturas, camada `sombras` com `fill-layer-opacity`); claro = dia, escuro =
   noite com ruas âmbar; troca de tema na hora (evento `imed:tema` → `setTema`). Pinos e rótulos são HTML por cima
   (`map.project`), com as mesmas regras de antes (até 2 no celular e 4 no computador, sem cobrir o texto do topo, os
-  botões, os créditos ou o "Você está aqui"). Círculo de ~110 m no chão no modo "perto".
+  botões, os créditos ou o "Você está aqui", que fica embaixo do ponto; o rótulo também tenta os lados do pino; pino
+  em cima de outro some). Círculo de ~110 m no chão no modo "perto".
 - Privacidade: o mapa só abre quando a origem é conhecida (não baixa ladrilhos de outro lugar enquanto espera a
   localização) e parte do ponto arredondado (~110 m). O OpenFreeMap recebe IP e os pedidos dos ladrilhos (está na
   política de privacidade). Créditos à vista em `#heroAttrib` (© OpenStreetMap, © OpenMapTiles, OpenFreeMap).
