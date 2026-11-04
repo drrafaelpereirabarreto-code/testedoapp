@@ -108,9 +108,9 @@ async function myClinics() {
   } catch (err) {
     if (!noFn(err)) throw err;
   }
-  const uid = auth.user()?.id;
-  if (!uuidOk(uid)) return [];
-  const rows = await auth.select(`clinic_members?select=clinic_id,role&user_id=eq.${uid}`);
+  const uid = String(auth.user()?.id || '');
+  if (!/^[\w-]{1,64}$/.test(uid)) return [];
+  const rows = await auth.select(`clinic_members?select=clinic_id,role&user_id=eq.${encodeURIComponent(uid)}`);
   return (rows || []).map((m) => ({ clinic_id: m.clinic_id, role: m.role, permissions: A.permsOf(m.role) }));
 }
 
