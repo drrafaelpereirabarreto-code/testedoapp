@@ -189,6 +189,77 @@ const AG_CFG = { status: 'ok', active: true, old_schedule_exists: false, unit: A
   pair_rules: [], holiday_openings: [] };
 const AG_RAPIDA = { ...AG_CFG, active: false, unit: { ...AG_UNIT, timezone_confirmed_at: null, agenda_mode: 'pedido', manual_commitment_at: null }, resources: [], procedures: [], rules: [] };
 const BLOCKS = [{ id: 'bbbbbbbb-0000-4000-8000-000000000001', clinic_id: C1, starts_at: `${spDay(10)}T03:00:00+00:00`, ends_at: `${spDay(11)}T03:00:00+00:00`, reason: 'Feriado' }];
+// Agenda da recepção (iMed Agenda 4.2): hoje com cada situação, um "só ocupar", um bloqueio de sala e um "Para
+// remarcar". Nomes de teste; o <b> prova que o texto do banco é escapado.
+const AG_TODAY = spDay(0);
+const agAt = (hhmm, day = AG_TODAY) => new Date(`${day}T${hhmm}:00-03:00`).toISOString();
+const AG_SALA = 'rsrcrsrc-0000-4000-8000-0000000000a2';
+const AG_RES = [{ id: AG_R1, kind: 'equipamento', name: 'Aparelho de Ultrassom <b>1</b>', capacity: 1, active: true }, { id: AG_SALA, kind: 'sala', name: 'Sala 2', capacity: 1, active: true }];
+const AG_PROC = { id: 'procproc-0000-4000-8000-0000000000a1', exam_code: 'usg', name: 'Ultrassom de abdome', duration_min: 30, price_cents: 18000, online_booking: true, prep_text: 'Jejum de 8 horas.', fasting_hours: 8,
+  min_notice_min: 120, groups: [{ group_no: 1, resource_kind: 'equipamento', resource_ids: [AG_R1] }] };
+const agItem = (n, hhmm, status, patient, channel = 'clinica_telefone') => ({ id: `itemitem-0000-4000-8000-0000000000${n}`, request_id: `reqreqre-0000-4000-8000-0000000000${n}`, request_version: 1, seq: 1,
+  procedure_id: AG_PROC.id, procedure: AG_PROC.name, exam_code: 'usg', starts_at: agAt(hhmm), ends_at: new Date(Date.parse(agAt(hhmm)) + 30 * 60000).toISOString(), status, version: 1, price_cents: 18000,
+  resources: ['cancelled', 'reschedule_requested'].includes(status) ? [] : [AG_R1], channel, hold_expires_at: status === 'hold' ? new Date(Date.now() + 10 * 60000).toISOString() : null, patient });
+const AG_ITEMS = [agItem('01', '08:00', 'completed', 'Carla T.'), agItem('02', '08:30', 'no_show', 'Bruno T.'), agItem('03', '09:00', 'confirmed', 'Maria <b>S.</b>', 'imed_app'),
+  agItem('04', '09:30', 'checked_in', 'João T.'), agItem('05', '10:00', 'in_service', 'Ana R.', 'clinica_balcao'), agItem('06', '11:00', 'cancelled', 'Pedro S.'),
+  agItem('07', '11:30', 'reschedule_requested', 'Lia T.'), agItem('08', '12:00', 'hold', 'Rui T.', 'imed_app')];
+const AG_BUSY = [{ id: 'busybusy-0000-4000-8000-0000000000a1', starts_at: agAt('15:00'), ends_at: agAt('16:00'), reason_code: 'agenda_propria', resources: [AG_R1] }];
+const AG_BLOCKS = [{ id: 'blkblkbl-0000-4000-8000-0000000000a1', resource_id: AG_SALA, resource_name: 'Sala 2', resource_kind: 'sala', kind: 'manutencao', starts_at: agAt('13:00'), ends_at: agAt('14:00'), reason: 'Troca do ar-condicionado', created_at: '2026-11-01T12:00:00Z' },
+  { id: 'blkblkbl-0000-4000-8000-0000000000a2', resource_id: null, resource_name: null, resource_kind: null, kind: 'feriado', starts_at: `${spDay(10)}T03:00:00.000Z`, ends_at: `${spDay(11)}T03:00:00.000Z`, reason: 'Feriado municipal', created_at: '2026-11-01T12:00:00Z' }];
+const AG_UNIT42 = { step_min: 15, min_notice_min: 120, max_advance_days: 90, checkin_before_min: 120, no_show_after_min: 15, patient_cancel_until_min: 0, patient_reschedule_until_min: 120, holidays_checked_until: '2027-12-31', closes_on_holidays: true };
+const agDayStart = (day) => Date.parse(`${day}T00:00:00-03:00`);
+const agDays = (from, n) => Array.from({ length: n }, (_, i) => new Date(agDayStart(from) + i * 86400000 + 12 * 3600000).toISOString().slice(0, 10));
+// Respostas das funções da agenda (as mesmas formas do banco; e2e-agenda testa o comportamento).
+function agendaRpc(fn, body) {
+  const inRange = (x, from, days) => { const a = agDayStart(from); return Date.parse(x.starts_at) < a + days * 86400000 && Date.parse(x.ends_at) > a; };
+  switch (fn) {
+    case 'agenda_catalog': return { status: 'ok', scope: 'clinica', clinic_id: C1, timezone: 'America/Sao_Paulo', agenda_mode: 'nativa', active: true, online: false,
+      can: { marcar: true, remarcar: true, cancelar: true, bloquear: true, atender: true, pacientes: true, conflitos: true }, unit: AG_UNIT42, national_holidays_until: '2027-12-31',
+      resources: AG_RES.map((r) => ({ ...r, mine: false })), procedures: [AG_PROC] };
+    case 'agenda_view': return { status: 'ok', version: 7, timezone: 'America/Sao_Paulo', scope: 'clinica', patients: true, resources: AG_RES,
+      items: AG_ITEMS.filter((x) => inRange(x, body.p_from, body.p_days)), busy: AG_BUSY.filter((x) => inRange(x, body.p_from, body.p_days)),
+      blocks: AG_BLOCKS.filter((x) => inRange(x, body.p_from, body.p_days)) };
+    case 'agenda_free': return { status: 'ok', scope: 'clinica', timezone: 'America/Sao_Paulo', holidays_checked_until: '2027-12-31', national_holidays_until: '2027-12-31', closes_on_holidays: true,
+      unit_open: agDays(body.p_from, body.p_days).map((d) => [agAt('07:00', d), agAt('19:00', d)]), holidays: [],
+      resources: [{ id: AG_R1, free: agDays(body.p_from, body.p_days).map((d) => [agAt('16:00', d), agAt('19:00', d)]) }, { id: AG_SALA, free: agDays(body.p_from, body.p_days).map((d) => [agAt('14:00', d), agAt('19:00', d)]) }] };
+    case 'agenda_month': {
+      const ini = `${body.p_month.slice(0, 7)}-01`;
+      const days = [];
+      for (let d = new Date(`${ini}T12:00:00Z`); d.toISOString().slice(0, 7) === ini.slice(0, 7); d.setUTCDate(d.getUTCDate() + 1)) {
+        const day = d.toISOString().slice(0, 10);
+        days.push(day === AG_TODAY ? { day, ativos: 4, concluidos: 1, faltas: 1, cancelados: 1, bloqueios: 1 } : { day, ativos: 0, concluidos: 0, faltas: 0, cancelados: 0, bloqueios: 0 });
+      }
+      return { status: 'ok', timezone: 'America/Sao_Paulo', month: ini, days };
+    }
+    case 'agenda_version': return { status: 'ok', version: 7 };
+    case 'agenda_conflicts': return { status: 'ok', conflicts: [{ id: 'confconf-0000-4000-8000-0000000000a1', kind: 'bloqueio_sobre_agendamento', request_id: AG_ITEMS[6].request_id, item_id: AG_ITEMS[6].id,
+      starts_at: AG_ITEMS[6].starts_at, procedure_id: AG_PROC.id, details: { starts_at: AG_ITEMS[6].starts_at, procedure_id: AG_PROC.id }, status: 'aberto', created_at: '2026-11-01T12:00:00Z' }] };
+    case 'agenda_blocks': return { status: 'ok', scope: 'clinica', timezone: 'America/Sao_Paulo', from: AG_TODAY, to: spDay(400), can_edit: true, blocks: AG_BLOCKS };
+    case 'agenda_request_detail': {
+      const it = AG_ITEMS.find((x) => x.request_id === body.p_id) || AG_ITEMS[2];
+      return { status: 'ok', scope: 'clinica', id: it.request_id, clinic_id: C1, request_status: it.status, version: 1, agenda: true, channel: it.channel, created_at: '2026-11-01T12:00:00Z',
+        exam_code: 'usg', preferred_date: AG_TODAY, preferred_period: 'manha', slot_start: it.starts_at, slot_end: it.ends_at, hold_expires_at: it.hold_expires_at, cancel_reason: null, cancelled_by: null, cancelled_at: null, anonymized: false,
+        patient: { name: 'Maria <b>Souza</b> Teste', phone: '11988887777', email: 'maria@exemplo.test', for_other: false, other_name: null, relationship: null, other_minor: false, notes: 'Primeira vez <i>aqui</i>' },
+        items: [{ ...it, resources: it.resources.map((id) => ({ id, name: AG_RES.find((r) => r.id === id).name, kind: AG_RES.find((r) => r.id === id).kind })) }], notes: [] };
+    }
+    case 'agenda_history': return { status: 'ok', history: [{ at: '2026-11-01T12:00:00Z', item_seq: 1, from: null, to: 'confirmed', actor_kind: 'clinica', actor_role: 'reception', origin: 'painel', reason_code: null, request_version: 1 }] };
+    case 'agenda_desk_slots': return { status: 'ok', timezone: 'America/Sao_Paulo', from: body.p_from, to: body.p_to || body.p_from, holidays_checked_until: '2027-12-31', national_holidays_until: '2027-12-31',
+      slots: ['16:00', '16:30', '17:00'].map((h) => ({ start: agAt(h, body.p_from), end: new Date(Date.parse(agAt(h, body.p_from)) + 30 * 60000).toISOString() })) };
+    case 'agenda_block_add': return { status: 'has_appointments', items: [{ item_id: AG_ITEMS[2].id, request_id: AG_ITEMS[2].request_id, starts_at: AG_ITEMS[2].starts_at }], busy: 1 };
+    case 'agenda_block_force': return { status: 'confirm_required', confirm: 'c'.repeat(64), items: [
+      { kind: 'agendamento', item_id: AG_ITEMS[2].id, request_id: AG_ITEMS[2].request_id, busy_id: null, seq: 1, status: 'confirmed', request_version: 1, starts_at: AG_ITEMS[2].starts_at, ends_at: AG_ITEMS[2].ends_at,
+        procedure_id: AG_PROC.id, procedure: AG_PROC.name, channel: 'imed_app', patient: 'Maria <b>S.</b>', can_move: true },
+      { kind: 'ocupado', item_id: null, request_id: null, busy_id: AG_BUSY[0].id, seq: null, status: null, request_version: null, starts_at: AG_BUSY[0].starts_at, ends_at: AG_BUSY[0].ends_at, procedure_id: null, procedure: null, channel: null, patient: null, can_move: true }] };
+    case 'agenda_requests': return { status: 'ok', scope: 'clinica', timezone: 'America/Sao_Paulo', today: AG_TODAY,
+      requests: [...REQUESTS.filter((r) => r.clinic_id === C1), { ...REQUESTS[1], id: AG_ITEMS[2].request_id, patient_name: 'Maria <b>Souza</b> Teste', exam_code: 'usg', preferred_date: AG_TODAY, slot_start: AG_ITEMS[2].starts_at, status: 'confirmed', uses_resources: true, channel: 'imed_app', notes: null }] };
+    default: return undefined;
+  }
+}
+// Minha conta com as situações novas da agenda (4.2): remarcação, falta, chegada, atendimento e reserva expirada.
+const NOVAS = ['reschedule_requested', 'no_show', 'checked_in', 'in_service', 'expired'].map((status, i) => ({ status, id: `${i + 3}${i + 3}${i + 3}${i + 3}${i + 3}${i + 3}${i + 3}${i + 3}-3333-4333-8333-33333333333${i}` }));
+const APPTS_NOVAS = NOVAS.map(({ id }, i) => ({ type: 'pedido', code: `IMED-${id.slice(0, 8)}`, id, token: String(i + 3).repeat(64), place_key: 'imed:x', name: 'Clínica Agenda Teste', phone: '(11) 3141-1000', exam: 'usg', items: ['Ultrassom'],
+  date: spDay(6), period: 'manha', slot: agAt('09:00', spDay(6)), status: 'confirmado', created: '2026-11-01T10:00:00.000Z' }));
+for (const { id, status } of NOVAS) LIVE[id] = { status, reviewed: false };
 // 130 estabelecimentos de São Paulo para as páginas da cidade.
 const KINDS = ['clinica', 'laboratorio', 'imagem', 'hospital'];
 const CITY_ROWS = Array.from({ length: 130 }, (_, i) => ({
@@ -279,9 +350,12 @@ async function mockSupabase(context, { admin = false, member = false, rapida = f
       case 'place_reports': return json(route, admin ? applyFilters(REPORTS, q) : []);
       case 'clinic_schedules': return json(route, applyFilters(SCHEDULES, q));
       case 'clinic_blocks': return json(route, applyFilters(BLOCKS, q));
-      default:
+      default: {
+        const ag = rest.startsWith('rpc/agenda_') ? agendaRpc(rest.slice(4), body || {}) : undefined;
+        if (ag !== undefined) return json(route, ag);
         if (rest.startsWith('rpc/')) return json(route, 'ok');
         return json(route, []);
+      }
     }
   });
   return log;
@@ -334,7 +408,20 @@ async function openHome(page) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(200);
 }
-const PAINEL_TABS = ['pedidos', 'agenda', 'equipe', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas'];
+const PAINEL_TABS = ['pedidos', 'agenda', 'config', 'equipe', 'dados', 'exames', 'cadastros', 'concierge', 'mensagens', 'avisos', 'visitas'];
+// Agenda (4.2): abre a aba e espera a visão; view: Hoje, Dia, Semana, Mês ou Bloqueios.
+const AG_MAIN = '#agMain .ag-lista, #agMain .ag-grade, #agMain .ag-vazio, #agMain .ag-mes, #agMain .ag-mlista, #agMain .ag-blsec';
+async function openAgenda(p, view = 'hoje') {
+  await p.waitForSelector('#tab-agenda');
+  await p.click('#tab-agenda');
+  await p.waitForSelector(AG_MAIN);
+  if (view !== 'hoje') {
+    await p.click(`[data-view="${view}"]`);
+    await p.waitForFunction((v) => document.querySelector(`[data-view="${v}"]`)?.getAttribute('aria-pressed') === 'true', view);
+  }
+  await p.waitForFunction(() => !document.querySelector('#agMain[aria-busy="true"]'));
+  await p.waitForSelector(AG_MAIN);
+}
 const PAGES = [
   { name: 'Início', url: 'index.html', open: openHome },
   { name: 'Início (modo leve)', url: 'index.html', motion: 'reduce', open: async (p) => { await p.waitForSelector('#heroLite li a'); await openHome(p); } },
@@ -363,6 +450,7 @@ const PAGES = [
   { name: 'Minha conta · entrar com senha', url: 'conta.html', open: async (p) => { await p.waitForSelector('.ct-order'); await p.click('.es-abrir'); await p.waitForSelector('#senhaCampos:not([hidden])'); await waitIdle(p); } },
   { name: 'Definir senha', url: 'definir-senha.html', open: async (p) => { await p.waitForSelector('#semSessao:not([hidden])'); } },
   { name: 'Definir senha (com login)', url: 'definir-senha.html', session: true, open: async (p) => { await p.waitForSelector('#comSessao:not([hidden])'); } },
+  { name: 'Minha conta (situações novas)', url: 'conta.html', appts: APPTS_NOVAS, open: async (p) => { await p.waitForFunction(() => /Remarcação solicitada/.test(document.body.textContent)); await waitIdle(p); } },
   { name: 'Área da clínica', url: 'painel.html', open: async (p) => { await p.waitForSelector('#authBox input'); } },
   ...PAINEL_TABS.map((tab) => ({
     name: `Área da clínica · ${tab}`, url: 'painel.html', session: true, admin: true, member: true,
@@ -370,11 +458,32 @@ const PAGES = [
   })),
   {
     name: 'Área da clínica · agenda (configuração rápida)', url: 'painel.html', session: true, admin: true, member: true, rapida: true,
-    open: async (p) => { await p.waitForSelector('#tab-agenda'); await p.click('#tab-agenda'); await p.waitForSelector('#qcForm'); await p.click('#qcSave'); await p.waitForSelector('#qcMsg .cl-note'); await waitIdle(p); },
+    open: async (p) => { await p.waitForSelector('#tab-config'); await p.click('#tab-config'); await p.waitForSelector('#qcForm'); await p.click('#qcSave'); await p.waitForSelector('#qcMsg .cl-note'); await waitIdle(p); },
   },
   {
     name: 'Área da clínica · agenda (formulários abertos)', url: 'painel.html', session: true, admin: true, member: true,
-    open: async (p) => { await p.waitForSelector('#tab-agenda'); await p.click('#tab-agenda'); await p.waitForSelector('#resNew'); await p.click('#resNew'); await p.click('#procNew'); await p.click('[data-hadd="2-open"]'); await waitIdle(p); },
+    open: async (p) => { await p.waitForSelector('#tab-config'); await p.click('#tab-config'); await p.waitForSelector('#resNew'); await p.click('#resNew'); await p.click('#procNew'); await p.click('[data-hadd="2-open"]'); await waitIdle(p); },
+  },
+  // Agenda da recepção (4.2): cada visão, o detalhe, o novo agendamento com erros e o bloqueio com afetados.
+  ...[['dia', 'dia'], ['semana', 'semana'], ['mês', 'mes'], ['bloqueios', 'bloqueios']].map(([n, v]) => ({
+    name: `Área da clínica · agenda (${n})`, url: 'painel.html', session: true, admin: true, member: true,
+    open: async (p) => { await openAgenda(p, v); await waitIdle(p); },
+  })),
+  {
+    name: 'Área da clínica · agenda (detalhe)', url: 'painel.html', session: true, admin: true, member: true,
+    open: async (p) => { await openAgenda(p); await p.click(`[data-act="abrir"][data-item="${AG_ITEMS[2].id}"]`); await p.waitForSelector('#agDet:not([hidden]) #agDetT'); await p.waitForFunction(() => /Souza/.test(document.querySelector('#agDet').textContent)); await waitIdle(p); },
+  },
+  {
+    name: 'Área da clínica · agenda (novo agendamento com erros)', url: 'painel.html', session: true, admin: true, member: true,
+    open: async (p) => { await openAgenda(p); await p.click('#agNovo'); await p.waitForSelector('#bkForm'); await p.click('#bkOk'); await p.waitForSelector('#bkForm [aria-invalid="true"]'); await waitIdle(p); },
+  },
+  {
+    name: 'Área da clínica · agenda (bloquear com afetados)', url: 'painel.html', session: true, admin: true, member: true,
+    open: async (p) => {
+      await openAgenda(p); await p.click('#agBloquear'); await p.waitForSelector('#blForm');
+      await p.selectOption('#blAlvo', AG_R1); await p.check('input[name="blModo"][value="part"]'); await p.fill('#blFrom', spDay(1)); await p.fill('#blStart', '08:00'); await p.fill('#blEnd', '12:00');
+      await p.click('#blOk'); await p.waitForSelector('#blAfet .ag-afet'); await waitIdle(p);
+    },
   },
   { name: 'Reivindicar', url: 'reivindicar.html?cnes=2077485', open: async (p) => { await p.waitForSelector('.cl-place h3'); } },
   { name: 'Reivindicar (com login)', url: 'reivindicar.html?cnes=2077485', session: true, open: async (p) => { await p.waitForSelector('#s3:not([hidden])'); await waitIdle(p); } },
@@ -398,7 +507,9 @@ const PAGES = [
   { name: 'Tipo: Clínicas em São Paulo', url: 'cidades/sp/sao-paulo/clinicas.html', open: async (p) => { await waitIdle(p); } },
 ];
 // Tema escuro (grupo "conta"): as mesmas páginas com o aparelho no escuro (Automático do site segue o aparelho).
-for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Área da clínica', 'Área da clínica · pedidos', 'Área da clínica · agenda', 'Área da clínica · agenda (configuração rápida)', 'Área da clínica · equipe', 'Área da clínica · visitas', 'Reivindicar', 'Quem somos', 'Termos', 'Privacidade', 'Para clínicas', 'Como funciona', 'Acessibilidade', 'Fale com o IMED', 'Para médicos']) {
+for (const n of ['Minha conta (com login)', 'Minha conta · avaliar', 'Minha conta (situações novas)', 'Área da clínica', 'Área da clínica · pedidos', 'Área da clínica · agenda', 'Área da clínica · config', 'Área da clínica · agenda (configuração rápida)',
+  'Área da clínica · agenda (dia)', 'Área da clínica · agenda (semana)', 'Área da clínica · agenda (mês)', 'Área da clínica · agenda (bloqueios)', 'Área da clínica · agenda (detalhe)', 'Área da clínica · agenda (novo agendamento com erros)',
+  'Área da clínica · agenda (bloquear com afetados)', 'Área da clínica · equipe', 'Área da clínica · visitas', 'Reivindicar', 'Quem somos', 'Termos', 'Privacidade', 'Para clínicas', 'Como funciona', 'Acessibilidade', 'Fale com o IMED', 'Para médicos']) {
   PAGES.push({ ...PAGES.find((d) => d.name === n), name: `${n} (escuro)`, escuro: true });
 }
 
@@ -717,7 +828,7 @@ const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro, ...(def.appts ? { appts: def.appts } : {}) });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);

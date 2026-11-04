@@ -1,6 +1,7 @@
 // Painel da clínica, iMed Agenda fase 4.1: configuração da agenda (configuração rápida, unidade e fuso, modalidade e
 // compromisso, horários de funcionamento, aparelhos/salas/profissionais, exames e conferência de horários livres) e a
-// equipe (convites e papéis). Só fala com o banco pelas funções da agenda (3.2, 3.4 e 4.1): agenda_config,
+// equipe (convites e papéis). Desde a 4.2 a configuração fica na aba "Configurar agenda" (a aba "Agenda" é a agenda da
+// recepção, em agenda.js). Só fala com o banco pelas funções da agenda (3.2, 3.4 e 4.1): agenda_config,
 // agenda_unit_save, agenda_mode_set, agenda_rules_set, agenda_resource_save, agenda_procedure_save, agenda_slots,
 // agenda_team, agenda_invite, agenda_invite_cancel, agenda_member_role, agenda_member_remove, agenda_my_invites e
 // agenda_invite_accept. Nenhum dado de paciente aparece aqui. Regras puras em agenda-core.js.

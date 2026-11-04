@@ -48,6 +48,10 @@
 .st-contacted{background:var(--primary-s);color:var(--primary-d)}
 .st-confirmed,.st-completed{background:var(--green-s);color:var(--conta-ok-txt,#146b3d)}
 .st-cancelled{background:var(--coral-s);color:var(--conta-erro-txt,#a33a1f)}
+/* situações da agenda nova (fase 4.2): os mesmos tons da legenda do painel */
+.st-hold,.st-awaiting_payment,.st-reschedule_requested{background:var(--gold-s);color:var(--conta-aviso-txt,#7a5200)}
+.st-checked_in,.st-in_service{background:var(--primary-s);color:var(--primary-d)}
+.st-no_show,.st-expired{background:var(--conta-neutro-s,#E9F0F3);color:var(--conta-neutro-txt,#4A5D68)}
 .st-unknown{background:var(--bg2);color:var(--muted);font-weight:600;white-space:normal}
 .ct-dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 16px;margin:12px 0 6px}
 .ct-dl dt{font-size:12.5px;color:var(--muted);font-weight:600}

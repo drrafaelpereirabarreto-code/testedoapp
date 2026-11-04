@@ -705,9 +705,13 @@ export const PREP = {
   outro: 'Confirme com o local se há algum preparo.',
 };
 
+// Situação do pedido para o paciente. As 7 da agenda nova (fase 4.2, R2-16) sobem antes de o painel criar essas
+// situações: reserva, pagamento, chegada, atendimento, falta, remarcação e reserva expirada.
 const STATUS_PT = {
   pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', confirmado: 'Confirmado',
   cancelled: 'Cancelado', completed: 'Concluído',
+  hold: 'Reserva temporária', awaiting_payment: 'Aguardando pagamento', checked_in: 'Chegada registrada', in_service: 'Em atendimento',
+  no_show: 'Não compareceu', reschedule_requested: 'Remarcação solicitada', expired: 'Reserva expirada',
 };
 export const statusLabel = (status) => STATUS_PT[status] ?? '';
 

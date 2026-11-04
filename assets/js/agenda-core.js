@@ -36,18 +36,22 @@ export const ROLE_PERMS = {
 export const permsOf = (role) => ({ ...(ROLE_PERMS[role] || {}) });
 export const can = (perms, p) => !!perms && Object.prototype.hasOwnProperty.call(perms, p);
 
-// Abas da clínica pelo que a pessoa pode fazer. A equipe do IMED (admin) vê todas.
-export const TAB_LABEL = { pedidos: 'Pedidos', agenda: 'Agenda', dados: 'Dados da clínica', exames: 'Exames e preços', equipe: 'Equipe' };
+// Abas da clínica pelo que a pessoa pode fazer, em ordem fixa (fase 4.2: "Agenda" é a agenda de verdade, para quem vê
+// a agenda, inclusive o profissional; a configuração da 4.1 fica em "Configurar agenda"). A equipe do IMED vê todas.
+export const TAB_LABEL = { pedidos: 'Pedidos', agenda: 'Agenda', config: 'Configurar agenda', dados: 'Dados da clínica', exames: 'Exames e preços', equipe: 'Equipe' };
 export function clinicTabs(perms, admin = false) {
   const p = admin ? { ...ROLE_PERMS.owner } : perms || {};
   const t = [];
   if (can(p, 'pedidos.ver')) t.push('pedidos');
-  if (can(p, 'agenda.configurar') || can(p, 'agenda.bloquear')) t.push('agenda');
+  if (can(p, 'agenda.ver')) t.push('agenda');
+  if (can(p, 'agenda.configurar')) t.push('config');
   if (can(p, 'clinica.editar')) t.push('dados');
   if (can(p, 'precos.editar')) t.push('exames');
   if (can(p, 'equipe.gerenciar')) t.push('equipe');
   return t;
 }
+// Aba aberta ao entrar: a Agenda, se a clínica está com a agenda nova ativa e a pessoa tem a aba; senão, a primeira.
+export const defaultTab = (tabs, agendaActive = false) => (agendaActive && tabs.includes('agenda') ? 'agenda' : tabs[0] ?? null);
 
 // Quem pode convidar ou mudar para este papel: o dono, todos; o gestor, todos menos dono (o banco confere de novo).
 export const rolesICanGive = (perms, admin = false) => {
@@ -394,3 +398,397 @@ export const affectsText = (items) => {
   const n = Array.isArray(items) ? items.length : 0;
   return n === 1 ? '1 agendamento futuro deixaria de caber nesta mudança.' : `${n} agendamentos futuros deixariam de caber nesta mudança.`;
 };
+
+/* =====================================================================================================================
+   FASE 4.2: agenda visual e recepção (a tela fica em agenda.js). Tudo no FUSO DA CLÍNICA, nunca o do aparelho.
+   ===================================================================================================================== */
+
+// ---------- fuso ----------
+const fmtCache = new Map();
+const fmt = (key, tz, opts) => {
+  const k = `${key}|${tz}`;
+  if (!fmtCache.has(k)) fmtCache.set(k, new Intl.DateTimeFormat(key.startsWith('pt') ? 'pt-BR' : 'en-CA', { timeZone: tz, ...opts }));
+  return fmtCache.get(k);
+};
+// Minutos de diferença do fuso para UTC num instante (São Paulo hoje: -180).
+export function tzOffsetMin(tz, ms = Date.now()) {
+  const p = Object.fromEntries(fmt('en-off', tz, { hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    .formatToParts(new Date(ms)).map((x) => [x.type, x.value]));
+  const asUtc = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second));
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);
+}
+// Dia (AAAA-MM-DD) e hora (HH:MM) de um instante no fuso da clínica.
+export const dayIn = (tz, ms = Date.now()) => fmt('en-day', tz, { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
+export function timeIn(tz, iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return fmt('pt-time', tz, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+}
+export const minutesIn = (tz, iso) => { const t = timeIn(tz, iso); return t ? toMin(t) : NaN; };
+// Dia + hora local da clínica → instante (ISO), com a MESMA escolha do Postgres ((data + hora) at time zone fuso):
+// hora que não existe (começo do horário de verão) usa o fuso de antes da troca (vira o próximo instante que existe);
+// hora repetida (fim do horário de verão) usa o de depois (a segunda vez). Conferido com supabase/tests/205_fuso.sql.
+export function localToUtc(day, hhmm, tz) {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(day || ''));
+  const m = toMin(hhmm);
+  if (!d || Number.isNaN(m)) return null;
+  const local = Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3]), 0, m);
+  const antes = tzOffsetMin(tz, local - 86400000);
+  const depois = tzOffsetMin(tz, local + 86400000);
+  const c1 = local - antes * 60000;
+  const c2 = local - depois * 60000;
+  const v1 = tzOffsetMin(tz, c1) === antes;
+  const v2 = tzOffsetMin(tz, c2) === depois;
+  const t = antes === depois ? c1 : v1 && v2 ? c2 : v2 && !v1 ? c2 : c1;
+  return new Date(t).toISOString();
+}
+export const addDaysTo = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+export const weekdayOf = (day) => new Date(`${day}T12:00:00Z`).getUTCDay();
+export const mondayOf = (day) => addDaysTo(day, -((weekdayOf(day) + 6) % 7));
+export const monthStart = (day) => `${String(day).slice(0, 7)}-01`;
+const HORAS_TXT = (h) => (h === 1 ? 'uma hora' : h === 2 ? 'duas horas' : `${h} horas`);
+// "Horários no fuso da clínica (uma hora a menos que Brasília)": só quando o fuso da clínica, naquele instante, tem
+// diferença para UTC diferente da do aparelho de quem lê.
+export function tzNote(tz, deviceTz, ms = Date.now()) {
+  if (!tz || !deviceTz) return '';
+  const a = tzOffsetMin(tz, ms); const b = tzOffsetMin(deviceTz, ms);
+  if (a === b) return '';
+  const h = Math.abs(a - b) / 60;
+  const qto = Number.isInteger(h) ? HORAS_TXT(h) : `${String(h).replace('.', ',')} horas`;
+  const ref = b === -180 ? 'Brasília' : 'o horário deste aparelho';
+  return `Horários no fuso da clínica (${qto} a ${a < b ? 'menos' : 'mais'} que ${ref}).`;
+}
+
+// ---------- datas por extenso (dia local, sem fuso) ----------
+const DIA_LONGO = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long' });
+const DIA_CURTO = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', weekday: 'short', day: '2-digit', month: '2-digit' });
+const MES_LONGO = new Intl.DateTimeFormat('pt-BR', { timeZone: 'UTC', month: 'long', year: 'numeric' });
+const asDate = (day) => new Date(`${day}T12:00:00Z`);
+export const fmtDayLong = (day) => (/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? DIA_LONGO.format(asDate(day)) : '');
+export const fmtDayShort = (day) => (/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? DIA_CURTO.format(asDate(day)) : '');
+export const fmtMonth = (day) => (/^\d{4}-\d{2}/.test(day || '') ? MES_LONGO.format(asDate(monthStart(day))) : '');
+export const fmtDDMM = (day) => (/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? `${day.slice(8, 10)}/${day.slice(5, 7)}` : '');
+export const fmtDDMMYYYY = (day) => (/^\d{4}-\d{2}-\d{2}$/.test(day || '') ? `${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}` : '');
+// "qua., 05/11 às 09:30" no fuso da clínica
+export const fmtWhen = (tz, iso) => (iso ? `${fmtDayShort(dayIn(tz, Date.parse(iso)))} às ${timeIn(tz, iso)}` : '');
+
+// ---------- situações, cores e legenda ----------
+export const CLINIC_STATUS = {
+  pending: 'Aguardando contato', contacted: 'Em contato', hold: 'Reserva temporária', awaiting_payment: 'Aguardando pagamento',
+  confirmed: 'Confirmado', checked_in: 'Paciente presente', in_service: 'Em atendimento', completed: 'Concluído',
+  no_show: 'Não compareceu', reschedule_requested: 'Remarcação solicitada', cancelled: 'Cancelado', expired: 'Reserva expirada',
+};
+// Situação para a clínica; a reserva mostra até quando ("Reserva temporária até 10:42", no fuso da clínica).
+export function clinicStatusLabel(status, holdExpiresAt = null, tz = 'America/Sao_Paulo') {
+  const base = CLINIC_STATUS[status] || '';
+  if ((status === 'hold' || status === 'awaiting_payment') && holdExpiresAt) {
+    const t = timeIn(tz, holdExpiresAt);
+    if (t) return `${base} até ${t}`;
+  }
+  return base;
+}
+// Tom (cor), ícone e texto curto de cada situação. Cor nunca sozinha: sempre com o texto e o ícone.
+export const STATUS_LOOK = {
+  confirmed: ['azul', 'fa-calendar-check', 'Confirmado'], checked_in: ['azul', 'fa-user-check', 'Presente'],
+  in_service: ['azul', 'fa-stethoscope', 'Em atendimento'], hold: ['amarelo', 'fa-clock', 'Reserva'],
+  awaiting_payment: ['amarelo', 'fa-clock', 'Pagamento'], reschedule_requested: ['amarelo', 'fa-rotate', 'Remarcar'],
+  pending: ['amarelo', 'fa-clock', 'Aguardando'], contacted: ['azul', 'fa-phone', 'Em contato'],
+  cancelled: ['cinza', 'fa-ban', 'Cancelado'], no_show: ['cinza', 'fa-user-xmark', 'Faltou'], expired: ['cinza', 'fa-ban', 'Expirada'],
+  completed: ['roxo', 'fa-circle-check', 'Concluído'],
+};
+export function statusTag(status, holdExpiresAt = null, tz = 'America/Sao_Paulo') {
+  const [tone, icon, short] = STATUS_LOOK[status] || ['cinza', 'fa-circle-info', status || ''];
+  return { tone, icon, short, text: clinicStatusLabel(status, holdExpiresAt, tz) || status || '' };
+}
+export const BUSY_TEXT = { agenda_propria: 'Ocupado (agenda própria)', uso_interno: 'Ocupado (uso interno)', outro: 'Ocupado (outro motivo)' };
+export const BUSY_REASONS = [['agenda_propria', 'Agenda própria da clínica'], ['uso_interno', 'Uso interno'], ['outro', 'Outro']];
+export const BLOCK_KINDS = [['bloqueio', 'Bloqueio'], ['manutencao', 'Manutenção'], ['feriado', 'Feriado'], ['folga', 'Folga']];
+export const BLOCK_KIND_LABEL = { bloqueio: 'Bloqueado', manutencao: 'Manutenção', feriado: 'Feriado', folga: 'Folga' };
+// Texto e ícone de um bloqueio na grade ("Bloqueado: Manutenção"; feriado com a bandeira).
+export const blockLook = (kind) => (kind === 'feriado' ? { tone: 'vermelho', icon: 'fa-flag', text: 'Feriado' }
+  : { tone: 'vermelho', icon: 'fa-lock', text: kind && kind !== 'bloqueio' ? `Bloqueado: ${BLOCK_KIND_LABEL[kind] || kind}` : 'Bloqueado' });
+export const busyLook = (reason) => ({ tone: 'vermelho', icon: 'fa-hand', text: BUSY_TEXT[reason] || BUSY_TEXT.outro });
+export const LEGENDA = [
+  { tone: 'verde', items: [['fa-check', 'Livre']] },
+  { tone: 'azul', items: [['fa-calendar-check', 'Confirmado'], ['fa-user-check', 'Paciente presente'], ['fa-stethoscope', 'Em atendimento']] },
+  { tone: 'amarelo', items: [['fa-clock', 'Reserva temporária'], ['fa-clock', 'Aguardando pagamento'], ['fa-rotate', 'Remarcação solicitada']] },
+  { tone: 'vermelho', items: [['fa-lock', 'Bloqueado (manutenção, folga)'], ['fa-flag', 'Feriado'], ['fa-hand', 'Ocupado (agenda própria)']] },
+  { tone: 'cinza', items: [['fa-ban', 'Cancelado'], ['fa-user-xmark', 'Não compareceu'], ['', 'Fechado']] },
+  { tone: 'roxo', items: [['fa-circle-check', 'Concluído']] },
+];
+export const CHANNEL_LABEL = {
+  imed_app: 'Site do IMED', imed_equipe: 'Equipe do IMED', clinica_telefone: 'Telefone', clinica_balcao: 'Balcão',
+  clinica_outro: 'Outro', externo: 'Sistema da clínica',
+};
+export const DESK_CHANNELS = [['clinica_telefone', 'Telefone'], ['clinica_balcao', 'Balcão'], ['clinica_outro', 'Outro']];
+export const CONFLICT_KIND = {
+  bloqueio_sobre_agendamento: 'Horário bloqueado pela clínica', grade_mudou: 'O horário não cabe mais na configuração',
+  capacidade: 'Capacidade reduzida',
+};
+export const REMARCAR_KINDS = Object.keys(CONFLICT_KIND);
+// Motivos de cancelamento na tela ("não pago" fica fora: sem pagamento online, decisão 4.2-e; reserva_expirada e
+// remarcado são do sistema).
+export const CANCEL_REASONS = [
+  ['paciente_desistiu', 'O paciente desistiu'], ['paciente_nao_pode', 'O paciente não pode no horário'],
+  ['clinica_indisponivel', 'A clínica não pode atender'], ['equipamento_manutencao', 'Aparelho em manutenção'],
+  ['profissional_ausente', 'Profissional ausente'], ['duplicado', 'Agendamento repetido'], ['outro', 'Outro motivo'],
+];
+export const UNDO_NO_SHOW_REASONS = [['chegou_atrasado', 'O paciente chegou atrasado'], ['registro_errado', 'A falta foi marcada por engano']];
+// Motivos da equipe do IMED para ver dados de paciente ("quebra de vidro", decisão 4.2-f; fica registrado).
+export const JUSTIFICATIONS = [
+  ['suporte_clinica', 'Suporte pedido pela clínica'], ['pedido_do_paciente', 'Pedido do próprio paciente'],
+  ['auditoria', 'Conferência ou auditoria'], ['conflito_agenda', 'Resolver um problema da agenda'],
+];
+
+// ---------- histórico ----------
+const QUEM = { paciente: 'Paciente', clinica: 'Clínica', imed: 'Equipe do IMED', sistema: 'Automático', integracao: 'Sistema da clínica', gateway: 'Pagamento', sql: 'Correção feita pela equipe técnica do IMED' };
+const PAPEL = { owner: 'Dono(a)', manager: 'Gestor(a)', reception: 'Recepção', staff: 'Recepção', professional: 'Profissional', finance: 'Financeiro', imed_admin: 'Administração do IMED' };
+const ORIGEM = { app: 'pelo site', painel: 'pelo painel', central: 'pela central do IMED', api: 'pela integração', cron: 'automático', sql: 'correção manual' };
+const MOTIVO = {
+  ...Object.fromEntries(CANCEL_REASONS), ...Object.fromEntries(UNDO_NO_SHOW_REASONS), nao_pago: 'Não pago',
+  remarcado: 'Remarcado', reserva_expirada: 'A reserva venceu', bloqueio_forcado: 'Horário bloqueado pela clínica',
+};
+const HORA_HIST = (tz, iso) => `${fmtDayShort(dayIn(tz, Date.parse(iso)))} ${timeIn(tz, iso)}`;
+// "qua., 04/11 10:02 · Confirmado → Paciente presente · Recepção, pelo painel · Motivo: …" (só códigos vêm do banco)
+export function historyLine(h, tz = 'America/Sao_Paulo') {
+  const quem = h.actor_role ? (PAPEL[h.actor_role] || (String(h.actor_role).startsWith('imed_') ? 'Equipe do IMED' : QUEM[h.actor_kind] || ''))
+    : QUEM[h.actor_kind] || '';
+  const origem = ORIGEM[h.origin] || '';
+  const de = h.from ? `${CLINIC_STATUS[h.from] || h.from} → ` : 'Criado: ';
+  const motivo = h.reason_code ? (MOTIVO[h.reason_code] ? `Motivo: ${MOTIVO[h.reason_code]}` : `Motivo registrado: ${h.reason_code}`) : '';
+  const item = h.item_seq ? `exame ${h.item_seq}: ` : '';
+  return [h.at ? HORA_HIST(tz, h.at) : '', `${item}${de}${CLINIC_STATUS[h.to] || h.to || ''}`, [quem, origem].filter(Boolean).join(', '), motivo]
+    .filter(Boolean).join(' · ');
+}
+
+// ---------- botões de atendimento (o banco decide de novo: too_early, too_late) ----------
+// item: { status, starts_at }; unit: { checkin_before_min, no_show_after_min }; scope: 'clinica' | 'propria' | 'central';
+// can: { atender, remarcar, cancelar }. Devolve [{ key, status, label, enabled, hint, confirm, reason }].
+export function attendActions(item, unit, now, tz, { scope = 'clinica', can: c = {} } = {}) {
+  const out = [];
+  const ini = Date.parse(item?.starts_at);
+  if (!Number.isFinite(ini)) return out;
+  const before = Number(unit?.checkin_before_min ?? 120);
+  const tol = Number(unit?.no_show_after_min ?? 15);
+  const hora = (ms) => timeIn(tz, new Date(ms).toISOString());
+  const atende = scope !== 'central' && c.atender !== false;
+  const st = item.status;
+  const push = (o) => out.push({ enabled: true, hint: '', confirm: false, reason: false, ...o });
+  if (st === 'confirmed' && atende) {
+    const ok = now >= ini - before * 60000;
+    push({ key: 'chegou', status: 'checked_in', label: 'Chegou', enabled: ok, hint: ok ? '' : `Chegada a partir das ${hora(ini - before * 60000)}` });
+  }
+  if (st === 'checked_in' && atende) push({ key: 'atendimento', status: 'in_service', label: 'Em atendimento' });
+  if (st === 'in_service' && atende) push({ key: 'concluido', status: 'completed', label: 'Concluído', confirm: true });
+  if (st === 'confirmed' && (atende || scope === 'central')) {
+    const ok = now >= ini;
+    push({ key: 'concluido', status: 'completed', label: 'Concluído', confirm: true, enabled: ok, hint: ok ? '' : `Concluído a partir das ${hora(ini)}` });
+  }
+  if (st === 'confirmed' && atende) {
+    const ok = now >= ini + tol * 60000;
+    push({ key: 'faltou', status: 'no_show', label: 'Não compareceu', confirm: true, enabled: ok, hint: ok ? '' : `Disponível a partir das ${hora(ini + tol * 60000)}` });
+  }
+  if (st === 'no_show' && atende && scope === 'clinica') {
+    const ok = dayIn(tz, now) === dayIn(tz, ini);
+    push({ key: 'desfazer', status: 'checked_in', label: 'Desfazer falta', confirm: true, reason: true, enabled: ok, hint: ok ? '' : 'Só no dia do exame' });
+  }
+  return out;
+}
+// "Remarcar", "Voltar ao horário de antes" e "Cancelar agendamento": quem pode e em que situação.
+export function manageActions(item, { scope = 'clinica', can: c = {}, unplaced = false } = {}) {
+  const st = item?.status;
+  const out = [];
+  if (scope === 'propria') return out;
+  if (c.remarcar && (st === 'confirmed' || st === 'reschedule_requested')) out.push('remarcar');
+  if (c.remarcar && st === 'reschedule_requested' && unplaced) out.push('voltar');
+  if (c.cancelar && ['confirmed', 'reschedule_requested', 'checked_in', 'hold', 'awaiting_payment'].includes(st)) out.push('cancelar');
+  return out;
+}
+
+// ---------- grade do dia: raias e posição ----------
+// items: [{ id, start, end }] em minutos do dia; dayStart: minuto do começo da grade; step: minutos por linha.
+// Itens que se cruzam ficam lado a lado (raias); encostados, não. Devolve { id: { row, span, lane, lanes } }.
+export function layoutColumn(items, dayStart = 0, step = 15) {
+  const list = [...items].filter((x) => Number.isFinite(x.start) && Number.isFinite(x.end)).sort((a, b) => a.start - b.start || a.end - b.end);
+  const out = {};
+  let grupo = []; let fimGrupo = -Infinity; let raias = [];
+  const fecha = () => { const n = raias.length; for (const g of grupo) out[g.id].lanes = n; grupo = []; raias = []; };
+  for (const it of list) {
+    if (it.start >= fimGrupo) fecha();
+    let lane = raias.findIndex((fim) => fim <= it.start);
+    if (lane < 0) { lane = raias.length; raias.push(it.end); } else raias[lane] = it.end;
+    out[it.id] = { row: (it.start - dayStart) / step, span: Math.max((it.end - it.start) / step, 0.5), lane, lanes: 1 };
+    grupo.push(it);
+    fimGrupo = Math.max(fimGrupo, it.end);
+  }
+  fecha();
+  return out;
+}
+
+// ---------- novo agendamento (balcão ou telefone) ----------
+// As mesmas regras de private.agenda_validate_patient e de agenda_desk_book.
+export function deskErrors(v) {
+  const e = {};
+  if (!v.procedure) e.bkProc = 'Escolha o exame.';
+  if (!v.slot) e.bkSlot = 'Escolha um horário livre.';
+  const nome = String(v.name || '').trim().replace(/\s+/g, ' ');
+  if (nome.length < 2 || nome.length > 120) e.bkNome = 'Informe o nome (de 2 a 120 letras).';
+  const tel = String(v.phone || '').replace(/\D/g, '');
+  if (!/^\d{10,11}$/.test(tel)) e.bkFone = 'Informe o celular com DDD (10 ou 11 números).';
+  const mail = String(v.email || '').trim();
+  if (mail && (mail.length > 254 || !EMAIL_RE.test(mail))) e.bkEmail = 'E-mail inválido. Deixe em branco se a pessoa não tiver.';
+  if (v.forOther) {
+    const outro = String(v.otherName || '').trim().replace(/\s+/g, ' ');
+    if (outro.length < 2 || outro.length > 120) e.bkOutroNome = 'Informe o nome de quem vai fazer o exame.';
+    const par = String(v.relationship || '').trim();
+    if (par.length < 2 || par.length > 60) e.bkParentesco = 'Informe o parentesco de quem vai fazer o exame.';
+    if (v.otherMinor && !v.guardianConsent) e.bkAutoriza = 'Para menor de 18 anos, confirme que é o responsável legal ou tem a autorização dele.';
+    if (!v.otherMinor && !v.otherConsent) e.bkAutoriza = 'Confirme que a pessoa sabe e concordou.';
+  }
+  if (!DESK_CHANNELS.some(([k]) => k === v.channel)) e.bkCanal = 'Escolha como a pessoa pediu.';
+  if (!v.consent) e.bkConsent = 'Marque que a pessoa foi avisada de que o agendamento fica registrado.';
+  return e;
+}
+export function deskPayload(v) {
+  const p = {
+    name: String(v.name).trim().replace(/\s+/g, ' '), phone: String(v.phone).replace(/\D/g, ''), consent: true,
+    for_other: !!v.forOther,
+  };
+  const mail = String(v.email || '').trim().toLowerCase();
+  if (mail) p.email = mail;
+  if (v.forOther) {
+    p.other_name = String(v.otherName).trim().replace(/\s+/g, ' ');
+    p.relationship = String(v.relationship).trim();
+    p.other_minor = !!v.otherMinor;
+    p.guardian_consent = !!v.otherMinor;
+    p.other_consent = !v.otherMinor;
+  }
+  return p;
+}
+// Horários livres em grupos (manhã, tarde, noite) na hora local da clínica.
+export function slotGroups(slots, tz) {
+  const g = { manha: [], tarde: [], noite: [] };
+  for (const s of slots || []) {
+    const m = minutesIn(tz, s.start);
+    if (Number.isNaN(m)) continue;
+    g[m < 720 ? 'manha' : m < 1080 ? 'tarde' : 'noite'].push({ ...s, label: timeIn(tz, s.start) });
+  }
+  return [['manha', 'Manhã'], ['tarde', 'Tarde'], ['noite', 'Noite']].map(([k, n]) => ({ key: k, label: n, slots: g[k] })).filter((x) => x.slots.length);
+}
+// Por que não há horário livre (o diagnóstico que agenda_desk_slots devolve).
+export function noSlotsText(r, { canConfig = false, day = '' } = {}) {
+  if (!r) return 'Nenhum horário livre neste dia. Tente outro dia.';
+  if (!r.national_holidays_until) return 'Nenhum horário livre: o IMED ainda não lançou os feriados nacionais. Avise o IMED pelo Fale com o IMED.';
+  if (!r.holidays_checked_until) {
+    return canConfig ? 'Nenhum horário livre: falta informar até quando a clínica conferiu os feriados da cidade e do estado (Configurar agenda › Unidade).'
+      : 'Nenhum horário livre: falta informar até quando a clínica conferiu os feriados da cidade e do estado. Peça ao dono ou gestor da clínica para informar em Configurar agenda.';
+  }
+  const limite = [r.holidays_checked_until, r.national_holidays_until].filter(Boolean).sort()[0];
+  if (day && limite && day > limite) return `Os feriados só foram conferidos até ${fmtDDMMYYYY(limite)}. Escolha um dia até essa data.`;
+  return 'Nenhum horário livre neste dia. Tente outro dia.';
+}
+
+// ---------- bloqueios ----------
+// Bloqueio digitado (dias inteiros ou algumas horas de um dia) → início e fim no FUSO DA CLÍNICA.
+export function blockRangeTz({ kind, from, to, start, end }, tz, now = Date.now()) {
+  const errs = {};
+  const D = /^\d{4}-\d{2}-\d{2}$/;
+  let starts = null; let ends = null;
+  if (!D.test(from || '')) errs.blFrom = 'Escolha o dia.';
+  if (kind === 'part') {
+    if (Number.isNaN(toMin(start))) errs.blStart = 'Escolha o horário de início.';
+    if (Number.isNaN(toMin(end))) errs.blEnd = 'Escolha o horário de fim.';
+    else if (!errs.blStart && toMin(end) <= toMin(start)) errs.blEnd = 'O fim precisa ser depois do início.';
+    if (!Object.keys(errs).length) { starts = localToUtc(from, start, tz); ends = localToUtc(from, end, tz); }
+  } else if (!errs.blFrom) {
+    const last = to || from;
+    if (!D.test(last)) errs.blTo = 'Escolha o último dia.';
+    else if (last < from) errs.blTo = 'O último dia precisa ser igual ou depois do primeiro.';
+    else if (last > addDaysTo(from, 364)) errs.blTo = 'Use até 365 dias em cada bloqueio.';
+    else { starts = localToUtc(from, '00:00', tz); ends = localToUtc(addDaysTo(last, 1), '00:00', tz); }
+  }
+  if (ends && Date.parse(ends) <= now) { errs[kind === 'part' ? 'blEnd' : to ? 'blTo' : 'blFrom'] = 'Esse período já passou.'; starts = ends = null; }
+  return { errs, starts, ends };
+}
+// Período de um bloqueio por extenso, no fuso da clínica.
+export function blockWhenTz(b, tz) {
+  const d1 = dayIn(tz, Date.parse(b.starts_at)); const t1 = timeIn(tz, b.starts_at);
+  const d2 = dayIn(tz, Date.parse(b.ends_at)); const t2 = timeIn(tz, b.ends_at);
+  if (t1 === '00:00' && t2 === '00:00') {
+    const last = addDaysTo(d2, -1);
+    return last <= d1 ? `${fmtDayShort(d1)} (dia inteiro)` : `${fmtDayShort(d1)} até ${fmtDayShort(last)} (dias inteiros)`;
+  }
+  if (d1 === d2) return `${fmtDayShort(d1)}, das ${t1} às ${t2}`;
+  return `${fmtDayShort(d1)} ${t1} até ${fmtDayShort(d2)} ${t2}`;
+}
+
+// ---------- mês ----------
+const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
+export function monthSummary(d) {
+  return [
+    d.ativos ? plural(d.ativos, 'marcado', 'marcados') : '', d.concluidos ? plural(d.concluidos, 'concluído', 'concluídos') : '',
+    d.faltas ? plural(d.faltas, 'falta', 'faltas') : '', d.bloqueios ? plural(d.bloqueios, 'bloqueio', 'bloqueios') : '',
+  ].filter(Boolean).join(' · ');
+}
+
+// ---------- respostas do banco → mensagem (todo status das funções da agenda tem texto) ----------
+export const ACTION_TEXT = {
+  forbidden: 'Sua conta não pode fazer isto nesta clínica.',
+  not_found: 'Este agendamento não existe mais. A agenda foi atualizada.',
+  not_agenda: 'Este é um pedido sem horário: cuide dele na aba Pedidos.',
+  version_conflict: 'Outra pessoa mudou este agendamento agora há pouco. A agenda foi atualizada: confira e tente de novo.',
+  transition_not_allowed: 'Não dá para fazer isso com o agendamento nesta situação. A agenda foi atualizada.',
+  too_early: 'Ainda não dá para fazer isso: espere o horário indicado no botão.',
+  too_late: 'Isso só pode ser feito no dia do exame.',
+  reason_required: 'Escolha o motivo.',
+  invalid_reason: 'Escolha um motivo da lista.',
+  invalid_status: 'Situação inválida. Atualize a agenda e tente de novo.',
+  slot_taken: 'Esse horário acabou de ser ocupado. Escolha outro.',
+  slot_taken_back: 'O horário não está mais livre. Remarque para outro horário.',
+  already_cancelled: 'Este agendamento já estava cancelado.',
+  not_cancellable: 'Este agendamento não pode mais ser cancelado.',
+  idempotency_conflict: 'Este envio já foi usado para outro horário. Escolha o horário de novo e confirme.',
+  replay: 'Este agendamento já tinha sido registrado. Confira abaixo.',
+  consent_required: 'Marque que a pessoa foi avisada de que o agendamento fica registrado.',
+  invalid_patient: 'Confira o nome (2 a 120 letras) e o celular com DDD.',
+  invalid_package: 'Os exames escolhidos não cabem juntos nesses horários.',
+  agenda_not_started: 'A agenda desta clínica ainda não foi ativada.',
+  invalid_period: 'O período não é válido: confira o começo e o fim (e se já não passou).',
+  invalid: 'Algum dado não está no formato aceito. Confira os campos.',
+  has_appointments: 'Há pacientes marcados nesse período.',
+  confirm_required: 'Este bloqueio atinge agendamentos.',
+  affected_changed: 'A agenda mudou enquanto você conferia. Veja a lista atualizada e confirme de novo.',
+  cannot_move: 'Há paciente já presente, em atendimento ou com reserva em andamento nesse período. Termine ou cancele esses atendimentos antes de bloquear.',
+  too_many: 'Este bloqueio atinge mais de 200 agendamentos. Bloqueie um período menor.',
+  justification_required: 'Escolha o motivo para ver os dados (fica registrado).',
+  too_short: 'Digite pelo menos 3 letras.',
+  already_closed: 'Este item já tinha sido resolvido.',
+  past: 'O horário deste agendamento já passou.',
+  not_online: 'Esta clínica ainda não marca horário pelo site.',
+  expired: 'A reserva venceu.',
+  network: 'Não foi possível falar com o servidor. Confira a internet e tente de novo.',
+};
+export function actionText(status, ctx = {}) {
+  if (status === 'transition_not_allowed' && ctx.from) {
+    return `Não dá para fazer isso com o agendamento na situação “${CLINIC_STATUS[ctx.from] || ctx.from}”. A agenda foi atualizada.`;
+  }
+  if (status === 'too_early' && ctx.hint) return `Ainda não dá: ${ctx.hint.charAt(0).toLowerCase()}${ctx.hint.slice(1)}.`;
+  if (status === 'not_cancellable' && ctx.request_status) return `Este agendamento não pode mais ser cancelado (situação: ${CLINIC_STATUS[ctx.request_status] || ctx.request_status}).`;
+  if (status === 'invalid_patient' && ctx.message) return String(ctx.message);
+  if (status === 'agenda_not_started' && ctx.canConfig) return `${ACTION_TEXT.agenda_not_started} Ative em Configurar agenda.`;
+  if (status === 'confirm_required' && ctx.items) {
+    const n = ctx.items.filter((x) => x.kind === 'agendamento').length;
+    const m = ctx.items.filter((x) => x.kind === 'ocupado').length;
+    return `Este bloqueio atinge ${plural(n, 'agendamento', 'agendamentos')}${m ? ` e ${plural(m, 'horário “só ocupar”', 'horários “só ocupar”')}` : ''}.`;
+  }
+  return ACTION_TEXT[status] || ACTION_TEXT.invalid;
+}
+// Chave de reenvio (p_key): a mesma só quando a resposta não chegou (erro de rede); qualquer resposta do banco que não
+// seja ok pede uma chave nova na próxima tentativa.
+export const needsNewKey = (status) => status !== undefined && status !== null && status !== 'network';
+
+// Nome curto ("Maria S."): o primeiro nome e a inicial do último (o mesmo de private.agenda_short_name).
+export function shortName(nome) {
+  const w = String(nome ?? '').trim().split(/\s+/).filter(Boolean);
+  return w.length > 1 ? `${w[0]} ${w.at(-1).charAt(0)}.` : w[0] || '';
+}

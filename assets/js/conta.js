@@ -12,7 +12,9 @@ const BACK_KEY = 'imed_conta_voltar';
 // Funções da busca (geo-core.js). Se alguma não existir (versão antiga), usa a versão mínima daqui.
 let G = {};
 try { G = await import('./geo-core.js'); } catch { G = {}; }
-const STATUS_PT = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', confirmado: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído' };
+const STATUS_PT = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', confirmado: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído',
+  hold: 'Reserva temporária', awaiting_payment: 'Aguardando pagamento', checked_in: 'Chegada registrada', in_service: 'Em atendimento', no_show: 'Não compareceu',
+  reschedule_requested: 'Remarcação solicitada', expired: 'Reserva expirada' };
 const F = {
   EXAMS: { rx: { n: 'Raio-X' }, usg: { n: 'Ultrassom' }, tc: { n: 'Tomografia' }, rm: { n: 'Ressonância' }, mamo: { n: 'Mamografia' }, dens: { n: 'Densitometria' }, ecg: { n: 'Eletrocardiograma' }, eco: { n: 'Ecocardiograma' }, lab: { n: 'Exames de laboratório' } },
   PERIODS: { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite', qualquer: 'Qualquer horário' },
@@ -155,11 +157,27 @@ function statusHtml(o) {
 }
 
 const canReview = (o) => o.id && o.status === 'completed' && o.reviewed !== true;
-// "Adicionar à agenda": só para o que ainda vai acontecer (a mesma regra da página inicial). Nada para pedido
-// cancelado ou concluído (no banco ou cancelado neste aparelho) nem para data ou horário que já passou.
+// "Adicionar à agenda": só para o que ainda vai acontecer e está ativo (aguardando contato, em contato, confirmado ou
+// situação que o aparelho ainda não sabe). Nada para reserva, chegada, atendimento, falta, remarcação, cancelado,
+// concluído ou expirado (fase 4.2), nem para data ou horário que já passou.
 const todaySP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-const canIcs = (o) => !['cancelled', 'completed'].includes(o.status) && o.deviceStatus !== 'cancelado'
+const ICS_OK = ['pending', 'contacted', 'confirmed'];
+const canIcs = (o) => (!o.status || ICS_OK.includes(o.status)) && o.deviceStatus !== 'cancelado'
   && (o.slot ? slotFuture(o.slot) : isDate(o.date) && o.date >= todaySP());
+// Aviso no cartão para as situações que a agenda nova cria (fase 4.2). Texto simples; sem dado do paciente.
+const STATUS_NOTE = {
+  hold: 'Seu horário fica reservado por alguns minutos.',
+  awaiting_payment: 'O horário só fica confirmado depois do pagamento.',
+  no_show: 'A clínica registrou que você não compareceu. Se não foi isso, fale com a clínica.',
+  reschedule_requested: 'Este horário precisa mudar. Fale com a clínica para combinar um novo horário.',
+  expired: 'A reserva não foi concluída a tempo e o horário foi liberado.',
+};
+function statusNote(o) {
+  const t = STATUS_NOTE[o.status];
+  if (!t) return '';
+  const tel = o.status === 'reschedule_requested' && o.phone && G.telHref ? G.telHref(o.phone) : '';
+  return `<p class="ct-note ct-st-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> ${esc(t)}${tel ? ` <a href="${esc(tel)}">Ligar para ${esc(o.phone)}</a>` : ''}</p>`;
+}
 // Cancelar pelo site: pedido deste aparelho (com o código) ou da conta, ainda ativo (confianca.canCancel).
 const canCancelOrder = (o) => !!(o.id && (o.hasToken || o.fromAccount) && T.canCancel(o.status, o.slot));
 
@@ -195,6 +213,7 @@ function orderHtml(o, i) {
         <div class="ct-row"><button class="btn btn-coral btn-sm" type="button" data-cancel-yes="${rid}"${state.cancelBusy === o.id ? ' disabled' : ''}>${state.cancelBusy === o.id ? 'Cancelando…' : 'Sim, cancelar'}</button>
           <button class="btn btn-ghost btn-sm" type="button" data-cancel-no="${rid}">Não</button></div>
       </div>` : ''}
+    ${statusNote(o)}
     ${o.status === 'cancelled' && (o.cancelledHere || o.deviceStatus === 'cancelado') ? `<p class="ct-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Cancelado por você. ${T.cancelNoteHTML(T.placeType(o), o.phone, G.telHref)}</p>` : ''}
     ${canReview(o) ? reviewForm(o) : ''}
   </article>`;
@@ -348,7 +367,8 @@ async function cancelOrder(id) {
     card()?.focus();
     return;
   }
-  const final = ['not_cancellable', 'past', 'not_found', 'forbidden'].includes(res);
+  // Respostas definitivas (inclusive o prazo da clínica, too_late — fase 4.2): fecha a pergunta e confere a situação.
+  const final = ['not_cancellable', 'past', 'too_late', 'not_found', 'forbidden'].includes(res);
   if (final) state.cancelAsk = '';
   renderOrders();
   toast(T.CANCEL_MSG[res] || T.CANCEL_MSG.error);

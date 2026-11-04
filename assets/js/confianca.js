@@ -3,8 +3,9 @@
 // pessoa e a conferência da equipe antes de aprovar uma clínica. Funções do banco: migração 20261030143738_confianca.sql.
 
 /* ======================= cancelar pedido ======================= */
-// Situações do banco em que o paciente ainda pode cancelar pelo site (o banco confere de novo).
-export const CANCELLABLE = ['pending', 'contacted', 'confirmed'];
+// Situações do banco em que o paciente ainda pode cancelar pelo site (o banco confere de novo, inclusive o prazo da
+// clínica: too_late). "Remarcação solicitada" também (fase 4.2): o banco aceita até o prazo da clínica.
+export const CANCELLABLE = ['pending', 'contacted', 'confirmed', 'reschedule_requested'];
 
 // Pode mostrar "Cancelar pedido"? status: situação que veio do banco (sem ela, não oferece: o banco é quem sabe).
 // slot: horário marcado (ISO); se já passou, não dá mais para cancelar pelo site.
@@ -22,6 +23,7 @@ export const CANCEL_MSG = {
   already_cancelled: 'Este pedido já estava cancelado.',
   not_cancellable: 'Este pedido já foi concluído e não pode mais ser cancelado pelo site.',
   past: 'O horário deste pedido já passou. Se precisar, fale com o local.',
+  too_late: 'O prazo para cancelar pelo site já passou. Fale com a clínica.',
   forbidden: 'Não conseguimos confirmar que este pedido é seu. Use o aparelho em que fez o pedido ou entre na conta usada nele.',
   not_found: 'Não encontramos este pedido. Ele pode ter sido apagado.',
   error: 'Não foi possível cancelar agora. Confira a internet e tente de novo.',

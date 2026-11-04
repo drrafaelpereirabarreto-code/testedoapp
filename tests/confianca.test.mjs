@@ -11,7 +11,11 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const NOW = Date.parse('2026-10-30T12:00:00Z');
 
 test('cancelar: só pedido ativo e com horário ainda no futuro (ou sem horário)', () => {
-  for (const st of ['pending', 'contacted', 'confirmed']) assert.equal(T.canCancel(st, null, NOW), true, st);
+  for (const st of ['pending', 'contacted', 'confirmed', 'reschedule_requested']) assert.equal(T.canCancel(st, null, NOW), true, st);
+  // Situações da agenda nova em que o paciente não cancela pelo site (fase 4.2).
+  for (const st of ['hold', 'awaiting_payment', 'checked_in', 'in_service', 'no_show', 'expired']) assert.equal(T.canCancel(st, null, NOW), false, st);
+  assert.equal(T.canCancel('reschedule_requested', '2026-10-31T12:30:00.000Z', NOW), true, 'remarcação solicitada com horário amanhã');
+  assert.equal(T.canCancel('reschedule_requested', '2026-10-30T11:59:00.000Z', NOW), false, 'remarcação solicitada com horário que já passou');
   for (const st of ['cancelled', 'completed', '', null, undefined, 'pendente', 'confirmado']) assert.equal(T.canCancel(st, null, NOW), false, String(st));
   assert.equal(T.canCancel('confirmed', '2026-10-31T12:30:00.000Z', NOW), true, 'horário amanhã');
   assert.equal(T.canCancel('confirmed', '2026-10-30T11:59:00.000Z', NOW), false, 'horário que já passou');
@@ -19,7 +23,8 @@ test('cancelar: só pedido ativo e com horário ainda no futuro (ou sem horário
   assert.match(T.cancelDoneText('2026-10-31T12:30:00.000Z', 'parceiro'), /Pedido cancelado\. O horário voltou a ficar livre\. A clínica vê o cancelamento no painel dela\./);
   assert.ok(!/livre/.test(T.cancelDoneText(null, 'parceiro')), 'sem horário, não fala de horário livre');
   assert.match(T.CANCEL_CONFIRM, /Cancelar pelo IMED é grátis/);
-  for (const k of ['already_cancelled', 'not_cancellable', 'past', 'forbidden', 'not_found', 'error']) assert.ok(T.CANCEL_MSG[k], k);
+  for (const k of ['already_cancelled', 'not_cancellable', 'past', 'too_late', 'forbidden', 'not_found', 'error']) assert.ok(T.CANCEL_MSG[k], k);
+  assert.match(T.CANCEL_MSG.too_late, /prazo/);
 });
 
 test('cancelar: o texto só promete o que acontece (parceiro vê no painel; nos outros locais, só a equipe do IMED)', () => {

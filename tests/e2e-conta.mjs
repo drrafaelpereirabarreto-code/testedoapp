@@ -74,12 +74,14 @@ const preflight = (route) => route.fulfill({ status: 204, headers: { 'Access-Con
 
 // cancel: resposta do banco ao cancel_request (função; null = sem internet). account: pedidos da conta.
 // claims: pedidos de cadastro de clínica da conta (função que responde a rota, para simular falha).
-async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'America/Sao_Paulo', cancel = () => 'ok', account = ACCOUNT, claims = null } = {}) {
+// live: situação ao vivo por pedido ({ [id]: { status, token } }) no lugar da LIVE; now: relógio fixo do navegador.
+async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'America/Sao_Paulo', cancel = () => 'ok', account = ACCOUNT, claims = null, live = null, now = null } = {}) {
   const context = await browser.newContext({
     viewport: mobile ? { width: 390, height: 844 } : { width: 1280, height: 860 },
     deviceScaleFactor: 1, isMobile: mobile, hasTouch: mobile, locale: 'pt-BR', timezoneId,
     serviceWorkers: 'block', acceptDownloads: true,
   });
+  if (now) await context.clock.setFixedTime(new Date(now));
   await context.addInitScript((list) => {
     try {
       localStorage.setItem('imed_lgpd', '1');
@@ -102,6 +104,7 @@ async function newPage(browser, { mobile = false, seed = DEVICE, timezoneId = 'A
     if (route.request().method() === 'OPTIONS') return preflight(route);
     const b = JSON.parse(route.request().postData());
     log.status.push(b);
+    if (live) return json(route, b.p_ids.map((id, i) => (live[id] && b.p_tokens[i] === live[id].token ? { id, status: live[id].status, reviewed: false } : null)).filter(Boolean));
     const out = b.p_ids.map((id, i) => ({ id, ok: LIVE[id] && b.p_tokens[i] === TOK[Object.keys(ID).find((k) => ID[k] === id)] }))
       .filter((x) => x.ok).map(({ id }) => ({ id, ...LIVE[id] }));
     return json(route, out);
@@ -610,6 +613,59 @@ await scenario('celular (390 px): cancelar e "Meus dados" sem rolagem lateral', 
   await page.locator('#dados').scrollIntoViewIfNeeded();
   await noOverflow(page);
   await shot(page, 'conta-09-celular-meus-dados');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('situações da agenda nova (4.2): textos, avisos, sem "Adicionar à agenda"; cancelar só em "Remarcação solicitada" e o prazo da clínica', async () => {
+  // Pedidos deste aparelho com horário marcado; a situação ao vivo vem da agenda nova.
+  const mk = (n, status) => {
+    const id = `${n}${n}${n}${n}${n}${n}${n}${n}-aaaa-4aaa-8aaa-aaaaaaaaaaa${n}`;
+    return { id, token: n.repeat(64), status, seed: { type: 'pedido', code: `IMED-${n.repeat(8)}`, id, token: n.repeat(64), place_key: 'imed:x', name: 'Clínica Agenda Teste', phone: '(11) 3141-1000', exam: 'usg', items: ['Ultrassom'], date: '2026-11-20', period: 'manha', slot: '2026-11-20T13:00:00.000Z', status: 'confirmado', created: '2026-11-01T10:00:00Z' } };
+  };
+  const P = { rr: mk('1', 'reschedule_requested'), ns: mk('2', 'no_show'), ci: mk('3', 'checked_in'), is: mk('4', 'in_service'), ex: mk('5', 'expired'), ok: mk('6', 'confirmed') };
+  const live = Object.fromEntries(Object.values(P).map((x) => [x.id, { status: x.status, token: x.token }]));
+  let tooLate = true;
+  const { page, log, errors, context } = await newPage(browser, { seed: Object.values(P).map((x) => x.seed), live, now: '2026-11-04T15:00:00Z', cancel: () => (tooLate ? 'too_late' : 'ok') });
+  await page.goto(`${BASE}conta.html`);
+  await page.waitForFunction(() => document.querySelectorAll('.ct-order .ct-st').length === 6 && /Remarcação/.test(document.body.textContent));
+  const card = (x) => page.locator(`#pedido-${x.id}`);
+  const st = async (x) => (await card(x).locator('.ct-st').textContent()).trim();
+  assert.equal(await st(P.rr), 'Remarcação solicitada');
+  assert.equal(await st(P.ns), 'Não compareceu');
+  assert.equal(await st(P.ci), 'Chegada registrada');
+  assert.equal(await st(P.is), 'Em atendimento');
+  assert.equal(await st(P.ex), 'Reserva expirada');
+  assert.equal(await st(P.ok), 'Confirmado');
+  // avisos simples só onde o paciente precisa saber de algo
+  assert.match(await card(P.rr).locator('.ct-st-note').textContent(), /Este horário precisa mudar\. Fale com a clínica/);
+  assert.equal(await card(P.rr).locator('.ct-st-note a[href="tel:+551131411000"]').count(), 1, 'ligar para a clínica');
+  assert.match(await card(P.ns).locator('.ct-st-note').textContent(), /não compareceu\. Se não foi isso, fale com a clínica/);
+  assert.match(await card(P.ex).locator('.ct-st-note').textContent(), /horário foi liberado/);
+  for (const x of [P.ci, P.is, P.ok]) assert.equal(await card(x).locator('.ct-st-note').count(), 0, x.status);
+  // "Adicionar à agenda" só para o confirmado (ativo e no futuro)
+  for (const x of [P.rr, P.ns, P.ci, P.is, P.ex]) assert.equal(await card(x).locator('[data-ics]').count(), 0, `${x.status}: sem lembrete`);
+  assert.equal(await card(P.ok).locator('[data-ics]').count(), 1);
+  // "Cancelar pedido": confirmado e remarcação solicitada; nas outras, não
+  assert.deepEqual((await page.$$eval('[data-cancel]', (b) => b.map((x) => x.dataset.cancel))).sort(), [P.rr.id, P.ok.id].sort());
+  // o prazo da clínica para cancelar pelo site já passou: o banco responde too_late e a página explica
+  await page.click(`[data-cancel="${P.rr.id}"]`);
+  await page.click(`[data-cancel-yes="${P.rr.id}"]`);
+  await page.waitForFunction(() => /O prazo para cancelar pelo site já passou\. Fale com a clínica\./.test(document.querySelector('#toast').textContent));
+  assert.deepEqual(log.cancel[0], { p_id: P.rr.id, p_token: P.rr.token });
+  await page.waitForFunction(() => !document.querySelector('.ct-ask'));
+  await page.waitForFunction(() => document.querySelectorAll('.ct-order .ct-st').length === 6);
+  assert.equal(log.status.length, 2, 'resposta definitiva: confere a situação de novo');
+  assert.equal(await st(P.rr), 'Remarcação solicitada', 'continua como estava');
+  // dentro do prazo, cancela
+  tooLate = false;
+  live[P.rr.id].status = 'cancelled';
+  await page.waitForSelector(`[data-cancel="${P.rr.id}"]`);
+  await page.click(`[data-cancel="${P.rr.id}"]`);
+  await page.click(`[data-cancel-yes="${P.rr.id}"]`);
+  await page.waitForFunction((id) => /Cancelado/.test(document.querySelector(`#pedido-${id} .ct-st`)?.textContent || ''), P.rr.id);
+  assert.equal(await card(P.rr).locator('.ct-st-note').count(), 0, 'cancelado: o aviso de remarcação sai');
+  await shot(page, 'conta-situacoes-novas');
   assert.deepEqual(errors, []);
   await context.close();
 });

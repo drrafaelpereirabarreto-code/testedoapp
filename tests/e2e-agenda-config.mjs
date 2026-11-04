@@ -211,14 +211,17 @@ await scenario('computador (1024 px): configuração rápida pelo teclado, com e
   const { page, log, errors, context, db } = await newPage(browser);
   await page.goto(`${BASE}painel.html`);
   await page.waitForSelector('#tab-pedidos');
-  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Dados da clínica|Exames e preços|Equipe');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda|Configurar agenda|Dados da clínica|Exames e preços|Equipe');
   assert.match(await page.textContent('#clinicTitle + p'), /Seu papel: Dono\(a\)/);
   assert.equal(calls(log, 'agenda_me').length, 1, 'quem sou vem de agenda_me');
   assert.equal(log.filter((e) => e.path === 'clinic_members').length, 0, 'sem ler clinic_members de todo mundo');
   // abas pelo teclado
+  // (fase 4.2: a configuração saiu da aba Agenda e foi para "Configurar agenda")
   await page.focus('#tab-pedidos');
   await page.keyboard.press('ArrowRight');
   assert.equal(await focusId(page), 'tab-agenda');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await focusId(page), 'tab-config');
   await page.waitForSelector('#qcForm');
   assert.equal(await page.isVisible('#agSave'), false, 'o editor antigo de faixas saiu');
   assert.equal(calls(log, 'set_my_schedule').length, 0);
@@ -304,7 +307,7 @@ const ACTIVE = () => {
 await scenario('computador: unidade (afeta agendamentos → salvar mesmo assim), modalidade com compromisso, horários, cadastros e conferência', async () => {
   const { page, log, errors, context, db } = await newPage(browser, { db: { cfg: ACTIVE(), slots: [{ slot_start: '2026-11-05T11:00:00Z', slot_end: '2026-11-05T11:20:00Z' }, { slot_start: '2026-11-05T11:20:00Z', slot_end: '2026-11-05T11:40:00Z' }] } });
   await page.goto(`${BASE}painel.html`);
-  await page.click('#tab-agenda');
+  await page.click('#tab-config');
   await page.waitForSelector('#unitForm');
   // unidade
   assert.equal(await page.inputValue('#uNotice'), '2');
@@ -463,7 +466,7 @@ await scenario('equipe: convidar, trocar papel, último dono protegido, tirar co
   await context.close();
 });
 
-await scenario('gestor não dá papel de dono; recepção só vê bloqueios; profissional sem abas', async () => {
+await scenario('gestor não dá papel de dono; recepção sem "Configurar agenda"; profissional só com a Agenda', async () => {
   let { page, log, errors, context } = await newPage(browser, { role: 'manager' });
   await page.goto(`${BASE}painel.html`);
   await page.click('#tab-equipe');
@@ -476,16 +479,18 @@ await scenario('gestor não dá papel de dono; recepção só vê bloqueios; pro
   await page.waitForSelector('#tab-pedidos');
   assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Pedidos|Agenda');
   await page.click('#tab-agenda');
-  await page.waitForSelector('#blkForm');
+  await page.waitForSelector('#agRoot');
   assert.equal(calls(log, 'agenda_config').length, 0, 'a recepção não pede a configuração');
-  assert.equal(await page.locator('#acBox *').count(), 0);
+  assert.equal(await page.locator('#acBox, #tab-config').count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
+  // fase 4.2: o profissional vê só a aba Agenda (a coluna dele; e2e-agenda)
   ({ page, log, errors, context } = await newPage(browser, { role: 'professional' }));
   await page.goto(`${BASE}painel.html`);
-  await page.waitForSelector('#noTabs');
-  assert.match(await page.textContent('#noTabs'), /não há nada para o seu papel/);
-  assert.equal(await page.locator('[role=tab]').count(), 0);
+  await page.waitForSelector('#tab-agenda');
+  assert.equal(await page.$$eval('[role=tab]', (t) => t.map((x) => x.textContent).join('|')), 'Agenda');
+  assert.equal(await page.locator('#noTabs').count(), 0);
+  assert.equal(calls(log, 'agenda_config').length, 0);
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -509,7 +514,7 @@ await scenario('convite para quem ainda não é da equipe: aceitar abre a clíni
 await scenario('celular (390 px): configuração rápida e ativa, equipe, sem rolagem lateral; tema escuro', async () => {
   let { page, errors, context } = await newPage(browser, { mobile: true });
   await page.goto(`${BASE}painel.html`);
-  await page.click('#tab-agenda');
+  await page.click('#tab-config');
   await page.waitForSelector('#qcForm');
   await noOverflow(page);
   await shot(page, 'ac-10-celular-rapida');
@@ -517,7 +522,7 @@ await scenario('celular (390 px): configuração rápida e ativa, equipe, sem ro
   await context.close();
   ({ page, errors, context } = await newPage(browser, { mobile: true, db: { cfg: ACTIVE() } }));
   await page.goto(`${BASE}painel.html`);
-  await page.click('#tab-agenda');
+  await page.click('#tab-config');
   await page.waitForSelector('#hrForm');
   await page.click('[data-hadd="1-pause"]');
   await page.click('#procNew');
@@ -531,7 +536,7 @@ await scenario('celular (390 px): configuração rápida e ativa, equipe, sem ro
   // tema escuro: cartões e campos com as cores do tema (sem fundo branco)
   ({ page, errors, context } = await newPage(browser, { theme: 'dark', db: { cfg: ACTIVE() } }));
   await page.goto(`${BASE}painel.html`);
-  await page.click('#tab-agenda');
+  await page.click('#tab-config');
   await page.waitForSelector('#resList');
   await page.click('#resNew');
   const bg = await page.evaluate(() => [getComputedStyle(document.querySelector('.ac-form')).backgroundColor, getComputedStyle(document.querySelector('.ac-sum')).backgroundColor, getComputedStyle(document.querySelector('#rName')).backgroundColor]);

@@ -266,6 +266,13 @@ test('rótulos da situação do pedido', () => {
   assert.equal(G.statusLabel('cancelled'), 'Cancelado');
   assert.equal(G.statusLabel('completed'), 'Concluído');
   assert.equal(G.statusLabel('xyz'), '');
+  assert.equal(G.statusLabel(undefined), '');
+  // As 7 situações da agenda nova (fase 4.2): o paciente vê um texto simples para cada uma.
+  const novas = {
+    hold: 'Reserva temporária', awaiting_payment: 'Aguardando pagamento', checked_in: 'Chegada registrada',
+    in_service: 'Em atendimento', no_show: 'Não compareceu', reschedule_requested: 'Remarcação solicitada', expired: 'Reserva expirada',
+  };
+  for (const [st, txt] of Object.entries(novas)) assert.equal(G.statusLabel(st), txt, st);
 });
 
 test('preparo resumido para todos os exames', () => {
