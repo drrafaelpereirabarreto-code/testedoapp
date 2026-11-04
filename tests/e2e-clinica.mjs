@@ -471,7 +471,8 @@ await scenario('painel: sem login pede o mesmo e-mail; sem clínicas leva a reiv
 });
 
 await scenario('painel com clínica: pedidos, situação, dados e exames com preços', async () => {
-  const { page, log, errors, context, db } = await newPage(browser, { logged: true, db: {
+  // relógio fixo (30/10): a ordem pela data do exame só vale com as duas datas ainda no futuro
+  const { page, log, errors, context, db } = await newPage(browser, { logged: true, now: '2026-10-30T15:00:00Z', db: {
     members: [{ clinic_id: C1, role: 'owner' }], clinics: [CLINIC], requests: [...REQUESTS, ...IMED_REQUESTS],
     exams: [{ clinic_id: C1, exam_code: 'rm', price_cents: 45000 }, { clinic_id: C1, exam_code: 'rx', price_cents: null }],
   } });
