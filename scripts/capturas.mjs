@@ -151,6 +151,70 @@ for (const tela of QUAIS === 'mapa3d' ? [] : Object.keys(TELAS)) {
     await foto(page, `${tela}-06-ressonancia-em-campinas`, 'Busca "ressonância em Campinas": filtro do exame e o mapa em Campinas');
   });
 
+  // ---- Jornadas do guia ilustrado (só navega e digita; nada é enviado) ----
+  let hrefLocal = '';
+  await passo(`${tela}-local`, async () => {
+    await page.goto(URL_SITE, { waitUntil: 'domcontentloaded' });
+    await page.locator('#realList li a').first().waitFor({ timeout: 25000 });
+    await pausa(800);
+    hrefLocal = await page.evaluate(() => (document.querySelector('#realList li a[href*="local.html?cnes="]') || document.querySelector('#realList li a[href*="local.html"]'))?.getAttribute('href') || '');
+    if (!hrefLocal) throw new Error('nenhum local na lista');
+    await page.goto(new URL(hrefLocal, URL_SITE).href, { waitUntil: 'domcontentloaded' });
+    await page.locator('#agendar h2').first().waitFor({ timeout: 30000 });
+    await pausa(1500);
+    await foto(page, `${tela}-07-local`, 'Página de um local real do cadastro oficial (topo)');
+  });
+  await passo(`${tela}-local-agendar`, async () => {
+    await page.evaluate(() => document.querySelector('#agendar')?.scrollIntoView({ block: 'center' }));
+    await pausa(800);
+    await foto(page, `${tela}-08-local-agendar`, 'Quadro Agendar de um local não parceiro: o IMED liga e confirma');
+    await page.evaluate(() => document.querySelector('#agendar [data-act="pedido"]')?.click());
+    await page.locator('#bookForm').waitFor({ timeout: 10000 });
+    await page.evaluate(() => document.querySelector('#agendar')?.scrollIntoView({ block: 'start' }));
+    await pausa(800);
+    await foto(page, `${tela}-09-local-pedido`, 'Formulário do pedido: exame, data, período, nome e telefone (não enviado)');
+  });
+  await passo(`${tela}-local-perguntas`, async () => {
+    await page.evaluate(() => { const d = document.querySelector('details.cq'); if (d) { d.open = true; d.scrollIntoView({ block: 'start' }); } });
+    await pausa(800);
+    await foto(page, `${tela}-10-local-perguntas`, '"Antes de ir: o que perguntar ao ligar" aberto');
+  });
+  if (tela === 'celular') await passo(`${tela}-mapa-cheio`, async () => {
+    await page.goto(URL_SITE, { waitUntil: 'domcontentloaded' });
+    await page.locator('#realList li a').first().waitFor({ timeout: 25000 });
+    await page.evaluate(() => document.querySelector('#reais')?.scrollIntoView({ block: 'start' }));
+    await pausa(800);
+    await page.evaluate(() => document.querySelector('#mapOpen')?.click());
+    await pausa(4000);
+    await foto(page, `${tela}-11-mapa-cheio`, 'Mapa em tela cheia no celular, com os locais numerados');
+  });
+  const simples = [
+    ['12-cidade-campinas', 'cidades/sp/campinas/index.html', 'Página da cidade de Campinas (contagens reais do CNES)'],
+    ['13-teleconsulta', 'teleconsulta.html', 'Teleconsulta: quem atende agora, como funciona e perguntas frequentes'],
+    ['14-para-medicos', 'para-medicos.html', 'Atenda pelo IMED: requisitos e fluxograma da inscrição'],
+    ['15-conta-entrada', 'conta.html', 'Minha conta: entrada por link no e-mail ou com senha'],
+    ['16-definir-senha', 'definir-senha.html', 'Definir ou trocar a senha (sem sessão: pede o link de recuperação)'],
+    ['17-documento', 'documento.html', 'Conferência pública de documento pelo código'],
+    ['18-reivindicar', 'reivindicar.html', 'Reivindicar cadastro: ache o seu estabelecimento'],
+    ['19-painel-entrada', 'painel.html', 'Área da clínica: quadro de entrada'],
+    ['20-medico-entrada', 'medico.html', 'Plataforma do médico: quadro de entrada'],
+    ['21-gestao-entrada', 'gestao.html', 'Painel de gestão: quadro de entrada'],
+    ['22-como-funciona', 'como-funciona.html', 'Como funciona o IMED'],
+    ['23-guia-ressonancia', 'exames/ressonancia-magnetica.html', 'Guia do exame: ressonância magnética'],
+  ];
+  for (const [nome, rota, desc] of simples) await passo(`${tela}-${nome}`, async () => {
+    await page.goto(`${URL_SITE}${rota}`, { waitUntil: 'domcontentloaded' });
+    await pausa(3500);
+    await foto(page, `${tela}-${nome}`, desc);
+  });
+  await passo(`${tela}-teleconsulta-faq`, async () => {
+    await page.goto(`${URL_SITE}teleconsulta.html`, { waitUntil: 'domcontentloaded' });
+    await pausa(3000);
+    await page.evaluate(() => document.querySelector('#faqCard')?.scrollIntoView({ block: 'start' }));
+    await pausa(800);
+    await foto(page, `${tela}-24-teleconsulta-faq`, 'Teleconsulta: perguntas frequentes e "Sou médico"');
+  });
+
   await ctx.close();
 }
 if (QUAIS === 'todas') await mapa3d(browser);
