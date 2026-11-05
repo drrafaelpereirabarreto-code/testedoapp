@@ -8,11 +8,14 @@
 //   - paciente com conta: GET appointment_requests?user_id=eq.<ele> → os pedidos dele;
 //   - equipe do IMED: GET appointment_requests?clinic_id=is.null → os pedidos ao IMED; os da clínica → [];
 //   - visitante: POST appointment_requests (Prefer: return=minimal) → 201; rpc/cancel_request com o código → "ok";
-//     rpc/request_status → "cancelled".
+//     rpc/request_status → "cancelled";
+//   - teste obrigatório 2 (balcão), a parte HTTP (arquitetura §13): a recepção marca por POST rpc/agenda_desk_book com
+//     o token dela; logo depois, como visitante pela mesma API, rpc/agenda_slots e rpc/available_slots não trazem mais
+//     o horário (e antes traziam).
 //
 // Os dados (uma clínica de teste, usuários e pedidos) são criados aqui e apagados no fim.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   afirmar, anotar, comoUsuario, configLocal, conectar, criarClinicaAgenda, descreverErro, horaSP, limparClinicaAgenda,
   postgrest, principal, resumir, tokenUsuario,
@@ -120,6 +123,46 @@ await principal('leitura-direta', async () => {
       'recepção: POST rpc/agenda_blocks → o bloqueio, com o motivo', `HTTP ${blocos.status}: ${JSON.stringify(blocos.json)?.slice(0, 300)}`);
     const { rows: [log] } = await db.query(`select count(*)::int as n from agenda.access_log where user_id = $1 and fn = 'agenda_requests'`, [RECEPCAO]);
     afirmar(log.n === 1, 'a leitura da lista pela função fica no access_log', `linhas: ${log.n}`);
+
+    /* ---------- Teste obrigatório 2 (balcão), pela API: a recepção marca e o visitante não vê mais o horário ---------- */
+    {
+      const dia = diaSP(12);
+      const alvo = horaSP(12, '10:00');
+      const mais = horaSP(12, '11:00');
+      const iso = (x) => new Date(x).toISOString();
+      // como o site do paciente: visitante, só com a chave publishable (sem token)
+      const livres = async () => {
+        const s = await postgrest(cfg, 'rpc/agenda_slots', { prefer: null, corpo: { p_clinic: CLINICA, p_procedure: P.p30, p_from: dia, p_to: dia } });
+        const a = await postgrest(cfg, 'rpc/available_slots', { prefer: null, corpo: { p_clinic: CLINICA, p_exam: 'usg', p_from: dia, p_days: 1 } });
+        return {
+          http: [s.status, a.status],
+          slots: Array.isArray(s.json) ? s.json.map((x) => iso(x.slot_start)) : null,
+          available: Array.isArray(a.json) ? a.json.map((x) => iso(x.slot_start)) : null,
+        };
+      };
+      const antes = await livres();
+      afirmar(antes.http.every((h) => h === 200) && antes.slots?.includes(alvo) && antes.available?.includes(alvo),
+        'teste 2 (balcão): antes, o visitante vê o horário pela API (rpc/agenda_slots e rpc/available_slots)',
+        JSON.stringify({ alvo, http: antes.http, slots: antes.slots?.length, available: antes.available?.length }));
+      const marcou = await postgrest(cfg, 'rpc/agenda_desk_book', {
+        token: tokens.recepcao, prefer: null, corpo: {
+          p_clinic: CLINICA, p_items: [{ procedure_id: P.p30, starts_at: alvo }],
+          p_patient: { name: 'Paciente do Balcão pela API', phone: '(11) 93333-2222', consent: true },
+          p_channel: 'clinica_balcao', p_key: randomUUID(),
+        },
+      });
+      afirmar(marcou.status === 200 && marcou.json?.status === 'ok' && !!marcou.json?.id,
+        'teste 2 (balcão): a recepção marca pela API (POST rpc/agenda_desk_book com o token dela)',
+        `HTTP ${marcou.status}: ${marcou.code ?? ''} ${JSON.stringify(marcou.json)?.slice(0, 300)}`);
+      const depois = await livres();
+      afirmar(depois.http.every((h) => h === 200) && !!depois.slots && !depois.slots.includes(alvo)
+        && !!depois.available && !depois.available.includes(alvo),
+        'teste 2 (balcão): logo depois, como visitante pela API, agenda_slots e available_slots não trazem o horário',
+        JSON.stringify({ alvo, http: depois.http, agenda_slots: depois.slots?.includes(alvo), available_slots: depois.available?.includes(alvo) }));
+      afirmar(!!depois.slots?.includes(mais) && !!depois.available?.includes(mais),
+        'teste 2 (balcão): os outros horários do dia continuam oferecidos (o motor não sumiu com tudo)', JSON.stringify({ mais }));
+      notas.push(`Teste 2 (balcão) pela API: a recepção marcou ${alvo} por rpc/agenda_desk_book; o visitante deixou de ver esse horário em agenda_slots e available_slots.`);
+    }
 
     /* ---------- Paciente com conta ---------- */
     const meus = await get(`appointment_requests?select=id,status&user_id=eq.${PACIENTE}`, tokens.paciente);
