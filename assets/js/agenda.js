@@ -380,7 +380,7 @@ function drawRemarcar() {
             ${podeResolver && canDo('remarcar') ? `<button type="button" class="btn btn-primary btn-sm" data-act="conf-remarcar" data-k="${esc(k.id)}">Remarcar<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>` : ''}
             ${podeResolver && canDo('cancelar') ? `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-cancelar" data-k="${esc(k.id)}">Cancelar<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>` : ''}
             ${podeResolver && k.kind === 'grade_mudou' ? `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-manter" data-k="${esc(k.id)}">Manter este horário</button>` : ''}
-            ${podeResolver ? (S.remAsk === k.id
+            ${podeResolver && k.kind !== 'grade_mudou' ? (S.remAsk === k.id
               ? `<span class="ag-ask" role="group" aria-labelledby="agkT-${esc(k.id)}"><span id="agkT-${esc(k.id)}">Tirar da lista sem remarcar por aqui? Use quando o paciente já foi remarcado ou avisado por outro caminho.</span>
                 <button type="button" class="btn btn-primary btn-sm" data-act="conf-tirar-sim" data-k="${esc(k.id)}" id="agkSim">Sim, tirar da lista</button><button type="button" class="btn btn-ghost btn-sm" data-act="conf-tirar-nao" data-k="${esc(k.id)}">Voltar</button></span>`
               : `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-tirar" data-k="${esc(k.id)}">Tirar da lista<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>`) : ''}
@@ -1810,7 +1810,7 @@ function onClick(e) {
       msg(r.status === 'ok' ? 'Horário mantido: saiu da lista Para remarcar.' : statusMsg(r), r.status === 'ok' ? 'ok' : 'err');
       ($('#agRemT') || $('#agTitulo'))?.focus();
     },
-    // "Tirar da lista": qualquer tipo de conflito (também o do bloqueio), com confirmação na própria linha
+    // "Tirar da lista" (o do bloqueio e os outros; o de grade que mudou sai por "Manter este horário"), com confirmação
     'conf-tirar': () => { S.remAsk = t.dataset.k; drawRemarcar(); $('#agkSim')?.focus(); },
     'conf-tirar-nao': () => { const k = S.remAsk; S.remAsk = null; drawRemarcar(); $(`[data-act="conf-tirar"][data-k="${CSS.escape(k || '')}"]`)?.focus(); },
     'conf-tirar-sim': async () => {
@@ -1835,7 +1835,9 @@ function conflictDone(k, it) {
   if (st === 'completed') return 'concluido';
   if (st === 'no_show') return 'faltou';
   if (st === 'expired') return 'expirado';
-  if (k.kind === 'bloqueio_sobre_agendamento' && st !== 'reschedule_requested') return 'remarcado';
+  if (k.kind === 'bloqueio_sobre_agendamento' && st !== 'reschedule_requested') {
+    return Date.parse(it.starts_at) === Date.parse(k.details?.starts_at) ? 'mantido' : 'remarcado';
+  }
   return null;
 }
 
