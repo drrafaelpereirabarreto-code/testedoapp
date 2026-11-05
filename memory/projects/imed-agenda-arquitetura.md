@@ -1221,6 +1221,12 @@ site; `VERSION` do `sw.js` (arquivos novos no `CORE`); todos os testes; commit n
   o visitante sem o horário) em `tests/banco/leitura-direta.mjs`; o bloqueio forçado sob disputa (conexões diretas e
   PostgREST) em `tests/banco/bloqueio-forcado.mjs`. A migração vai em 2 partes, em dias diferentes, cada uma com a
   própria volta (ao aplicar a parte 1, renomear a parte 2 para depois dela; o `banco.yml` reprova partes fora de ordem).
+  **Feita em 05/11/2026 (parte 1 na produção):** migração `20261105050257_agenda_leitura_parte_1` (funções novas, gatilho
+  `appointment_items_fecha_conflitos` ENABLE ALWAYS, `access_log_uq` com o motivo, `agenda_reschedule` e
+  `agenda_request_detail` trocadas; 53 funções `agenda_*`), site no ar (`agenda.js` fora do CORE do `sw.js`, v31). A
+  **parte 2** (`20261105050258_agenda_leitura_parte_2`, nome provisório: fecha a leitura direta da clínica) fica
+  pendente de nova autorização do dono, uns dias depois do painel conferido (decisão 4.2-g). Até lá o painel lê pelas
+  funções e a leitura direta continua aberta como reserva.
 - **4.3 Atualização automática e painel gerencial.** `assets/js/tempo-real.js`, evento `imed:token` no `auth.js`, CSP com
   `wss`, consulta periódica de `agenda_version`, "Precisa de atenção", painéis operacional e financeiro. Testes: 7 (e2e),
   `tests/tempo-real.test.mjs`, a11y. Dono: desligar "Allow public access" do Realtime.
