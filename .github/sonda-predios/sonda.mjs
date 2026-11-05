@@ -199,6 +199,10 @@ async function descobrir() {
 
 // ---------- principal ----------
 const d = await descobrir();
+{ const t = await texto('https://storage.googleapis.com/storage/v1/b/open-buildings-temporal-data/o?delimiter=/&prefix=v1/');
+  const t2 = await texto('https://storage.googleapis.com/storage/v1/b/open-buildings-temporal-data/o?prefix=v1/&maxResults=5');
+  log('GTEMP', t.t.slice(0, 1500), t2.t.replace(/\s+/g, ' ').slice(0, 2500)); }
+await abrirPm('vida-global-goog_msft_osm', 'https://data.source.coop/vida/google-microsoft-osm-open-buildings/pmtiles/goog_msft_osm.pmtiles');
 const ofmTpl = await openfreemap();
 
 const candidatos = {};
@@ -228,7 +232,16 @@ for (const L of LUGARES) {
   for (const [x, y] of tilesDoRaio(L.lat, L.lon, 14, RAIO)) {
     const t = await tileOfm(ofmTpl, 14, x, y);
     tOsm.push({ x, y, status: t.status, redeBytes: t.rede, brutoBytes: t.bruto, enc: t.enc });
-    if (t.status === 200) osm.push(...predios(t.buf, 14, x, y, (n) => n === 'building').lista);
+    if (t.status === 200) {
+      osm.push(...predios(t.buf, 14, x, y, (n) => n === 'building').lista);
+      const vt = new VectorTile(new Pbf(new Uint8Array(t.buf)));
+      const cont = {}; for (const n of Object.keys(vt.layers)) cont[n] = vt.layers[n].length;
+      const B = vt.layers.building; let tipos = {}, perto = 0, ext = B?.extent;
+      if (B) for (let i = 0; i < B.length; i++) { const f = B.feature(i); tipos[f.type] = (tipos[f.type] || 0) + 1;
+        const g = f.loadGeometry(); const p0 = g[0][0]; const ll = tileParaLonlat(x + p0.x / B.extent, y + p0.y / B.extent, 14);
+        if (dist(L.lat, L.lon, ll[1], ll[0]) <= RAIO) perto++; }
+      tOsm[tOsm.length - 1].camadas = cont; tOsm[tOsm.length - 1].tiposBuilding = tipos; tOsm[tOsm.length - 1].primeiroPontoPerto = perto; tOsm[tOsm.length - 1].extent = ext;
+    }
   }
   const osmR = osm.filter((b) => dist(L.lat, L.lon, b.c[1], b.c[0]) <= RAIO);
   const alt = osmR.filter((b) => b.props.render_height != null && Number(b.props.render_height) !== 5).length;
@@ -259,10 +272,14 @@ for (const L of LUGARES) {
       for (const k of Object.keys(b.props)) chaves.add(k);
       for (const k of Object.keys(b.props)) if (/source|dataset|fonte/i.test(k)) { const v = String(b.props[k]).slice(0, 80); contagem[k + '=' + v] = (contagem[k + '=' + v] || 0) + 1; }
     }
+    const geo = {}, hs = {}, porCamada = {};
+    for (const b of dentro) { porCamada[b.camada] = (porCamada[b.camada] || 0) + 1; if (b.camada === 'building_part') continue;
+      const g = b.props['@geometry_source'] ?? b.props.bf_source ?? '?'; geo[g] = (geo[g] || 0) + 1;
+      const h = b.props['@height_source'] ?? (b.props.height != null ? 'sem rótulo' : 'sem altura'); hs[h] = (hs[h] || 0) + 1; }
     const comAltura = dentro.filter((b) => { const h = b.props.height ?? b.props.render_height; return h != null && Number(h) > 0; }).length;
     const comAndares = dentro.filter((b) => b.props.num_floors != null || b.props['building:levels'] != null).length;
     const camadas = [...new Set(dentro.map((b) => b.camada))];
-    res.fontes[nome] = { zoom: z, ladrilhos: tl, predios: dentro.length, centroDentroDePredioOsm: sobreOsm, semCorrespondenteNoOsm: dentro.length - sobreOsm, comAltura, comAndares, camadas, chaves: [...chaves], porFonte: contagem, exemploProps: dentro.slice(0, 2).map((b) => b.props) };
+    res.fontes[nome] = { zoom: z, ladrilhos: tl, predios: dentro.length, centroDentroDePredioOsm: sobreOsm, semCorrespondenteNoOsm: dentro.length - sobreOsm, comAltura, comAndares, camadas, porCamada, geometria: geo, alturaFonte: hs, chaves: [...chaves], exemploProps: dentro.slice(0, 2).map((b) => b.props) };
     log('LUGAR', L.nome, nome, JSON.stringify(res.fontes[nome]).slice(0, 2500));
   }
   out.lugares.push(res);
