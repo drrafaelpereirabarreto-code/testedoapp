@@ -1,0 +1,6 @@
+release 2026-10-21.0
+paulista quadrado 1,5 km: [('OpenStreetMap', 3913, 3810, 54), ('Google Open Buildings', 184, 0, 0), ('Microsoft ML Buildings', 7, 0, 0)]
+campinas quadrado 1,5 km: [('Google Open Buildings', 3855, 0, 0), ('OpenStreetMap', 341, 238, 29), ('Microsoft ML Buildings', 81, 0, 0)]
+copacabana quadrado 1,5 km: [('OpenStreetMap', 1567, 380, 68), ('Google Open Buildings', 639, 0, 0), ('Microsoft ML Buildings', 249, 0, 0)]
+ribeirao quadrado 1,5 km: [('Google Open Buildings', 940, 0, 0), ('OpenStreetMap', 922, 19, 895), ('Microsoft ML Buildings', 149, 0, 0)]
+sorocaba quadrado 1,5 km: [('Google Open Buildings', 696, 0, 0), ('Microsoft ML Buildings', 297, 0, 0), ('OpenStreetMap', 151, 0, 0)]

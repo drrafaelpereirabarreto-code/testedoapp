@@ -1,0 +1,788 @@
+{
+ "tilejson": {
+  "modelo": "https://tiles.openfreemap.org/planet/20261101_080013_pt/{z}/{x}/{y}.pbf",
+  "minzoom": 0,
+  "maxzoom": 14
+ },
+ "osm-paulista": {
+  "300": {
+   "n": 574,
+   "altura5m": 28,
+   "outraAltura": 546,
+   "pctPadrao": 5,
+   "mediana": 10,
+   "p90": 73,
+   "max": 102,
+   "acima9m": 320,
+   "coberturaPct": 62,
+   "faltando": 0,
+   "partesOcultas": 136
+  },
+  "750": {
+   "n": 3156,
+   "altura5m": 220,
+   "outraAltura": 2936,
+   "pctPadrao": 7,
+   "mediana": 9,
+   "p90": 55,
+   "max": 113,
+   "acima9m": 1645,
+   "coberturaPct": 48,
+   "faltando": 0,
+   "partesOcultas": 136
+  },
+  "1100": {
+   "n": 7278,
+   "altura5m": 537,
+   "outraAltura": 6741,
+   "pctPadrao": 7,
+   "mediana": 8,
+   "p90": 51,
+   "max": 132,
+   "acima9m": 3374,
+   "coberturaPct": 49.2,
+   "faltando": 0,
+   "partesOcultas": 136
+  }
+ },
+ "osm-campinas": {
+  "300": {
+   "n": 39,
+   "altura5m": 28,
+   "outraAltura": 11,
+   "pctPadrao": 72,
+   "mediana": 5,
+   "p90": 50,
+   "max": 70,
+   "acima9m": 11,
+   "coberturaPct": 4.7,
+   "faltando": 0,
+   "partesOcultas": 1
+  },
+  "750": {
+   "n": 332,
+   "altura5m": 79,
+   "outraAltura": 253,
+   "pctPadrao": 24,
+   "mediana": 12,
+   "p90": 30,
+   "max": 70,
+   "acima9m": 251,
+   "coberturaPct": 6.9,
+   "faltando": 0,
+   "partesOcultas": 1
+  },
+  "1100": {
+   "n": 504,
+   "altura5m": 236,
+   "outraAltura": 268,
+   "pctPadrao": 47,
+   "mediana": 10,
+   "p90": 16,
+   "max": 70,
+   "acima9m": 263,
+   "coberturaPct": 5.6,
+   "faltando": 0,
+   "partesOcultas": 1
+  }
+ },
+ "osm-copacabana": {
+  "300": {
+   "n": 267,
+   "altura5m": 265,
+   "outraAltura": 2,
+   "pctPadrao": 99,
+   "mediana": 5,
+   "p90": 5,
+   "max": 37,
+   "acima9m": 2,
+   "coberturaPct": 40.9,
+   "faltando": 0,
+   "partesOcultas": 191
+  },
+  "750": {
+   "n": 1284,
+   "altura5m": 1068,
+   "outraAltura": 216,
+   "pctPadrao": 83,
+   "mediana": 5,
+   "p90": 7,
+   "max": 66,
+   "acima9m": 107,
+   "coberturaPct": 22.7,
+   "faltando": 0,
+   "partesOcultas": 191
+  },
+  "1100": {
+   "n": 2440,
+   "altura5m": 1576,
+   "outraAltura": 864,
+   "pctPadrao": 65,
+   "mediana": 5,
+   "p90": 11,
+   "max": 110,
+   "acima9m": 390,
+   "coberturaPct": 16,
+   "faltando": 0,
+   "partesOcultas": 191
+  }
+ },
+ "osm-ribeirao": {
+  "300": {
+   "n": 124,
+   "altura5m": 5,
+   "outraAltura": 119,
+   "pctPadrao": 4,
+   "mediana": 8,
+   "p90": 10,
+   "max": 99,
+   "acima9m": 14,
+   "coberturaPct": 16.8,
+   "faltando": 0,
+   "partesOcultas": 2
+  },
+  "750": {
+   "n": 785,
+   "altura5m": 18,
+   "outraAltura": 767,
+   "pctPadrao": 2,
+   "mediana": 8,
+   "p90": 19,
+   "max": 129,
+   "acima9m": 96,
+   "coberturaPct": 17.8,
+   "faltando": 0,
+   "partesOcultas": 2
+  },
+  "1100": {
+   "n": 1500,
+   "altura5m": 59,
+   "outraAltura": 1441,
+   "pctPadrao": 4,
+   "mediana": 8,
+   "p90": 11,
+   "max": 129,
+   "acima9m": 157,
+   "coberturaPct": 19.2,
+   "faltando": 0,
+   "partesOcultas": 2
+  }
+ },
+ "osm-sorocaba": {
+  "300": {
+   "n": 30,
+   "altura5m": 30,
+   "outraAltura": 0,
+   "pctPadrao": 100,
+   "mediana": 5,
+   "p90": 5,
+   "max": 5,
+   "acima9m": 0,
+   "coberturaPct": 3.1,
+   "faltando": 0,
+   "partesOcultas": 0
+  },
+  "750": {
+   "n": 143,
+   "altura5m": 143,
+   "outraAltura": 0,
+   "pctPadrao": 100,
+   "mediana": 5,
+   "p90": 5,
+   "max": 5,
+   "acima9m": 0,
+   "coberturaPct": 5,
+   "faltando": 0,
+   "partesOcultas": 0
+  },
+  "1100": {
+   "n": 214,
+   "altura5m": 214,
+   "outraAltura": 0,
+   "pctPadrao": 100,
+   "mediana": 5,
+   "p90": 5,
+   "max": 5,
+   "acima9m": 0,
+   "coberturaPct": 3.5,
+   "faltando": 0,
+   "partesOcultas": 0
+  }
+ },
+ "celular-paulista": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2421,
+    "t": 1793844718217
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9296.pbf",
+    "status": 200,
+    "bytes": 330789,
+    "t": 1793844718430
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9295.pbf",
+    "status": 200,
+    "bytes": 391871,
+    "t": 1793844718440
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9296.pbf",
+    "status": 200,
+    "bytes": 343156,
+    "t": 1793844720698
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9295.pbf",
+    "status": 200,
+    "bytes": 395209,
+    "t": 1793844735111
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright",
+   "[.WebGL-0x2774001a9600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2774001a9600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2774001a9600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2774001a9600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "hero": "3d",
+  "msAte3d": 2128,
+  "topoDaPagina": {
+   "info": {
+    "pronto": true,
+    "predios": 271,
+    "ladrilhos": 3,
+    "rumo": -20.640160000000037,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -46.65199999999976,
+     -23.565000000000694
+    ],
+    "tema": "claro",
+    "sombras": 2500,
+    "msSombras": 46,
+    "msSombrasTotal": 871
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 11,
+   "pinos": 14,
+   "rotulos": [
+    "Healthcare Diagnósticos, Diagnóstico por imagem · ~60 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "São Paulo - SP",
+   "cidade": "São Paulo - SP"
+  },
+  "info": {
+   "pronto": true,
+   "predios": 270,
+   "ladrilhos": 3,
+   "rumo": -16.24016000000006,
+   "zoom": 15.45,
+   "inclinacao": 57,
+   "centro": [
+    -46.65199999999976,
+    -23.565000000000694
+   ],
+   "tema": "claro",
+   "sombras": 2500,
+   "msSombras": 46,
+   "msSombrasTotal": 871
+  },
+  "origem": "perto",
+  "pinosNaTela": 12,
+  "pinos": 14,
+  "rotulos": [
+   "Healthcare Diagnósticos, Diagnóstico por imagem · ~60 m"
+  ],
+  "me": "Você está aqui",
+  "heroTopo": 260,
+  "heroBase": 640,
+  "scrollY": 484,
+  "addr": "São Paulo - SP",
+  "cidade": "São Paulo - SP"
+ },
+ "celular-campinas": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2425,
+    "t": 1793844736165
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6049/9263.pbf",
+    "status": 200,
+    "bytes": 84114,
+    "t": 1793844736374
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6050/9263.pbf",
+    "status": 200,
+    "bytes": 88383,
+    "t": 1793844736391
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "hero": "3d",
+  "msAte3d": 1282,
+  "topoDaPagina": {
+   "info": {
+    "pronto": true,
+    "predios": 20,
+    "ladrilhos": 2,
+    "rumo": -18.60911999999996,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.06100000000029,
+     -22.90599999999813
+    ],
+    "tema": "claro",
+    "sombras": 324,
+    "msSombras": 3,
+    "msSombrasTotal": 3
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 9,
+   "pinos": 14,
+   "rotulos": [
+    "Clínica Brasimed LTDA, Clínica · 80 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "Campinas - SP",
+   "cidade": "Campinas - SP"
+  },
+  "info": {
+   "pronto": true,
+   "predios": 20,
+   "ladrilhos": 2,
+   "rumo": -14.742719999999963,
+   "zoom": 15.45,
+   "inclinacao": 57,
+   "centro": [
+    -47.06100000000029,
+    -22.90599999999813
+   ],
+   "tema": "claro",
+   "sombras": 324,
+   "msSombras": 3,
+   "msSombrasTotal": 3
+  },
+  "origem": "perto",
+  "pinosNaTela": 8,
+  "pinos": 14,
+  "rotulos": [
+   "Clínica Brasimed LTDA, Clínica · 80 m"
+  ],
+  "me": "Você está aqui",
+  "heroTopo": 260,
+  "heroBase": 640,
+  "scrollY": 484,
+  "addr": "Campinas - SP",
+  "cidade": "Campinas - SP"
+ },
+ "celular-copacabana": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2433,
+    "t": 1793844749442
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6226/9266.pbf",
+    "status": 200,
+    "bytes": 152992,
+    "t": 1793844749699
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "hero": "3d",
+  "msAte3d": 1084,
+  "topoDaPagina": {
+   "info": {
+    "pronto": true,
+    "predios": 32,
+    "ladrilhos": 1,
+    "rumo": -19.24944000000005,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -43.18600000000117,
+     -22.96700000000031
+    ],
+    "tema": "claro",
+    "sombras": 545,
+    "msSombras": 5,
+    "msSombrasTotal": 6
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 8,
+   "pinos": 14,
+   "rotulos": [
+    "Rrm Centro Médico Copacabana, Clínica · 50 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "Rio de Janeiro - RJ",
+   "cidade": "Rio de Janeiro - RJ"
+  },
+  "info": {
+   "pronto": true,
+   "predios": 32,
+   "ladrilhos": 1,
+   "rumo": -15.116320000000087,
+   "zoom": 15.45,
+   "inclinacao": 57,
+   "centro": [
+    -43.18600000000117,
+    -22.96700000000031
+   ],
+   "tema": "claro",
+   "sombras": 545,
+   "msSombras": 5,
+   "msSombrasTotal": 6
+  },
+  "origem": "perto",
+  "pinosNaTela": 8,
+  "pinos": 14,
+  "rotulos": [
+   "Rrm Centro Médico Copacabana, Clínica · 50 m"
+  ],
+  "me": "Você está aqui",
+  "heroTopo": 260,
+  "heroBase": 640,
+  "scrollY": 484,
+  "addr": "Rio de Janeiro - RJ",
+  "cidade": "Rio de Janeiro - RJ"
+ },
+ "celular-ribeirao": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2424,
+    "t": 1793844763132
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6016/9180.pbf",
+    "status": 200,
+    "bytes": 76681,
+    "t": 1793844763362
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6016/9179.pbf",
+    "status": 200,
+    "bytes": 86572,
+    "t": 1793844764309
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6015/9180.pbf",
+    "status": 200,
+    "bytes": 63311,
+    "t": 1793844764310
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6015/9179.pbf",
+    "status": 200,
+    "bytes": 59143,
+    "t": 1793844765132
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "hero": "3d",
+  "msAte3d": 1064,
+  "topoDaPagina": {
+   "info": {
+    "pronto": true,
+    "predios": 39,
+    "ladrilhos": 4,
+    "rumo": -19.200320000000033,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.805999999998164,
+     -21.213999999999473
+    ],
+    "tema": "claro",
+    "sombras": 846,
+    "msSombras": 4,
+    "msSombrasTotal": 5
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 5,
+   "pinos": 14,
+   "rotulos": [
+    "Acahdre Clínica Médica, Clínica · 230 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "Ribeirão Preto - SP",
+   "cidade": "Ribeirão Preto - SP"
+  },
+  "info": {
+   "pronto": true,
+   "predios": 38,
+   "ladrilhos": 4,
+   "rumo": -15.067040000000018,
+   "zoom": 15.45,
+   "inclinacao": 57,
+   "centro": [
+    -47.805999999998164,
+    -21.213999999999473
+   ],
+   "tema": "claro",
+   "sombras": 846,
+   "msSombras": 4,
+   "msSombrasTotal": 5
+  },
+  "origem": "perto",
+  "pinosNaTela": 5,
+  "pinos": 14,
+  "rotulos": [
+   "Acahdre Clínica Médica, Clínica · 230 m"
+  ],
+  "me": "Você está aqui",
+  "heroTopo": 260,
+  "heroBase": 640,
+  "scrollY": 484,
+  "addr": "Ribeirão Preto - SP",
+  "cidade": "Ribeirão Preto - SP"
+ },
+ "celular-sorocaba": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2428,
+    "t": 1793844776705
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6031/9294.pbf",
+    "status": 200,
+    "bytes": 59727,
+    "t": 1793844776952
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6032/9294.pbf",
+    "status": 200,
+    "bytes": 57200,
+    "t": 1793844803481
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "hero": "3d",
+  "msAte3d": 1143,
+  "topoDaPagina": {
+   "info": {
+    "pronto": true,
+    "predios": 2,
+    "ladrilhos": 2,
+    "rumo": 44.88783999999998,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.46800000000141,
+     -23.531000000000347
+    ],
+    "tema": "claro",
+    "sombras": 0,
+    "msSombras": 0,
+    "msSombrasTotal": 0
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 6,
+   "pinos": 14,
+   "rotulos": [
+    "Anequini e Soares Dermatologia e Spa Sorocaba, Clínica · 270 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "Sorocaba - SP",
+   "cidade": "Sorocaba - SP"
+  },
+  "info": {
+   "pronto": true,
+   "predios": 2,
+   "ladrilhos": 2,
+   "rumo": 48.62112000000002,
+   "zoom": 15.45,
+   "inclinacao": 57,
+   "centro": [
+    -47.46800000000141,
+    -23.531000000000347
+   ],
+   "tema": "claro",
+   "sombras": 0,
+   "msSombras": 0,
+   "msSombrasTotal": 0
+  },
+  "origem": "perto",
+  "pinosNaTela": 4,
+  "pinos": 14,
+  "rotulos": [
+   "Anequini e Soares Dermatologia e Spa Sorocaba, Clínica · 270 m"
+  ],
+  "me": "Você está aqui",
+  "heroTopo": 260,
+  "heroBase": 640,
+  "scrollY": 484,
+  "addr": "Sorocaba - SP",
+  "cidade": "Sorocaba - SP"
+ },
+ "celular-4nucleos": {
+  "ladrilhos": [],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "hero": "leve",
+  "msAte3d": 37,
+  "navegador": {
+   "nucleos": 4,
+   "memoria": 16,
+   "coarse": true,
+   "tela": [
+    390,
+    844
+   ],
+   "lite": true
+  }
+ },
+ "troca": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2432,
+    "t": 1793844831323
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9296.pbf",
+    "status": 200,
+    "bytes": 330794,
+    "t": 1793844831429
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9295.pbf",
+    "status": 200,
+    "bytes": 391878,
+    "t": 1793844831438
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9296.pbf",
+    "status": 200,
+    "bytes": 343123,
+    "t": 1793844833657
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9295.pbf",
+    "status": 200,
+    "bytes": 395209,
+    "t": 1793844845972
+   }
+  ],
+  "falhas": [
+   "https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/clinicas-proximas net::ERR_FAILED"
+  ],
+  "console": [
+   "Service Worker registration blocked by Playwright",
+   "Access to fetch at 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/clinicas-proximas' from origin 'http://127.0.0.1:8080' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+   "Failed to load resource: net::ERR_FAILED"
+  ],
+  "hero": "3d",
+  "msAte3d": 1753,
+  "antes": {
+   "info": {
+    "pronto": true,
+    "predios": 271,
+    "ladrilhos": 3,
+    "rumo": -19.60015999999996,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -46.65199999999976,
+     -23.565000000000694
+    ],
+    "tema": "claro",
+    "sombras": 2500,
+    "msSombras": 40,
+    "msSombrasTotal": 720
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 11,
+   "pinos": 14,
+   "rotulos": [
+    "Healthcare Diagnósticos, Diagnóstico por imagem · ~60 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "São Paulo - SP",
+   "cidade": "São Paulo - SP"
+  },
+  "erro": "page.waitForFunction: Timeout 30000ms exceeded."
+ },
+ "perto-copacabana": {
+  "ladrilhos": [],
+  "falhas": [
+   "https://tile.openstreetmap.org/4/5/8.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/8.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/9.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/9.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/7.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/7.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/10.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/10.png net::ERR_ABORTED",
+   "https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/clinicas-proximas net::ERR_FAILED"
+  ],
+  "console": [
+   "Service Worker registration blocked by Playwright",
+   "Access to fetch at 'https://pyoqiecupxhdzigjudyd.supabase.co/functions/v1/clinicas-proximas' from origin 'http://127.0.0.1:8080' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+   "Failed to load resource: net::ERR_FAILED"
+  ],
+  "mapa": {
+   "zoom": "12",
+   "viewM": "13708",
+   "pins": "0"
+  }
+ }
+}

@@ -1,0 +1,19 @@
+paulista {"300":{"n":574,"altura5m":28,"outraAltura":546,"pctPadrao":5,"mediana":10,"p90":73,"max":102,"acima9m":320,"coberturaPct":62,"faltando":0,"partesOcultas":136},"750":{"n":3156,"altura5m":220,"outraAltura":2936,"pctPadrao":7,"mediana":9,"p90":55,"max":113,"acima9m":1645,"coberturaPct":48,"faltando":0,"partesOcultas":136},"1100":{"n":7278,"altura5m":537,"outraAltura":6741,"pctPadrao":7,"mediana":8,"p90":51,"max":132,"acima9m":3374,"coberturaPct":49.2,"faltando":0,"partesOcultas":136}}
+campinas {"300":{"n":39,"altura5m":28,"outraAltura":11,"pctPadrao":72,"mediana":5,"p90":50,"max":70,"acima9m":11,"coberturaPct":4.7,"faltando":0,"partesOcultas":1},"750":{"n":332,"altura5m":79,"outraAltura":253,"pctPadrao":24,"mediana":12,"p90":30,"max":70,"acima9m":251,"coberturaPct":6.9,"faltando":0,"partesOcultas":1},"1100":{"n":504,"altura5m":236,"outraAltura":268,"pctPadrao":47,"mediana":10,"p90":16,"max":70,"acima9m":263,"coberturaPct":5.6,"faltando":0,"partesOcultas":1}}
+copacabana {"300":{"n":267,"altura5m":265,"outraAltura":2,"pctPadrao":99,"mediana":5,"p90":5,"max":37,"acima9m":2,"coberturaPct":40.9,"faltando":0,"partesOcultas":191},"750":{"n":1284,"altura5m":1068,"outraAltura":216,"pctPadrao":83,"mediana":5,"p90":7,"max":66,"acima9m":107,"coberturaPct":22.7,"faltando":0,"partesOcultas":191},"1100":{"n":2440,"altura5m":1576,"outraAltura":864,"pctPadrao":65,"mediana":5,"p90":11,"max":110,"acima9m":390,"coberturaPct":16,"faltando":0,"partesOcultas":191}}
+ribeirao {"300":{"n":124,"altura5m":5,"outraAltura":119,"pctPadrao":4,"mediana":8,"p90":10,"max":99,"acima9m":14,"coberturaPct":16.8,"faltando":0,"partesOcultas":2},"750":{"n":785,"altura5m":18,"outraAltura":767,"pctPadrao":2,"mediana":8,"p90":19,"max":129,"acima9m":96,"coberturaPct":17.8,"faltando":0,"partesOcultas":2},"1100":{"n":1500,"altura5m":59,"outraAltura":1441,"pctPadrao":4,"mediana":8,"p90":11,"max":129,"acima9m":157,"coberturaPct":19.2,"faltando":0,"partesOcultas":2}}
+sorocaba {"300":{"n":30,"altura5m":30,"outraAltura":0,"pctPadrao":100,"mediana":5,"p90":5,"max":5,"acima9m":0,"coberturaPct":3.1,"faltando":0,"partesOcultas":0},"750":{"n":143,"altura5m":143,"outraAltura":0,"pctPadrao":100,"mediana":5,"p90":5,"max":5,"acima9m":0,"coberturaPct":5,"faltando":0,"partesOcultas":0},"1100":{"n":214,"altura5m":214,"outraAltura":0,"pctPadrao":100,"mediana":5,"p90":5,"max":5,"acima9m":0,"coberturaPct":3.5,"faltando":0,"partesOcultas":0}}
+foto predios-antes-paulista-celular-topo
+foto predios-antes-paulista-celular
+foto predios-antes-campinas-celular-topo
+foto predios-antes-campinas-celular
+foto predios-antes-copacabana-celular-topo
+foto predios-antes-copacabana-celular
+foto predios-antes-ribeirao-celular-topo
+foto predios-antes-ribeirao-celular
+foto predios-antes-sorocaba-celular-topo
+foto predios-antes-sorocaba-celular
+foto predios-antes-leve-4nucleos-celular
+ERRO troca page.waitForFunction: Timeout 30000ms exceeded.
+foto predios-antes-perto-copacabana-mapa2d
+fim
