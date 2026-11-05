@@ -1,0 +1,260 @@
+{
+  "url": "https://drrafaelpereirabarreto-code.github.io/testedoapp/",
+  "feitos": [
+    {
+      "nome": "celular-01-inicio",
+      "desc": "Página inicial: topo",
+      "arquivo": "celular-01-inicio.png"
+    },
+    {
+      "nome": "celular-02-perto-de-voce",
+      "desc": "Clínicas perto de você (localização na Av. Paulista)",
+      "arquivo": "celular-02-perto-de-voce.png"
+    },
+    {
+      "nome": "celular-03-escolher-cidade",
+      "desc": "Escolher a cidade (seletor)",
+      "arquivo": "celular-03-escolher-cidade.png"
+    },
+    {
+      "nome": "celular-04-busca-hemograma",
+      "desc": "Busca pelo nome popular: \"hemograma\" leva aos laboratórios",
+      "arquivo": "celular-04-busca-hemograma.png"
+    },
+    {
+      "nome": "celular-05-busca-eco",
+      "desc": "\"eco\" pode ser ecocardiograma ou ultrassom: o site pergunta",
+      "arquivo": "celular-05-busca-eco.png"
+    },
+    {
+      "nome": "celular-06-ressonancia-em-campinas",
+      "desc": "Busca \"ressonância em Campinas\": filtro do exame e o mapa em Campinas",
+      "arquivo": "celular-06-ressonancia-em-campinas.png"
+    },
+    {
+      "nome": "celular-07-local",
+      "desc": "Página de um local real do cadastro oficial (topo)",
+      "arquivo": "celular-07-local.png"
+    },
+    {
+      "nome": "celular-08-local-agendar",
+      "desc": "Quadro Agendar de um local não parceiro: o IMED liga e confirma",
+      "arquivo": "celular-08-local-agendar.png"
+    },
+    {
+      "nome": "celular-09-local-pedido",
+      "desc": "Formulário do pedido: exame, data, período, nome e telefone (não enviado)",
+      "arquivo": "celular-09-local-pedido.png"
+    },
+    {
+      "nome": "celular-10-local-perguntas",
+      "desc": "\"Antes de ir: o que perguntar ao ligar\" aberto",
+      "arquivo": "celular-10-local-perguntas.png"
+    },
+    {
+      "nome": "celular-11-mapa-cheio",
+      "desc": "Mapa em tela cheia no celular, com os locais numerados",
+      "arquivo": "celular-11-mapa-cheio.png"
+    },
+    {
+      "nome": "celular-12-cidade-campinas",
+      "desc": "Página da cidade de Campinas (contagens reais do CNES)",
+      "arquivo": "celular-12-cidade-campinas.png"
+    },
+    {
+      "nome": "celular-13-teleconsulta",
+      "desc": "Teleconsulta: quem atende agora, como funciona e perguntas frequentes",
+      "arquivo": "celular-13-teleconsulta.png"
+    },
+    {
+      "nome": "celular-14-para-medicos",
+      "desc": "Atenda pelo IMED: requisitos e fluxograma da inscrição",
+      "arquivo": "celular-14-para-medicos.png"
+    },
+    {
+      "nome": "celular-15-conta-entrada",
+      "desc": "Minha conta: entrada por link no e-mail ou com senha",
+      "arquivo": "celular-15-conta-entrada.png"
+    },
+    {
+      "nome": "celular-16-definir-senha",
+      "desc": "Definir ou trocar a senha (sem sessão: pede o link de recuperação)",
+      "arquivo": "celular-16-definir-senha.png"
+    },
+    {
+      "nome": "celular-17-documento",
+      "desc": "Conferência pública de documento pelo código",
+      "arquivo": "celular-17-documento.png"
+    },
+    {
+      "nome": "celular-18-reivindicar",
+      "desc": "Reivindicar cadastro: ache o seu estabelecimento",
+      "arquivo": "celular-18-reivindicar.png"
+    },
+    {
+      "nome": "celular-19-painel-entrada",
+      "desc": "Área da clínica: quadro de entrada",
+      "arquivo": "celular-19-painel-entrada.png"
+    },
+    {
+      "nome": "celular-20-medico-entrada",
+      "desc": "Plataforma do médico: quadro de entrada",
+      "arquivo": "celular-20-medico-entrada.png"
+    },
+    {
+      "nome": "celular-21-gestao-entrada",
+      "desc": "Painel de gestão: quadro de entrada",
+      "arquivo": "celular-21-gestao-entrada.png"
+    },
+    {
+      "nome": "celular-22-como-funciona",
+      "desc": "Como funciona o IMED",
+      "arquivo": "celular-22-como-funciona.png"
+    },
+    {
+      "nome": "celular-23-guia-ressonancia",
+      "desc": "Guia do exame: ressonância magnética",
+      "arquivo": "celular-23-guia-ressonancia.png"
+    },
+    {
+      "nome": "celular-24-teleconsulta-faq",
+      "desc": "Teleconsulta: perguntas frequentes e \"Sou médico\"",
+      "arquivo": "celular-24-teleconsulta-faq.png"
+    },
+    {
+      "nome": "computador-01-inicio",
+      "desc": "Página inicial: topo",
+      "arquivo": "computador-01-inicio.png"
+    },
+    {
+      "nome": "computador-02-perto-de-voce",
+      "desc": "Clínicas perto de você (localização na Av. Paulista)",
+      "arquivo": "computador-02-perto-de-voce.png"
+    },
+    {
+      "nome": "computador-03-escolher-cidade",
+      "desc": "Escolher a cidade (seletor)",
+      "arquivo": "computador-03-escolher-cidade.png"
+    },
+    {
+      "nome": "computador-04-busca-hemograma",
+      "desc": "Busca pelo nome popular: \"hemograma\" leva aos laboratórios",
+      "arquivo": "computador-04-busca-hemograma.png"
+    },
+    {
+      "nome": "computador-05-busca-eco",
+      "desc": "\"eco\" pode ser ecocardiograma ou ultrassom: o site pergunta",
+      "arquivo": "computador-05-busca-eco.png"
+    },
+    {
+      "nome": "computador-06-ressonancia-em-campinas",
+      "desc": "Busca \"ressonância em Campinas\": filtro do exame e o mapa em Campinas",
+      "arquivo": "computador-06-ressonancia-em-campinas.png"
+    },
+    {
+      "nome": "computador-07-local",
+      "desc": "Página de um local real do cadastro oficial (topo)",
+      "arquivo": "computador-07-local.png"
+    },
+    {
+      "nome": "computador-08-local-agendar",
+      "desc": "Quadro Agendar de um local não parceiro: o IMED liga e confirma",
+      "arquivo": "computador-08-local-agendar.png"
+    },
+    {
+      "nome": "computador-09-local-pedido",
+      "desc": "Formulário do pedido: exame, data, período, nome e telefone (não enviado)",
+      "arquivo": "computador-09-local-pedido.png"
+    },
+    {
+      "nome": "computador-10-local-perguntas",
+      "desc": "\"Antes de ir: o que perguntar ao ligar\" aberto",
+      "arquivo": "computador-10-local-perguntas.png"
+    },
+    {
+      "nome": "computador-12-cidade-campinas",
+      "desc": "Página da cidade de Campinas (contagens reais do CNES)",
+      "arquivo": "computador-12-cidade-campinas.png"
+    },
+    {
+      "nome": "computador-13-teleconsulta",
+      "desc": "Teleconsulta: quem atende agora, como funciona e perguntas frequentes",
+      "arquivo": "computador-13-teleconsulta.png"
+    },
+    {
+      "nome": "computador-14-para-medicos",
+      "desc": "Atenda pelo IMED: requisitos e fluxograma da inscrição",
+      "arquivo": "computador-14-para-medicos.png"
+    },
+    {
+      "nome": "computador-15-conta-entrada",
+      "desc": "Minha conta: entrada por link no e-mail ou com senha",
+      "arquivo": "computador-15-conta-entrada.png"
+    },
+    {
+      "nome": "computador-16-definir-senha",
+      "desc": "Definir ou trocar a senha (sem sessão: pede o link de recuperação)",
+      "arquivo": "computador-16-definir-senha.png"
+    },
+    {
+      "nome": "computador-17-documento",
+      "desc": "Conferência pública de documento pelo código",
+      "arquivo": "computador-17-documento.png"
+    },
+    {
+      "nome": "computador-18-reivindicar",
+      "desc": "Reivindicar cadastro: ache o seu estabelecimento",
+      "arquivo": "computador-18-reivindicar.png"
+    },
+    {
+      "nome": "computador-19-painel-entrada",
+      "desc": "Área da clínica: quadro de entrada",
+      "arquivo": "computador-19-painel-entrada.png"
+    },
+    {
+      "nome": "computador-20-medico-entrada",
+      "desc": "Plataforma do médico: quadro de entrada",
+      "arquivo": "computador-20-medico-entrada.png"
+    },
+    {
+      "nome": "computador-21-gestao-entrada",
+      "desc": "Painel de gestão: quadro de entrada",
+      "arquivo": "computador-21-gestao-entrada.png"
+    },
+    {
+      "nome": "computador-22-como-funciona",
+      "desc": "Como funciona o IMED",
+      "arquivo": "computador-22-como-funciona.png"
+    },
+    {
+      "nome": "computador-23-guia-ressonancia",
+      "desc": "Guia do exame: ressonância magnética",
+      "arquivo": "computador-23-guia-ressonancia.png"
+    },
+    {
+      "nome": "computador-24-teleconsulta-faq",
+      "desc": "Teleconsulta: perguntas frequentes e \"Sou médico\"",
+      "arquivo": "computador-24-teleconsulta-faq.png"
+    },
+    {
+      "nome": "mapa3d-celular-claro",
+      "desc": "Mapa 3D do topo (celular, tema claro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-claro.png"
+    },
+    {
+      "nome": "mapa3d-celular-escuro",
+      "desc": "Mapa 3D do topo (celular, tema escuro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras",
+      "arquivo": "mapa3d-celular-escuro.png"
+    },
+    {
+      "nome": "mapa3d-computador-claro",
+      "desc": "Mapa 3D do topo (computador, tema claro): 473 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras",
+      "arquivo": "mapa3d-computador-claro.png"
+    },
+    {
+      "nome": "mapa3d-computador-escuro",
+      "desc": "Mapa 3D do topo (computador, tema escuro): 473 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras",
+      "arquivo": "mapa3d-computador-escuro.png"
+    }
+  ]
+}

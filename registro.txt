@@ -1,0 +1,52 @@
+ok  celular-01-inicio: Página inicial: topo
+ok  celular-02-perto-de-voce: Clínicas perto de você (localização na Av. Paulista)
+ok  celular-03-escolher-cidade: Escolher a cidade (seletor)
+ok  celular-04-busca-hemograma: Busca pelo nome popular: "hemograma" leva aos laboratórios
+ok  celular-05-busca-eco: "eco" pode ser ecocardiograma ou ultrassom: o site pergunta
+ok  celular-06-ressonancia-em-campinas: Busca "ressonância em Campinas": filtro do exame e o mapa em Campinas
+ok  celular-07-local: Página de um local real do cadastro oficial (topo)
+ok  celular-08-local-agendar: Quadro Agendar de um local não parceiro: o IMED liga e confirma
+ok  celular-09-local-pedido: Formulário do pedido: exame, data, período, nome e telefone (não enviado)
+ok  celular-10-local-perguntas: "Antes de ir: o que perguntar ao ligar" aberto
+ok  celular-11-mapa-cheio: Mapa em tela cheia no celular, com os locais numerados
+ok  celular-12-cidade-campinas: Página da cidade de Campinas (contagens reais do CNES)
+ok  celular-13-teleconsulta: Teleconsulta: quem atende agora, como funciona e perguntas frequentes
+ok  celular-14-para-medicos: Atenda pelo IMED: requisitos e fluxograma da inscrição
+ok  celular-15-conta-entrada: Minha conta: entrada por link no e-mail ou com senha
+ok  celular-16-definir-senha: Definir ou trocar a senha (sem sessão: pede o link de recuperação)
+ok  celular-17-documento: Conferência pública de documento pelo código
+ok  celular-18-reivindicar: Reivindicar cadastro: ache o seu estabelecimento
+ok  celular-19-painel-entrada: Área da clínica: quadro de entrada
+ok  celular-20-medico-entrada: Plataforma do médico: quadro de entrada
+ok  celular-21-gestao-entrada: Painel de gestão: quadro de entrada
+ok  celular-22-como-funciona: Como funciona o IMED
+ok  celular-23-guia-ressonancia: Guia do exame: ressonância magnética
+ok  celular-24-teleconsulta-faq: Teleconsulta: perguntas frequentes e "Sou médico"
+ok  computador-01-inicio: Página inicial: topo
+ok  computador-02-perto-de-voce: Clínicas perto de você (localização na Av. Paulista)
+ok  computador-03-escolher-cidade: Escolher a cidade (seletor)
+ok  computador-04-busca-hemograma: Busca pelo nome popular: "hemograma" leva aos laboratórios
+ok  computador-05-busca-eco: "eco" pode ser ecocardiograma ou ultrassom: o site pergunta
+ok  computador-06-ressonancia-em-campinas: Busca "ressonância em Campinas": filtro do exame e o mapa em Campinas
+ok  computador-07-local: Página de um local real do cadastro oficial (topo)
+ok  computador-08-local-agendar: Quadro Agendar de um local não parceiro: o IMED liga e confirma
+ok  computador-09-local-pedido: Formulário do pedido: exame, data, período, nome e telefone (não enviado)
+ok  computador-10-local-perguntas: "Antes de ir: o que perguntar ao ligar" aberto
+ok  computador-12-cidade-campinas: Página da cidade de Campinas (contagens reais do CNES)
+ok  computador-13-teleconsulta: Teleconsulta: quem atende agora, como funciona e perguntas frequentes
+ok  computador-14-para-medicos: Atenda pelo IMED: requisitos e fluxograma da inscrição
+ok  computador-15-conta-entrada: Minha conta: entrada por link no e-mail ou com senha
+ok  computador-16-definir-senha: Definir ou trocar a senha (sem sessão: pede o link de recuperação)
+ok  computador-17-documento: Conferência pública de documento pelo código
+ok  computador-18-reivindicar: Reivindicar cadastro: ache o seu estabelecimento
+ok  computador-19-painel-entrada: Área da clínica: quadro de entrada
+ok  computador-20-medico-entrada: Plataforma do médico: quadro de entrada
+ok  computador-21-gestao-entrada: Painel de gestão: quadro de entrada
+ok  computador-22-como-funciona: Como funciona o IMED
+ok  computador-23-guia-ressonancia: Guia do exame: ressonância magnética
+ok  computador-24-teleconsulta-faq: Teleconsulta: perguntas frequentes e "Sou médico"
+ok  mapa3d-celular-claro: Mapa 3D do topo (celular, tema claro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras
+ok  mapa3d-celular-escuro: Mapa 3D do topo (celular, tema escuro): 270 prédios na tela, 3 ladrilhos (1041 KB pela rede), 2500 sombras
+ok  mapa3d-computador-claro: Mapa 3D do topo (computador, tema claro): 473 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras
+ok  mapa3d-computador-escuro: Mapa 3D do topo (computador, tema escuro): 473 prédios na tela, 4 ladrilhos (1427 KB pela rede), 6000 sombras
+51 capturas, 0 erros
