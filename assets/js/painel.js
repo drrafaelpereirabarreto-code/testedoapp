@@ -56,7 +56,17 @@ export const spDay = (d) => dayFmt.format(new Date(d));
 export const spTime = (d) => timeFmt.format(new Date(d));
 export const addDays = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 export const spIso = (day, time = '00:00') => `${day}T${time}:00${SP_OFFSET}`;
-const fmtSlot = (iso) => `${fmtDate(spDay(iso))} às ${spTime(iso)}`;
+// "qui., 05/11/2026 às 09:00" e "05/11/2026, 09:00" num fuso: o da clínica nos pedidos dela (como a aba Agenda; fase
+// 4.2), o de São Paulo nos pedidos ao IMED.
+const fmtSlot = (iso, tz = TZ) => `${fmtDate(A.dayIn(tz, Date.parse(iso)))} às ${A.timeIn(tz, iso)}`;
+const dateTimeFmts = new Map();
+function fmtDateTimeIn(iso, tz = TZ) {
+  if (tz === TZ) return fmtDateTime(iso);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  if (!dateTimeFmts.has(tz)) dateTimeFmts.set(tz, new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: tz }));
+  return dateTimeFmts.get(tz).format(d);
+}
 const slotOf = (r) => (r.slot_start && !Number.isNaN(Date.parse(r.slot_start)) ? r.slot_start : null);
 
 // Dia do exame: o horário marcado pela agenda (no fuso da clínica) ou a data preferida do pedido.
@@ -286,16 +296,18 @@ function requestCard(r, withPlace) {
   const placeTel = telHref(r.place_phone);
   const slot = slotOf(r);
   const other = r.for_other === true;
+  // horários no fuso da clínica (a recepção de Manaus passa ao paciente a hora de lá); pedidos ao IMED, São Paulo
+  const tz = withPlace ? TZ : clinicTz();
   const rows = [
     withPlace ? ['Local', `${esc(r.place_name)}${r.place_address ? `<br><small>${esc(r.place_address)}</small>` : ''}`] : null,
     withPlace ? ['Telefone do local', r.place_phone ? (placeTel ? `<a href="${placeTel}">${esc(r.place_phone)}</a>` : esc(r.place_phone)) : 'Não informado'] : null,
     ['Exame', esc(examName(r.exam_code))],
-    slot ? ['Horário marcado', `<b>${esc(fmtSlot(slot))}</b>`] : null,
+    slot ? ['Horário marcado', `<b>${esc(fmtSlot(slot, tz))}</b>`] : null,
     slot ? null : ['Data preferida', esc(fmtDate(r.preferred_date) || r.preferred_date)],
     slot ? null : ['Período', esc(PERIODS[r.preferred_period] || r.preferred_period || '')],
     other ? ['O exame é para', `<b>${esc(r.other_name)}</b> (${esc(r.relationship)})${r.other_minor ? '<br><small class="rq-minor"><i class="fa-solid fa-child" aria-hidden="true"></i>Menor de 18 anos · autorização do responsável legal registrada no pedido</small>' : r.other_consent ? '<br><small>Quem pediu confirmou que a pessoa sabe do pedido e concordou (ou que é o representante legal dela)</small>' : ''}`] : null,
     [other ? 'Quem pediu' : 'Paciente', esc(r.patient_name)],
-    r.status === 'cancelled' && CANCELLED_BY[r.cancelled_by] ? ['Cancelado', `${esc(CANCELLED_BY[r.cancelled_by])}${r.cancelled_at ? ` em ${esc(fmtDateTime(r.cancelled_at))}` : ''}`] : null,
+    r.status === 'cancelled' && CANCELLED_BY[r.cancelled_by] ? ['Cancelado', `${esc(CANCELLED_BY[r.cancelled_by])}${r.cancelled_at ? ` em ${esc(fmtDateTimeIn(r.cancelled_at, tz))}` : ''}`] : null,
     ['Telefone', `<span class="rq-contact">${tel ? `<a href="${tel}">${esc(fmtPhone(r.patient_phone))}</a>` : esc(r.patient_phone)}${wa ? ` <a href="${wa}" target="_blank" rel="noopener">WhatsApp<span class="sr"> de ${esc(r.patient_name)} (abre em nova aba)</span></a>` : ''}</span>`],
     r.patient_email ? ['E-mail', `<a href="mailto:${esc(r.patient_email)}">${esc(r.patient_email)}</a>`] : null,
     r.notes ? ['Observações', esc(r.notes)] : null,
@@ -315,7 +327,7 @@ function requestCard(r, withPlace) {
         ${ACTIONS.map((s) => `<button class="btn btn-ghost btn-sm" type="button" data-id="${esc(r.id)}" data-st="${s}" aria-pressed="${r.status === s}"${r.status === s ? ' disabled' : ''}>${esc(statusLabel(s))}</button>`).join('')}
       </div>`;
   return `<li class="rq${slot ? ' rq-has-slot' : ''}" id="rq-${esc(r.id)}">
-      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(other ? r.other_name : r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTime(r.created_at))}</small>
+      <div class="rq-hd"><div><h3>${esc(examName(r.exam_code))} · ${esc(other ? r.other_name : r.patient_name)}</h3><small>Pedido em ${esc(fmtDateTimeIn(r.created_at, tz))}</small>
         ${slot ? `<p class="rq-slot"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i>${naAgenda ? `Na agenda${r.channel && A.CHANNEL_LABEL[r.channel] ? ` · marcado por: ${esc(A.CHANNEL_LABEL[r.channel])}` : ''}` : r.status === 'confirmed' ? 'Agendado pelo site (confirmado)' : 'Horário escolhido pelo paciente no site'}</p>` : ''}</div>
         <span class="rq-st st-${esc(r.status)}">${esc(withPlace ? statusLabel(r.status) || r.status : stLabel(r.status))}</span></div>
       <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
@@ -342,7 +354,10 @@ function renderRequestList(p, key, intro, withPlace, cache) {
   // Sem contagem nas opções: só a lista aberta tem o número certo (o “Todos (n)” ao lado).
   const whenSel = byDate ? `<label class="cl-lbl" for="flt-when" style="margin:0">Quando</label>
       <select id="flt-when">${Object.entries(WHEN).map(([v, n]) => `<option value="${v}"${when === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` : '';
+  // como na aba Agenda: o aviso só quando o fuso da clínica tem hora diferente da deste aparelho
+  const tzn = byDate ? A.tzNote(tz, Intl.DateTimeFormat().resolvedOptions().timeZone, Date.now()) : '';
   p.innerHTML = `<p class="cl-help">${intro}</p>
+    ${tzn ? `<p class="ag-tz" id="rqTz"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>${esc(tzn)}</p>` : ''}
     <div class="cl-filter"><label class="cl-lbl" for="flt-${key}" style="margin:0">Mostrar</label>
       <select id="flt-${key}"><option value="">Todos (${rows.length})</option>${(byDate ? STATUSES : IMED_STATUSES).map((s) => `<option value="${s}"${f === s ? ' selected' : ''}>${esc(byDate ? stLabel(s) : statusLabel(s))} (${counts[s]})</option>`).join('')}</select>
       ${whenSel}

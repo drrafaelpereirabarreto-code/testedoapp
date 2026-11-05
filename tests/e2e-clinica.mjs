@@ -152,14 +152,16 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
       case 'clinics': return json(route, applyFilters(db.clinics, q));
       case 'clinic_exams': return json(route, applyFilters(db.exams, q));
       // Fase 4.2: a clínica lê os pedidos pela função agenda_requests, como o banco: sem reserva temporária nem
-      // expirada; "hoje" e "semana" pelo dia da clínica (fuso de São Paulo aqui); 100 sem filtro e 200 com; ordem do
-      // banco (data preferida na semana, horário, mais novo primeiro). noRequestsFn: banco sem a função (404).
+      // expirada; "hoje" e "semana" pelo dia da clínica (no fuso dela: São Paulo, se o cadastro não disser outro); 100
+      // sem filtro e 200 com; ordem do banco (data preferida na semana, horário, mais novo primeiro). noRequestsFn:
+      // banco sem a função (404).
       case 'rpc/agenda_requests': {
         if (db.noRequestsFn) return json(route, { code: 'PGRST202', message: 'Could not find the function public.agenda_requests(p_clinic, p_justification, p_when) in the schema cache' }, 404);
         const member = db.members.some((m) => m.clinic_id === body.p_clinic);
         if (!member && !db.admin) return json(route, { status: 'forbidden' });
         if (!member && !body.p_justification) return json(route, { status: 'justification_required' });
-        const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(nowMs));
+        const tzc = db.clinics.find((c) => c.id === body.p_clinic)?.timezone || 'America/Sao_Paulo';
+        const today = new Intl.DateTimeFormat('en-CA', { timeZone: tzc }).format(new Date(nowMs));
         const ate = new Date(Date.parse(`${today}T12:00:00Z`) + 6 * 86400000).toISOString().slice(0, 10);
         const w = body.p_when;
         const cmp = (a, b) => (a == null ? (b == null ? 0 : 1) : b == null ? -1 : a < b ? -1 : a > b ? 1 : 0);
@@ -169,7 +171,7 @@ async function newPage(browser, { mobile = false, logged = false, email = 'dono@
           && (!w || (w === 'hoje' ? r.preferred_date === today : r.preferred_date >= today && r.preferred_date <= ate)))
           .sort((a, b) => cmp(k1(a), k1(b)) || cmp(k2(a), k2(b)) || Date.parse(b.created_at) - Date.parse(a.created_at))
           .slice(0, w ? 200 : 100);
-        return json(route, { status: 'ok', scope: member ? 'clinica' : 'central', timezone: 'America/Sao_Paulo', today, requests: rows });
+        return json(route, { status: 'ok', scope: member ? 'clinica' : 'central', timezone: tzc, today, requests: rows });
       }
       // Agenda (3.4, já na produção): grade vazia. As funções da 4.2 ficam de fora: a aba mostra que ainda não estão
       // disponíveis (a agenda inteira é testada no e2e-agenda).
@@ -1394,6 +1396,7 @@ await scenario('pedidos com horário marcado: destaque, ordem pela data e filtro
   const hoje = page.locator('#rq-rrrrrrrr-0000-4000-8000-000000000304');
   assert.match(await hoje.locator('.rq-slot').textContent(), /Agendado pelo site \(confirmado\)/);
   assert.match(await hoje.textContent(), /Horário marcado.*30\/10\/2026 às 14:30/);
+  assert.equal(await page.locator('#rqTz').count(), 0, 'clínica e aparelho no mesmo fuso: sem aviso');
   assert.doesNotMatch(await hoje.textContent(), /Data preferida|Período/);
   assert.match(await hoje.locator('.rq-act .lbl').textContent(), /“Cancelado” libera o horário para outro paciente/);
   assert.match(await page.textContent('#rq-rrrrrrrr-0000-4000-8000-000000000303'), /04\/11\/2026 às 09:00/);
@@ -1471,6 +1474,34 @@ await scenario('fuso: aparelho em Tóquio às 23:30 de São Paulo (já 31/10 em 
   await page.waitForSelector('#agRoot #agMain');
   await page.waitForFunction(() => !document.querySelector('#agMain[aria-busy="true"]'));
   assert.equal(calls(log, '/rpc/agenda_view').at(-1).body.p_from, '2026-10-30');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('fuso: clínica em Manaus vista de São Paulo: o cartão da aba Pedidos mostra a hora de lá (como a aba Agenda), com o aviso', async () => {
+  const MAN = { ...CLINIC, timezone: 'America/Manaus' };
+  const reqs = [
+    { ...REQUESTS[0], id: 'rrrrrrrr-0000-4000-8000-000000000611', notes: null, patient_name: 'Paciente Manhã Manaus', exam_code: 'usg', slot_start: '2026-11-05T13:00:00+00:00', slot_end: '2026-11-05T13:30:00+00:00', preferred_date: '2026-11-05', preferred_period: 'manha', status: 'confirmed', created_at: '2026-11-04T14:00:00Z' },
+    { ...REQUESTS[0], id: 'rrrrrrrr-0000-4000-8000-000000000612', notes: null, patient_name: 'Paciente Noite Manaus', exam_code: 'usg', slot_start: '2026-11-06T03:30:00+00:00', slot_end: '2026-11-06T04:00:00+00:00', preferred_date: '2026-11-05', preferred_period: 'noite', status: 'cancelled', cancelled_by: 'clinic', cancelled_at: '2026-11-05T15:10:00Z', created_at: '2026-11-04T13:00:00Z' },
+  ];
+  // meio-dia em Manaus (13:00 em São Paulo), aparelho em São Paulo
+  const { page, log, errors, context } = await newPage(browser, { logged: true, now: '2026-11-05T12:00:00-04:00', db: { members: [{ clinic_id: C1, role: 'owner' }], clinics: [MAN], requests: reqs } });
+  await page.goto(`${BASE}painel.html`);
+  await page.waitForSelector('.rq');
+  assert.match(await page.textContent('#rqTz'), /Horários no fuso da clínica \(uma hora a menos que Brasília\)\./);
+  const manha = await page.textContent('#rq-rrrrrrrr-0000-4000-8000-000000000611');
+  assert.match(manha, /Horário marcado.*05\/11\/2026 às 09:00/s, '09:00 de Manaus, como na aba Agenda');
+  assert.doesNotMatch(manha, /às 10:00/, 'nunca a hora de São Paulo');
+  assert.match(manha, /Pedido em 04\/11\/2026,? 10:00/, 'pedido feito às 10:00 de Manaus');
+  // 23:30 de Manaus no dia 05 (00:30 do dia 06 em São Paulo): o cartão diz o dia e a hora de lá, como o "Hoje"
+  const noite = await page.textContent('#rq-rrrrrrrr-0000-4000-8000-000000000612');
+  assert.match(noite, /Horário marcado.*05\/11\/2026 às 23:30/s);
+  assert.match(noite, /Cancelado.*pela clínica em 05\/11\/2026,? 11:10/s);
+  await pickWhen(page, 'hoje');
+  assert.deepEqual(calls(log, '/rpc/agenda_requests').at(-1).body, { p_clinic: C1, p_when: 'hoje', p_justification: null });
+  assert.deepEqual(await page.$$eval('.rq h3', (h) => h.map((x) => x.textContent.split(' · ')[1])), ['Paciente Manhã Manaus', 'Paciente Noite Manaus']);
+  assert.match(await page.textContent('#rq-rrrrrrrr-0000-4000-8000-000000000612'), /05\/11\/2026 às 23:30/);
+  assert.equal(calls(log, '/appointment_requests', 'GET').length, 0);
   assert.deepEqual(errors, []);
   await context.close();
 });
