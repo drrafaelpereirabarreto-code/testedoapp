@@ -229,7 +229,7 @@ await scenario('conta.html: "Entrar com senha" abre o campo; senha errada, muita
   await page.fill('#email', 'Dono@IMED.com.br');
   await page.fill('#loginSenha', 'errada');
   await page.press('#loginSenha', 'Enter');
-  await page.waitForSelector('#loginMsg:not([hidden])');
+  await page.waitForFunction(() => /senha errados/.test(document.querySelector('#loginMsg').textContent));
   assert.match(await page.textContent('#loginMsg'), /E-mail ou senha errados.*Esqueci a senha/);
   const t1 = calls(log, '/auth/v1/token')[0];
   assert.equal(t1.q.get('grant_type'), 'password');
