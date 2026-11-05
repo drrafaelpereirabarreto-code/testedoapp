@@ -134,7 +134,10 @@ const REVIEWS = { 'cnes:2077485': [
   { rating: 4, comment: null, author_name: 'João', created_at: '2026-10-01T12:00:00Z' },
 ] };
 // Horários livres do parceiro com agenda (amanhã e depois de amanhã, em São Paulo).
-const spDay = (n) => new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+// T0: o "agora" da execução inteira. As datas do banco simulado saem dele, e o relógio do navegador da área da clínica
+// fica parado nele (painel.html): uma execução que cruza a meia-noite de São Paulo não muda o "hoje" no meio.
+const T0 = Date.now();
+const spDay = (n) => new Date(T0 + n * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 const SLOTS = [`${spDay(1)}T09:00:00-03:00`, `${spDay(1)}T09:30:00-03:00`, `${spDay(1)}T14:00:00-03:00`, `${spDay(2)}T08:00:00-03:00`].map((s) => new Date(s).toISOString());
 // Pedidos guardados neste aparelho (Meus pedidos e Minha conta).
 const ID1 = '11111111-1111-4111-8111-111111111111';
@@ -199,7 +202,7 @@ const AG_PROC = { id: 'procproc-0000-4000-8000-0000000000a1', exam_code: 'usg', 
   min_notice_min: 120, groups: [{ group_no: 1, resource_kind: 'equipamento', resource_ids: [AG_R1] }] };
 const agItem = (n, hhmm, status, patient, channel = 'clinica_telefone') => ({ id: `itemitem-0000-4000-8000-0000000000${n}`, request_id: `reqreqre-0000-4000-8000-0000000000${n}`, request_version: 1, seq: 1,
   procedure_id: AG_PROC.id, procedure: AG_PROC.name, exam_code: 'usg', starts_at: agAt(hhmm), ends_at: new Date(Date.parse(agAt(hhmm)) + 30 * 60000).toISOString(), status, version: 1, price_cents: 18000,
-  resources: ['cancelled', 'reschedule_requested'].includes(status) ? [] : [AG_R1], channel, hold_expires_at: status === 'hold' ? new Date(Date.now() + 10 * 60000).toISOString() : null, patient });
+  resources: ['cancelled', 'reschedule_requested'].includes(status) ? [] : [AG_R1], channel, hold_expires_at: status === 'hold' ? new Date(T0 + 10 * 60000).toISOString() : null, patient });
 const AG_ITEMS = [agItem('01', '08:00', 'completed', 'Carla T.'), agItem('02', '08:30', 'no_show', 'Bruno T.'), agItem('03', '09:00', 'confirmed', 'Maria <b>S.</b>', 'imed_app'),
   agItem('04', '09:30', 'checked_in', 'João T.'), agItem('05', '10:00', 'in_service', 'Ana R.', 'clinica_balcao'), agItem('06', '11:00', 'cancelled', 'Pedro S.'),
   agItem('07', '11:30', 'reschedule_requested', 'Lia T.'), agItem('08', '12:00', 'hold', 'Rui T.', 'imed_app')];
@@ -366,7 +369,8 @@ async function mockSupabase(context, { admin = false, member = false, rapida = f
 // geo: localização permitida pelo Playwright (false: o Chromium recusa sem perguntar). geoSim: no lugar dela, a
 // permissão e a localização simuladas (tests/geo-simulado.mjs), para a página inicial perguntar ({estado:'prompt'}),
 // ficar bloqueada ({estado:'denied'}) ou já ter a permissão ({estado:'granted'}), sempre no mesmo ponto.
-async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, rapida = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false } = {}) {
+// relogio: o relógio do navegador parado em T0 (o "hoje" do banco simulado da agenda).
+async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, rapida = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false, relogio = false } = {}) {
   const context = await browser.newContext({
     ...(escuro ? { colorScheme: 'dark' } : {}), // escuro: aparelho no tema escuro (o Automático do site segue)
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
@@ -375,6 +379,7 @@ async function newPage(browser, { mobile = false, motion = 'no-preference', sess
     ...(geo && !geoSim ? { geolocation: { latitude: -23.561234, longitude: -46.656789, accuracy: 30 }, permissions: ['geolocation'] } : {}),
   });
   if (geoSim) await simularGeo(context, { pos: { lat: -23.561234, lng: -46.656789 }, ...geoSim });
+  if (relogio) await context.clock.setFixedTime(new Date(T0));
   await context.route('https://fonts.googleapis.com/**', (r) => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
@@ -843,7 +848,7 @@ const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro, ...(def.appts ? { appts: def.appts } : {}) });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro, relogio: /^painel\.html/.test(def.url), ...(def.appts ? { appts: def.appts } : {}) });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);

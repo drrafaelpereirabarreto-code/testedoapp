@@ -804,3 +804,12 @@ test('módulo puro: sem página, sem armazenamento, sem rede e sem importar outr
   // Roda em todo iPhone com iOS 15 (como o resto da página inicial): nada que só chegou no Safari 15.4 ou depois.
   assert.ok(!/Object\.hasOwn\(|\.at\(|\.replaceAll\(|structuredClone|\.findLast|\.toSorted\(|\.groupBy\(/.test(codigo));
 });
+
+test('Meus pedidos da página inicial: a etiqueta reserva (antes de o geo-core.js chegar) tem todas as situações do banco', () => {
+  const src = readFileSync(join(ROOT, 'assets/js/inicio.js'), 'utf8');
+  const m = src.match(/const STATUS_FALLBACK = (\{[\s\S]*?\});/);
+  assert.ok(m, 'STATUS_FALLBACK no inicio.js');
+  const fallback = Function(`return (${m[1]});`)();
+  const todas = ['pending', 'contacted', 'confirmed', 'cancelled', 'completed', 'hold', 'awaiting_payment', 'checked_in', 'in_service', 'no_show', 'reschedule_requested', 'expired'];
+  for (const s of todas) assert.equal(fallback[s], G.statusLabel(s), s);
+});

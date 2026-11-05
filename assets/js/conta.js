@@ -161,8 +161,7 @@ const canReview = (o) => o.id && o.status === 'completed' && o.reviewed !== true
 // situação que o aparelho ainda não sabe). Nada para reserva, chegada, atendimento, falta, remarcação, cancelado,
 // concluído ou expirado (fase 4.2), nem para data ou horário que já passou.
 const todaySP = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
-const ICS_OK = ['pending', 'contacted', 'confirmed'];
-const canIcs = (o) => (!o.status || ICS_OK.includes(o.status)) && o.deviceStatus !== 'cancelado'
+const canIcs = (o) => T.canRemind(o.status) && o.deviceStatus !== 'cancelado'
   && (o.slot ? slotFuture(o.slot) : isDate(o.date) && o.date >= todaySP());
 // Aviso no cartão para as situações que a agenda nova cria (fase 4.2). Texto simples; sem dado do paciente.
 const STATUS_NOTE = {
@@ -209,7 +208,7 @@ function orderHtml(o, i) {
       ${canCancelOrder(o) && state.cancelAsk !== o.id ? `<button type="button" class="btn btn-ghost btn-sm ct-cancel" data-cancel="${rid}"><i class="fa-solid fa-ban" aria-hidden="true"></i>Cancelar pedido</button>` : ''}
     </div>
     ${canCancelOrder(o) && state.cancelAsk === o.id ? `<div class="ct-confirm ct-ask" role="group" aria-label="Confirmar o cancelamento">
-        <p>${esc(T.cancelConfirmText(T.placeType(o), o.slot))}</p>
+        <p>${esc(T.cancelConfirmText(T.placeType(o), o.slot, o.status))}</p>
         <div class="ct-row"><button class="btn btn-coral btn-sm" type="button" data-cancel-yes="${rid}"${state.cancelBusy === o.id ? ' disabled' : ''}>${state.cancelBusy === o.id ? 'Cancelando…' : 'Sim, cancelar'}</button>
           <button class="btn btn-ghost btn-sm" type="button" data-cancel-no="${rid}">Não</button></div>
       </div>` : ''}
@@ -348,6 +347,7 @@ async function submitReview(form) {
 async function cancelOrder(id) {
   const o = state.orders.find((x) => x.id === id);
   if (!o || state.cancelBusy) return;
+  const antes = o.status;   // a situação antes de cancelar decide se o horário volta a ficar livre
   state.cancelBusy = id;
   renderOrders();
   let res;
@@ -363,12 +363,12 @@ async function cancelOrder(id) {
       if (Array.isArray(list)) localStorage.setItem('imed_appts', JSON.stringify(list.map((a) => (a && a.id === id ? { ...a, status: 'cancelado' } : a))));
     } catch { /* sem armazenamento: a situação vem do banco */ }
     renderOrders();
-    toast(res === 'ok' ? T.cancelDoneText(o.slot, T.placeType(o), o.phone) : T.CANCEL_MSG.already_cancelled);
+    toast(res === 'ok' ? T.cancelDoneText(o.slot, T.placeType(o), o.phone, antes) : T.CANCEL_MSG.already_cancelled);
     card()?.focus();
     return;
   }
   // Respostas definitivas (inclusive o prazo da clínica, too_late — fase 4.2): fecha a pergunta e confere a situação.
-  const final = ['not_cancellable', 'past', 'too_late', 'not_found', 'forbidden'].includes(res);
+  const final = T.CANCEL_FINAL.includes(res);
   if (final) state.cancelAsk = '';
   renderOrders();
   toast(T.CANCEL_MSG[res] || T.CANCEL_MSG.error);

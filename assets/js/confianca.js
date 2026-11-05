@@ -18,6 +18,20 @@ export function canCancel(status, slot = null, now = Date.now()) {
   return true;
 }
 
+// Respostas definitivas de cancel_request (inclusive o prazo da clínica, too_late — fase 4.2): a tela fecha a pergunta
+// "Sim, cancelar" e confere a situação de novo. Erro de rede não está aqui: a pergunta fica aberta para tentar de novo.
+export const CANCEL_FINAL = ['not_cancellable', 'past', 'too_late', 'not_found', 'forbidden'];
+
+// "Adicionar à agenda" (lembrete .ics): só para o que ainda está de pé — aguardando contato, em contato ou confirmado,
+// ou sem situação do banco (o aparelho ainda não sabe). Nada para reserva, chegada, atendimento, falta, remarcação
+// solicitada, cancelado, concluído ou expirado. Regra única da página inicial e da conta.
+export const REMIND_OK = ['pending', 'contacted', 'confirmed'];
+export const canRemind = (status) => !status || REMIND_OK.includes(status);
+
+// Cancelar solta um horário só quando o pedido ainda segura esse horário. "Remarcação solicitada" (fase 4.2) nasce do
+// bloqueio da clínica ("Bloquear mesmo assim"): o horário já foi solto e o período está bloqueado.
+const freesSlot = (slot, status) => !!slot && status !== 'reschedule_requested';
+
 // Respostas de cancel_request em linguagem simples.
 export const CANCEL_MSG = {
   already_cancelled: 'Este pedido já estava cancelado.',
@@ -42,19 +56,21 @@ export function placeType(o) {
 }
 const LIGUE = 'Se o horário já tinha sido combinado com o local, ligue também para ele';
 // Pergunta antes de cancelar. Só promete o que acontece de verdade: o IMED ainda não avisa o local sozinho.
-export function cancelConfirmText(type = '', slot = null) {
+// status: a situação do banco antes de cancelar (em "Remarcação solicitada", nada de "horário livre").
+export function cancelConfirmText(type = '', slot = null, status = '') {
   const base = 'Cancelar este pedido? Cancelar pelo IMED é grátis.';
-  if (type === 'parceiro') return `${base} A clínica vê o cancelamento no painel dela${slot ? ' e o horário volta a ficar livre para outra pessoa' : ''}.`;
+  if (type === 'parceiro') return `${base} A clínica vê o cancelamento no painel dela${freesSlot(slot, status) ? ' e o horário volta a ficar livre para outra pessoa' : ''}.`;
   if (type === 'local') return `${base} A equipe do IMED vê o cancelamento. ${LIGUE}.`;
   return `${base} ${LIGUE}.`;
 }
 export const CANCEL_CONFIRM = cancelConfirmText();
-// Depois de cancelar. phone: telefone do local guardado no pedido (quando existe).
-export function cancelDoneText(slot = null, type = '', phone = '') {
+// Depois de cancelar. phone: telefone do local guardado no pedido (quando existe); status: a situação antes de cancelar.
+export function cancelDoneText(slot = null, type = '', phone = '', status = '') {
   const tel = phone ? `: ${phone}` : '';
-  if (type === 'parceiro') return `Pedido cancelado.${slot ? ' O horário voltou a ficar livre.' : ''} A clínica vê o cancelamento no painel dela.`;
+  const livre = freesSlot(slot, status) ? ' O horário voltou a ficar livre.' : '';
+  if (type === 'parceiro') return `Pedido cancelado.${livre} A clínica vê o cancelamento no painel dela.`;
   if (type === 'local') return `Pedido cancelado. A equipe do IMED vê o cancelamento. ${LIGUE}${tel}.`;
-  return `Pedido cancelado.${slot ? ' O horário voltou a ficar livre.' : ''} ${LIGUE}${tel}.`;
+  return `Pedido cancelado.${livre} ${LIGUE}${tel}.`;
 }
 // Aviso que fica no cartão do pedido cancelado neste aparelho (o aviso rápido da tela some sozinho).
 // telHref: transforma o telefone em link (geo-core.telHref); sem link, mostra só o número. Tudo escapado.

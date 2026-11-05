@@ -572,7 +572,7 @@ function tabData(p) {
         <p class="cl-help">Escreva como quiser, por exemplo 07:00–19:00. Deixe em branco os dias fechados ou sem horário definido.</p>
         <div class="hours">${DAYS.map(([k, n]) => `<label>${n}<input id="h-${k}" type="text" maxlength="40" value="${esc(hours[k] ?? '')}" autocomplete="off"></label>`).join('')}</div>
       </fieldset>
-      <div class="cl-field full"><label class="cl-check"><input id="dOnline" type="checkbox"${c.accepts_online_booking ? ' checked' : ''}><span><b>Aceito pedidos de agendamento pelo site.</b> Os pedidos aparecem na aba “Pedidos”. Com a aba “Agenda” montada, o paciente escolhe um horário livre; sem agenda, a clínica entra em contato para combinar.</span></label></div>
+      <div class="cl-field full"><label class="cl-check"><input id="dOnline" type="checkbox"${c.accepts_online_booking ? ' checked' : ''}><span><b>Aceito pedidos de agendamento pelo site.</b> Os pedidos aparecem na aba “Pedidos”. Por enquanto, a clínica entra em contato com o paciente para combinar o horário. Quando o IMED liberar a marcação pelo site, o paciente vai poder escolher um horário livre da agenda (montada em “Configurar agenda”).</span></label></div>
       <div class="cl-field full"><label class="cl-lbl" for="dSpec">Especialidades</label>
         <input id="dSpec" type="text" maxlength="1500" value="${esc((c.specialties || []).join(', '))}" aria-describedby="dSpecHint dSpecErr" autocomplete="off">
         <span class="cl-hint" id="dSpecHint">Separe por vírgula. Até 30. Ex.: Cardiologia, Radiologia</span><span class="cl-err" id="dSpecErr"></span></div>

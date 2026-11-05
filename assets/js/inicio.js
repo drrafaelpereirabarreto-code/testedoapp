@@ -732,7 +732,8 @@ function startHero() {
 /* ======================= MEUS PEDIDOS ======================= */
 // Contrato: localStorage 'imed_appts' (mais novo primeiro, até 30). Só pedidos reais (type 'pedido').
 const PERIOD = { manha: 'manhã', tarde: 'tarde', noite: 'noite', qualquer: 'qualquer horário' };
-const STATUS_FALLBACK = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído' };
+const STATUS_FALLBACK = { pending: 'Aguardando contato', pendente: 'Aguardando contato', contacted: 'Em contato', confirmed: 'Confirmado', cancelled: 'Cancelado', completed: 'Concluído',
+  hold: 'Reserva temporária', awaiting_payment: 'Aguardando pagamento', checked_in: 'Chegada registrada', in_service: 'Em atendimento', no_show: 'Não compareceu', reschedule_requested: 'Remarcação solicitada', expired: 'Reserva expirada' };
 let geoCore = null, geoCoreSync = null, trust = null, trustSync = null;
 const loadGeoCore = () => (geoCore ||= import('./geo-core.js').catch(() => ({})));
 // Regras de cancelamento (confianca.js): baixado junto com Meus pedidos.
@@ -815,7 +816,8 @@ function drawAppts(list) {
     const review = live && live.status === 'completed' && !live.reviewed ? `<a class="btn btn-coral" href="conta.html#pedido-${encodeURIComponent(a.id)}"><i class="fa-solid fa-star-half-stroke" aria-hidden="true"></i>Avaliar</a>` : '';
     // Lembrete só para o que ainda vai acontecer: horário marcado no futuro ou dia de hoje em diante.
     const ahead = at ? Date.parse(a.slot) > Date.now() : isoDate(a.date) && a.date >= todayIso();
-    const gone = (live && ['cancelled', 'completed'].includes(live.status)) || (!live && a.status === 'cancelado');
+    // Lembrete só com a situação ainda de pé (confianca.canRemind: nada para remarcação, falta, cancelado…).
+    const gone = (live && !trustSync?.canRemind?.(live.status)) || (!live && a.status === 'cancelado');
     const cal = ahead && !gone ? `<button class="btn btn-ghost" type="button" data-ics="${esc(key)}"><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i>Adicionar à agenda</button>` : '';
     // Cancelar pelo site: com o código do pedido e a situação do banco ainda ativa (confianca.canCancel).
     const can = !!(a.id && a.token && live && trustSync?.canCancel?.(live.status, a.slot || null));
@@ -823,7 +825,7 @@ function drawAppts(list) {
     // Para quem vai o cancelamento (clínica parceira ou local que ainda não é parceiro): o texto só promete o que acontece.
     const ptype = trustSync?.placeType?.(a) ?? '';
     const ask = can && cancelAsk === key ? `<div class="appt-ask" role="group" aria-label="Confirmar o cancelamento">
-        <p>${esc(trustSync.cancelConfirmText?.(ptype, a.slot || null) || trustSync.CANCEL_CONFIRM)}</p>
+        <p>${esc(trustSync.cancelConfirmText?.(ptype, a.slot || null, live.status) || trustSync.CANCEL_CONFIRM)}</p>
         <div class="appt-act"><button class="btn btn-coral" type="button" data-cancel-yes="${esc(key)}"${cancelBusy === key ? ' disabled' : ''}>${cancelBusy === key ? '<span class="spin" aria-hidden="true"></span>Cancelando…' : 'Sim, cancelar'}</button><button class="btn btn-ghost" type="button" data-cancel-no="${esc(key)}">Não</button></div>
       </div>` : '';
     return `<article class="appt" data-key="${esc(key)}" ${a.id ? `id="pedido-${esc(a.id)}"` : ''}>
@@ -865,6 +867,7 @@ async function cancelAppt(key) {
   const a = readAppts().find((x) => apptKey(x) === key);
   if (!a || !a.id || !a.token || cancelBusy) return;
   const T = await loadTrust();
+  const antes = liveStatus[a.id]?.status;   // a situação antes de cancelar decide se o horário volta a ficar livre
   cancelBusy = key; drawAppts(readAppts());
   let res;
   try { res = await rpc('cancel_request', { p_id: a.id, p_token: a.token }); } catch { res = 'error'; }
@@ -877,13 +880,13 @@ async function cancelAppt(key) {
       localStorage.setItem('imed_appts', JSON.stringify(all));
     } catch { /* sem armazenamento: a situação vem do banco */ }
     drawAppts(readAppts());
-    toast(res === 'ok' ? (T.cancelDoneText?.(a.slot, T.placeType?.(a) ?? '', a.phone || '') || 'Pedido cancelado.') : (T.CANCEL_MSG?.already_cancelled || 'Este pedido já estava cancelado.'));
+    toast(res === 'ok' ? (T.cancelDoneText?.(a.slot, T.placeType?.(a) ?? '', a.phone || '', antes) || 'Pedido cancelado.') : (T.CANCEL_MSG?.already_cancelled || 'Este pedido já estava cancelado.'));
     focusCard(key);
     return;
   }
   // Não deu. Falha de internet: a pergunta continua aberta para tentar de novo. Recusa do banco (já concluído,
   // horário passado...): fecha a pergunta e busca a situação de novo.
-  const final = ['not_cancellable', 'past', 'not_found', 'forbidden'].includes(res);
+  const final = (T.CANCEL_FINAL || []).includes(res);
   if (final) cancelAsk = '';
   drawAppts(readAppts());
   toast(T.CANCEL_MSG?.[res] || T.CANCEL_MSG?.error || 'Não foi possível cancelar agora.');

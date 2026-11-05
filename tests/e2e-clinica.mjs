@@ -579,6 +579,11 @@ await scenario('painel com clínica: pedidos, situação, dados e exames com pre
   await page.waitForSelector('#dataForm');
   // dados da clínica
   assert.equal(await page.isChecked('#dOnline'), true);
+  // honesto: ninguém escolhe horário pelo site antes da 5.1; a configuração fica em "Configurar agenda"
+  const online = await page.textContent('label:has(#dOnline)');
+  assert.match(online, /Por enquanto, a clínica entra em contato com o paciente para combinar o horário\./);
+  assert.match(online, /“Configurar agenda”/);
+  assert.doesNotMatch(online, /Com a aba “Agenda” montada/);
   assert.equal(await page.inputValue('#dSpec'), 'Radiologia');
   assert.equal(await page.isChecked('input[name=ins][value="Amil"]'), true);
   assert.equal(await page.inputValue('#dInsOther'), 'Plano Antigo');

@@ -27,6 +27,24 @@ test('cancelar: só pedido ativo e com horário ainda no futuro (ou sem horário
   assert.match(T.CANCEL_MSG.too_late, /prazo/);
 });
 
+test('remarcação solicitada (bloqueio da clínica, fase 4.2): cancelar não promete horário livre; lembrete e respostas finais', () => {
+  const slot = '2026-10-31T12:30:00.000Z';
+  // o horário já foi solto e o período está bloqueado
+  const ask = T.cancelConfirmText('parceiro', slot, 'reschedule_requested');
+  assert.equal(ask, 'Cancelar este pedido? Cancelar pelo IMED é grátis. A clínica vê o cancelamento no painel dela.');
+  assert.equal(T.cancelDoneText(slot, 'parceiro', '', 'reschedule_requested'), 'Pedido cancelado. A clínica vê o cancelamento no painel dela.');
+  assert.ok(!/livre/.test(T.cancelDoneText(slot, '', '', 'reschedule_requested')));
+  // confirmado com horário: continua livre
+  assert.match(T.cancelConfirmText('parceiro', slot, 'confirmed'), /horário volta a ficar livre/);
+  assert.match(T.cancelDoneText(slot, 'parceiro', '', 'confirmed'), /O horário voltou a ficar livre\./);
+  // "Adicionar à agenda": regra única da página inicial e da conta
+  for (const st of ['pending', 'contacted', 'confirmed', '', null, undefined]) assert.equal(T.canRemind(st), true, String(st));
+  for (const st of ['hold', 'awaiting_payment', 'checked_in', 'in_service', 'no_show', 'reschedule_requested', 'expired', 'cancelled', 'completed']) assert.equal(T.canRemind(st), false, st);
+  // respostas que fecham a pergunta "Sim, cancelar" (o prazo da clínica também)
+  assert.deepEqual([...T.CANCEL_FINAL].sort(), ['forbidden', 'not_cancellable', 'not_found', 'past', 'too_late']);
+  for (const k of T.CANCEL_FINAL) assert.ok(T.CANCEL_MSG[k], k);
+});
+
 test('cancelar: o texto só promete o que acontece (parceiro vê no painel; nos outros locais, só a equipe do IMED)', () => {
   // Para quem vai o cancelamento: pelo pedido do aparelho (place_key) ou pela linha do banco (clinic_id / place_source).
   assert.equal(T.placeType({ place_key: 'imed:bbbbbbbb-0000-4000-8000-000000000011' }), 'parceiro');

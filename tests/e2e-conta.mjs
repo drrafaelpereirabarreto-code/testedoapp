@@ -650,6 +650,9 @@ await scenario('situações da agenda nova (4.2): textos, avisos, sem "Adicionar
   assert.deepEqual((await page.$$eval('[data-cancel]', (b) => b.map((x) => x.dataset.cancel))).sort(), [P.rr.id, P.ok.id].sort());
   // o prazo da clínica para cancelar pelo site já passou: o banco responde too_late e a página explica
   await page.click(`[data-cancel="${P.rr.id}"]`);
+  // a remarcação nasce do bloqueio da clínica: o horário já foi solto e o período está bloqueado — nada de "livre"
+  const pergunta = await card(P.rr).locator('.ct-ask p').textContent();
+  assert.equal(pergunta, 'Cancelar este pedido? Cancelar pelo IMED é grátis. A clínica vê o cancelamento no painel dela.');
   await page.click(`[data-cancel-yes="${P.rr.id}"]`);
   await page.waitForFunction(() => /O prazo para cancelar pelo site já passou\. Fale com a clínica\./.test(document.querySelector('#toast').textContent));
   assert.deepEqual(log.cancel[0], { p_id: P.rr.id, p_token: P.rr.token });
@@ -664,6 +667,8 @@ await scenario('situações da agenda nova (4.2): textos, avisos, sem "Adicionar
   await page.click(`[data-cancel="${P.rr.id}"]`);
   await page.click(`[data-cancel-yes="${P.rr.id}"]`);
   await page.waitForFunction((id) => /Cancelado/.test(document.querySelector(`#pedido-${id} .ct-st`)?.textContent || ''), P.rr.id);
+  await page.waitForFunction(() => /Pedido cancelado\./.test(document.querySelector('#toast').textContent));
+  assert.equal((await page.textContent('#toast')).trim(), 'Pedido cancelado. A clínica vê o cancelamento no painel dela.', 'sem "o horário voltou a ficar livre"');
   assert.equal(await card(P.rr).locator('.ct-st-note').count(), 0, 'cancelado: o aviso de remarcação sai');
   await shot(page, 'conta-situacoes-novas');
   assert.deepEqual(errors, []);

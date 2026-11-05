@@ -2738,6 +2738,40 @@ await scenario('Meus pedidos com horário marcado: hora de São Paulo (aparelho 
   await live.context.close();
 });
 
+await scenario('Meus pedidos com "Remarcação solicitada" (bloqueio da clínica, 4.2): sem lembrete, cancelar sem "horário livre" e o prazo da clínica fecha a pergunta', async () => {
+  let resposta = 'too_late';
+  const situacao = [{ id: SID1, status: 'reschedule_requested', reviewed: false }, { id: SID2, status: 'confirmed', reviewed: false }];
+  const { page, log, errors, context } = await newPage(browser, { appts: SLOT_APPTS, now: NOW, status: (r) => json(r, situacao), cancel: (r) => json(r, resposta) });
+  await page.goto(`${BASE}#agenda`);
+  await page.waitForFunction(() => /Remarcação solicitada/.test(document.querySelector('#appts').textContent) && document.querySelector('.appt [data-cancel]'));
+  const rr = page.locator(`.appt[id="pedido-${SID1}"]`);
+  const ok = page.locator(`.appt[id="pedido-${SID2}"]`);
+  assert.equal((await rr.locator('.status').textContent()).trim(), 'Remarcação solicitada');
+  // o horário foi solto pela clínica: nada de "Adicionar à agenda" (nem um .ics dizendo "Horário confirmado")
+  assert.equal(await rr.locator('[data-ics]').count(), 0, 'remarcação: sem lembrete');
+  assert.equal(await ok.locator('[data-ics]').count(), 1, 'confirmado: com lembrete');
+  // cancelar: a pergunta não promete horário livre (o período está bloqueado)
+  await rr.locator('[data-cancel]').click();
+  const pergunta = (await rr.locator('.appt-ask p').textContent()).trim();
+  assert.equal(pergunta, 'Cancelar este pedido? Cancelar pelo IMED é grátis. A clínica vê o cancelamento no painel dela.');
+  // prazo da clínica (too_late): resposta final — fecha a pergunta e confere a situação de novo
+  const st = log.status.length;
+  await rr.locator('[data-cancel-yes]').click();
+  await page.waitForFunction(() => /O prazo para cancelar pelo site já passou\. Fale com a clínica\./.test(document.querySelector('#toast').textContent));
+  assert.equal(await page.locator('.appt-ask').count(), 0, 'too_late fecha a pergunta');
+  await until(() => log.status.length > st);
+  assert.ok(log.status.length > st, 'situação buscada de novo');
+  // dentro do prazo: cancela, sem "O horário voltou a ficar livre"
+  resposta = 'ok';
+  await page.waitForSelector(`.appt[id="pedido-${SID1}"] [data-cancel]`);
+  await rr.locator('[data-cancel]').click();
+  await rr.locator('[data-cancel-yes]').click();
+  await page.waitForFunction(() => /Pedido cancelado\./.test(document.querySelector('#toast').textContent));
+  assert.equal((await page.textContent('#toast')).trim(), 'Pedido cancelado. A clínica vê o cancelamento no painel dela.');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('computador em modo leve: o cartão da lista não cobre o título nem a busca (980 a 1366 px)', async () => {
   const { page, errors, context } = await newPage(browser, { viewport: { width: 980, height: 800 } });
   await page.goto(BASE);
