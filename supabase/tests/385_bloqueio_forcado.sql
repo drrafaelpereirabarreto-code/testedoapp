@@ -289,8 +289,13 @@ select pg_temp.como(2);
 select set_config('teste.hs', (select min((s ->> 'start')::timestamptz)
                                from jsonb_array_elements(public.agenda_desk_slots(pg_temp.a(), pg_temp.id('cons'), pg_temp.hoje(), pg_temp.hoje() + 1) -> 'slots') s
                                where (s ->> 'start')::timestamptz >= now() + interval '5 minutes')::text, true);
+-- o do Gil é o primeiro horário livre a partir de 1 hora depois (não "hs + 1 hora" direto: das 23:00 em diante essa
+-- conta cai num exame que passaria da meia-noite, que a grade não oferece, e o teste dependia da hora em que rodava)
+select set_config('teste.hg', (select min((s ->> 'start')::timestamptz)
+                               from jsonb_array_elements(public.agenda_desk_slots(pg_temp.a(), pg_temp.id('cons'), pg_temp.hoje(), pg_temp.hoje() + 1) -> 'slots') s
+                               where (s ->> 'start')::timestamptz >= current_setting('teste.hs')::timestamptz + interval '1 hour')::text, true);
 select set_config('teste.e1', pg_temp.balcao('cons', current_setting('teste.hs')::timestamptz, 'Eva Duarte Forçado'), true);
-select set_config('teste.e2', pg_temp.balcao('cons', current_setting('teste.hs')::timestamptz + interval '1 hour', 'Gil Prado Forçado'), true);
+select set_config('teste.e2', pg_temp.balcao('cons', current_setting('teste.hg')::timestamptz, 'Gil Prado Forçado'), true);
 select pg_temp.entrar('postgres');
 select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'teste_agenda', true);
 update agenda.appointment_items i set starts_at = now() - interval '10 minutes', ends_at = now() + interval '20 minutes',
