@@ -85,8 +85,10 @@ function keepFocus(draw) {
   if (!key || (el.isConnected && document.activeElement === el)) return;
   const agora = document.activeElement;
   if (agora && agora !== document.body && agora !== el) return;   // quem desenhou já pôs o foco em outro lugar
-  $(key)?.focus();
-  if (document.activeElement === document.body || !document.activeElement) $(area)?.focus();
+  // sem rolar a página: o equivalente está no mesmo lugar; o título é só a reserva (quem chamou pode pôr o foco
+  // em outro botão logo depois, e a página não pode pular para o alto e voltar)
+  $(key)?.focus({ preventScroll: true });
+  if (document.activeElement === document.body || !document.activeElement) $(area)?.focus({ preventScroll: true });
 }
 
 // O que o leitor de tela fala (#agFala: região viva escondida que está sempre na página, então é anunciada de verdade).

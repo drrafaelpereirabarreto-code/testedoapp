@@ -709,11 +709,24 @@ async function smallInputs(page) {
 
 // Percorre a página com Tab e confere cada parada: o foco precisa mudar algo visível (contorno, borda, sombra,
 // fundo ou sublinhado) com contraste de 3:1 contra o fundo, e não pode ficar atrás do topo/menu fixo nem fora da tela.
-async function focusWalk(page, max = 160) {
+// Começa do começo da página (um ponto fixo no início do <body>), e não de onde o foco estava; numa janela aberta
+// (ficha, pedido), começa dentro dela. O mesmo campo várias vezes seguidas (as partes de um campo de data: dia, mês,
+// ano e o botão do calendário) conta uma parada só, e o percurso só para ao voltar a uma parada anterior ou ao sair da
+// página. grade: quantas paradas foram em itens da grade da agenda (o teste exige que o percurso chegue lá).
+async function focusWalk(page, max = 250) {
   await page.evaluate(COLOR_HELPERS);
   // Sem transições: a cor do foco é medida logo depois do Tab, no estado final (e não no meio da animação).
   await page.addStyleTag({ content: '*,*::before,*::after{transition:none!important;animation-duration:0s!important;animation-delay:0s!important}' });
-  await page.evaluate(() => { document.activeElement?.blur?.(); window.scrollTo(0, 0); });
+  await page.evaluate(() => {
+    const janela = document.activeElement?.closest?.('[role="dialog"], [aria-modal="true"]');
+    document.activeElement?.blur?.();
+    window.scrollTo(0, 0);
+    if (janela) return;
+    const ini = document.createElement('div');
+    ini.tabIndex = -1; ini.id = 'a11yInicio';
+    document.body.prepend(ini);
+    ini.focus({ preventScroll: true });
+  });
   const snap = String.raw`(el) => {
     const pick = (c) => ({ os: c.outlineStyle, ow: parseFloat(c.outlineWidth) || 0, oc: c.outlineColor, bs: c.boxShadow, bc: c.borderTopColor, bw: parseFloat(c.borderTopWidth) || 0, bg: c.backgroundColor, deco: c.textDecorationLine });
     const p1 = el.parentElement, p2 = p1?.parentElement, sib = el.nextElementSibling;
@@ -724,13 +737,13 @@ async function focusWalk(page, max = 160) {
       p1: p1 ? pick(getComputedStyle(p1)) : null, p2: p2 ? pick(getComputedStyle(p2)) : null, sib: sib ? pick(getComputedStyle(sib)) : null };
   }`;
   const stops = [];
-  for (let i = 0; i < max; i += 1) {
+  for (let i = 0, voltas = 0; i < max && voltas < max * 3; voltas += 1) {
     await page.keyboard.press('Tab');
     const info = await page.evaluate(([i, snapSrc]) => {
       const A = window.__a11y;
       const el = document.activeElement;
       if (!el || el === document.body || el === document.documentElement) return { end: true };
-      if (el.dataset.a11yStop) return { again: true };
+      if (el.dataset.a11yStop) return el.dataset.a11yStop === String(i - 1) ? { same: true } : { again: true };
       el.dataset.a11yStop = String(i);
       const r = el.getBoundingClientRect();
       // eslint-disable-next-line no-eval
@@ -755,10 +768,12 @@ async function focusWalk(page, max = 160) {
         if (big ? hits.every(Boolean) : hits.some(Boolean)) covered = hits.find(Boolean);
       }
       const off = r.bottom < 0 || r.top > innerHeight || r.right < 0 || r.left > innerWidth;
-      return { label: A.label(el), focused, bg, covered, off, w: r.width, h: r.height };
+      return { label: A.label(el), focused, bg, covered, off, w: r.width, h: r.height, grade: !!el.closest('.ag-grade') };
     }, [i, snap]);
+    if (info.same) continue;   // outra parte do mesmo campo
     if (info.end || info.again) break;
     stops.push(info);
+    i += 1;
   }
   // O mesmo elemento sem foco.
   const plain = await page.evaluate((snapSrc) => {
@@ -767,7 +782,7 @@ async function focusWalk(page, max = 160) {
     const f = (0, eval)(snapSrc);
     return Object.fromEntries([...document.querySelectorAll('[data-a11y-stop]')].map((el) => [el.dataset.a11yStop, f(el)]));
   }, snap);
-  await page.evaluate(() => document.querySelectorAll('[data-a11y-stop]').forEach((el) => el.removeAttribute('data-a11y-stop')));
+  await page.evaluate(() => { document.querySelectorAll('[data-a11y-stop]').forEach((el) => el.removeAttribute('data-a11y-stop')); document.getElementById('a11yInicio')?.remove(); });
   const problems = [];
   stops.forEach((s, i) => {
     if (s.covered) problems.push(`foco escondido atrás de ${s.covered}: ${s.label}`);
@@ -777,7 +792,7 @@ async function focusWalk(page, max = 160) {
     const res = judgeFocus(s.focused, p, s.bg);
     if (res) problems.push(`${res}: ${s.label}`);
   });
-  return { count: stops.length, problems };
+  return { count: stops.length, problems, grade: stops.filter((x) => x.grade).length };
 }
 
 // O indicador de foco: contorno (do elemento, do ::after/::before ou da caixa em volta, com :focus-within),
@@ -909,6 +924,15 @@ await scenario('auditoria: texto sobre degradê (botões) com contraste de 4,5:1
 await scenario('auditoria: celular com alvos de toque de 44 px, campos com letra de 16 px e sem rolagem lateral', async () => {
   const bad = audit.filter((r) => !r.fail && (r.targets.length || r.inputs.length || r.overflow > 0))
     .map((r) => `${r.page}: ${[...r.targets, ...r.inputs, ...(r.overflow > 0 ? [`rolagem lateral de ${r.overflow}px`] : [])].join('; ')}`);
+  assert.deepEqual(bad, []);
+});
+
+// O percurso do Tab tem de chegar aos itens da grade da agenda (antes ele parava no campo de data, no meio da barra).
+await scenario('auditoria: o Tab percorre a agenda inteira até os itens da grade (Dia e Semana no computador)', async () => {
+  const rows = audit.filter((r) => !r.fail && r.device === 'computador' && /^Área da clínica · agenda \((dia|semana)\)/.test(r.page));
+  if (ONLY && !rows.length) return;
+  assert.ok(rows.length >= 2, 'as páginas da grade foram auditadas');
+  const bad = rows.filter((r) => !(r.focus.grade > 0) || r.focus.count < 30).map((r) => `${r.page}: ${r.focus.count} paradas, ${r.focus.grade} na grade`);
   assert.deepEqual(bad, []);
 });
 
