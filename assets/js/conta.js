@@ -443,6 +443,9 @@ function renderAccount() {
   $('signedOut').hidden = state.logged;
   $('signedIn').hidden = !state.logged;
   if (u) $('meEmail').textContent = u.email || 'sua conta';
+  // o título muda junto com a conta (antes só mudava depois de reler os pedidos: ao sair, "Meus pedidos" ficava na
+  // tela por um instante com a conta já fechada)
+  $('ordersTitle').textContent = state.logged ? 'Meus pedidos' : 'Pedidos deste aparelho';
 }
 
 function bindAccount() {
