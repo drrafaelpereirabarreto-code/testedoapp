@@ -28,6 +28,78 @@ const SEP = sr(', ');
 const faixa = (a, b) => `${esc(a)}${sr(' às ')}<span aria-hidden="true">–</span>${esc(b)}`;
 const waHref = (phone) => { const d = onlyDigits(phone); return /^[1-9]{2}9\d{8}$/.test(d) ? `https://wa.me/55${d}` : ''; };
 
+// ---------- redesenho sem perder o foco ----------
+// A barra de cima é desenhada de novo a cada carga. patch() troca só o que mudou: o nó que continua no mesmo lugar
+// (mesma tag, id, classe e ação) fica — com o foco, com o que está sendo digitado em "Ir para a data" e com o
+// aberto/fechado que a pessoa escolheu nos <details>.
+const PATCH_KEYS = ['id', 'class', 'type', 'name', 'data-act', 'data-view'];
+const sameNode = (a, b) => a.nodeType === b.nodeType && (a.nodeType !== 1 || (a.tagName === b.tagName && PATCH_KEYS.every((k) => a.getAttribute(k) === b.getAttribute(k))));
+function patch(box, html) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  patchKids(box, t.content);
+}
+function patchKids(el, src) {
+  const olds = [...el.childNodes];
+  const news = [...src.childNodes];
+  news.forEach((n, i) => {
+    const o = olds[i];
+    if (!o) el.append(n);
+    else if (sameNode(o, n)) patchNode(o, n);
+    else o.replaceWith(n);
+  });
+  for (const o of olds.slice(news.length)) o.remove();
+}
+function patchNode(o, n) {
+  if (o.nodeType !== 1) { if (o.nodeValue !== n.nodeValue) o.nodeValue = n.nodeValue; return; }
+  const ativo = o === document.activeElement;
+  const keep = (name) => name === 'open' && o.tagName === 'DETAILS';
+  for (const { name } of [...o.attributes]) if (!n.hasAttribute(name) && !keep(name)) o.removeAttribute(name);
+  for (const { name, value } of [...n.attributes]) if (!keep(name) && o.getAttribute(name) !== value) o.setAttribute(name, value);
+  if (o.tagName === 'INPUT') {
+    // campo em uso: o valor é o que a pessoa está digitando
+    if (!ativo) { if (o.type === 'checkbox' || o.type === 'radio') o.checked = n.hasAttribute('checked'); else o.value = n.getAttribute('value') ?? ''; }
+    return;
+  }
+  const quer = o.tagName === 'SELECT' ? (n.querySelector('option[selected]')?.value ?? null) : null;
+  patchKids(o, n);
+  if (o.tagName === 'SELECT' && !ativo) o.value = quer ?? o.options[0]?.value ?? '';
+}
+
+// As outras áreas (lista, grade, "Para remarcar", detalhe) são desenhadas de novo por inteiro. keepFocus() guarda qual
+// botão ou campo tinha o foco e, depois de desenhar, põe o foco no equivalente novo (o mesmo item, a mesma ação). Se ele
+// não existe mais, o foco vai para o título da área (nunca fica perdido no começo da página).
+const FOCUS_ATTRS = ['data-view', 'data-act', 'data-item', 'data-k', 'data-w', 'data-dia', 'data-busy', 'data-req', 'data-id', 'data-st', 'data-t', 'data-f', 'name'];
+function focusKey(el) {
+  if (!el || el === document.body || !S?.box.contains(el)) return null;
+  if (el.id) return `#${CSS.escape(el.id)}`;
+  const sel = FOCUS_ATTRS.filter((a) => el.hasAttribute(a)).map((a) => `[${a}="${CSS.escape(el.getAttribute(a))}"]`).join('')
+    + (el.type === 'radio' ? `[value="${CSS.escape(el.value)}"]` : '');
+  return sel ? `${el.tagName.toLowerCase()}${sel}` : null;
+}
+function keepFocus(draw) {
+  const el = document.activeElement;
+  const key = focusKey(el);
+  const area = el?.closest?.('#agDet') ? '#agDetT' : '#agTitulo';
+  draw();
+  if (!key || (el.isConnected && document.activeElement === el)) return;
+  const agora = document.activeElement;
+  if (agora && agora !== document.body && agora !== el) return;   // quem desenhou já pôs o foco em outro lugar
+  $(key)?.focus();
+  if (document.activeElement === document.body || !document.activeElement) $(area)?.focus();
+}
+
+// O que o leitor de tela fala (#agFala: região viva escondida que está sempre na página, então é anunciada de verdade).
+let falaTimer = null;
+function falar(text) {
+  const f = $('#agFala');
+  if (!f) return;
+  clearTimeout(falaTimer);
+  f.textContent = '';
+  // esvazia e escreve um instante depois: a mesma frase duas vezes seguidas também é dita
+  if (text) falaTimer = setTimeout(() => { if (f.isConnected) f.textContent = text; }, 150);
+}
+
 // ctx: { clinic, perms, admin, lost(), goTab(id), focus: { requestId, day } | null }
 let S = null;
 let watching = false;
@@ -77,7 +149,7 @@ export async function renderAgenda(box, ctx) {
   if (!watching) {
     watching = true;
     document.addEventListener('visibilitychange', onVisible);
-    window.matchMedia('(min-width: 1000px)').addEventListener?.('change', () => { if (S?.box.isConnected && $('#agRoot', S.box)) { drawTop(); drawMain(); drawDetail(); } });
+    window.matchMedia('(min-width: 1000px)').addEventListener?.('change', () => { if (S?.box.isConnected && $('#agRoot', S.box)) keepFocus(() => { drawTop(); drawMain(); drawDetail(); }); });
   }
   await loadView();
   if (ctx.focus?.requestId && S === me) {
@@ -159,10 +231,13 @@ async function loadView({ quiet = false } = {}) {
     if (S.ctx.lost()) return;
     S.loadError = err?.result ? A.actionText(err.result) : friendlyError(err, 'Não foi possível carregar a agenda agora.');
   }
-  drawTop();
-  drawRemarcar();
-  drawMain();
-  if (S.det) drawDetail();
+  // a resposta chega com o foco em algum botão da agenda (Próximo, um item, o detalhe): ele continua lá
+  keepFocus(() => {
+    drawTop();
+    drawRemarcar();
+    drawMain();
+    if (S.det) drawDetail();
+  });
   const m = $('#agMain');
   if (m) { m.removeAttribute('aria-busy'); m.classList.remove('ag-busy'); }
   return !S.loadError;   // false: a área principal mostra o erro (quem chamou não diz "atualizada")
@@ -186,7 +261,7 @@ function agendarVirada() {
   const prox = Date.parse(A.localToUtc(A.addDaysTo(today(), 1), '00:00', S.tz));
   viradaTimer = setTimeout(() => {
     if (S !== me || !S.box.isConnected || !$('#agRoot', S.box)) return;
-    if (virouODia()) lerHojeDeNovo(); else { drawTop(); drawMain(); }
+    if (virouODia()) lerHojeDeNovo(); else keepFocus(() => { drawTop(); drawMain(); });
     agendarVirada();
   }, Math.min(Math.max(prox - Date.now() + 2000, 1000), 2 ** 31 - 1));
 }
@@ -205,9 +280,12 @@ async function onVisible() {
 
 // ---------- casca ----------
 function shell() {
+  // #agMsg: o aviso à vista. #agFala: o que o leitor de tela fala (escondida, mas sempre na página: uma região viva que
+  // só aparece junto com o texto não costuma ser anunciada). Erro vai como alerta dentro do #agMsg.
   S.box.innerHTML = `<div class="ag" id="agRoot">
       <div id="agTop"></div>
-      <div id="agMsg" class="ag-msg" aria-live="polite"></div>
+      <div id="agMsg" class="ag-msg"></div>
+      <div id="agFala" class="sr" role="status" aria-live="polite" aria-atomic="true"></div>
       <div id="agForms"></div>
       <div id="agRem"></div>
       <div id="agBuscaBox"></div>
@@ -218,15 +296,54 @@ function shell() {
   S.box.oninput = onInput;
   S.box.onsubmit = onSubmit;
   S.box.onkeydown = onKey;
+  // sair do campo "Ir para a data" vale a data digitada (focusout sobe até a caixa; um ouvinte só por caixa)
+  if (!S.box.dataset.agFocusout) {
+    S.box.dataset.agFocusout = '1';
+    S.box.addEventListener('focusout', (e) => { if (S && e.target.id === 'agData') irParaData(true); });
+  }
   drawTop();
   drawSearch();
 }
 
 // botao: { act, label } — um atalho logo abaixo do aviso (ex.: "Novo agendamento"), pelo mesmo data-act da tela.
-function msg(text, kind = 'ok', botao = null) {
+// Cada resultado é dito UMA vez: o erro pelo alerta (role="alert") do próprio aviso; o resto pela #agFala. flutuante:
+// o mesmo texto também no aviso do alto da tela (para quem rolou a página), só para os olhos.
+function msg(text, kind = 'ok', botao = null, { flutuante = false } = {}) {
   const m = $('#agMsg');
-  if (!m) { toast(text); return; }
-  m.innerHTML = text ? `${note(esc(text), kind)}${botao ? `<div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="${esc(botao.act)}" id="agMsgBtn">${esc(botao.label)}</button></div>` : ''}` : '';
+  if (!m) { if (text) toast(text); return; }   // a agenda saiu da tela: o aviso do alto fala
+  m.innerHTML = text ? `${kind === 'err' ? note(esc(text), 'err') : `<p class="cl-note ${kind}">${esc(text)}</p>`}${botao ? `<div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="${esc(botao.act)}" id="agMsgBtn">${esc(botao.label)}</button></div>` : ''}` : '';
+  if (kind !== 'err') falar(text);
+  if (flutuante && text) toast(text, { falar: false });
+}
+
+// Depois de trocar de visão ou de dia, o foco fica no botão usado (Próximo, Dia…): o novo período é dito em voz.
+function periodoFalado() {
+  if (S.view === 'hoje') return `Mostrando hoje, ${A.fmtDayLong(today())}.`;
+  if (S.view === 'dia') return `Mostrando ${S.day === today() ? 'hoje, ' : ''}${A.fmtDayLong(S.day)}.`;
+  if (S.view === 'semana') { const seg = A.mondayOf(S.day); return `Mostrando a semana de ${A.fmtDayLong(seg)} a ${A.fmtDayLong(A.addDaysTo(seg, 6))}.`; }
+  if (S.view === 'mes') return `Mostrando ${A.fmtMonth(S.day)}.`;
+  return 'Mostrando os bloqueios.';
+}
+const anunciarPeriodo = () => falar(periodoFalado());
+
+// "Ir para a data": o Chrome avisa (change) a cada parte digitada (dia, mês, ano), já com uma data inteira. A data só vale
+// quando a pessoa termina: Enter, sair do campo ou 0,8 s sem mexer (escolher no calendário vale na hora). O campo nunca é
+// desenhado de novo enquanto está em uso (patch na barra de cima).
+let dataTimer = null;
+// No meio da digitação do ano o campo já tem datas "inteiras" como 0002-11-20 ou 0202-11-20: só vale ano de 2000 a 2099.
+const dataBoa = (v) => /^20\d{2}-\d{2}-\d{2}$/.test(v || '');
+function irParaData(now = false) {
+  clearTimeout(dataTimer);
+  const t = $('#agData');
+  if (!S || !t) return;
+  const v = t.value;
+  if (!dataBoa(v)) { if (now && t !== document.activeElement) t.value = S.day; return; }   // saiu com a data pela metade
+  if (v === S.day) return;
+  if (!now) { dataTimer = setTimeout(() => irParaData(true), 800); return; }
+  S.day = v; S.det = null;
+  keepFocus(() => { drawTop(); drawDetail(); drawMain(); });
+  anunciarPeriodo();
+  loadView();
 }
 
 // ---------- barra de cima ----------
@@ -265,7 +382,8 @@ function drawTop() {
   if (isProf() && S.cat && !S.cat.resources.length) notes.push(note('Nenhum aparelho, sala ou profissional está ligado à sua conta nesta clínica. Peça a quem configura a agenda para ligar você ao seu cadastro de profissional.', 'warn'));
   if (isCentral()) notes.push(note('Você vê a agenda desta clínica como equipe do IMED: a grade aparece sem nomes; para abrir os dados de um paciente, escolha o motivo (fica registrado).', 'info'));
   if (S.missing.desk && canDo('marcar')) notes.push(note('Horários livres indisponíveis no momento: o novo agendamento pelo balcão volta quando o banco for atualizado.', 'warn'));
-  top.innerHTML = `${notes.join('')}
+  // patch (não innerHTML): o botão com o foco e o campo de data em uso continuam os mesmos depois de cada carga
+  patch(top, `<div class="ag-notas">${notes.join('')}</div>
     <div class="ag-bar">
       <div class="ag-views" role="group" aria-label="Visão da agenda">
         ${views.map(([k, n]) => `<button type="button" class="ag-vbtn" data-view="${k}" aria-pressed="${S.view === k}">${esc(n)}</button>`).join('')}
@@ -284,13 +402,13 @@ function drawTop() {
     </div>
     ${nav ? `<div class="ag-nav">
         <button type="button" class="btn btn-ghost btn-sm" data-act="ant">${icon('fa-chevron-left')}Anterior${sr(` (${esc(navLabel(-1))})`)}</button>
-        <button type="button" class="btn btn-ghost btn-sm" data-act="hojebtn">Hoje</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-act="hojebtn">Ir para hoje</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="prox">Próximo${sr(` (${esc(navLabel(1))})`)}${icon('fa-chevron-right')}</button>
         <label class="ag-ir"><span>Ir para a data</span><input type="date" id="agData" value="${esc(S.day)}"></label>
-        ${grade ? `<button type="button" class="btn btn-ghost btn-sm ag-modo" id="agModo" data-act="modo" aria-pressed="${S.listMode}">${icon('fa-list')}${S.listMode ? 'Ver em grade' : 'Ver em lista'}</button>` : ''}
+        ${grade ? `<button type="button" class="btn btn-ghost btn-sm ag-modo" id="agModo" data-act="modo">${icon(S.listMode ? 'fa-calendar-days' : 'fa-list')}${S.listMode ? 'Ver em grade' : 'Ver em lista'}</button>` : ''}
       </div>` : ''}
     ${['dia', 'semana', 'hoje'].includes(S.view) ? filtersHtml() : ''}
-    ${['dia', 'semana', 'hoje'].includes(S.view) ? legendHtml() : ''}`;
+    ${['dia', 'semana', 'hoje'].includes(S.view) ? legendHtml() : ''}`);
 }
 
 function filtersHtml() {
@@ -727,7 +845,7 @@ function monthHtml() {
     const lista = S.monthAll ? days : com;
     return `${lista.length ? `<ul class="ag-mlista">${lista.map((d) => `<li><button type="button" class="ag-mdia" data-act="abrir-dia" data-dia="${esc(d.day)}"><b>${esc(A.fmtDayLong(d.day))}</b><span>${esc(A.monthSummary(d) || 'Nada marcado')}</span></button></li>`).join('')}</ul>`
       : '<p class="cl-help">Nenhum agendamento ou bloqueio neste mês.</p>'}
-      <div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="mes-todos" aria-pressed="${S.monthAll}">${S.monthAll ? 'Mostrar só os dias com movimento' : 'Mostrar todos os dias'}</button></div>`;
+      <div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="mes-todos">${S.monthAll ? 'Mostrar só os dias com movimento' : 'Mostrar todos os dias'}</button></div>`;
   }
   const vazio = (A.weekdayOf(ini) + 6) % 7;
   const cab = ['seg.', 'ter.', 'qua.', 'qui.', 'sex.', 'sáb.', 'dom.'];
@@ -849,7 +967,7 @@ function drawForms() {
 function deskFormHtml() {
   const b = S.bk;
   if (b.done) {
-    return `<section class="ac-form ag-form ag-feito" aria-labelledby="bkFeito"><p id="bkFeito" class="cl-note ok" tabindex="-1" role="status">${esc(b.done)}</p>
+    return `<section class="ac-form ag-form ag-feito" aria-labelledby="bkFeito"><p id="bkFeito" class="cl-note ok" tabindex="-1">${esc(b.done)}</p>
       <div class="cl-actions">${b.doneId ? `<button type="button" class="btn btn-ghost btn-sm" data-act="abrir" data-req="${esc(b.doneId)}" id="bkVerAg">Ver o agendamento</button>` : ''}
         <button type="button" class="btn btn-primary btn-sm" data-act="novo">${icon('fa-calendar-plus')}Novo agendamento</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="fechar-form">Fechar</button></div></section>`;
@@ -866,7 +984,7 @@ function deskFormHtml() {
         <div class="cl-grid">
           <div class="cl-field"><label class="cl-lbl" for="bkProc">Exame</label>
             <select id="bkProc" aria-describedby="bkProcErr bkProcInfo"${inv('bkProc')}><option value="">Escolha o exame</option>${opts(procs.map((x) => [x.id, `${x.name} (${A.fmtMinutes(x.duration_min)}, ${A.centsText(x.price_cents)})`]), b.proc)}</select>
-            ${err('bkProc')}<span class="cl-hint" id="bkProcInfo">${p ? esc([p.prep_text ? `Preparo: ${p.prep_text}` : '', p.fasting_hours ? `Jejum de ${p.fasting_hours} h.` : ''].filter(Boolean).join(' ') || 'Sem preparo informado.') : ''}</span></div>
+            ${err('bkProc')}<span class="cl-hint" id="bkProcInfo">${esc(procInfo(p))}</span></div>
           <div class="cl-field"><label class="cl-lbl" for="bkDia">Dia</label>
             <input type="date" id="bkDia" min="${today()}" value="${esc(b.day)}"></div>
         </div>
@@ -875,7 +993,7 @@ function deskFormHtml() {
             <p id="bkSlotsT" class="cl-lbl">Horários livres em ${esc(A.fmtDayLong(b.res.from || b.day))}</p>
             ${grupos.map((g) => `<div class="ag-sgrupo"><span class="ag-sg">${esc(g.label)}</span><div class="ag-sbts">${g.slots.map((s) => `<label class="ag-slot"><input type="radio" name="bkSlot" value="${esc(s.start)}"${b.slot === s.start ? ' checked' : ''}><span>${esc(s.label)}</span></label>`).join('')}</div></div>`).join('')}
             ${err('bkSlot')}</div>` : `<p class="cl-note warn" id="bkSemHorario">${esc(A.noSlotsText(b.res, { canConfig: canConfig(), day: b.day }))}</p>${err('bkSlot')}`) : err('bkSlot')}</div>
-        ${b.alts?.length ? `<div class="ag-alts" role="group" aria-labelledby="bkAltT"><p id="bkAltT">${esc(A.ACTION_TEXT.slot_taken)}</p>
+        ${b.alts?.length ? `<div class="ag-alts" id="bkAlts" role="group" aria-labelledby="bkAltT"><p id="bkAltT">${esc(A.ACTION_TEXT.slot_taken)}</p>
           <div class="ag-sbts">${b.alts.map((t) => `<button type="button" class="btn btn-ghost btn-sm" data-act="bk-alt" data-t="${esc(t)}">Marcar às ${esc(A.timeIn(S.tz, t))}</button>`).join('')}</div></div>` : ''}
       </fieldset>
       <fieldset class="ac-fs"><legend>2. Paciente</legend>
@@ -1175,8 +1293,7 @@ async function doAttend(item, act, where, reason = null) {
     const texto = `${nome}: ${A.clinicStatusLabel(r.request_status === 'confirmed' ? 'confirmed' : act.status)}.`;
     if (S.det?.data) await loadDetail();
     await loadView({ quiet: true });
-    msg(texto, 'ok');
-    toast(texto);
+    msg(texto, 'ok', null, { flutuante: true });
     const prox = $(`[data-act="atender"][data-item="${CSS.escape(item.id)}"][data-w="${where}"]:not([disabled])`) || $(`[data-act="abrir"][data-item="${CSS.escape(item.id)}"]`) || $('#agDetT') || $('#agTitulo');
     prox?.focus();
     return;
@@ -1239,16 +1356,14 @@ async function doCancel() {
       await loadDetail();
       if (S.det === d) d.msg = [texto, resolvido ? 'ok' : 'warn'];
       drawDetail();
-      msg(texto, resolvido ? 'ok' : 'warn');
-      toast(texto);
+      msg(texto, resolvido ? 'ok' : 'warn', null, { flutuante: true });
       $('#agDetT')?.focus();
       return;
     }
     const texto = `Agendamento de ${item?.patient || 'paciente'} cancelado.${fim}`;
     S.det = null;
     drawDetail(); drawMain();
-    msg(texto, resolvido ? 'ok' : 'warn');
-    toast(texto);
+    msg(texto, resolvido ? 'ok' : 'warn', null, { flutuante: true });
     $('#agTitulo')?.focus();
     return;
   }
@@ -1280,8 +1395,7 @@ async function doReschedule() {
     const texto = `${r.replay ? A.ACTION_TEXT.replay : 'Remarcado'}: ${it.procedure || 'exame'} para ${A.fmtWhen(S.tz, m.slot)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
     d.msg = [texto, resolvido ? 'ok' : 'warn'];
     drawDetail();
-    msg(texto, resolvido ? 'ok' : 'warn');
-    toast(texto);
+    msg(texto, resolvido ? 'ok' : 'warn', null, { flutuante: true });
     $('#agDetT')?.focus();
     return;
   }
@@ -1339,8 +1453,10 @@ async function doDeskBook() {
     b.doneId = r.id || null;
     drawForms();
     await loadView({ quiet: true });
-    toast(b.done);
-    $('#bkFeito')?.focus();
+    // o foco vai para a frase "Agendado: …" (o leitor de tela a lê ao chegar nela); o aviso do alto é só para os olhos
+    const feito = $('#bkFeito');
+    toast(b.done, { falar: !feito });
+    feito?.focus();
     return;
   }
   if (r.status === 'not_found') return deskGone();
@@ -1367,6 +1483,28 @@ function readDesk() {
   if (b.forOther && $('#bkOutroNome')) { b.otherName = $('#bkOutroNome').value; b.relationship = $('#bkParentesco').value; b.otherMinor = $('#bkMenor').checked; b.authorize = $('#bkAutoriza').checked; }
   b.channel = $('input[name="bkCanal"]:checked')?.value || '';
   b.consent = $('#bkConsent').checked;
+}
+
+const procInfo = (p) => (p ? [p.prep_text ? `Preparo: ${p.prep_text}` : '', p.fasting_hours ? `Jejum de ${p.fasting_hours} h.` : ''].filter(Boolean).join(' ') || 'Sem preparo informado.' : '');
+
+// Exame ou dia do novo agendamento mudou: os horários mostrados (e as alternativas) saem e o texto do preparo muda — no
+// lugar, sem desenhar o formulário de novo (o campo de data em uso não pode ser recriado no meio da digitação).
+function deskChanged(id) {
+  const b = S.bk;
+  if (!b || !$('#bkForm')) return;
+  readDesk();
+  b.res = null; b.slot = ''; b.alts = null; b.loading = false;
+  if (b.errs) { delete b.errs.bkSlot; if (id === 'bkProc') delete b.errs.bkProc; }
+  const slots = $('#bkSlots');
+  if (slots) slots.innerHTML = '<span class="cl-err" id="bkSlotErr"></span>';
+  $('#bkAlts')?.remove();
+  if (id === 'bkProc') {
+    const info = $('#bkProcInfo');
+    if (info) info.textContent = procInfo((S.cat?.procedures || []).find((x) => x.id === b.proc));
+    const er = $('#bkProcErr');
+    if (er) er.textContent = '';
+    $('#bkProc')?.removeAttribute('aria-invalid');
+  }
 }
 
 async function deskSlots() {
@@ -1429,7 +1567,7 @@ async function doBusy() {
     drawForms();
     if (S.view === 'dia' || S.view === 'hoje') S.day = o.day;
     await loadView({ quiet: true });
-    msg(texto, 'ok'); toast(texto);
+    msg(texto, 'ok', null, { flutuante: true });
     $('#agTitulo')?.focus();
     return;
   }
@@ -1608,8 +1746,7 @@ async function blockDone(moved, busy = 0, replay = false) {
   drawForms();
   drawTop();
   await loadView({ quiet: true });
-  msg(texto, 'ok');
-  toast(texto);
+  msg(texto, 'ok', null, { flutuante: true });
   ((remarcar && $('#agRemT')) || $('#agBlT') || $('#agTitulo'))?.focus();
 }
 
@@ -1626,6 +1763,7 @@ function onClick(e) {
     if (S.form === 'bloquear' && S.view === 'bloqueios') S.form = null;
     drawTop(); drawForms(); drawRemarcar(); drawDetail(); drawMain(); drawSearch();
     $(`[data-view="${S.view}"]`)?.focus();
+    anunciarPeriodo();
     loadView();
     return;
   }
@@ -1640,8 +1778,8 @@ function onClick(e) {
       ($('#agAtualizar') || $('#agTitulo'))?.focus();
     },
     ant: () => nav(-1), prox: () => nav(1),
-    hojebtn: () => { S.day = today(); drawTop(); drawMain(); loadView(); $('[data-act="hojebtn"]')?.focus(); },
-    modo: () => { S.listMode = !S.listMode; drawTop(); drawMain(); $('#agModo')?.focus(); },
+    hojebtn: () => { S.day = today(); S.det = null; drawTop(); drawDetail(); drawMain(); $('[data-act="hojebtn"]')?.focus(); anunciarPeriodo(); loadView(); },
+    modo: () => { S.listMode = !S.listMode; drawTop(); drawMain(); $('#agModo')?.focus(); falar(S.listMode ? 'Mostrando em lista.' : 'Mostrando em grade.'); },
     novo: () => openForm('novo'), ocupar: () => openForm('ocupar'), bloquear: () => openForm('bloquear'),
     'fechar-form': () => { const k = S.form; S.form = null; drawForms(); ($(k === 'novo' ? '#agNovo' : k === 'ocupar' ? '#agOcupar' : '#agBloquear') || $('#agTitulo'))?.focus(); },
     abrir: () => {
@@ -1653,7 +1791,7 @@ function onClick(e) {
     ocupado: () => { const b = (S.data?.busy || []).find((x) => x.id === t.dataset.busy); if (b) openDetail(null, { busy: b, origin: `[data-act="ocupado"][data-busy="${b.id}"]` }); },
     'fechar-det': () => closeDetail(),
     'abrir-dia': () => { S.day = t.dataset.dia; S.view = 'dia'; drawTop(); drawRemarcar(); drawMain(); loadView(); $('#agTitulo')?.focus(); },
-    'mes-todos': () => { S.monthAll = !S.monthAll; drawMain(); $('[data-act="mes-todos"]')?.focus(); },
+    'mes-todos': () => { S.monthAll = !S.monthAll; drawMain(); $('[data-act="mes-todos"]')?.focus(); falar(S.monthAll ? 'Mostrando todos os dias do mês.' : 'Mostrando só os dias com movimento.'); },
     atender: () => {
       if (S.busy.has(id) || t.getAttribute('aria-disabled') === 'true') return;   // chamada do item em andamento: ignora
       const where = t.dataset.w;
@@ -1774,7 +1912,7 @@ function onClick(e) {
       const r = await call('agenda_desk_busy_remove', { p_id: b.id });
       if (r.status === 'ok' || r.status === 'not_found') {
         S.det = null; await loadView({ quiet: true }); drawDetail(); drawMain();
-        const texto = 'Horário liberado.'; msg(texto, 'ok'); toast(texto); $('#agTitulo')?.focus();
+        msg('Horário liberado.', 'ok', null, { flutuante: true }); $('#agTitulo')?.focus();
         return;
       }
       S.det.askFree = false; S.det.msg = [statusMsg(r), 'err']; drawDetail(); $('#agLiberar')?.focus();
@@ -1793,7 +1931,7 @@ function onClick(e) {
       if (r.status === 'ok' || r.status === 'not_found') {
         await loadView({ quiet: true });
         const texto = `Bloqueio de ${A.blockWhenTz(blk, S.tz)} removido.`;
-        msg(texto, 'ok'); toast('Bloqueio removido.');
+        msg(texto, 'ok', null, { flutuante: true });
         ($(`[data-act="bl-rm"][data-id="${CSS.escape(prox || '')}"]`) || $('#blFrom') || $('#agBlT'))?.focus();
         return;
       }
@@ -1875,6 +2013,7 @@ function nav(dir) {
   S.det = null;
   drawTop(); drawDetail(); drawMain();
   $(`[data-act="${dir < 0 ? 'ant' : 'prox'}"]`)?.focus();
+  anunciarPeriodo();
   loadView();
 }
 
@@ -1887,10 +2026,13 @@ function onChange(e) {
     if (sum) sum.lastChild.textContent = S.f.proc || S.f.res || S.f.canal || S.f.cancel ? 'Filtros (ligados)' : 'Filtros';
     return;
   }
-  if (t.id === 'agData' && /^\d{4}-\d{2}-\d{2}$/.test(t.value)) { S.day = t.value; S.det = null; drawTop(); drawDetail(); drawMain(); $('#agData')?.focus(); loadView(); return; }
+  // digitando a data, cada parte (dia, mês, ano) dispara "change": espera a pessoa terminar (Enter, sair, 0,8 s)
+  if (t.id === 'agData') { irParaData(Date.now() - (S.dataTecla || 0) > 1500); return; }
   if (t.name === 'bkSlot') { S.bk.slot = t.value; S.bk.alts = null; if (S.bk.errs) delete S.bk.errs.bkSlot; return; }
   if (t.id === 'bkOutra' || t.id === 'bkMenor') { readDesk(); drawForms(); $(`#${t.id}`)?.focus(); return; }
-  if (t.id === 'bkProc' || t.id === 'bkDia') { readDesk(); S.bk.res = null; S.bk.slot = ''; S.bk.alts = null; if (S.bk.errs) delete S.bk.errs.bkProc; drawForms(); $(`#${t.id}`)?.focus(); return; }
+  // exame ou dia mudou: os horários mostrados não valem mais. O formulário NÃO é desenhado de novo (o campo de data
+  // seria recriado no meio da digitação): só a lista de horários sai e o texto do preparo muda, no lugar.
+  if (t.id === 'bkProc' || t.id === 'bkDia') { deskChanged(t.id); return; }
   if (t.name === 'rmSlot') { S.det.rm.slot = t.value; S.det.rm.key = uuid(); S.det.rm.alts = null; drawDetail(); $(`input[name="rmSlot"][value="${CSS.escape(t.value)}"]`)?.focus(); return; }
   if (t.name === 'blModo') {
     readBlock(); S.bl.modo = t.value;
@@ -1925,6 +2067,10 @@ function onSubmit(e) {
 }
 
 function onKey(e) {
+  if (e.target.id === 'agData') {
+    S.dataTecla = Date.now();
+    if (e.key === 'Enter') { e.preventDefault(); irParaData(true); return; }
+  }
   if (e.key === 'Escape' && S.det) {
     if (S.ask) { const a = S.ask; S.ask = null; if (a.where === 'd') drawDetail(); else drawMain(); $(`[data-act="atender"][data-item="${CSS.escape(a.itemId)}"][data-k="${a.key}"]`)?.focus(); return; }
     e.preventDefault();

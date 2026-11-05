@@ -491,6 +491,127 @@ await scenario('teclado: troca de visão com aria-pressed, abre o detalhe (foco 
   await context.close();
 });
 
+// Espera a agenda terminar de carregar (a grade, a lista ou o mês já desenhados com os dados novos).
+const carregada = (page) => page.waitForFunction(() => !document.querySelector('#agMain[aria-busy="true"]'));
+const focoEm = (page, sel) => page.evaluate((s) => document.activeElement === document.querySelector(s), sel);
+
+await scenario('teclado: o foco fica no botão usado depois de carregar (visão, Próximo duas vezes, Ir para hoje, voltar à aba) e o novo período é dito', async () => {
+  const { page, db, errors, context } = await newPage(browser, { db: { requests: dia1() } });
+  await abrirAgenda(page);
+  await page.focus('[data-view="dia"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#agMain .ag-grade');
+  await carregada(page);
+  assert.ok(await focoEm(page, '[data-view="dia"]'), 'depois de carregar a visão Dia, o foco continua em "Dia"');
+  await page.waitForFunction(() => /Mostrando hoje, quarta-feira, 4 de novembro/.test(document.querySelector('#agFala').textContent));
+  await page.keyboard.press('Tab');
+  assert.ok(await focoEm(page, '[data-view="semana"]'), 'o Tab seguinte vai para "Semana" (e não volta ao começo da página)');
+  await page.focus('[data-act="prox"]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /quinta-feira, 5 de novembro/.test(document.querySelector('#agTitulo').textContent));
+  await carregada(page);
+  assert.ok(await focoEm(page, '[data-act="prox"]'), 'depois de carregar o dia seguinte, o foco continua em "Próximo"');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /sexta-feira, 6 de novembro/.test(document.querySelector('#agTitulo').textContent));
+  await carregada(page);
+  assert.ok(await focoEm(page, '[data-act="prox"]'), 'o 2º Enter também avança e o foco continua no botão');
+  await page.waitForFunction(() => /Mostrando sexta-feira, 6 de novembro/.test(document.querySelector('#agFala').textContent));
+  assert.equal(await page.$$eval('#agTop button', (b) => b.filter((x) => x.textContent.trim() === 'Hoje').length), 1, 'só um botão "Hoje" na barra (o da visão)');
+  assert.equal((await page.textContent('[data-act="hojebtn"]')).trim(), 'Ir para hoje', 'o da navegação diz "Ir para hoje"');
+  await page.focus('[data-act="hojebtn"]');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /Hoje, quarta-feira, 4 de novembro/.test(document.querySelector('#agTitulo').textContent));
+  await carregada(page);
+  assert.ok(await focoEm(page, '[data-act="hojebtn"]'));
+  // a agenda mudou com a aba fechada: ao voltar, a releitura não tira o foco do item
+  const item = `#agMain [data-act="abrir"][data-item="${db.requests[0].items[0].id}"]`;
+  await page.focus(item);
+  db.version += 1;
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await page.waitForFunction(() => /mudou enquanto/.test(document.querySelector('#agMsg')?.textContent || ''));
+  assert.ok(await focoEm(page, item), 'o foco continua no mesmo item depois de reler');
+  await page.waitForFunction(() => /mudou enquanto esta página estava fechada/.test(document.querySelector('#agFala').textContent), null, { timeout: 2000 });
+  // mês: Enter numa célula abre o dia e o foco fica no título
+  await page.click('[data-view="mes"]');
+  await page.waitForSelector('#agMain .ag-mes');
+  await carregada(page);
+  await page.focus(`[data-act="abrir-dia"][data-dia="${AMANHA}"]`);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /quinta-feira, 5 de novembro/.test(document.querySelector('#agTitulo').textContent));
+  await carregada(page);
+  assert.equal(await focusId(page), 'agTitulo');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+// O Chrome sem tela mostra o campo de data como mm/dd/aaaa mesmo em pt-BR: descobre a ordem num campo de teste.
+async function ordemDaData(page) {
+  await page.evaluate(() => { const i = document.createElement('input'); i.type = 'date'; i.id = 'ordemTeste'; document.body.append(i); });
+  await page.focus('#ordemTeste');
+  await page.keyboard.type('12112026');
+  const v = await page.inputValue('#ordemTeste');
+  await page.evaluate(() => document.getElementById('ordemTeste').remove());
+  assert.ok(['2026-12-11', '2026-11-12'].includes(v), `ordem do campo de data desconhecida (${v})`);
+  return v === '2026-12-11' ? 'mda' : 'dma';
+}
+const teclasDaData = (ordem, iso) => { const [a, m, d] = iso.split('-'); return ordem === 'mda' ? `${m}${d}${a}` : `${d}${m}${a}`; };
+// Entra de novo no campo pela 1ª parte (o Chrome lembra a última parte usada: depois de digitar o ano, o cursor fica nele).
+const entrarNoCampo = (page, sel) => page.click(sel, { position: { x: 18, y: 14 } });
+
+await scenario('data digitada: "Ir para a data" só vale no fim (Enter, sair do campo ou pausa), sem pular nem perder o foco; o dia do novo agendamento não é refeito a cada tecla', async () => {
+  const { page, log, errors, context } = await newPage(browser, { db: { requests: dia1() } });
+  await abrirAgenda(page);
+  const ordem = await ordemDaData(page);
+  await page.click('[data-view="dia"]');
+  await page.waitForSelector('#agMain .ag-grade');
+  await carregada(page);
+  const antes = calls(log, 'agenda_view').length;
+  await page.focus('#agData');
+  await page.keyboard.type(teclasDaData(ordem, '2026-11-20'), { delay: 150 });
+  assert.match(await page.textContent('#agTitulo'), /Hoje, quarta-feira, 4 de novembro/, 'enquanto digita, a agenda não pula para outra data');
+  assert.equal(calls(log, 'agenda_view').length, antes, 'nenhuma leitura no meio da digitação');
+  assert.equal(await page.inputValue('#agData'), '2026-11-20', 'o campo não é refeito no meio da digitação');
+  assert.equal(await focusId(page), 'agData');
+  // pausa: vale a data digitada, com o foco no campo
+  await page.waitForFunction(() => /sexta-feira, 20 de novembro/.test(document.querySelector('#agTitulo').textContent));
+  await carregada(page);
+  assert.equal(await focusId(page), 'agData');
+  assert.equal(calls(log, 'agenda_view').at(-1).body.p_from, '2026-11-20');
+  assert.deepEqual(calls(log, 'agenda_view').slice(antes).map((c) => c.body.p_from), ['2026-11-20'], 'uma leitura só, da data inteira');
+  await page.waitForFunction(() => /Mostrando sexta-feira, 20 de novembro/.test(document.querySelector('#agFala').textContent));
+  // Enter vale na hora (só o dia e o mês: o ano continua 2026)
+  await entrarNoCampo(page, '#agData');
+  await page.keyboard.type(teclasDaData(ordem, '2026-11-25').slice(0, 4), { delay: 50 });
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /quarta-feira, 25 de novembro/.test(document.querySelector('#agTitulo').textContent), null, { timeout: 600 });
+  await carregada(page);
+  assert.equal(await focusId(page), 'agData');
+  // sair do campo (Tab) também vale
+  await entrarNoCampo(page, '#agData');
+  await page.keyboard.type(teclasDaData(ordem, '2026-11-27').slice(0, 4), { delay: 50 });
+  // o Chrome tem paradas de Tab dentro do campo (as partes e o botão do calendário): Tab até sair dele
+  for (let i = 0; i < 5 && await focusId(page) === 'agData'; i += 1) await page.keyboard.press('Tab');
+  await page.waitForFunction(() => /sexta-feira, 27 de novembro/.test(document.querySelector('#agTitulo').textContent), null, { timeout: 600 });
+  assert.notEqual(await focusId(page), 'agData');
+  // novo agendamento: digitar o dia não refaz o formulário; os horários de antes saem
+  await page.click('#agNovo');
+  await page.waitForSelector('#bkForm');
+  await page.selectOption('#bkProc', P_USG);
+  await page.click('#bkVer');
+  await page.waitForSelector('input[name="bkSlot"]');
+  await page.focus('#bkDia');
+  await page.keyboard.type(teclasDaData(ordem, '2026-11-20'), { delay: 150 });
+  assert.equal(await page.inputValue('#bkDia'), '2026-11-20', 'o dia digitado fica como foi digitado');
+  assert.equal(await focusId(page), 'bkDia');
+  assert.equal(await page.locator('input[name="bkSlot"]').count(), 0, 'os horários do outro dia saem');
+  assert.match(await page.textContent('#bkProcInfo'), /Jejum de 8 horas/, 'o resto do formulário continua igual');
+  await page.click('#bkVer');
+  await page.waitForSelector('input[name="bkSlot"]');
+  assert.equal(calls(log, 'agenda_desk_slots').at(-1).body.p_from, '2026-11-20');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('Chegou: desligado antes da janela (06:59), às 10:00 marca, vira "Paciente presente" e o foco vai para "Em atendimento"', async () => {
   {
     const { page, errors, context } = await newPage(browser, { now: '2026-11-04T09:59:00Z', db: { requests: [booking({ start: sp(HOJE, '09:00') })] } });
@@ -510,6 +631,12 @@ await scenario('Chegou: desligado antes da janela (06:59), às 10:00 marca, vira
   assert.deepEqual(c, { p_id: r.id, p_status: 'checked_in', p_version: 1, p_item: r.items[0].id });
   assert.equal(await focusText(page), 'Em atendimento');
   assert.match(await page.textContent('#agMsg'), /Paciente presente/);
+  // dito UMA vez: pela região viva que está sempre na página; o aviso à vista e o do alto não falam de novo
+  await page.waitForFunction(() => /Maria L\.: Paciente presente/.test(document.querySelector('#agFala').textContent));
+  assert.equal(await page.locator('#agMsg [role], #agMsg[aria-live]').count(), 0, 'o aviso à vista não é outra região viva');
+  assert.match(await page.textContent('#toast'), /Paciente presente/);
+  assert.equal(await page.getAttribute('#toast', 'aria-hidden'), 'true', 'o aviso do alto é só para os olhos');
+  assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('#agFala')).display), 'block', 'a região viva está na página antes de receber o texto');
   assert.deepEqual(errors, []);
   await context.close();
 });
@@ -1352,6 +1479,15 @@ await scenario('celular (390 px): Hoje, Dia e Semana em lista; botões de 44 px;
     await page.waitForSelector(v === 'mes' ? '#agMain .ag-mlista, #agMain .cl-help' : v === 'bloqueios' ? '#blForm' : '#agMain .ag-lista, #agMain .ag-wdia');
     assert.equal(await page.locator('#agMain .ag-grade').count(), 0, `${v}: sem grade no celular`);
     await noOverflow(page);
+    if (v === 'mes') {
+      // botão de ação (o texto diz o que ele faz), sem aria-pressed: "pressionado" + "Mostrar só…" confundiria quem ouve
+      const todos = page.locator('[data-act="mes-todos"]');
+      assert.equal(await todos.getAttribute('aria-pressed'), null);
+      assert.equal((await todos.textContent()).trim(), 'Mostrar todos os dias');
+      await todos.click();
+      assert.equal((await todos.textContent()).trim(), 'Mostrar só os dias com movimento');
+      assert.equal(await todos.getAttribute('aria-pressed'), null);
+    }
   }
   await page.click('[data-view="hoje"]');
   await page.waitForSelector('#agMain .ag-lista');
@@ -1428,6 +1564,15 @@ await scenario('mês e semana (computador): números do banco, clicar abre o dia
   await page.waitForSelector('#agMain .ag-semana');
   assert.equal(calls(log, 'agenda_view').at(-1).body.p_from, '2026-11-02', 'a semana começa na segunda');
   await coresComTexto(page);
+  // "Ver em lista" / "Ver em grade": o texto diz o que o botão faz, sem aria-pressed (não "Ver em grade, pressionado")
+  assert.equal(await page.getAttribute('#agModo', 'aria-pressed'), null);
+  assert.equal((await page.textContent('#agModo')).trim(), 'Ver em lista');
+  await page.click('#agModo');
+  await page.waitForSelector('#agMain .ag-wdia');
+  assert.equal((await page.textContent('#agModo')).trim(), 'Ver em grade');
+  assert.equal(await focusId(page), 'agModo');
+  await page.click('#agModo');
+  await page.waitForSelector('#agMain .ag-semana');
   await page.fill('#agBuscaQ', 'Ma');
   await page.click('#agBuscaOk');
   assert.match(await page.textContent('#agBuscaErr'), /pelo menos 3 letras/);

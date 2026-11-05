@@ -105,9 +105,12 @@ export function friendlyError(err, fallback = 'Não foi possível concluir agora
 }
 
 let toastTimer;
-export function toast(text) {
+// falar: false = só para os olhos. Quem chama já disse o mesmo texto numa região viva própria (a agenda); sem isso, o
+// leitor de tela ouviria a mesma frase duas vezes.
+export function toast(text, { falar = true } = {}) {
   const t = $('#toast');
   if (!t) return;
+  if (falar) t.removeAttribute('aria-hidden'); else t.setAttribute('aria-hidden', 'true');
   t.textContent = text;
   t.classList.add('show');
   clearTimeout(toastTimer);
