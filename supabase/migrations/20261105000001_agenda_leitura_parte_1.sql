@@ -649,7 +649,7 @@ begin
                           when 'api' then 'integracao' when 'webhook_pagamento' then 'gateway' when 'cron' then 'sistema'
                           else 'sql' end,
             auth.uid(), private.agenda_actor_role(new.clinic_id, v_origin), v_origin, 'conflito_resolvido', 'conflict', k.id::text,
-            jsonb_build_object('kind', k.kind), jsonb_build_object('status', 'resolvido', 'automatico', true), v_code);
+            jsonb_build_object('kind', k.kind), jsonb_build_object('automatico', true, 'status', 'resolvido'), v_code);
   end loop;
   return null;
 end $$;
