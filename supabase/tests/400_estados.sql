@@ -94,8 +94,10 @@ select 'nacional', make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1
 where not exists (select 1 from agenda.holidays where scope = 'nacional' and day = make_date(extract(year from pg_temp.dia())::integer + 1, 1, 1));
 
 select pg_temp.dona();
+-- no_show_after_min 0: "faltou" vale assim que o horário começa (o teste do "faltou → chegou no mesmo dia" precisa de um
+-- agendamento já começado e ainda do mesmo dia em São Paulo, o que logo depois da meia-noite não cabe com 15 min de tolerância)
 select public.agenda_unit_save('c3400000-0000-4000-8000-000000000001',
-         jsonb_build_object('holidays_checked_until', pg_temp.dia() + 200, 'min_notice_min', 0, 'step_min', 30));
+         jsonb_build_object('holidays_checked_until', pg_temp.dia() + 200, 'min_notice_min', 0, 'step_min', 30, 'no_show_after_min', 0));
 select set_config('teste.usg1', public.agenda_resource_save('c3400000-0000-4000-8000-000000000001', '{"kind": "equipamento", "name": "USG-1"}') ->> 'id', true);
 select set_config('teste.usg2', public.agenda_resource_save('c3400000-0000-4000-8000-000000000001', '{"kind": "equipamento", "name": "USG-2"}') ->> 'id', true);
 select set_config('teste.rm1', public.agenda_resource_save('c3400000-0000-4000-8000-000000000001', '{"kind": "equipamento", "name": "RM-1"}') ->> 'id', true);
@@ -168,10 +170,13 @@ select is(public.submit_review(pg_temp.pid(1), pg_temp.codigo(1), 5, 'Atendiment
 /* ===================== Fluxo simples, falta e volta ===================== */
 select pg_temp.entrar('postgres');
 select pg_temp.mover(2, now() - interval '5 minutes' - pg_temp.t('10:00'));     -- começou há 5 min
-select pg_temp.mover(3, now() - interval '40 minutes' - pg_temp.t('11:00'));    -- começou há 40 min
+-- começou há 40 min, mas nunca antes da meia-noite de hoje em São Paulo: das 00:00 às 00:40 (horário de Brasília) a conta
+-- "agora − 40 min" caía no dia anterior e "faltou → chegou no mesmo dia" dava too_late (o CI das 00:04 reprovou os testes 27 a 29)
+select pg_temp.mover(3, greatest(now() - interval '40 minutes', (now() at time zone 'America/Sao_Paulo')::date::timestamp at time zone 'America/Sao_Paulo')
+                        - pg_temp.t('11:00'));
 select pg_temp.recepcao();
 select is(public.set_request_status(pg_temp.pid(2), 'completed'), 'ok', 'concluir sem "chegou", depois do início (fachada de hoje)');
-select is(pg_temp.st(3, 'no_show'), 'ok', 'não compareceu (passou a tolerância de 15 min)');
+select is(pg_temp.st(3, 'no_show'), 'ok', 'não compareceu (passou a tolerância)');
 select pg_temp.entrar('postgres');
 select is(pg_temp.soltas(3), 'faltou', 'faltou solta a ocupação (motivo faltou)');
 select pg_temp.recepcao();
