@@ -1,0 +1,57 @@
+# SONDA TEMPORÁRIA do diagnóstico do mapa 3D (fotos no celular). Apagar do ramo site/mapa-predios antes do fim.
+# Resultado num ramo próprio capturas/sonda-predios-<número>, como o capturas.yml.
+name: Sonda fotos do mapa (temporária)
+on:
+  push:
+    branches: [site/mapa-predios]
+    paths: ['.github/sonda-fotos/**', '.github/workflows/sonda-fotos.yml']
+permissions:
+  contents: write
+concurrency:
+  group: sonda-fotos
+  cancel-in-progress: true
+jobs:
+  sonda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Playwright
+        run: |
+          npm install --prefix . --no-save --no-package-lock --no-audit --no-fund "playwright@1.63.0"
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends fonts-inter fonts-noto-color-emoji || true
+      - name: Sonda no navegador
+        run: |
+          mkdir -p "$RUNNER_TEMP/sonda"
+          python3 -m http.server 8080 --bind 127.0.0.1 > /dev/null 2>&1 &
+          sleep 2
+          nproc | tee "$RUNNER_TEMP/sonda/nproc.txt"
+          node .github/sonda-fotos/sonda.mjs "$RUNNER_TEMP/sonda" 2>&1 | tee "$RUNNER_TEMP/sonda/registro.txt"
+      - name: Overture (comparação de cobertura de prédios)
+        continue-on-error: true
+        timeout-minutes: 12
+        run: |
+          pip install --quiet duckdb==1.4.1
+          REL=$(aws s3 ls --no-sign-request s3://overturemaps-us-west-2/release/ | awk '{print $2}' | sed 's#/##' | sort | tail -1)
+          echo "release $REL" | tee "$RUNNER_TEMP/sonda/overture.txt"
+          python3 .github/sonda-fotos/overture.py "$REL" 2>&1 | tee -a "$RUNNER_TEMP/sonda/overture.txt"
+      - name: Publicar num ramo próprio
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf "$RUNNER_TEMP/sonda/pbf"
+          cd "$RUNNER_TEMP/sonda"
+          ramo="capturas/sonda-predios-${GITHUB_RUN_NUMBER}"
+          git init -q -b "$ramo"
+          git add -A .
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -qm "Sonda do mapa 3D (execução ${GITHUB_RUN_NUMBER})"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$ramo"
+          echo "ramo $ramo" >> "$GITHUB_STEP_SUMMARY"
