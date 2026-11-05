@@ -1,0 +1,280 @@
+{
+ "troca": {
+  "ladrilhos": [
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2426,
+    "t": 1793845123236
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9296.pbf",
+    "status": 200,
+    "bytes": 330790,
+    "t": 1793845123355
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6068/9295.pbf",
+    "status": 200,
+    "bytes": 391873,
+    "t": 1793845123361
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9296.pbf",
+    "status": 200,
+    "bytes": 343140,
+    "t": 1793845126414
+   },
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2390,
+    "t": 1793845137642
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6049/9263.pbf",
+    "status": 200,
+    "bytes": 84250,
+    "t": 1793845137740
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6050/9263.pbf",
+    "status": 200,
+    "bytes": 88657,
+    "t": 1793845137743
+   },
+   {
+    "url": "/planet",
+    "status": 200,
+    "bytes": 2389,
+    "t": 1793845159279
+   },
+   {
+    "url": "/planet/20261101_080013_pt/14/6069/9295.pbf",
+    "status": 200,
+    "bytes": 395210,
+    "t": 1793845159497
+   }
+  ],
+  "falhas": [],
+  "console": [
+   "Service Worker registration blocked by Playwright",
+   "[.WebGL-0x2e1c001a9c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2e1c001a9c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2e1c001a9c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+   "[.WebGL-0x2e1c001a9c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+  ],
+  "hero": "3d",
+  "msAte3d": 2216,
+  "antes": {
+   "info": {
+    "pronto": true,
+    "predios": 270,
+    "ladrilhos": 3,
+    "rumo": -20.40000000000009,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -46.65199999999976,
+     -23.565000000000694
+    ],
+    "tema": "claro",
+    "sombras": 2500,
+    "msSombras": 64,
+    "msSombrasTotal": 1455
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 11,
+   "pinos": 14,
+   "rotulos": [
+    "Healthcare Diagnósticos, Diagnóstico por imagem · ~60 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 744,
+   "heroBase": 1124,
+   "scrollY": 0,
+   "addr": "São Paulo - SP",
+   "cidade": "São Paulo - SP"
+  },
+  "msAteCidade": 395,
+  "logoDepois": {
+   "info": {
+    "pronto": true,
+    "predios": 0,
+    "ladrilhos": 3,
+    "rumo": -16.69360000000006,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.061,
+     -22.906
+    ],
+    "tema": "claro",
+    "sombras": 0,
+    "msSombras": 57,
+    "msSombrasTotal": 1091
+   },
+   "hero": "3d",
+   "origem": "cidade",
+   "pinosNaTela": 0,
+   "pinos": 0,
+   "rotulos": [],
+   "me": "Centro de Campinas",
+   "heroTopo": -284,
+   "heroBase": 96,
+   "scrollY": 1028,
+   "addr": "Campinas - SP",
+   "cidade": "Campinas - SP"
+  },
+  "depois8s": {
+   "info": {
+    "pronto": true,
+    "predios": 16,
+    "ladrilhos": 5,
+    "rumo": -3.840640000000007,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.061,
+     -22.906
+    ],
+    "tema": "claro",
+    "sombras": 324,
+    "msSombras": 2,
+    "msSombrasTotal": 4
+   },
+   "hero": "3d",
+   "origem": "cidade",
+   "pinosNaTela": 8,
+   "pinos": 14,
+   "rotulos": [
+    "Clínica Brasimed LTDA, Clínica · 80 m"
+   ],
+   "me": "Centro de Campinas",
+   "heroTopo": -284,
+   "heroBase": 96,
+   "scrollY": 1028,
+   "addr": "Campinas - SP",
+   "cidade": "Campinas - SP"
+  },
+  "depoisNoMapa": {
+   "info": {
+    "pronto": true,
+    "predios": 16,
+    "ladrilhos": 5,
+    "rumo": 1.3057599999999636,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -47.061,
+     -22.906
+    ],
+    "tema": "claro",
+    "sombras": 324,
+    "msSombras": 2,
+    "msSombrasTotal": 4
+   },
+   "hero": "3d",
+   "origem": "cidade",
+   "pinosNaTela": 8,
+   "pinos": 14,
+   "rotulos": [
+    "Clínica Brasimed LTDA, Clínica · 80 m"
+   ],
+   "me": "Centro de Campinas",
+   "heroTopo": 260,
+   "heroBase": 640,
+   "scrollY": 484,
+   "addr": "Campinas - SP",
+   "cidade": "Campinas - SP"
+  },
+  "leaflet": {
+   "zoom": "rm-map leaflet-container leaflet-touch leaflet-retina leaflet-fade-anim leaflet-grab leaflet-touch-drag leaflet-touch-zoom",
+   "tiles": 15
+  },
+  "depoisGeo": {
+   "info": {
+    "pronto": true,
+    "predios": 311,
+    "ladrilhos": 9,
+    "rumo": 24.558239999999955,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -46.652,
+     -23.565
+    ],
+    "tema": "claro",
+    "sombras": 2500,
+    "msSombras": 70,
+    "msSombrasTotal": 1574
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 12,
+   "pinos": 14,
+   "rotulos": [
+    "Clínica Venas Vascular, Clínica · 60 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": -284,
+   "heroBase": 96,
+   "scrollY": 1028,
+   "addr": "São Paulo - SP",
+   "cidade": "São Paulo - SP"
+  },
+  "depoisGeoNoMapa": {
+   "info": {
+    "pronto": true,
+    "predios": 312,
+    "ladrilhos": 9,
+    "rumo": 27.35823999999991,
+    "zoom": 15.45,
+    "inclinacao": 57,
+    "centro": [
+     -46.652,
+     -23.565
+    ],
+    "tema": "claro",
+    "sombras": 2500,
+    "msSombras": 70,
+    "msSombrasTotal": 1574
+   },
+   "hero": "3d",
+   "origem": "perto",
+   "pinosNaTela": 12,
+   "pinos": 14,
+   "rotulos": [
+    "Clínica Venas Vascular, Clínica · 60 m"
+   ],
+   "me": "Você está aqui",
+   "heroTopo": 260,
+   "heroBase": 640,
+   "scrollY": 484,
+   "addr": "São Paulo - SP",
+   "cidade": "São Paulo - SP"
+  }
+ },
+ "perto-copacabana": {
+  "ladrilhos": [],
+  "falhas": [
+   "https://tile.openstreetmap.org/4/5/8.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/8.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/9.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/9.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/7.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/7.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/5/10.png net::ERR_ABORTED",
+   "https://tile.openstreetmap.org/4/6/10.png net::ERR_ABORTED"
+  ],
+  "console": [
+   "Service Worker registration blocked by Playwright"
+  ],
+  "mapa": {
+   "zoom": "12",
+   "viewM": "13708",
+   "pins": "0"
+  }
+ }
+}

@@ -1,0 +1,6 @@
+foto predios-antes-troca-campinas-vista
+foto predios-antes-troca-campinas-mapa3d
+foto predios-antes-troca-campinas-mapa2d
+foto predios-antes-troca-geo-copacabana-mapa3d
+foto predios-antes-perto-copacabana-mapa2d
+fim
