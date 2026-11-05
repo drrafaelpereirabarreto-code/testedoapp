@@ -814,11 +814,70 @@ export function actionText(status, ctx = {}) {
   if (status === 'invalid_patient' && ctx.message) return String(ctx.message);
   if (status === 'agenda_not_started' && ctx.canConfig) return `${ACTION_TEXT.agenda_not_started} Ative em Configurar agenda.`;
   if (status === 'confirm_required' && ctx.items) {
-    const n = ctx.items.filter((x) => x.kind === 'agendamento').length;
-    const m = ctx.items.filter((x) => x.kind === 'ocupado').length;
-    return `Este bloqueio atinge ${plural(n, 'agendamento', 'agendamentos')}${m ? ` e ${plural(m, 'horário “só ocupar”', 'horários “só ocupar”')}` : ''}.`;
+    // O banco conta por exame; "agendamento" é o pedido (um paciente pode ter até 4 exames no mesmo agendamento).
+    const { pedidos, exames, ocupados } = blockAffected(ctx.items);
+    const partes = [
+      pedidos ? `${plural(pedidos, 'agendamento', 'agendamentos')}${exames > pedidos ? ` (${plural(exames, 'exame', 'exames')})` : ''}` : '',
+      ocupados ? plural(ocupados, 'horário “só ocupar”', 'horários “só ocupar”') : '',
+    ].filter(Boolean);
+    return partes.length ? `Este bloqueio atinge ${partes.join(' e ')}.` : 'Este bloqueio não atinge nenhum agendamento.';
   }
   return ACTION_TEXT[status] || ACTION_TEXT.invalid;
+}
+
+// Pergunta antes de cancelar um exame (pacote) ou o agendamento no painel. "O horário fica livre" só quando o item
+// ainda segura um aparelho/sala/profissional e ainda não começou: o que veio do "Bloquear mesmo assim" (Para remarcar)
+// já soltou o horário, e o período está bloqueado.
+export function cancelItemAsk(item, { pacote = false, tz = 'America/Sao_Paulo', now = Date.now() } = {}) {
+  const quem = item?.patient || 'paciente';
+  const quando = fmtWhen(tz, item?.starts_at);
+  const pergunta = pacote
+    ? `Cancelar o exame ${item?.procedure || ''} de ${quem} (${quando})? Só este exame: os outros do agendamento continuam marcados.`
+    : `Cancelar o agendamento de ${quem} (${quando})?`;
+  if (item?.status === 'reschedule_requested') return `${pergunta} O paciente sai da lista Para remarcar.`;
+  const segura = (item?.resources || []).length > 0 && Date.parse(item?.starts_at) > now;
+  return segura ? `${pergunta} O horário fica livre para outro paciente.` : pergunta;
+}
+
+// ---------- bloqueio com gente no período: textos que contam pacientes, não exames ----------
+// items: a lista da prévia (agenda_block_force) ou do has_appointments (agenda_block_add). Pacientes = agendamentos
+// (request_id) distintos; "só ocupar" não é paciente.
+export function blockAffected(items = []) {
+  const ag = (items || []).filter((x) => (x.kind || 'agendamento') === 'agendamento');
+  return {
+    pedidos: new Set(ag.map((x, i) => x.request_id || x.item_id || `#${i}`)).size,   // sem id: conta cada um
+    exames: ag.length,
+    ocupados: (items || []).filter((x) => x.kind === 'ocupado').length,
+  };
+}
+// Sem "Bloquear mesmo assim" (sem a função nova ou sem permissão de remarcar): o que impede o bloqueio.
+// r: a resposta has_appointments do agenda_block_add ({ items: só agendamentos, busy: quantos "só ocupar" }).
+export function blockRefusedText(r = {}) {
+  const { pedidos } = blockAffected(r.items);
+  const busy = Number(r.busy) || 0;
+  if (pedidos && busy) return 'Há pacientes marcados e horários “só ocupar” nesse período. Remarque ou cancele esses agendamentos e retire os horários “só ocupar” antes de bloquear.';
+  if (pedidos) return 'Há pacientes marcados nesse período. Remarque ou cancele esses agendamentos antes de bloquear.';
+  if (busy) return `Há ${busy === 1 ? 'um horário “só ocupar”' : 'horários “só ocupar”'} nesse período. Retire ${busy === 1 ? 'esse horário' : 'esses horários'} na agenda antes de bloquear.`;
+  return 'Há agendamentos ou horários ocupados nesse período. Confira a agenda antes de bloquear.';
+}
+// O que acontece se bloquear mesmo assim (abaixo da lista da prévia). Texto puro; a tela põe "Para remarcar" em negrito.
+export function blockForceHelp(items = []) {
+  const { pedidos, ocupados } = blockAffected(items);
+  const oc = ocupados === 1 ? 'o horário “só ocupar” do período será retirado' : 'os horários “só ocupar” do período serão retirados';
+  if (pedidos) {
+    return `Se bloquear mesmo assim, ${pedidos === 1 ? 'esse paciente vai' : 'esses pacientes vão'} para a lista Para remarcar e a clínica precisa avisá-${pedidos === 1 ? 'lo' : 'los'}.${ocupados ? ` ${oc.charAt(0).toUpperCase()}${oc.slice(1)}.` : ''}`;
+  }
+  return ocupados ? `Se bloquear mesmo assim, ${oc}. Nenhum paciente é atingido.` : '';
+}
+// Depois de gravar. moved: exames que foram para "Para remarcar" (null = não se sabe: achado já gravado depois de
+// erro de rede); pedidos: quantos pacientes são (da prévia confirmada; sem ela, conta pelos exames); busy: "só ocupar"
+// retirados; replay: o bloqueio já estava salvo.
+export function blockDoneText({ moved = 0, pedidos = null, busy = 0, replay = false } = {}) {
+  if (replay) return `${ACTION_TEXT.block_replay}${moved == null ? ' Se havia pacientes no período, eles estão na lista Para remarcar.' : ''}`;
+  const p = moved ? (pedidos || moved) : 0;
+  const oc = busy ? (busy === 1 ? '1 horário “só ocupar” foi retirado.' : `${busy} horários “só ocupar” foram retirados.`) : '';
+  if (p) return `Bloqueio salvo. ${p === 1 ? '1 paciente foi' : `${p} pacientes foram`} para a lista Para remarcar.${oc ? ` ${oc}` : ''}`;
+  return `Bloqueio salvo.${oc ? ` ${oc}` : ''} Nesse período nenhum horário é oferecido.`;
 }
 // Chave de reenvio (p_key): a mesma só quando a resposta não chegou (erro de rede); qualquer resposta do banco que não
 // seja ok pede uma chave nova na próxima tentativa.

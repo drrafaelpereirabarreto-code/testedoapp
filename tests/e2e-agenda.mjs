@@ -919,7 +919,7 @@ await scenario('cancelar: sem motivo dá erro; com motivo, confirmação e o ite
   await page.selectOption('#cnMotivo', 'paciente_desistiu');
   await page.click('#cnOk');
   assert.equal(await focusId(page), 'cnSim');
-  assert.match(await page.textContent('#cnAskT'), /Cancelar o agendamento de Carla T\. \(qua\., 04\/11 às 16:00\)\?/);
+  assert.match(await page.textContent('#cnAskT'), /Cancelar o agendamento de Carla T\. \(qua\., 04\/11 às 16:00\)\? O horário fica livre para outro paciente\.$/);
   await page.click('#cnSim');
   await page.waitForFunction(() => /cancelado/.test(document.querySelector('#agMsg').textContent));
   assert.deepEqual(calls(log, 'agenda_cancel').at(-1).body, { p_id: r.id, p_reason: 'paciente_desistiu', p_version: 1 });
@@ -941,8 +941,15 @@ await scenario('remarcar: dia, horários com p_request e p_item, confirmação "
   assert.deepEqual(calls(log, 'agenda_desk_slots').at(-1).body, { p_clinic: C1, p_procedure: P_USG, p_from: AMANHA, p_to: null, p_request: r.id, p_item: r.items[0].id });
   await page.check(`input[name="rmSlot"][value="${sp(AMANHA, '10:00')}"]`);
   assert.match(await page.textContent('#rmAskT'), /Mudar de qua\., 04\/11 às 16:00 para qui\., 05\/11 às 10:00\?/);
+  // a resposta se perde na rede: a tela guarda a chave e o "Sim, remarcar" de novo recebe replay
+  db.lostReply = { agenda_reschedule: 1 };
   await page.click('#rmOk');
-  await page.waitForFunction(() => /Remarcado/.test(document.querySelector('#agMsg').textContent));
+  await page.waitForFunction(() => /servidor/.test(document.querySelector('#agDet').textContent));
+  await page.click('#rmOk');
+  await page.waitForFunction(() => /remarcação já tinha sido registrada/.test(document.querySelector('#agMsg').textContent));
+  assert.match(await page.textContent('#agMsg'), /^Esta remarcação já tinha sido registrada: Ultrassom .* para qui\., 05\/11 às 10:00\.$/);
+  assert.equal(calls(log, 'agenda_reschedule').length, 2);
+  assert.equal(calls(log, 'agenda_reschedule')[0].body.p_key, calls(log, 'agenda_reschedule')[1].body.p_key, 'a mesma chave');
   const c = calls(log, 'agenda_reschedule').at(-1).body;
   assert.deepEqual({ ...c, p_key: 'x' }, { p_id: r.id, p_items: [{ seq: 1, starts_at: '2026-11-05T13:00:00.000Z' }], p_key: 'x', p_version: 1 });
   assert.match(c.p_key, /^[0-9a-f-]{36}$/);
@@ -991,6 +998,77 @@ await scenario('bloquear com afetados: lista com nomes curtos, "Bloquear mesmo a
   assert.equal(calls(log, 'agenda_conflict_resolve').length, 0);
   assert.equal(db.conflicts.filter((x) => x.status === 'resolvido' && x.resolution_code === 'remarcado').length, 1);
   assert.match(await page.textContent('#agRemT'), /Para remarcar \(1\)/);
+  // cancelar o que ficou: o horário já foi solto e o período está bloqueado — nada de "fica livre"
+  await page.click('[data-act="conf-cancelar"] >> nth=0');
+  await page.waitForSelector('#cnMotivo');
+  await page.selectOption('#cnMotivo', 'equipamento_manutencao');
+  await page.click('#cnOk');
+  const pergunta = await page.textContent('#cnAskT');
+  assert.match(pergunta, /^Cancelar o agendamento de Otávio T\. \(qui\., 05\/11 às 10:00\)\? O paciente sai da lista Para remarcar\.$/);
+  assert.doesNotMatch(pergunta, /livre/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('bloquear um período só com "só ocupar": sem falar de pacientes, e a mensagem diz que o "só ocupar" saiu', async () => {
+  const ocup = () => [{ id: 'bbbbbbbb-0000-4000-8000-000000000903', starts_at: sp(AMANHA, '09:00'), ends_at: sp(AMANHA, '10:00'), reason_code: 'uso_interno', resources: [USG] }];
+  const preencher = async (page) => {
+    await page.click('#agBloquear');
+    await page.selectOption('#blAlvo', USG);
+    await page.selectOption('#blTipo', 'manutencao');
+    await page.fill('#blFrom', AMANHA);
+    await page.click('#blOk');
+  };
+  {
+    const { page, db, errors, context } = await newPage(browser, { db: { busy: ocup() } });
+    await abrirAgenda(page);
+    await preencher(page);
+    await page.waitForSelector('#blForcar');
+    assert.equal(await focusId(page), 'blAfetT');
+    const titulo = await page.textContent('#blAfetT');
+    assert.match(titulo, /: atinge 1 horário “só ocupar”\.$/);
+    assert.doesNotMatch(titulo, /agendamento/, 'nada de "0 agendamentos"');
+    const ajuda = await page.textContent('#blAfet .cl-help');
+    assert.match(ajuda, /Se bloquear mesmo assim, o horário “só ocupar” do período será retirado\. Nenhum paciente é atingido\./);
+    assert.doesNotMatch(ajuda, /pacientes vão|avisá/);
+    await page.click('#blForcar');
+    await page.waitForFunction(() => /Bloqueio salvo/.test(document.querySelector('#agMsg').textContent));
+    assert.match(await page.textContent('#agMsg'), /Bloqueio salvo\. 1 horário “só ocupar” foi retirado\. Nesse período nenhum horário é oferecido\./);
+    assert.equal(db.busy.length, 0);
+    assert.equal(db.blocks.length, 1);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  {
+    // sem a função nova (banco antigo): o motivo é o "só ocupar", não "pacientes marcados"
+    const { page, db, errors, context } = await newPage(browser, { missing: ['agenda_block_force'], db: { busy: ocup() } });
+    await abrirAgenda(page);
+    await preencher(page);
+    await page.waitForFunction(() => /só ocupar/.test(document.querySelector('#agMsg').textContent));
+    const m = await page.textContent('#agMsg');
+    assert.match(m, /Há um horário “só ocupar” nesse período\. Retire esse horário na agenda antes de bloquear\./);
+    assert.doesNotMatch(m, /pacientes/);
+    assert.equal(db.blocks.length, 0);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+});
+
+await scenario('bloquear um paciente com 2 exames no período: 1 agendamento (2 exames) e "1 paciente foi"', async () => {
+  const pac = booking({ name: 'Rita Teles Teste', start: sp(AMANHA, '09:00') });
+  pac.items.push({ ...pac.items[0], id: nid('iiiiiiii'), seq: 2, starts_at: sp(AMANHA, '09:30'), ends_at: sp(AMANHA, '10:00') });
+  const { page, errors, context } = await newPage(browser, { db: { requests: [pac] } });
+  await abrirAgenda(page);
+  await page.click('#agBloquear');
+  await page.selectOption('#blAlvo', USG);
+  await page.fill('#blFrom', AMANHA);
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  assert.match(await page.textContent('#blAfetT'), /: atinge 1 agendamento \(2 exames\)\.$/);
+  assert.match(await page.textContent('#blAfet .cl-help'), /esse paciente vai para a lista Para remarcar e a clínica precisa avisá-lo\./);
+  await page.click('#blForcar');
+  await page.waitForSelector('#agRemT');
+  assert.match(await page.textContent('#agMsg'), /Bloqueio salvo\. 1 paciente foi para a lista Para remarcar\./);
   assert.deepEqual(errors, []);
   await context.close();
 });

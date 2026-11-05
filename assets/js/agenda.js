@@ -987,8 +987,6 @@ const BL_MUDOU = '<p class="cl-note warn" role="status" id="blMudou">Você mudou
 function affectedHtml() {
   const a = S.bl?.afet;
   if (!a) return S.bl?.mudou ? BL_MUDOU : '';
-  const ag = a.items.filter((x) => x.kind === 'agendamento');
-  const oc = a.items.filter((x) => x.kind === 'ocupado');
   const presos = a.items.some((x) => !x.can_move);
   const linha = (x) => `<li class="ag-tom-${x.kind === 'ocupado' ? 'vermelho' : A.statusTag(x.status).tone}"><b>${esc(A.fmtWhen(S.tz, x.starts_at))}</b> · ${esc(x.kind === 'ocupado' ? 'Só ocupar' : x.procedure || 'Exame')}${x.patient ? ` · ${esc(x.patient)}` : ''}${x.channel ? ` · ${esc(A.CHANNEL_LABEL[x.channel] || '')}` : ''} · ${icon(x.kind === 'ocupado' ? 'fa-hand' : A.statusTag(x.status).icon)}${esc(x.kind === 'ocupado' ? 'Ocupado' : A.clinicStatusLabel(x.status))}</li>`;
   // O título diz QUAL bloqueio (período e alvo) a lista confere: o "mesmo assim" grava exatamente este.
@@ -1000,7 +998,7 @@ function affectedHtml() {
       ${a.aviso ? `<p class="cl-note warn">${esc(a.aviso)}</p>` : ''}
       <ul class="ag-afetlista">${a.items.map(linha).join('')}</ul>
       ${presos ? `<p class="cl-note err" role="alert">${esc(A.ACTION_TEXT.cannot_move)}</p>`
-        : `<p class="cl-help">Se bloquear mesmo assim, ${ag.length === 1 ? 'esse paciente vai' : 'esses pacientes vão'} para a lista <b>Para remarcar</b> e a clínica precisa avisá-${ag.length === 1 ? 'lo' : 'los'}.${oc.length ? ' Os horários “só ocupar” do período serão retirados.' : ''}</p>`}
+        : `<p class="cl-help">${esc(A.blockForceHelp(a.items)).replace('lista Para remarcar', 'lista <b>Para remarcar</b>')}</p>`}
       <div class="cl-actions">
         ${presos || !a.confirm ? '' : '<button class="btn btn-coral" type="button" id="blForcar" data-act="bl-forcar">Bloquear mesmo assim</button>'}
         <button class="btn btn-ghost" type="button" id="blNao" data-act="bl-nao">Não bloquear</button>
@@ -1371,7 +1369,7 @@ function itemFromDetail(itemId) {
   const it = r?.items.find((x) => x.id === itemId);
   if (!it) return null;
   return { id: it.id, request_id: r.id, status: it.status, starts_at: it.starts_at, ends_at: it.ends_at, request_version: r.version, seq: it.seq, procedure_id: it.procedure_id,
-    procedure: it.procedure, patient: A.shortName(r.patient?.for_other ? r.patient?.other_name : r.patient?.name) };
+    procedure: it.procedure, patient: A.shortName(r.patient?.for_other ? r.patient?.other_name : r.patient?.name), resources: it.resources || [] };
 }
 
 // Depois de remarcar, cancelar ou voltar ao horário de antes — pela lista "Para remarcar", pela grade, pela lista do
@@ -1446,7 +1444,8 @@ async function doReschedule() {
     await loadDetail();
     await loadView({ quiet: true });
     const resolvido = await resolveConflicts([m.itemId], 'remarcado');
-    const texto = `${r.replay ? A.ACTION_TEXT.replay : 'Remarcado'}: ${it.procedure || 'exame'} para ${A.fmtWhen(S.tz, m.slot)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
+    const feito = `${it.procedure || 'exame'} para ${A.fmtWhen(S.tz, m.slot)}.`;
+    const texto = `${r.replay ? `Esta remarcação já tinha sido registrada: ${feito}` : `Remarcado: ${feito}`}${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
     d.msg = [texto, resolvido ? 'ok' : 'warn'];
     drawDetail();
     msg(texto, resolvido ? 'ok' : 'warn', null, { flutuante: true });
@@ -1728,12 +1727,12 @@ async function doBlock() {
   if (r.status === 'has_appointments') {
     if (!(canDo('remarcar') || isCentral()) || S.missing.force) {
       redrawBlockForm('#blOk');
-      msg('Há pacientes marcados nesse período. Remarque ou cancele esses agendamentos antes de bloquear.', 'err');
+      msg(A.blockRefusedText(r), 'err');
       return;
     }
     const p = await call('agenda_block_force', { ...b.args, p_confirm: null });
     if (p.status === 'lost') return;
-    if (p.status === 'missing_fn') { S.missing.force = true; redrawBlockForm('#blOk'); msg('Há pacientes marcados nesse período. Remarque ou cancele esses agendamentos antes de bloquear.', 'err'); return; }
+    if (p.status === 'missing_fn') { S.missing.force = true; redrawBlockForm('#blOk'); msg(A.blockRefusedText(r), 'err'); return; }
     if (p.status === 'confirm_required' || p.status === 'affected_changed') {
       // Só o que já começou estava no período (o banco não mexe nele): ninguém a avisar, bloqueia direto.
       if (!(p.items || []).length && p.confirm) return doForce(p.confirm);
@@ -1762,13 +1761,15 @@ async function doForce(code = null) {
     code = b.afet.confirm;
   }
   const btn = $('#blForcar'); if (btn) { btn.disabled = true; btn.textContent = 'Bloqueando…'; }
+  // a prévia confirmada (o código só vale para ela): dela sai quantos PACIENTES são — o banco conta por exame
+  const previa = A.blockAffected(b.afet?.items);
   const antes = await blockPending(b.args);
   if (S.ctx.lost()) return;
   if (antes === 'ja_salvo') return blockDone(null, 0, true);
   if (antes === 'sem_rede') { redrawBlockForm('#blForcar'); msg(A.ACTION_TEXT.network_block, 'err'); return; }
   const r = await call('agenda_block_force', { ...b.args, p_confirm: code });
   if (r.status === 'lost') return;
-  if (r.status === 'ok') return blockDone(r.moved || 0, r.busy_removed || 0, !!r.replay);
+  if (r.status === 'ok') return blockDone(r.moved || 0, r.busy_removed || 0, !!r.replay, r.moved && previa.exames === r.moved ? previa.pedidos : null);
   if (r.status === 'network') return blockNetwork(b.args, true);
   if (r.status === 'affected_changed') {
     b.afet = { items: r.items || [], confirm: r.confirm, aviso: A.ACTION_TEXT.affected_changed, args: b.args };
@@ -1787,13 +1788,12 @@ async function doForce(code = null) {
   ($('#blNao') || $('#blOk'))?.focus();
 }
 
-// moved: quantos foram para "Para remarcar" (null = não se sabe: o bloqueio foi achado já gravado depois de um erro de
-// rede no "mesmo assim"); replay: o bloqueio já estava salvo (nada novo foi gravado agora).
-async function blockDone(moved, busy = 0, replay = false) {
+// moved: quantos exames foram para "Para remarcar" (null = não se sabe: o bloqueio foi achado já gravado depois de um
+// erro de rede no "mesmo assim"); busy: "só ocupar" retirados; replay: o bloqueio já estava salvo (nada novo foi
+// gravado agora); pedidos: quantos pacientes (da prévia confirmada).
+async function blockDone(moved, busy = 0, replay = false, pedidos = null) {
   const remarcar = moved == null || moved > 0;
-  const texto = replay ? `${A.ACTION_TEXT.block_replay}${moved == null ? ' Se havia pacientes no período, eles estão na lista Para remarcar.' : ''}`
-    : moved ? `Bloqueio salvo. ${moved === 1 ? '1 paciente foi' : `${moved} pacientes foram`} para a lista Para remarcar.${busy ? ` ${busy === 1 ? '1 horário “só ocupar” foi retirado.' : `${busy} horários “só ocupar” foram retirados.`}` : ''}`
-      : 'Bloqueio salvo. Nesse período nenhum horário é oferecido.';
+  const texto = A.blockDoneText({ moved, busy, replay, pedidos });
   S.bl = null;
   if (S.form === 'bloquear') S.form = null;
   if (remarcar) { S.view = S.view === 'bloqueios' || S.view === 'mes' || S.view === 'semana' ? 'hoje' : S.view; S.remOpen = true; }
@@ -1938,9 +1938,7 @@ function onClick(e) {
       if (!c.reason) { c.err = A.ACTION_TEXT.reason_required; drawDetail(); $('#cnMotivo').focus(); return; }
       const item = itemFromDetail(c.itemId);
       c.err = '';
-      c.ask = cancelaExame()
-        ? `Cancelar o exame ${item?.procedure || ''} de ${item?.patient || 'paciente'} (${A.fmtWhen(S.tz, item?.starts_at)})? Só este exame: os outros do agendamento continuam marcados. O horário fica livre para outro paciente.`
-        : `Cancelar o agendamento de ${item?.patient || 'paciente'} (${A.fmtWhen(S.tz, item?.starts_at)})? O horário fica livre para outro paciente.`;
+      c.ask = A.cancelItemAsk(item, { pacote: cancelaExame(), tz: S.tz });
       drawDetail(); $('#cnSim')?.focus();
     },
     'cn-sim': () => doCancel(),

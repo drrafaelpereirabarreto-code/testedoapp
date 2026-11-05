@@ -457,6 +457,44 @@ test('bloqueio no fuso da clínica (dias inteiros ou algumas horas)', () => {
   assert.equal(A.sameBlock(g, null), false);
 });
 
+test('bloqueio com gente no período: pacientes contados por agendamento, "só ocupar" sem falar de paciente', () => {
+  const ag = (req, item) => ({ kind: 'agendamento', request_id: req, item_id: item });
+  const oc = { kind: 'ocupado', busy_id: 'b1' };
+  // só "só ocupar": nada de "0 agendamentos" nem de pacientes
+  assert.equal(A.actionText('confirm_required', { items: [oc] }), 'Este bloqueio atinge 1 horário “só ocupar”.');
+  assert.equal(A.blockForceHelp([oc]), 'Se bloquear mesmo assim, o horário “só ocupar” do período será retirado. Nenhum paciente é atingido.');
+  assert.equal(A.blockForceHelp([oc, { ...oc, busy_id: 'b2' }]), 'Se bloquear mesmo assim, os horários “só ocupar” do período serão retirados. Nenhum paciente é atingido.');
+  // um paciente com 2 exames é 1 agendamento (2 exames), 1 paciente
+  assert.equal(A.actionText('confirm_required', { items: [ag('r1', 'i1'), ag('r1', 'i2')] }), 'Este bloqueio atinge 1 agendamento (2 exames).');
+  assert.match(A.blockForceHelp([ag('r1', 'i1'), ag('r1', 'i2')]), /^Se bloquear mesmo assim, esse paciente vai para a lista Para remarcar e a clínica precisa avisá-lo\.$/);
+  assert.match(A.blockForceHelp([ag('r1', 'i1'), ag('r2', 'i2'), oc]), /esses pacientes vão .* avisá-los\. O horário “só ocupar” do período será retirado\.$/);
+  // sem "mesmo assim": o motivo certo
+  assert.match(A.blockRefusedText({ items: [], busy: 1 }), /^Há um horário “só ocupar” nesse período\. Retire esse horário na agenda antes de bloquear\.$/);
+  assert.doesNotMatch(A.blockRefusedText({ items: [], busy: 2 }), /paciente/);
+  assert.match(A.blockRefusedText({ items: [{ item_id: 'i1', request_id: 'r1' }], busy: 0 }), /^Há pacientes marcados nesse período\./);
+  assert.match(A.blockRefusedText({ items: [{ item_id: 'i1', request_id: 'r1' }], busy: 1 }), /pacientes marcados e horários “só ocupar”/);
+  assert.doesNotMatch(A.blockRefusedText({ items: [], busy: 0 }), /pacientes marcados/);
+  // depois de gravar
+  assert.equal(A.blockDoneText({ moved: 0, busy: 1 }), 'Bloqueio salvo. 1 horário “só ocupar” foi retirado. Nesse período nenhum horário é oferecido.');
+  assert.equal(A.blockDoneText({ moved: 0 }), 'Bloqueio salvo. Nesse período nenhum horário é oferecido.');
+  assert.equal(A.blockDoneText({ moved: 2, pedidos: 1 }), 'Bloqueio salvo. 1 paciente foi para a lista Para remarcar.');
+  assert.equal(A.blockDoneText({ moved: 2, busy: 2 }), 'Bloqueio salvo. 2 pacientes foram para a lista Para remarcar. 2 horários “só ocupar” foram retirados.');
+  assert.match(A.blockDoneText({ moved: null, replay: true }), /já tinha sido salvo\. Se havia pacientes/);
+});
+
+test('cancelar no painel: "o horário fica livre" só quando o item ainda segura o horário e não começou', () => {
+  const now = Date.parse('2026-11-04T15:00:00Z');
+  const base = { patient: 'Maria L.', procedure: 'Ultrassom', starts_at: '2026-11-05T12:00:00.000Z', status: 'confirmed', resources: [{ id: 'u', name: 'USG' }] };
+  assert.equal(A.cancelItemAsk(base, { now }), 'Cancelar o agendamento de Maria L. (qui., 05/11 às 09:00)? O horário fica livre para outro paciente.');
+  // veio do "Bloquear mesmo assim": o horário já foi solto e o período está bloqueado
+  const rem = A.cancelItemAsk({ ...base, status: 'reschedule_requested', resources: [] }, { now });
+  assert.equal(rem, 'Cancelar o agendamento de Maria L. (qui., 05/11 às 09:00)? O paciente sai da lista Para remarcar.');
+  assert.doesNotMatch(A.cancelItemAsk({ ...base, status: 'reschedule_requested' }, { now }), /livre/);
+  assert.doesNotMatch(A.cancelItemAsk({ ...base, resources: [] }, { now }), /livre/, 'sem aparelho/sala reservado');
+  assert.doesNotMatch(A.cancelItemAsk(base, { now: Date.parse('2026-11-05T13:00:00Z') }), /livre/, 'já começou');
+  assert.match(A.cancelItemAsk(base, { now, pacote: true }), /^Cancelar o exame Ultrassom de Maria L\. .*Só este exame: os outros do agendamento continuam marcados\. O horário fica livre/);
+});
+
 test('respostas das funções da agenda: todo status tem texto; chave de reenvio nova só com resposta do banco', () => {
   const fs = readdirSync(new URL('../supabase/migrations/', import.meta.url)).filter((f) => /agenda_(operacao_parte_2|painel_parte_1|leitura_parte_1|motor_parte_2)/.test(f));
   assert.equal(fs.length, 4);
