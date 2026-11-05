@@ -33,8 +33,9 @@ jobs:
           python3 -m http.server 8080 --bind 127.0.0.1 > /dev/null 2>&1 &
           sleep 2
           nproc | tee "$RUNNER_TEMP/sonda/nproc.txt"
-          node .github/sonda-fotos/sonda.mjs "$RUNNER_TEMP/sonda" 2>&1 | tee "$RUNNER_TEMP/sonda/registro.txt"
+          SO=troca node .github/sonda-fotos/sonda.mjs "$RUNNER_TEMP/sonda" 2>&1 | tee "$RUNNER_TEMP/sonda/registro.txt"
       - name: Overture (comparação de cobertura de prédios)
+        if: false
         continue-on-error: true
         timeout-minutes: 12
         run: |

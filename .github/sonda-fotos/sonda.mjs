@@ -6,6 +6,7 @@ import path from 'node:path';
 import { analisar } from './mvt-predios.mjs';
 
 const URL_SITE = 'http://127.0.0.1:8080/';
+const PROD = 'https://drrafaelpereirabarreto-code.github.io/testedoapp/'; // perto.html e local.html iguais aos da main (a função do servidor só aceita o site publicado)
 const SAIDA = process.argv[2] || 'saida';
 mkdirSync(SAIDA, { recursive: true }); mkdirSync(path.join(SAIDA, 'pbf'), { recursive: true });
 const LUGARES = {
@@ -92,10 +93,11 @@ async function dadosOSM() {
 }
 
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-await passo('dados-osm', dadosOSM);
+const SO = process.env.SO || '';
+if (!SO) await passo('dados-osm', dadosOSM);
 
 // 1) Cada lugar no celular, com a localização do aparelho ali.
-for (const [k, L] of Object.entries(LUGARES)) {
+for (const [k, L] of Object.entries(SO ? {} : LUGARES)) {
   await passo(`celular-${k}`, async () => {
     const reg = resumo[`celular-${k}`] = {};
     const ctx = await contexto(browser, { latitude: L.latitude, longitude: L.longitude });
@@ -113,7 +115,7 @@ for (const [k, L] of Object.entries(LUGARES)) {
 }
 
 // 2) Celular comum (4 núcleos, como a máquina do GitHub, sem ajuste): versão leve?
-await passo('celular-4nucleos', async () => {
+if (!SO) await passo('celular-4nucleos', async () => {
   const reg = resumo['celular-4nucleos'] = {};
   const ctx = await contexto(browser, { latitude: LUGARES.paulista.latitude, longitude: LUGARES.paulista.longitude }, false);
   const page = await ctx.newPage(); vigiar(page, reg);
@@ -129,6 +131,7 @@ await passo('celular-4nucleos', async () => {
 await passo('troca', async () => {
   const reg = resumo.troca = {};
   const ctx = await contexto(browser, { latitude: LUGARES.paulista.latitude, longitude: LUGARES.paulista.longitude });
+  await ctx.addInitScript(() => { try { localStorage.setItem('imed_cidades_recentes', JSON.stringify([{ ibge: 3509502, name: 'Campinas', uf: 'SP', lat: -22.906, lng: -47.061 }])); } catch (e) { /* */ } });
   const page = await ctx.newPage(); vigiar(page, reg);
   await page.goto(URL_SITE, { waitUntil: 'domcontentloaded' });
   await esperar3d(page, reg);
@@ -138,10 +141,9 @@ await passo('troca', async () => {
   await pausa(800);
   await page.click('#cityBtn');
   await page.waitForSelector('#cityQ');
-  await page.type('#cityQ', 'Campinas', { delay: 60 });
-  await page.waitForSelector('#cityList li', { timeout: 20000 });
+  await page.waitForSelector('[data-rec="0"]', { timeout: 20000 });
   const t0 = Date.now();
-  await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+  await page.click('[data-rec="0"]');
   await page.waitForFunction(() => document.body.dataset.origem === 'cidade', null, { timeout: 30000 });
   reg.msAteCidade = Date.now() - t0;
   reg.logoDepois = await estado(page);
@@ -181,7 +183,7 @@ await passo('perto-copacabana', async () => {
   const reg = resumo['perto-copacabana'] = {};
   const ctx = await contexto(browser, { latitude: LUGARES.copacabana.latitude, longitude: LUGARES.copacabana.longitude });
   const page = await ctx.newPage(); vigiar(page, reg);
-  await page.goto(URL_SITE + 'perto.html?usar=localizacao', { waitUntil: 'domcontentloaded' });
+  await page.goto(PROD + 'perto.html?usar=localizacao', { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.pc', { timeout: 60000 }).catch(() => {});
   await pausa(3000);
   if (await page.isVisible('#viewToggle')) { await page.click('#viewToggle'); await pausa(5000); }
@@ -190,7 +192,7 @@ await passo('perto-copacabana', async () => {
   const href = await page.evaluate(() => document.querySelector('a[href*="local.html?"]')?.getAttribute('href'));
   reg.local = href;
   if (href) {
-    await page.goto(URL_SITE + href, { waitUntil: 'domcontentloaded' });
+    await page.goto(PROD + href, { waitUntil: 'domcontentloaded' });
     await pausa(2000);
     await page.evaluate(() => document.querySelector('.leaflet-container, #localMap, .lc-map, [id*="map" i]')?.scrollIntoView({ block: 'center' }));
     await pausa(5000);
