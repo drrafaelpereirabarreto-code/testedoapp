@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { comChaves, vigiarChaves } from './regra-chaves.mjs';
 import { simularGeo } from './geo-simulado.mjs';
-import { simularMapa } from './mapa-simulado.mjs';
+import { simularMapa, simularSatelite } from './mapa-simulado.mjs';
 import { ROLE_PERMS } from '../assets/js/agenda-core.js';
 
 const OWNER_PERMS = ROLE_PERMS.owner;
@@ -292,7 +292,8 @@ async function mockSupabase(context, { admin = false, member = false, rapida = f
 // geo: localização permitida pelo Playwright (false: o Chromium recusa sem perguntar). geoSim: no lugar dela, a
 // permissão e a localização simuladas (tests/geo-simulado.mjs), para a página inicial perguntar ({estado:'prompt'}),
 // ficar bloqueada ({estado:'denied'}) ou já ter a permissão ({estado:'granted'}), sempre no mesmo ponto.
-async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, rapida = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false } = {}) {
+// satelite: a chave da Esri simulada no config.js e a foto de satélite simulada (tests/mapa-simulado.mjs).
+async function newPage(browser, { mobile = false, motion = 'no-preference', session = false, admin = false, member = false, rapida = false, appts = APPTS, geo = true, geoSim = null, lgpd = false, escuro = false, satelite = false } = {}) {
   const context = await browser.newContext({
     ...(escuro ? { colorScheme: 'dark' } : {}), // escuro: aparelho no tema escuro (o Automático do site segue)
     viewport: mobile ? { width: 390, height: 844 } : { width: 1366, height: 860 },
@@ -305,6 +306,7 @@ async function newPage(browser, { mobile = false, motion = 'no-preference', sess
   await context.route('https://fonts.gstatic.com/**', (r) => r.abort());
   await context.route('https://tile.openstreetmap.org/**', (r) => r.fulfill({ status: 200, contentType: 'image/png', body: TILE }));
   await simularMapa(context); // ladrilhos do mapa 3D do topo (OpenFreeMap), simulados
+  if (satelite) await simularSatelite(context);
   await context.route(/overpass/, (r) => json(r, { elements: [] }));
   await context.addInitScript(([s, list, aviso]) => {
     try {
@@ -338,6 +340,10 @@ const PAINEL_TABS = ['pedidos', 'agenda', 'equipe', 'dados', 'exames', 'cadastro
 const PAGES = [
   { name: 'Início', url: 'index.html', open: openHome },
   { name: 'Início (modo leve)', url: 'index.html', motion: 'reduce', open: async (p) => { await p.waitForSelector('#heroLite li a'); await openHome(p); } },
+  // Com a chave da Esri: a foto de satélite no topo (ou a versão leve, num navegador sem WebGL 2) e os botões
+  // "Mapa | Satélite" no mapa de "Clínicas perto de você".
+  { name: 'Início · foto de satélite', url: 'index.html', satelite: true, open: async (p) => { await p.waitForFunction(() => ['satelite', 'leve'].includes(document.body.dataset.hero), null, { timeout: 45000 }); if (await p.evaluate(() => document.body.dataset.hero === 'satelite')) await p.waitForSelector('.h3d-label.on', { timeout: 30000 }); await openHome(p); } },
+  { name: 'Início · mapa satélite', url: 'index.html', motion: 'reduce', satelite: true, geoSim: { estado: 'granted' }, open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.waitForSelector('#realList li b'); if (await p.isVisible('#mapOpen')) { await p.click('#mapOpen'); await p.waitForSelector('#pvMapa.cheio'); } await p.waitForSelector('#realMap .mapa-fundo'); await p.waitForSelector('#realMap .leaflet-marker-icon'); await waitIdle(p); } },
   { name: 'Início · Meus pedidos', url: 'index.html#agenda', open: async (p) => { await p.waitForSelector('.appt'); } },
   { name: 'Início · aviso de privacidade', url: 'index.html', lgpd: true, motion: 'reduce', open: async (p) => { await p.waitForSelector('.lgpd button'); } },
   { name: 'Início · janela da cidade', url: 'index.html', motion: 'reduce', open: async (p) => { await p.evaluate(() => document.querySelector('#reais').scrollIntoView()); await p.waitForSelector('#realList li b'); await p.click('#cityBtn'); await p.waitForSelector('.ov.open #cityQ'); await p.waitForSelector('#cityIdle .cid-op'); await waitIdle(p); } },
@@ -354,6 +360,7 @@ const PAGES = [
   { name: 'Perto · pedido', url: 'perto.html?usar=localizacao', open: async (p) => { await p.waitForSelector('.pc:not(.imed)'); await p.click('.pc:not(.imed) >> nth=0'); await p.waitForSelector('.sh-ov.open [data-book]'); await p.click('.sh-ov.open [data-book]'); await p.waitForSelector('#bookForm'); await p.waitForTimeout(300); } },
   { name: 'Local (cadastro oficial)', url: 'local.html?cnes=2077485', open: async (p) => { await p.waitForSelector('#app[aria-busy="false"] h1'); await waitIdle(p); } },
   { name: 'Local (parceiro com agenda)', url: `local.html?id=${PARTNER_ID}`, open: async (p) => { await p.waitForSelector('.sl-day'); await waitIdle(p); } },
+  { name: 'Local · foto de satélite', url: 'local.html?cnes=2077485', satelite: true, open: async (p) => { await p.waitForSelector('#app[aria-busy="false"] h1'); await p.locator('#lcMap').scrollIntoViewIfNeeded(); await p.waitForSelector('#lcMap .mapa-fundo'); await waitIdle(p); } },
   { name: 'Local · pedido', url: 'local.html?cnes=2077485', open: async (p) => { await p.click('#agendar [data-act="pedido"]'); await p.waitForSelector('#bookForm'); await p.click('#bkBtn'); await p.waitForSelector('[data-f="exam"].bad'); } },
   { name: 'Local · horário escolhido', url: `local.html?id=${PARTNER_ID}`, open: async (p) => { await p.click('.sl-t >> nth=0'); await p.waitForSelector('#bookForm'); await waitIdle(p); } },
   { name: 'Local · avisar erro', url: 'local.html?cnes=2077485', open: async (p) => { await p.click('[data-act="report"]'); await p.waitForSelector('#rpForm:not([hidden])'); } },
@@ -714,7 +721,7 @@ const browser = vigiarChaves(await chromium.launch());
 const audit = []; // { page, device, axe: [...], targets: [...], inputs: [...], focus: {...}, lang }
 
 async function auditPage(def, mobile) {
-  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro });
+  const { context, page, errors } = await newPage(browser, { mobile, motion: def.motion, session: def.session, admin: def.admin, member: def.member, rapida: def.rapida, lgpd: def.lgpd, geoSim: def.geoSim, escuro: def.escuro, satelite: def.satelite });
   try {
     await page.goto(BASE + def.url);
     if (def.open) await def.open(page); else await waitIdle(page);
