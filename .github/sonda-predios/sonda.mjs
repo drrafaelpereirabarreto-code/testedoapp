@@ -204,6 +204,7 @@ async function descobrir() {
 
 // ---------- principal ----------
 const d = await descobrir();
+await cabec('overture-stac', 'https://stac.overturemaps.org/catalog.json');
 { const t = await texto('https://storage.googleapis.com/storage/v1/b/open-buildings-temporal-data/o?delimiter=/&prefix=v1/');
   const t2 = await texto('https://storage.googleapis.com/storage/v1/b/open-buildings-temporal-data/o?prefix=v1/&maxResults=5');
   log('GTEMP', t.t.slice(0, 1500), t2.t.replace(/\s+/g, ' ').slice(0, 2500)); }
@@ -253,8 +254,10 @@ for (const L of LUGARES) {
   res.fontes.osm_openfreemap = { ladrilhos: tOsm, predios: osmR.length, comAlturaDiferenteDoPadrao: alt, exemploProps: osmR[0]?.props };
   log('LUGAR', L.nome, 'OSM', osmR.length, 'alt', alt, JSON.stringify(tOsm));
 
-  for (const [nome, f] of Object.entries(candidatos)) {
-    const z = Math.min(14, f.f.header.maxZoom);
+  const pares = Object.entries(candidatos).map(([n, f]) => [n, f, Math.min(14, f.f.header.maxZoom)]);
+  if (candidatos['vida-BRA']) pares.push(['vida-BRA-z15', candidatos['vida-BRA'], 15]);
+  for (const [nome, f, z] of pares) {
+    const t0 = Date.now();
     const lista = [], tl = [];
     for (const [x, y] of tilesDoRaio(L.lat, L.lon, z, RAIO)) {
       try {
@@ -267,8 +270,14 @@ for (const L of LUGARES) {
     // quanto já está no OSM: centro do prédio candidato cai dentro de um prédio do OSM
     let sobreOsm = 0;
     const osmBox = osmR.concat(osm).map((b) => { const xs = b.anel.map((p) => p[0]), ys = b.anel.map((p) => p[1]); return { b, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; });
+    let mlTotal = 0, mlSobreOsm = 0;
     for (const b of dentro) {
       const [px, py] = b.c;
+      const g = b.props['@geometry_source'] ?? b.props.bf_source;
+      const ml = b.camada !== 'building_part' && g !== 'OpenStreetMap' && g !== 'osm';
+      const em = osmBox.some((o) => px >= o.x0 && px <= o.x1 && py >= o.y0 && py <= o.y1 && pontoNoPoligono(px, py, o.b.anel));
+      if (ml) { mlTotal++; if (em) mlSobreOsm++; }
+      if (em && false) continue;
       if (osmBox.some((o) => px >= o.x0 && px <= o.x1 && py >= o.y0 && py <= o.y1 && pontoNoPoligono(px, py, o.b.anel))) sobreOsm++;
     }
     const contagem = {};
@@ -284,7 +293,7 @@ for (const L of LUGARES) {
     const comAltura = dentro.filter((b) => { const h = b.props.height ?? b.props.render_height; return h != null && Number(h) > 0; }).length;
     const comAndares = dentro.filter((b) => b.props.num_floors != null || b.props['building:levels'] != null).length;
     const camadas = [...new Set(dentro.map((b) => b.camada))];
-    res.fontes[nome] = { zoom: z, ladrilhos: tl, predios: dentro.length, centroDentroDePredioOsm: sobreOsm, semCorrespondenteNoOsm: dentro.length - sobreOsm, comAltura, comAndares, camadas, porCamada, geometria: geo, alturaFonte: hs, chaves: [...chaves], exemploProps: dentro.slice(0, 2).map((b) => b.props) };
+    res.fontes[nome] = { ms: Date.now() - t0, zoom: z, ladrilhos: tl, predios: dentro.length, mlTotal, mlSobreOsm, centroDentroDePredioOsm: sobreOsm, semCorrespondenteNoOsm: dentro.length - sobreOsm, comAltura, comAndares, camadas, porCamada, geometria: geo, alturaFonte: hs, chaves: [...chaves], exemploProps: dentro.slice(0, 2).map((b) => b.props) };
     log('LUGAR', L.nome, nome, JSON.stringify(res.fontes[nome]).slice(0, 2500));
   }
   out.lugares.push(res);
