@@ -434,7 +434,7 @@ function filtersHtml() {
 function legendHtml() {
   return `<details class="ag-legenda" id="agLegenda"${wide() ? ' open' : ''}>
       <summary>Legenda das cores</summary>
-      <ul class="ag-leg">${A.LEGENDA.map((g) => g.items.map(([ic, t]) => `<li class="ag-tom-${g.tone}">${icon(ic)}<span>${esc(t)}</span></li>`).join('')).join('')}</ul>
+      <ul class="ag-leg">${A.LEGENDA.map((g) => g.items.map(([ic, t]) => `<li class="ag-tom-${g.tone}${ic ? '' : ' ag-leg-fechado'}">${icon(ic)}<span>${esc(t)}</span></li>`).join('')).join('')}</ul>
     </details>`;
 }
 
@@ -525,10 +525,20 @@ const visibleResources = () => {
   return list;
 };
 
+// O detalhe fica ao lado da grade só quando a grade inteira cabe ao lado dele (senão, os dias ou as colunas da direita
+// sumiriam atrás de uma rolagem): na Semana, e no Dia com muitos aparelhos, ele vai para baixo da grade.
+const COLMIN = { dia: 128, semana: 118 };   // a largura mínima da coluna (--colmin do clinica.css)
+function detalheAoLado() {
+  if (!S.det || !wide()) return false;
+  if (S.listMode || !['dia', 'semana'].includes(S.view)) return true;
+  const cols = S.view === 'semana' ? 7 : Math.max(visibleResources().length, 1);
+  return 58 + cols * COLMIN[S.view] + 2 <= ($('#agCorpo')?.clientWidth || 0) - 374;
+}
+
 function drawMain() {
   const m = $('#agMain');
   if (!m) return;
-  $('#agCorpo')?.classList.toggle('ag-com-det', !!S.det && wide());
+  $('#agCorpo')?.classList.toggle('ag-com-det', detalheAoLado());
   if (S.det && !wide()) { m.hidden = true; return; }
   m.hidden = false;
   if (S.loadError) {
@@ -581,17 +591,21 @@ function dayEntries(day) {
 
 function itemResNames(it) { return (it.resources || []).map(resName).filter(Boolean); }
 
-function itemButton(it, { compact = false, extra = '' } = {}) {
+// dia: na grade da Semana, o dia por extenso no começo do nome falado (lá o dia só aparece pela coluna).
+function itemButton(it, { compact = false, extra = '', dia = null } = {}) {
   const tag = A.statusTag(it.status, it.hold_expires_at, S.tz);
   const nomes = itemResNames(it);
   const nome = it.patient || (S.data?.patients === false || isCentral() ? 'Paciente' : '');
   const ini = A.timeIn(S.tz, it.starts_at);
   const fim = A.timeIn(S.tz, it.ends_at);
   if (compact) {
-    // Na grade cabe pouco: a situação curta à vista e a completa (com o fim e os aparelhos) para quem ouve.
-    const st = tag.short === tag.text ? esc(tag.text) : `<span aria-hidden="true">${esc(tag.short)}</span>${sr(esc(tag.text))}`;
+    // Na grade cabe pouco: a situação curta à vista e a completa (com o fim e os aparelhos) para quem ouve. A palavra
+    // à vista está sempre no nome falado ("Faltou (Não compareceu)"): quem usa comando de voz diz o que vê.
+    const st = tag.short === tag.text ? `<span class="ag-st-t">${esc(tag.text)}</span>`
+      : tag.text.toLowerCase().includes(tag.short.toLowerCase()) ? `<span class="ag-st-t" aria-hidden="true">${esc(tag.short)}</span>${sr(esc(tag.text))}`
+        : `<span class="ag-st-t">${esc(tag.short)}</span>${sr(` (${esc(tag.text)})`)}`;
     return `<button type="button" class="ag-ev ag-ev-grade ag-tom-${tag.tone}" data-act="abrir" data-item="${esc(it.id)}"${extra}>
-      <span class="ag-hora">${esc(ini)}</span>${sr(` às ${esc(fim)}`)}${SEP}<span class="ag-st">${icon(tag.icon)}${st}</span>${SEP}
+      ${dia ? sr(`${esc(A.fmtDayLong(dia))}, `) : ''}<span class="ag-hora">${esc(ini)}</span>${sr(` às ${esc(fim)}`)}${SEP}<span class="ag-st">${icon(tag.icon)}${st}</span>${SEP}
       <span class="ag-nome">${esc(nome)}</span>${SEP}<span class="ag-exame">${esc(it.procedure || '')}</span>${nomes.length ? sr(`, ${esc(nomes.join(' e '))}`) : ''}</button>`;
   }
   return `<button type="button" class="ag-ev ag-tom-${tag.tone}" data-act="abrir" data-item="${esc(it.id)}"${extra}>
@@ -657,8 +671,9 @@ function listHtml(day, { attend = false } = {}) {
     if (!groups.has(h)) groups.set(h, []);
     groups.get(h).push(e);
   }
-  return `<div class="ag-listas">${[...groups].map(([h, list]) => `<section class="ag-hgrupo" aria-label="${esc(h)}"><h4 class="ag-hh">${esc(h)}</h4>
-      <ul class="ag-lista">${list.map((e) => entryLi(e, attend)).join('')}</ul></section>`).join('')}</div>`;
+  // cada hora é um título (h4), não uma região: até 12 marcos por dia só atrapalhariam quem navega por marcos
+  return `<div class="ag-listas">${[...groups].map(([h, list]) => `<div class="ag-hgrupo"><h4 class="ag-hh">${esc(h)}</h4>
+      <ul class="ag-lista">${list.map((e) => entryLi(e, attend)).join('')}</ul></div>`).join('')}</div>`;
 }
 
 function entryLi(e, attend) {
@@ -719,31 +734,47 @@ function dayGridHtml() {
   if (!cols.length) return `${note('Nenhum aparelho, sala ou profissional para mostrar com estes filtros.', 'info')}${listHtml(day, { attend: true })}`;
   const colIdx = new Map(cols.map((r, i) => [r.id, i]));
   const mm = (iso) => minutesOfDay(day, iso, g0, g1);
-  // fundo de cada coluna: livre (verde) e fechado (hachurado)
+  const naCol = (x, id) => (x.resources || []).includes(id);
+  const dBusy = (S.data.busy || []).filter(inDay);
+  // altura da linha de 15 min: o item mais curto na tela fica com pelo menos 44 px (hora e situação à vista; alvo bom)
+  const { rowh, minSpan } = A.gridScale([...dItems, ...dBusy].filter((x) => cols.some((r) => naCol(x, r.id))).map((x) => mm(x.ends_at) - mm(x.starts_at)));
+  // "Livre" e "Fechado" só do agora em diante: o passado fica só com o véu "Já passou" (o texto por baixo dele perderia
+  // o contraste) — e horário que já passou não está livre para marcar.
+  const corte = Math.max(g0, Math.min(agora, g1));
+  const futuro = (list) => list.map(([a, b]) => [Math.max(a, corte), b]).filter(([a, b]) => b > a);
+  // fundo de cada coluna: livre (verde) e fechado (hachurado, com a palavra)
   const fundo = cols.map((r, c) => {
     const livres = (S.free?.resources || []).find((x) => x.id === r.id)?.free || [];
     const verdes = livres.map(([a, b]) => [mm(a), mm(b)]).filter(([a, b]) => b > a);
-    const ocup = [...dItems.filter((i) => (i.resources || []).includes(r.id)).map((i) => [mm(i.starts_at), mm(i.ends_at)]),
-      ...(S.data.busy || []).filter(inDay).filter((b) => (b.resources || []).includes(r.id)).map((b) => [mm(b.starts_at), mm(b.ends_at)]),
+    const ocup = [...dItems.filter((i) => naCol(i, r.id)).map((i) => [mm(i.starts_at), mm(i.ends_at)]),
+      ...dBusy.filter((b) => naCol(b, r.id)).map((b) => [mm(b.starts_at), mm(b.ends_at)]),
       ...(S.data.blocks || []).filter(inDay).filter((b) => !b.resource_id || b.resource_id === r.id).map((b) => [mm(b.starts_at), mm(b.ends_at)])];
     const fechado = S.missing.free || !S.free ? [] : minus(g0, g1, [...verdes, ...ocup]);
-    return [...verdes.map(([a, b]) => `<div class="ag-livre" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>${icon('fa-check')}Livre</span></div>`),
-      ...fechado.filter(([a, b]) => b - a >= 5).map(([a, b]) => `<div class="ag-fechado" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>Fechado</span></div>`)].join('');
+    return [...futuro(verdes).map(([a, b]) => `<div class="ag-livre" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>${icon('fa-check')}Livre</span></div>`),
+      ...futuro(fechado).filter(([a, b]) => b - a >= 5).map(([a, b]) => `<div class="ag-fechado" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>Fechado</span></div>`)].join('');
   }).join('');
-  // eventos: em ordem do tempo, em todas as colunas que usam
+  // eventos: em ordem do tempo, em todas as colunas que usam. Agendamentos e "só ocupar" entram na mesma conta de raias
+  // (com a altura mínima): nenhum cobre o outro na tela.
   const evs = [];
+  let linhas = rows;   // a grade cresce para baixo se o último item, com a altura mínima, passar do fim
+  const pos = (p, c) => { linhas = Math.max(linhas, p.row + p.span); return `class="ag-pos${p.lanes >= 3 ? ' ag-apertado' : ''}" style="--c:${c};--r:${p.row};--s:${p.span};--l:${p.lane};--n:${p.lanes}"`; };
   for (const r of cols) {
     const c = colIdx.get(r.id);
-    const lay = A.layoutColumn(dItems.filter((i) => (i.resources || []).includes(r.id)).map((i) => ({ id: i.id, start: mm(i.starts_at), end: mm(i.ends_at) })), g0, 15);
-    for (const it of dItems.filter((i) => (i.resources || []).includes(r.id))) {
-      const p = lay[it.id];
-      const outros = (it.resources || []).filter((x) => x !== r.id).map(resName).filter(Boolean);
-      evs.push({ t: Date.parse(it.starts_at), c, html: `<div class="ag-pos" style="--c:${c};--r:${p.row};--s:${p.span};--l:${p.lane};--n:${p.lanes}">${itemButton(it, { compact: true })}${outros.length ? `<small class="ag-tb">também em: ${esc(outros.join(', '))}</small>` : ''}</div>` });
+    const its = dItems.filter((i) => naCol(i, r.id));
+    const ocs = dBusy.filter((b) => naCol(b, r.id));
+    const outrosDe = (it) => (it.resources || []).filter((x) => x !== r.id).map(resName).filter(Boolean);
+    // "também em: Sala 2" ocupa uma linha a mais embaixo do botão: o item precisa de mais altura
+    const lay = A.layoutColumn([
+      ...its.map((i) => ({ id: `i${i.id}`, start: mm(i.starts_at), end: mm(i.ends_at), minSpan: minSpan + (outrosDe(i).length ? 18 / rowh : 0) })),
+      ...ocs.map((b) => ({ id: `b${b.id}`, start: mm(b.starts_at), end: mm(b.ends_at) })),
+    ], g0, 15, minSpan);
+    for (const it of its) {
+      const outros = outrosDe(it);
+      evs.push({ t: Date.parse(it.starts_at), c, html: `<div ${pos(lay[`i${it.id}`], c)}>${itemButton(it, { compact: true })}${outros.length ? `<small class="ag-tb">também em: ${esc(outros.join(', '))}</small>` : ''}</div>` });
     }
-    for (const b of (S.data.busy || []).filter(inDay).filter((x) => (x.resources || []).includes(r.id))) {
+    for (const b of ocs) {
       const look = A.busyLook(b.reason_code);
-      const a = mm(b.starts_at); const z = mm(b.ends_at);
-      evs.push({ t: Date.parse(b.starts_at), c, html: `<div class="ag-pos" style="--c:${c};--r:${(a - g0) / 15};--s:${Math.max((z - a) / 15, 0.5)};--l:0;--n:1"><button type="button" class="ag-ev ag-tom-vermelho" data-act="ocupado" data-busy="${esc(b.id)}"><span class="ag-hora">${esc(A.timeIn(S.tz, b.starts_at))}</span>${sr(` às ${esc(A.timeIn(S.tz, b.ends_at))}`)}${SEP}<span class="ag-st">${icon(look.icon)}${esc(look.text)}</span>${sr(`, ${esc(r.name)}`)}</button></div>` });
+      evs.push({ t: Date.parse(b.starts_at), c, html: `<div ${pos(lay[`b${b.id}`], c)}><button type="button" class="ag-ev ag-tom-vermelho" data-act="ocupado" data-busy="${esc(b.id)}"><span class="ag-hora">${esc(A.timeIn(S.tz, b.starts_at))}</span>${sr(` às ${esc(A.timeIn(S.tz, b.ends_at))}`)}${SEP}<span class="ag-st">${icon(look.icon)}<span class="ag-st-t">${esc(look.text)}</span></span>${sr(`, ${esc(r.name)}`)}</button></div>` });
     }
     for (const b of (S.data.blocks || []).filter(inDay).filter((x) => !x.resource_id || x.resource_id === r.id)) {
       const look = A.blockLook(b.kind);
@@ -756,7 +787,7 @@ function dayGridHtml() {
   const horas = [];
   for (let m = g0; m < g1; m += 60) horas.push(`<span style="--r:${(m - g0) / 15}">${A.fromMin(m)}</span>`);
   const passou = agora > g0 ? Math.min(agora, g1) : null;
-  return `<div class="ag-grade" style="--cols:${cols.length};--rows:${rows}">
+  return `<div class="ag-grade" style="--cols:${cols.length};--rows:${Math.ceil(linhas)};--rowh:${rowh}px">
       <div class="ag-grade-in">
         <div class="ag-cab"><span class="ag-cab-eixo" aria-hidden="true"></span>${cols.map((r) => `<span class="ag-cab-col">${icon(r.kind === 'profissional' ? 'fa-user-doctor' : r.kind === 'sala' ? 'fa-house-medical' : 'fa-stethoscope')}<b>${esc(r.name)}</b><small>${esc(A.KIND_LABEL[r.kind] || '')}</small></span>`).join('')}</div>
         <div class="ag-grade-corpo">
@@ -788,62 +819,83 @@ function weekGridHtml() {
     g0 = Math.min(g0, a); g1 = Math.max(g1, b);
   }
   const rows = (g1 - g0) / 15;
-  const evs = []; let fundo = '';
-  dias.forEach((d, c) => {
+  const blocoVisto = (x) => !S.f.res || !x.resource_id || x.resource_id === S.f.res;
+  const ocupVisto = (x) => !S.f.res || (x.resources || []).includes(S.f.res);
+  const porDia = dias.map((d) => {
     const base = Date.parse(A.localToUtc(d, '00:00', S.tz));
     const inDay = (x) => Date.parse(x.starts_at) < base + 86400000 && Date.parse(x.ends_at) > base;
-    const mm = (iso) => minutesOfDay(d, iso, g0, g1);
-    const di = items.filter(inDay);
+    return { d, base, inDay, mm: (iso) => minutesOfDay(d, iso, g0, g1), di: items.filter(inDay), ob: (S.data.busy || []).filter(inDay).filter(ocupVisto) };
+  });
+  // a mesma altura de linha nos 7 dias, pelo item mais curto da semana (44 px no mínimo para cada item)
+  const { rowh, minSpan } = A.gridScale(porDia.flatMap(({ mm, di, ob }) => [...di, ...ob].map((x) => mm(x.ends_at) - mm(x.starts_at))));
+  const evs = []; let fundo = '';
+  let linhas = rows;
+  const pos = (p, c) => { linhas = Math.max(linhas, p.row + p.span); return `class="ag-pos${p.lanes >= 3 ? ' ag-apertado' : ''}" style="--c:${c};--r:${p.row};--s:${p.span};--l:${p.lane};--n:${p.lanes}"`; };
+  porDia.forEach(({ d, base, inDay, mm, di, ob }, c) => {
+    // "Livre" e "Fechado" (com a palavra, como no Dia) só do agora em diante
+    const corte = Math.max(g0, Math.min((Date.now() - base) / 60000, g1));
+    const futuro = (list) => list.map(([a, b]) => [Math.max(a, corte), b]).filter(([a, b]) => b > a);
     const livres = [];
     for (const r of S.free?.resources || []) if (!S.f.res || r.id === S.f.res) for (const [a, b] of r.free) if (Date.parse(a) < base + 86400000 && Date.parse(b) > base) livres.push([mm(a), mm(b)]);
     livres.sort((x, y) => x[0] - y[0]);
     const uniao = [];
     for (const [a, b] of livres) { const u = uniao.at(-1); if (u && a <= u[1]) u[1] = Math.max(u[1], b); else uniao.push([a, b]); }
-    fundo += uniao.filter(([a, b]) => b > a).map(([a, b]) => `<div class="ag-livre" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>${icon('fa-check')}Livre</span></div>`).join('');
-    const lay = A.layoutColumn(di.map((i) => ({ id: i.id, start: mm(i.starts_at), end: mm(i.ends_at) })), g0, 15);
+    const blocos = (S.data.blocks || []).filter(inDay).filter(blocoVisto);
+    const ocup = [...di, ...ob, ...blocos].map((x) => [mm(x.starts_at), mm(x.ends_at)]);
+    // fechado: nenhum aparelho, sala ou profissional livre e nada marcado (almoço, domingo, fora do horário)
+    const fechado = S.missing.free || !S.free ? [] : minus(g0, g1, [...uniao, ...ocup]);
+    fundo += [...futuro(uniao.filter(([a, b]) => b > a)).map(([a, b]) => `<div class="ag-livre" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>${icon('fa-check')}Livre</span></div>`),
+      ...futuro(fechado).filter(([a, b]) => b - a >= 5).map(([a, b]) => `<div class="ag-fechado" style="--c:${c};--r:${(a - g0) / 15};--s:${(b - a) / 15}" aria-hidden="true"><span>Fechado</span></div>`)].join('');
+    // agendamentos e "só ocupar" do dia na mesma conta de raias, com a altura mínima: nenhum cobre o outro
+    const lay = A.layoutColumn([...di.map((i) => ({ id: `i${i.id}`, start: mm(i.starts_at), end: mm(i.ends_at) })), ...ob.map((b) => ({ id: `b${b.id}`, start: mm(b.starts_at), end: mm(b.ends_at) }))], g0, 15, minSpan);
     for (const it of di) {
-      const p = lay[it.id];
-      evs.push({ t: Date.parse(it.starts_at), html: `<div class="ag-pos" style="--c:${c};--r:${p.row};--s:${Math.max(p.span, 1.5)};--l:${p.lane};--n:${p.lanes}">${itemButton(it, { compact: true })}</div>` });
+      evs.push({ t: Date.parse(it.starts_at), html: `<div ${pos(lay[`i${it.id}`], c)}>${itemButton(it, { compact: true, dia: d })}</div>` });
     }
-    for (const b of (S.data.blocks || []).filter(inDay).filter((x) => !S.f.res || !x.resource_id || x.resource_id === S.f.res)) {
+    for (const b of blocos) {
       const look = A.blockLook(b.kind); const a = mm(b.starts_at); const z = mm(b.ends_at);
       evs.push({ t: Date.parse(b.starts_at), html: `<div class="ag-pos ag-bloco" style="--c:${c};--r:${(a - g0) / 15};--s:${(z - a) / 15};--l:0;--n:1"><div class="ag-ev ag-ev-fixo ag-tom-vermelho" role="group" aria-label="${esc(`${A.blockWhenTz(b, S.tz)}, ${look.text}, ${b.resource_id ? resName(b.resource_id) : 'Clínica inteira'}`)}"><span class="ag-st">${icon(look.icon)}${esc(look.text)}</span></div></div>` });
     }
-    for (const b of (S.data.busy || []).filter(inDay).filter((x) => !S.f.res || (x.resources || []).includes(S.f.res))) {
-      const look = A.busyLook(b.reason_code); const a = mm(b.starts_at); const z = mm(b.ends_at);
-      evs.push({ t: Date.parse(b.starts_at), html: `<div class="ag-pos" style="--c:${c};--r:${(a - g0) / 15};--s:${Math.max((z - a) / 15, 1)};--l:0;--n:1"><button type="button" class="ag-ev ag-tom-vermelho" data-act="ocupado" data-busy="${esc(b.id)}">${sr(`${esc(A.fmtDayShort(d))}, ${esc(A.timeIn(S.tz, b.starts_at))} às ${esc(A.timeIn(S.tz, b.ends_at))}, `)}<span class="ag-st">${icon(look.icon)}${esc(look.text)}</span></button></div>` });
+    for (const b of ob) {
+      const look = A.busyLook(b.reason_code);
+      evs.push({ t: Date.parse(b.starts_at), html: `<div ${pos(lay[`b${b.id}`], c)}><button type="button" class="ag-ev ag-tom-vermelho" data-act="ocupado" data-busy="${esc(b.id)}">${sr(`${esc(A.fmtDayLong(d))}, ${esc(A.timeIn(S.tz, b.starts_at))} às ${esc(A.timeIn(S.tz, b.ends_at))}, `)}<span class="ag-st">${icon(look.icon)}<span class="ag-st-t">${esc(look.text)}</span></span></button></div>` });
     }
   });
   evs.sort((a, b) => a.t - b.t);
   const horas = [];
   for (let m = g0; m < g1; m += 60) horas.push(`<span style="--r:${(m - g0) / 15}">${A.fromMin(m)}</span>`);
-  return `<div class="ag-grade ag-semana" style="--cols:7;--rows:${rows}">
+  // o dia de hoje: a palavra "hoje" à vista e no nome falado (não só a cor)
+  const cab = (d) => `<button type="button" class="ag-cab-col ag-cab-dia${d === today() ? ' ag-hoje' : ''}" data-act="abrir-dia" data-dia="${d}"><b>${esc(A.fmtDayShort(d))}</b>${hojeTag(d)}${sr(`: abrir o dia ${esc(A.fmtDayLong(d))}`)}</button>`;
+  return `<div class="ag-grade ag-semana" style="--cols:7;--rows:${Math.ceil(linhas)};--rowh:${rowh}px">
       <div class="ag-grade-in">
-        <div class="ag-cab"><span class="ag-cab-eixo" aria-hidden="true"></span>${dias.map((d) => `<button type="button" class="ag-cab-col ag-cab-dia${d === today() ? ' ag-hoje' : ''}" data-act="abrir-dia" data-dia="${d}"><b>${esc(A.fmtDayShort(d))}</b>${sr(`: abrir o dia ${esc(A.fmtDayLong(d))}`)}</button>`).join('')}</div>
+        <div class="ag-cab"><span class="ag-cab-eixo" aria-hidden="true"></span>${dias.map(cab).join('')}</div>
         <div class="ag-grade-corpo">
           <div class="ag-eixo" aria-hidden="true">${horas.join('')}</div>
-          <div class="ag-cols">${dias.map((d, c) => `<div class="ag-col${S.free ? ' ag-col-fechada' : ''}" style="--c:${c}" aria-hidden="true"></div>`).join('')}${fundo}${evs.map((e) => e.html).join('')}</div>
+          <div class="ag-cols">${dias.map((d, c) => `<div class="ag-col" style="--c:${c}" aria-hidden="true"></div>`).join('')}${fundo}${evs.map((e) => e.html).join('')}</div>
         </div>
       </div>
     </div>`;
 }
 
 function weekListHtml() {
+  // cada dia é um título (h4), não uma região (7 marcos por semana só atrapalhariam quem navega por marcos)
   return weekDays().map((d) => {
     const n = dayEntries(d).length;
-    return `<section class="ag-wdia" aria-labelledby="agw-${d}"><h4 id="agw-${d}" class="ag-wtit">${esc(A.fmtDayLong(d))}${d === today() ? ' (hoje)' : ''}</h4>
-      ${n ? `<ul class="ag-lista">${dayEntries(d).map((e) => entryLi(e, false)).join('')}</ul>` : '<p class="cl-help">Nenhum agendamento.</p>'}</section>`;
+    return `<div class="ag-wdia"><h4 class="ag-wtit">${esc(A.fmtDayLong(d))}${d === today() ? ' (hoje)' : ''}</h4>
+      ${n ? `<ul class="ag-lista">${dayEntries(d).map((e) => entryLi(e, false)).join('')}</ul>` : '<p class="cl-help">Nenhum agendamento.</p>'}</div>`;
   }).join('');
 }
 
 // ---------- mês ----------
+// O dia de hoje: a palavra "hoje" à vista e no nome falado (não só a cor ou o contorno).
+const hojeTag = (day) => (day === today() ? `${SEP}<span class="ag-hoje-tag">hoje</span>` : '');
+
 function monthHtml() {
   const days = S.month.days || [];
   const ini = A.monthStart(S.day);
   if (!wide()) {
     const com = days.filter((d) => A.monthSummary(d));
     const lista = S.monthAll ? days : com;
-    return `${lista.length ? `<ul class="ag-mlista">${lista.map((d) => `<li><button type="button" class="ag-mdia" data-act="abrir-dia" data-dia="${esc(d.day)}"><b>${esc(A.fmtDayLong(d.day))}</b><span>${esc(A.monthSummary(d) || 'Nada marcado')}</span></button></li>`).join('')}</ul>`
+    return `${lista.length ? `<ul class="ag-mlista">${lista.map((d) => `<li><button type="button" class="ag-mdia" data-act="abrir-dia" data-dia="${esc(d.day)}"><b>${esc(A.fmtDayLong(d.day))}${hojeTag(d.day)}</b>${SEP}<span>${esc(A.monthSummary(d) || 'Nada marcado')}</span></button></li>`).join('')}</ul>`
       : '<p class="cl-help">Nenhum agendamento ou bloqueio neste mês.</p>'}
       <div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="mes-todos">${S.monthAll ? 'Mostrar só os dias com movimento' : 'Mostrar todos os dias'}</button></div>`;
   }
@@ -852,7 +904,7 @@ function monthHtml() {
   return `<div class="ag-mes" role="group" aria-label="${esc(titleText())}">
       ${cab.map((c) => `<span class="ag-mcab" aria-hidden="true">${c}</span>`).join('')}
       ${Array.from({ length: vazio }, () => '<span class="ag-mvazio" aria-hidden="true"></span>').join('')}
-      ${days.map((d) => { const r = A.monthSummary(d); return `<button type="button" class="ag-mcel${d.day === today() ? ' ag-hoje' : ''}${r ? ' ag-mov' : ''}" data-act="abrir-dia" data-dia="${esc(d.day)}"><b><span aria-hidden="true">${Number(d.day.slice(8, 10))}</span>${sr(esc(A.fmtDayLong(d.day)))}</b>${SEP}${r ? `<small>${esc(r)}</small>` : sr('nada marcado')}</button>`; }).join('')}
+      ${days.map((d) => { const r = A.monthSummary(d); return `<button type="button" class="ag-mcel${d.day === today() ? ' ag-hoje' : ''}${r ? ' ag-mov' : ''}" data-act="abrir-dia" data-dia="${esc(d.day)}"><b><span aria-hidden="true">${Number(d.day.slice(8, 10))}</span>${sr(esc(A.fmtDayLong(d.day)))}</b>${hojeTag(d.day)}${SEP}${r ? `<small>${esc(r)}</small>` : sr('nada marcado')}</button>`; }).join('')}
     </div>`;
 }
 
@@ -1011,7 +1063,7 @@ function deskFormHtml() {
         </div>` : ''}
       </fieldset>
       <fieldset class="ac-fs"><legend>3. Como a pessoa pediu</legend>
-        <div class="ag-mode" role="radiogroup" aria-describedby="bkCanalErr">${A.DESK_CHANNELS.map(([k, n]) => `<label class="cl-check"><input type="radio" name="bkCanal" value="${k}"${b.channel === k ? ' checked' : ''}><span>${esc(n)}</span></label>`).join('')}</div>${err('bkCanal')}
+        <div class="ag-mode">${A.DESK_CHANNELS.map(([k, n]) => `<label class="cl-check"><input type="radio" name="bkCanal" value="${k}"${b.channel === k ? ' checked' : ''} aria-describedby="bkCanalErr"${inv('bkCanal')}><span>${esc(n)}</span></label>`).join('')}</div>${err('bkCanal')}
       </fieldset>
       <label class="cl-check ag-mt ag-aviso"><input type="checkbox" id="bkConsent"${b.consent ? ' checked' : ''} aria-describedby="bkConsentErr"${inv('bkConsent')}><span>Avisei a pessoa de que o agendamento fica registrado no sistema do IMED, com nome e telefone, para a clínica atender.</span></label>${err('bkConsent')}
       <div class="cl-actions"><button class="btn btn-coral" type="submit" id="bkOk"${b.sending ? ' disabled' : ''}>${b.sending ? 'Agendando…' : 'Confirmar agendamento'}</button>
@@ -1105,7 +1157,7 @@ function closeDetail() {
 function drawDetail() {
   const aside = $('#agDet');
   if (!aside) return;
-  $('#agCorpo')?.classList.toggle('ag-com-det', !!S.det && wide());
+  $('#agCorpo')?.classList.toggle('ag-com-det', detalheAoLado());
   if (!S.det) { aside.hidden = true; aside.innerHTML = ''; const m = $('#agMain'); if (m) m.hidden = false; return; }
   aside.hidden = false;
   const d = S.det;

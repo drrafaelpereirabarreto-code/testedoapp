@@ -302,7 +302,9 @@ main[tabindex="-1"]:focus{outline:none}
 .ag-fcheck{min-height:44px;align-items:center}
 .ag-leg{list-style:none;display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 10px}
 .ag-leg li{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:13px;font-weight:700;background:var(--tbg);color:var(--ttx);border:1px solid var(--tbd)}
-.ag-tom-cinza.ag-leg-fechado,.ag-leg li:has(> i:only-child){border-style:dashed}
+/* "Fechado" na legenda: a mesma hachura da grade (o texto fica sobre um fundo liso, para ser lido) */
+.ag-leg li.ag-leg-fechado{background:repeating-linear-gradient(45deg,var(--bg2) 0 7px,var(--line) 7px 8px);border-style:dashed;border-color:var(--line2)}
+.ag-leg-fechado span{padding:0 4px;border-radius:4px;background:var(--bg2)}
 .ag-busca .cl-row>input{flex:1 1 220px}
 .ag-res{margin-top:10px}
 .ag-rem{border:1px solid var(--conta-aviso-borda,#F7DFAE);border-radius:16px;padding:12px 14px;background:var(--conta-aviso-suave,#FFFBF2)}
@@ -336,9 +338,11 @@ button.ag-ev:hover{border-color:var(--ttx)}
 .ag-ask p{font-weight:600}
 .ag-ask .cl-actions{margin-top:0}
 .cl-list li .ag-ask{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center}
-/* grade (computador): uma coluna por recurso (ou dia), linhas de 15 min */
-.ag-grade{--rowh:24px;--axis:58px;overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
-.ag-grade-in{min-width:calc(var(--axis) + var(--cols) * 140px)}
+/* grade (computador): uma coluna por recurso (ou dia), linhas de 15 min. --rowh vem do agenda.js (24 a 44 px: o item
+   mais curto fica com 44 px). --colmin: 6 aparelhos no Dia e os 7 dias da Semana cabem nos 892 px de 1024 px. */
+.ag-grade{--rowh:24px;--axis:58px;--colmin:128px;overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.ag-semana{--colmin:118px}
+.ag-grade-in{min-width:calc(var(--axis) + var(--cols) * var(--colmin))}
 .ag-cab{display:grid;grid-template-columns:var(--axis) repeat(var(--cols),minmax(0,1fr));border-bottom:1px solid var(--line);background:var(--bg2)}
 .ag-cab-col{display:flex;flex-direction:column;gap:2px;padding:8px;border-left:1px solid var(--line);font-size:13px;color:var(--ink);text-align:left;min-width:0}
 .ag-cab-col b{overflow-wrap:anywhere}
@@ -347,12 +351,13 @@ button.ag-ev:hover{border-color:var(--ttx)}
 .ag-cab-dia{min-height:44px;cursor:pointer}
 .ag-cab-dia:hover{background:var(--conta-hover,#eaf1f4)}
 .ag-hoje b{color:var(--primary)}
+/* hoje: a palavra à vista (não só a cor ou o contorno) */
+.ag .ag-hoje-tag{display:inline-block;align-self:flex-start;padding:0 7px;border-radius:999px;background:var(--ink);color:var(--bg);font-size:11.5px;font-weight:700;line-height:1.6}
 .ag-grade-corpo{display:grid;grid-template-columns:var(--axis) minmax(0,1fr)}
 .ag-eixo{position:relative;height:calc(var(--rows) * var(--rowh));border-right:1px solid var(--line);background-image:repeating-linear-gradient(to bottom,transparent 0 calc(var(--rowh) / 3 - 1px),var(--line) calc(var(--rowh) / 3 - 1px) calc(var(--rowh) / 3));background-size:6px 100%;background-repeat:no-repeat;background-position:right top}
 .ag-eixo span{position:absolute;top:calc(var(--r) * var(--rowh) + 2px);right:10px;font-size:12px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}
 .ag-cols{position:relative;height:calc(var(--rows) * var(--rowh));background-image:repeating-linear-gradient(to bottom,var(--line2) 0 1px,transparent 1px calc(var(--rowh) * 4)),repeating-linear-gradient(to bottom,var(--line) 0 1px,transparent 1px var(--rowh))}
 .ag-col{position:absolute;top:0;bottom:0;left:calc(100% / var(--cols) * var(--c));width:calc(100% / var(--cols));border-left:1px solid var(--line)}
-.ag-col-fechada{background:repeating-linear-gradient(45deg,transparent 0 7px,color-mix(in srgb,var(--line) 70%,transparent) 7px 8px)}
 .ag-livre,.ag-fechado,.ag-pos{position:absolute;top:calc(var(--r) * var(--rowh));height:calc(var(--s) * var(--rowh));left:calc(100% / var(--cols) * var(--c));width:calc(100% / var(--cols))}
 .ag-livre{background:color-mix(in srgb,var(--green-s) 85%,transparent);border-left:3px solid var(--green);z-index:0}
 .ag-livre span{display:inline-flex;gap:4px;align-items:center;margin:2px 6px;font-size:11.5px;font-weight:700;color:var(--conta-ok-txt,#146B3D)}
@@ -362,7 +367,16 @@ button.ag-ev:hover{border-color:var(--ttx)}
 .ag-passou span{position:absolute;right:6px;bottom:2px;font-size:11.5px;font-weight:700;color:var(--muted)}
 .ag-pos{left:calc(100% / var(--cols) * (var(--c) + var(--l) / var(--n)));width:calc(100% / var(--cols) / var(--n));padding:1px 3px;z-index:2;display:flex;flex-direction:column}
 .ag-pos .ag-ev{flex:1 1 auto;min-height:0;height:100%;overflow:hidden;align-content:flex-start;padding:3px 6px;gap:0 6px;font-size:12.5px;border:1px solid var(--tbd);border-left:4px solid var(--ttx)}
-.ag-pos .ag-st{margin-left:0;padding:0 6px;font-size:11.5px}
+/* a hora e a situação sempre à vista: a situação vai para a 2ª linha se não couber na 1ª (o item tem 44 px no mínimo) e
+   o texto dela encurta com reticências, sem esconder o ícone */
+.ag-pos .ag-hora{flex:none}
+.ag-pos .ag-st{margin-left:0;padding:0 4px;gap:4px;font-size:11.5px;max-width:100%;min-width:0}
+.ag-st i{flex:none}
+.ag-st-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* três ou mais itens lado a lado (exames de 5 a 10 min seguidos): menos margem e a hora um pouco menor, para caber */
+.ag-apertado{padding:1px}
+.ag-apertado .ag-ev{padding:3px 2px;gap:0 2px}
+.ag-apertado .ag-hora{font-size:11px;letter-spacing:-.2px}
 .ag-ev-grade .ag-nome,.ag-ev-grade .ag-exame{flex-basis:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ag-pos .ag-exame{font-size:12px}
 .ag-bloco{z-index:1}

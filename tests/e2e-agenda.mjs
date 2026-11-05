@@ -205,13 +205,17 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
       }
       case 'rpc/agenda_free': {
         const ini = dayStart(body.p_from); const fim = ini + body.p_days * 86400000;
+        // db.fechado: [['12:00', '13:00']] fecha todo dia nesse horário; db.fechadoDias: [0] fecha o domingo inteiro
+        const hm = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+        const fechadoEm = (d, m) => (db.fechadoDias || []).includes(new Date(ini + d * 86400000 + 12 * 3600000).getUTCDay())
+          || (db.fechado || []).some(([a, b]) => m >= hm(a) && m < hm(b));
         const res = (scope() === 'propria' ? db.resources.filter((r) => own().includes(r.id)) : db.resources).map((r) => {
           const free = [];
           for (let d = 0; d < body.p_days; d++) {
             let a = null;
             for (let m = 7 * 60; m <= 19 * 60; m += 5) {
               const t = ini + d * 86400000 + m * 60000;
-              const livre = m < 19 * 60 && !occupied(r.id, t, t + 5 * 60000);
+              const livre = m < 19 * 60 && !occupied(r.id, t, t + 5 * 60000) && !fechadoEm(d, m);
               if (livre && a == null) a = t;
               if (!livre && a != null) { free.push([new Date(a).toISOString(), new Date(t).toISOString()]); a = null; }
             }
@@ -446,10 +450,14 @@ await scenario('recepção, 1024 px: abas, Hoje com cada item, cores com texto, 
   assert.match(await page.textContent('#agMain'), /Paciente presente/);
   assert.match(await page.textContent('#agMain'), /Ocupado \(agenda própria\)/);
   await coresComTexto(page);
-  // legenda: 6 tons, todos com texto
-  const leg = await page.$$eval('#agLegenda li', (l) => l.map((x) => [x.className, x.textContent.trim()]));
-  assert.equal(new Set(leg.map(([c]) => c)).size, 6);
+  // legenda: 6 tons, todos com texto; "Fechado" com a mesma hachura da grade (antes era um selo cinza liso)
+  const leg = await page.$$eval('#agLegenda li', (l) => l.map((x) => [x.className, x.textContent.trim(), getComputedStyle(x).backgroundImage, getComputedStyle(x).borderTopStyle]));
+  assert.equal(new Set(leg.map(([c]) => /ag-tom-(\w+)/.exec(c)[1])).size, 6);
   assert.ok(leg.every(([, t]) => t.length > 2));
+  const fechadoLeg = leg.find(([, t]) => t === 'Fechado');
+  assert.match(fechadoLeg[0], /ag-leg-fechado/);
+  assert.match(fechadoLeg[2], /repeating-linear-gradient/, 'a legenda "Fechado" tem a hachura');
+  assert.equal(fechadoLeg[3], 'dashed');
   // mostrar cancelados
   await page.check('#agFCancel');
   assert.equal(await page.locator('#agMain [data-act="abrir"]').count(), 4);
@@ -612,6 +620,84 @@ await scenario('data digitada: "Ir para a data" só vale no fim (Enter, sair do 
   await context.close();
 });
 
+// Mede cada botão da grade: tamanho, a hora e a situação dentro dele, e se algum cobre outro.
+const medirGrade = (page, sel) => page.$$eval(sel, (els) => {
+  const rs = els.map((b) => b.getBoundingClientRect());
+  return els.map((b, i) => {
+    const r = rs[i];
+    const dentro = (x) => !x || (x.top >= r.top - 0.5 && x.bottom <= r.bottom + 0.5 && x.left >= r.left - 0.5 && x.right <= r.right + 0.5);
+    const cobre = rs.some((o, j) => j !== i && Math.min(r.right, o.right) - Math.max(r.left, o.left) > 1 && Math.min(r.bottom, o.bottom) - Math.max(r.top, o.top) > 1);
+    return { w: r.width, h: r.height, st: dentro(b.querySelector('.ag-st')?.getBoundingClientRect()), hora: dentro(b.querySelector('.ag-hora')?.getBoundingClientRect()), cobre, txt: b.textContent.replace(/\s+/g, ' ').trim().slice(0, 40) };
+  });
+});
+const gradeBoa = (lista, onde) => {
+  assert.ok(lista.length > 0, `${onde}: há botões na grade`);
+  for (const x of lista) {
+    assert.ok(x.h >= 40 && x.w >= 24, `${onde}: alvo de pelo menos 24 px (e 40 de altura): ${x.txt} ${Math.round(x.w)}x${Math.round(x.h)}`);
+    assert.ok(x.st && x.hora, `${onde}: a hora e a situação à vista dentro do botão: ${x.txt}`);
+    assert.ok(!x.cobre, `${onde}: nenhum item cobre outro: ${x.txt}`);
+  }
+};
+
+await scenario('grade (computador): exames de 15 e 10 min e "só ocupar" de 5 min com a hora e a situação à vista, alvos grandes e ninguém por cima de ninguém; a Semana cabe em 1024 px, com o dia no nome falado, "Fechado" escrito e "hoje" escrito', async () => {
+  const extra = [4, 5, 6].map((i) => ({ id: `rrrrrrrr-0000-4000-8000-00000000001${i}`, kind: 'sala', name: `Sala ${i}`, capacity: 1, active: true, member: null }));
+  const reqs = [];
+  const add = (start, min, name, status = 'confirmed', res = [USG]) => { const b = booking({ name, start, status, res }); const fim = new Date(Date.parse(start) + min * 60000).toISOString(); b.items[0].ends_at = fim; b.slot_end = fim; reqs.push(b); };
+  add(sp(HOJE, '11:00'), 15, 'Rita Curta Teste');
+  add(sp(HOJE, '11:15'), 15, 'Ana Curta Teste', 'checked_in');
+  add(sp(HOJE, '11:30'), 15, 'Gil Curto Teste', 'hold');
+  add(sp(HOJE, '13:00'), 30, 'Lia Meia Hora Teste');
+  add(sp(HOJE, '14:00'), 10, 'Duda Dez Teste', 'confirmed', [SALA]);
+  add(sp(HOJE, '14:10'), 10, 'Edu Dez Teste', 'no_show', [SALA]);
+  add(sp(HOJE, '14:20'), 10, 'Fabi Dez Teste', 'reschedule_requested', [SALA]);
+  const busy = [0, 5, 10].map((m, i) => ({ id: `bbbbbbbb-0000-4000-8000-00000000090${i}`, starts_at: sp(HOJE, `17:${String(m).padStart(2, '0')}`), ends_at: sp(HOJE, `17:${String(m + 5).padStart(2, '0')}`), reason_code: 'uso_interno', resources: [DRA] }));
+  const { page, errors, context } = await newPage(browser, { db: { requests: reqs, busy, resources: [...RESOURCES(), ...extra], fechado: [['12:00', '13:00']], fechadoDias: [0] } });
+  await abrirAgenda(page);
+  await page.click('[data-view="dia"]');
+  await page.waitForSelector('#agMain .ag-grade');
+  await carregada(page);
+  const semRolagem = () => page.evaluate(() => { const g = document.querySelector('#agMain .ag-grade'); return g.scrollWidth <= g.clientWidth; });
+  assert.ok(await semRolagem(), 'Dia com 6 aparelhos e salas: sem rolagem para o lado em 1024 px');
+  gradeBoa(await medirGrade(page, '#agMain .ag-grade button.ag-ev'), 'Dia');
+  // o véu "Já passou" (até as 10:00) não fica por cima de "Livre" nem de "Fechado": essas faixas começam no agora
+  assert.equal(await page.evaluate(() => { const v = document.querySelector('.ag-passou').getBoundingClientRect(); return [...document.querySelectorAll('.ag-livre, .ag-fechado')].filter((b) => b.getBoundingClientRect().top < v.bottom - 1).length; }), 0);
+  assert.ok(await page.locator('#agMain .ag-fechado').count() > 0, 'o almoço aparece como "Fechado"');
+  // a palavra curta à vista também está no nome falado (comando de voz: "clicar Faltou")
+  const nomes = await nomesFalados(page, '#agMain .ag-grade [data-act="abrir"]');
+  assert.ok(nomes.some((n) => /^\|14:10 às 14:20, Faltou \(Não compareceu\), /.test(n)), nomes.join('\n'));
+  assert.ok(nomes.some((n) => /^\|14:20 às 14:30, Remarcar \(Remarcação solicitada\), /.test(n)));
+  assert.ok(nomes.some((n) => /^\|11:15 às 11:30, Paciente presente, /.test(n)), 'quando a palavra curta já está no texto inteiro, só o inteiro');
+  await page.click('[data-view="semana"]');
+  await page.waitForSelector('#agMain .ag-semana');
+  await carregada(page);
+  assert.ok(await semRolagem(), 'a Semana cabe inteira em 1024 px');
+  assert.ok(await page.evaluate(() => { const g = document.querySelector('#agMain .ag-grade').getBoundingClientRect(); return [...document.querySelectorAll('.ag-cab-dia')].every((c) => c.getBoundingClientRect().right <= g.right + 0.5); }), 'o domingo aparece');
+  gradeBoa(await medirGrade(page, '#agMain .ag-semana button.ag-ev'), 'Semana');
+  const nomesS = await nomesFalados(page, '#agMain .ag-semana button.ag-ev');
+  assert.match(nomesS[0], /^\|quarta-feira, 4 de novembro, 11:00 às 11:15, Confirmado, Rita T\., /, 'na Semana o nome falado diz o dia');
+  assert.ok(nomesS.some((n) => /^\|quarta-feira, 4 de novembro, 17:00 às 17:05, Ocupado \(uso interno\)/.test(n)));
+  assert.ok(await page.locator('#agMain .ag-semana .ag-fechado').count() >= 5, 'almoço e domingo com a palavra "Fechado" na Semana');
+  assert.match(await page.textContent('#agMain .ag-semana .ag-fechado'), /Fechado/);
+  assert.match((await nomesFalados(page, '.ag-cab-dia.ag-hoje'))[0], /^\|qua\., 04\/11, hoje: abrir o dia quarta-feira, 4 de novembro$/);
+  assert.equal(await page.locator('.ag-cab-dia .ag-hoje-tag').count(), 1);
+  // detalhe aberto na Semana: vai para baixo da grade, que continua com os 7 dias
+  await page.click('#agMain .ag-semana [data-act="abrir"] >> nth=0');
+  await page.waitForSelector('#agDet:not([hidden]) .ag-dl');
+  assert.equal(await page.evaluate(() => document.querySelector('#agCorpo').classList.contains('ag-com-det')), false);
+  assert.ok(await semRolagem(), 'com o detalhe aberto, a Semana continua inteira');
+  // lista do dia: horas são títulos, não regiões (marcos)
+  await page.click('#agDetFechar');
+  await page.click('#agModo');
+  await page.waitForSelector('#agMain .ag-wdia');
+  assert.equal(await page.locator('#agMain section, #agMain [role="region"]').count(), 0, 'sem uma região por dia');
+  await page.click('[data-view="hoje"]');
+  await page.waitForSelector('#agMain .ag-lista');
+  assert.equal(await page.locator('#agMain section, #agMain [role="region"]').count(), 0, 'sem uma região por hora');
+  assert.ok(await page.locator('#agMain h4.ag-hh').count() >= 3);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
 await scenario('Chegou: desligado antes da janela (06:59), às 10:00 marca, vira "Paciente presente" e o foco vai para "Em atendimento"', async () => {
   {
     const { page, errors, context } = await newPage(browser, { now: '2026-11-04T09:59:00Z', db: { requests: [booking({ start: sp(HOJE, '09:00') })] } });
@@ -706,6 +792,9 @@ await scenario('novo agendamento pelo telefone: exame, dia, horário, paciente, 
   assert.match(await page.textContent('#bkConsentErr'), /foi avisada/);
   assert.equal(await focusId(page), 'bkConsent');
   assert.equal(calls(log, 'agenda_desk_book').length, 0);
+  // todo grupo de opções tem nome: "Como a pessoa pediu" é o fieldset com legenda (sem radiogroup sem nome dentro)
+  assert.equal(await page.locator('#bkForm [role="radiogroup"]:not([aria-label]):not([aria-labelledby])').count(), 0);
+  assert.equal(await page.getAttribute('input[name="bkCanal"] >> nth=0', 'aria-describedby'), 'bkCanalErr');
   await page.check('#bkConsent');
   await page.click('#bkOk');
   await page.waitForSelector('#bkFeito');
@@ -1556,7 +1645,10 @@ await scenario('mês e semana (computador): números do banco, clicar abre o dia
   await abrirAgenda(page);
   await page.click('[data-view="mes"]');
   await page.waitForSelector('#agMain .ag-mes');
-  assert.match((await nomesFalados(page, `[data-act="abrir-dia"][data-dia="${HOJE}"]`))[0], /^\|quarta-feira, 4 de novembro, (3 marcados · 1 concluído|3 marcados)/);
+  // hoje: a palavra "hoje" à vista e no nome falado (antes era só um contorno fino)
+  assert.match((await nomesFalados(page, `[data-act="abrir-dia"][data-dia="${HOJE}"]`))[0], /^\|quarta-feira, 4 de novembro, hoje, (3 marcados · 1 concluído|3 marcados)/);
+  assert.equal((await page.textContent(`[data-act="abrir-dia"][data-dia="${HOJE}"] .ag-hoje-tag`)).trim(), 'hoje');
+  assert.equal(await page.locator('#agMain .ag-hoje-tag').count(), 1, 'só o dia de hoje');
   await page.click(`[data-act="abrir-dia"][data-dia="${HOJE}"]`);
   await page.waitForSelector('#agMain .ag-grade');
   assert.equal(await page.getAttribute('[data-view="dia"]', 'aria-pressed'), 'true');

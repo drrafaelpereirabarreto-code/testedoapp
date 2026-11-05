@@ -606,23 +606,38 @@ export function manageActions(item, { scope = 'clinica', can: c = {}, unplaced =
 }
 
 // ---------- grade do dia: raias e posição ----------
-// items: [{ id, start, end }] em minutos do dia; dayStart: minuto do começo da grade; step: minutos por linha.
-// Itens que se cruzam ficam lado a lado (raias); encostados, não. Devolve { id: { row, span, lane, lanes } }.
-export function layoutColumn(items, dayStart = 0, step = 15) {
+// items: [{ id, start, end }] em minutos do dia; dayStart: minuto do começo da grade; step: minutos por linha;
+// minSpan: altura mínima de cada item na tela, em linhas (o exame curto fica mais alto que a duração, para caberem a
+// hora e a situação e para ser um alvo bom de clicar); um item pode trazer a própria (item.minSpan). As raias contam com
+// essa altura: itens que se cruzariam NA TELA ficam lado a lado, nunca um por cima do outro; encostados, não.
+// Devolve { id: { row, span, lane, lanes } }.
+export function layoutColumn(items, dayStart = 0, step = 15, minSpan = 0.5) {
   const list = [...items].filter((x) => Number.isFinite(x.start) && Number.isFinite(x.end)).sort((a, b) => a.start - b.start || a.end - b.end);
   const out = {};
   let grupo = []; let fimGrupo = -Infinity; let raias = [];
   const fecha = () => { const n = raias.length; for (const g of grupo) out[g.id].lanes = n; grupo = []; raias = []; };
   for (const it of list) {
+    const span = Math.max((it.end - it.start) / step, it.minSpan ?? minSpan);
+    const fim = it.start + span * step;   // onde o item termina na tela
     if (it.start >= fimGrupo) fecha();
-    let lane = raias.findIndex((fim) => fim <= it.start);
-    if (lane < 0) { lane = raias.length; raias.push(it.end); } else raias[lane] = it.end;
-    out[it.id] = { row: (it.start - dayStart) / step, span: Math.max((it.end - it.start) / step, 0.5), lane, lanes: 1 };
+    let lane = raias.findIndex((f) => f <= it.start);
+    if (lane < 0) { lane = raias.length; raias.push(fim); } else raias[lane] = fim;
+    out[it.id] = { row: (it.start - dayStart) / step, span, lane, lanes: 1 };
     grupo.push(it);
-    fimGrupo = Math.max(fimGrupo, it.end);
+    fimGrupo = Math.max(fimGrupo, fim);
   }
   fecha();
   return out;
+}
+// Altura da linha de 15 min (px) e altura mínima de cada item (em linhas) para a grade: o item mais curto mostrado
+// precisa de pelo menos 44 px (a hora e a situação à vista; alvo grande para o mouse e o dedo). Sem item curto, a linha
+// fica com 24 px; com exame de 15 min, 44 px; mais curto que isso, a linha para em 44 px e o item ganha altura mínima.
+export const GRADE = { linhaMin: 24, linhaMax: 44, itemMin: 44 };
+export function gridScale(durations) {
+  const curtos = (durations || []).filter((d) => Number.isFinite(d) && d > 0);
+  const menor = curtos.length ? Math.min(...curtos) : 30;
+  const rowh = Math.min(GRADE.linhaMax, Math.max(GRADE.linhaMin, Math.ceil((GRADE.itemMin * 15) / menor)));
+  return { rowh, minSpan: GRADE.itemMin / rowh };
 }
 
 // ---------- novo agendamento (balcão ou telefone) ----------

@@ -367,6 +367,25 @@ test('grade do dia: raias para quem se cruza; posição em linhas de 15 min', ()
   assert.deepEqual(A.layoutColumn([]), {});
 });
 
+test('grade: exame curto com altura mínima na tela e raias contadas com ela (nenhum item cobre outro)', () => {
+  // três de 10 min seguidos, com a altura mínima de 1 linha (15 min): na tela, cada um cobriria o próximo
+  const l = A.layoutColumn([{ id: 'a', start: 840, end: 850 }, { id: 'b', start: 850, end: 860 }, { id: 'c', start: 860, end: 870 }], 420, 15, 1);
+  assert.deepEqual([l.a.span, l.b.span, l.c.span], [1, 1, 1]);
+  assert.deepEqual([l.a.lane, l.b.lane, l.c.lane], [0, 1, 0], 'b fica ao lado de a; c volta para a 1ª raia (a já terminou na tela)');
+  assert.ok([l.a, l.b, l.c].every((p) => p.lanes === 2));
+  // de 15 min encostados, com altura mínima de 1 linha: uma raia só
+  const m = A.layoutColumn([{ id: 'a', start: 660, end: 675 }, { id: 'b', start: 675, end: 690 }], 420, 15, 1);
+  assert.deepEqual([m.a.lanes, m.b.lanes], [1, 1]);
+  // altura própria do item (o "também em: …" pede mais)
+  assert.equal(A.layoutColumn([{ id: 'a', start: 660, end: 675, minSpan: 1.5 }], 420, 15, 1).a.span, 1.5);
+  // escala: sem item curto, 24 px por 15 min; exame de 15 min, 44 px; mais curto, para em 44 px e o item tem 1 linha
+  assert.deepEqual(A.gridScale([30, 60]), { rowh: 24, minSpan: 44 / 24 });
+  assert.deepEqual(A.gridScale([15, 30]), { rowh: 44, minSpan: 1 });
+  assert.deepEqual(A.gridScale([5]), { rowh: 44, minSpan: 1 });
+  assert.equal(A.gridScale([20]).rowh, 33);
+  assert.deepEqual(A.gridScale([]), { rowh: 24, minSpan: 44 / 24 });
+});
+
 test('novo agendamento: erros com os textos da tela e o que vai ao banco', () => {
   const ok = { procedure: 'p1', slot: '2026-11-05T13:30:00.000Z', name: '  Maria   Souza ', phone: '(11) 98888-7777', email: '', forOther: false, channel: 'clinica_telefone', consent: true };
   assert.deepEqual(A.deskErrors(ok), {});
