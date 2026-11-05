@@ -9,6 +9,7 @@ const Pbf = require('pbf');
 
 const ORIGIN = 'https://drrafaelpereirabarreto-code.github.io';
 const LUGARES = [
+  { nome: 'São Paulo, Av. Paulista (controle)', lat: -23.5614, lon: -46.6559 },
   { nome: 'Campinas centro', lat: -22.9056, lon: -47.0608 },
   { nome: 'Copacabana (Rio)', lat: -22.9711, lon: -43.1863 },
   { nome: 'Feira de Santana centro (BA)', lat: -12.2664, lon: -38.9663 },
@@ -97,15 +98,19 @@ function predios(buf, z, x, y, camadas) {
       const f = L.feature(i);
       if (f.type !== 3) continue;
       const geom = f.loadGeometry();
-      // anel externo maior
-      let melhor = null, ma = 0;
-      for (const anel of geom) { const a = Math.abs(areaAnel(anel.map((p) => [p.x, p.y]))); if (a > ma) { ma = a; melhor = anel; } }
-      if (!melhor) continue;
-      let cx = 0, cy = 0; for (const p of melhor) { cx += p.x; cy += p.y; } cx /= melhor.length; cy /= melhor.length;
-      if (cx < 0 || cy < 0 || cx >= L.extent || cy >= L.extent) continue; // fica no ladrilho vizinho
+      // um prédio por anel externo (o ladrilho pode juntar prédios vizinhos num só objeto)
+      let sinal = 0;
       const ll = (p) => tileParaLonlat(x + p.x / L.extent, y + p.y / L.extent, z);
-      const c = ll({ x: cx, y: cy });
-      lista.push({ camada: nome, c, anel: melhor.map(ll), props: f.properties });
+      for (const anel of geom) {
+        const a = areaAnel(anel.map((p) => [p.x, p.y]));
+        if (!a) continue;
+        if (!sinal) sinal = Math.sign(a);
+        if (Math.sign(a) !== sinal) continue; // buraco
+        let cx = 0, cy = 0; for (const p of anel) { cx += p.x; cy += p.y; } cx /= anel.length; cy /= anel.length;
+        if (cx < 0 || cy < 0 || cx >= L.extent || cy >= L.extent) continue; // fica no ladrilho vizinho
+        const c = ll({ x: cx, y: cy });
+        lista.push({ camada: nome, c, anel: anel.map(ll), props: f.properties });
+      }
     }
   }
   return { nomes, lista };
