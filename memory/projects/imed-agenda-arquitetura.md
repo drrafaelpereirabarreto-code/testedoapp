@@ -509,6 +509,8 @@ Demais tabelas da 3.1 (colunas principais):
   equipe, bloqueios, chaves, conflitos).
 - `agenda.access_log(id identity, day, first_at, last_at, user_id, clinic_id, fn, request_id, scope, reads, justification_code)`,
   único por `(day, user_id, clinic_id, fn, request_id, scope)`: a consulta periódica soma em `reads` em vez de multiplicar linhas.
+  Na 4.2 (parte 1 da `agenda_leitura`) a chave ganha `justification_code`: a mesma leitura no mesmo dia com OUTRO motivo da
+  equipe do IMED vira outra linha (antes o segundo motivo sumia dentro do primeiro); só os 4 motivos da decisão 4.2-f valem.
 - `agenda.notes(id, clinic_id, request_id, kind in ('observacao','justificativa_acesso','motivo'), text ≤ 300, author_user,
   created_at, deleted_at)` — o único lugar com texto livre; apagável.
 - `agenda.idempotency(scope, actor, key uuid, fingerprint, result jsonb, created_at, primary key (scope, actor, key))`;
@@ -1215,7 +1217,10 @@ site; `VERSION` do `sw.js` (arquivos novos no `CORE`); todos os testes; commit n
   detalhe e histórico, cancelar e remarcar, chegada e falta, bloqueios com a lista de afetados); rótulos novos do paciente em
   `geo-core.js` e `conta.js`; a lista de pedidos do painel passa a vir de função e a leitura direta pela REST fecha para a
   clínica (migração `<ts>_agenda_leitura`). Testes: `tests/e2e-agenda.mjs` (cores
-  com texto, teclado, 1024 e 390 px, confirmações), `geo-core.test`, `e2e-conta`.
+  com texto, teclado, 1024 e 390 px, confirmações), `geo-core.test`, `e2e-conta`; a parte HTTP do teste 2 (balcão pela API e
+  o visitante sem o horário) em `tests/banco/leitura-direta.mjs`; o bloqueio forçado sob disputa (conexões diretas e
+  PostgREST) em `tests/banco/bloqueio-forcado.mjs`. A migração vai em 2 partes, em dias diferentes, cada uma com a
+  própria volta (ao aplicar a parte 1, renomear a parte 2 para depois dela; o `banco.yml` reprova partes fora de ordem).
 - **4.3 Atualização automática e painel gerencial.** `assets/js/tempo-real.js`, evento `imed:token` no `auth.js`, CSP com
   `wss`, consulta periódica de `agenda_version`, "Precisa de atenção", painéis operacional e financeiro. Testes: 7 (e2e),
   `tests/tempo-real.test.mjs`, a11y. Dono: desligar "Allow public access" do Realtime.
