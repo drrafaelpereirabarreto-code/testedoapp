@@ -1,17 +1,25 @@
--- iMed Agenda, fase 4.2 ("Agenda visual e recepção"), parte 1 de 2: acrescenta (e troca UMA função da 3.3). Arquitetura:
+-- iMed Agenda, fase 4.2 ("Agenda visual e recepção"), parte 1 de 2: acrescenta (e troca DUAS funções que já estão na
+-- produção: agenda_reschedule, da 3.3, e agenda_request_detail, da 3.4). Arquitetura:
 -- memory/projects/imed-agenda-arquitetura.md (§3.2 item 4, §5, §11, §12, §14 item 4.2).
--- Nome provisório no ramo de teste: depois de aplicada na produção, este arquivo e a volta ganham a versão que o
--- conector gravar (e ULTIMA_NA_PRODUCAO no banco.yml muda junto).
+-- Nome provisório no ramo de teste. As 2 partes vão para a produção em dias diferentes (decisão 4.2-g) e cada uma tem
+-- a PRÓPRIA volta (supabase/volta/, mesmo nome). Ao aplicar ESTA parte na produção: (1) renomeie este arquivo e a
+-- volta dele com a versão que o conector gravar; (2) renomeie também a parte 2 e a volta dela para uma versão
+-- provisória DEPOIS dessa (por exemplo, a mesma mais 1 segundo); (3) só então troque ULTIMA_NA_PRODUCAO no banco.yml
+-- pela versão desta parte. Assim o banco "P" do CI continua igual à produção (com esta parte e sem o fechamento) e a
+-- volta da parte 2 só desfaz o fechamento. O banco.yml reprova partes fora de ordem (parte 2 antes da parte 1).
 --
 -- Em linguagem simples: funções novas para a tela da agenda — o catálogo da recepção (exames, aparelhos e prazos),
 -- os horários livres da grade, os horários do balcão, a lista de bloqueios, a lista de pedidos da clínica (com
 -- registro de quem leu), o "bloquear mesmo assim" (os pacientes do horário vão para remarcação, com conflito aberto)
 -- e chegada/atendimento/falta pelo profissional, na própria agenda. Também: o item que sai da "remarcação" (remarcado,
 -- cancelado, atendido, de volta ao horário de antes), por qualquer caminho, sai sozinho da lista "Para remarcar" (um
--- gatilho novo); e a remarcação pela clínica (agenda_reschedule, da 3.3) passa a oferecer, quando o horário acabou de
--- ser pego, os mesmos horários que "Ver horários" mostra. Nada é apagado; o site de hoje continua igual. Pode rodar de
--- novo sem erro e sem mudar nada. Volta: supabase/volta/<versão>_agenda_leitura_parte_2.sql (a volta é única, para as
--- 2 partes; a desta parte não faz nada).
+-- gatilho novo); a remarcação pela clínica (agenda_reschedule, da 3.3) passa a oferecer, quando o horário acabou de
+-- ser pego, os mesmos horários que "Ver horários" mostra; e a "quebra de vidro" da equipe do IMED fica mais firme: só
+-- os 4 motivos da decisão 4.2-f abrem a lista de pedidos e o detalhe (agenda_request_detail, da 3.4), e cada motivo
+-- fica numa linha própria do registro de leitura (agenda.access_log: a leitura repetida no mesmo dia com OUTRO motivo
+-- não some mais dentro da primeira). Nada é apagado; o site de hoje continua igual. Pode rodar de novo sem erro e sem
+-- mudar nada. Volta: supabase/volta/<versão>_agenda_leitura_parte_1.sql (só desta parte; se a parte 2 estiver
+-- aplicada, a volta dela vem antes).
 --
 -- Conferir na produção depois desta parte (só leitura; tem de dar true):
 --   select (select count(*) from pg_proc where pronamespace = 'public'::regnamespace and proname like 'agenda\_%') = 53
@@ -26,6 +34,10 @@
 --      and not has_function_privilege('authenticated', 'private.agenda_block_hits(uuid,uuid[],timestamptz,timestamptz)', 'EXECUTE')
 --      and exists (select 1 from pg_trigger where tgrelid = 'agenda.appointment_items'::regclass and tgname = 'appointment_items_fecha_conflitos')
 --      and pg_get_functiondef('public.agenda_reschedule(uuid,jsonb,text,uuid,integer)'::regprocedure) like '%coalesce(v_now, now())%'
+--      and pg_get_functiondef('public.agenda_request_detail(uuid,text)'::regprocedure) like '%agenda_justification_ok%'
+--      and not private.agenda_justification_ok('abc') and private.agenda_justification_ok('auditoria')
+--      and (select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'agenda.access_log'::regclass and conname = 'access_log_uq')
+--          like '%scope, justification_code)'
 --      and (select qual from pg_policies where tablename = 'appointment_requests' and policyname = 'clinica ve pedidos para ela') like '%pedidos.ver%';
 select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '120s', true);
 
@@ -69,6 +81,31 @@ as $$
   select (date_trunc('year', max(h.day)) + interval '1 year' - interval '1 day')::date from agenda.holidays h where h.scope = 'nacional';
 $$;
 revoke all on function private.agenda_national_until() from public, anon, authenticated, service_role;
+
+-- "Quebra de vidro" da equipe do IMED (decisão 4.2-f): só estes 4 motivos abrem dado de paciente de uma clínica (os
+-- mesmos da tela, agenda-core.js JUSTIFICATIONS). Antes valia qualquer código no formato certo (até 'abc').
+create or replace function private.agenda_justification_ok(p_code text)
+returns boolean
+language sql immutable
+set search_path = ''
+as $$
+  select coalesce(p_code in ('suporte_clinica', 'pedido_do_paciente', 'auditoria', 'conflito_agenda'), false);
+$$;
+revoke all on function private.agenda_justification_ok(text) from public, anon, authenticated, service_role;
+
+-- Registro de leitura (agenda.access_log): a chave de "a mesma leitura no mesmo dia" passa a incluir o motivo. Antes,
+-- a mesma pessoa da equipe do IMED lendo a mesma lista no mesmo dia com OUTRO motivo só somava em reads, e ficava
+-- gravado só o primeiro motivo (o segundo sumia atrás dele). A leitura da clínica (sem motivo) continua numa linha só
+-- por dia. O nome da chave não muda: agenda_log_access (3.4) usa ON CONFLICT ON CONSTRAINT access_log_uq e a guarda
+-- da trilha continua valendo (nada muda numa linha que já existe, só reads e last_at).
+do $$
+begin
+  if (select pg_get_constraintdef(c.oid) from pg_constraint c
+      where c.conrelid = 'agenda.access_log'::regclass and c.conname = 'access_log_uq') not like '%justification_code%' then
+    alter table agenda.access_log drop constraint access_log_uq,
+      add constraint access_log_uq unique nulls not distinct (day, user_id, clinic_id, fn, request_id, scope, justification_code);
+  end if;
+end $$;
 
 /* ===================== 2. Leituras sem dado de paciente ===================== */
 
@@ -289,7 +326,8 @@ end $$;
 -- A aba "Pedidos" do painel: a mesma lista da leitura direta de hoje (sem reserva em andamento ou expirada), na mesma
 -- ordem e com o mesmo limite, mas por função: fica em agenda.access_log quando a lista tem dado de paciente.
 -- p_when: nulo (os 100 mais novos), 'hoje' ou 'semana' (hoje e os próximos 6 dias), pela data do exame no fuso da
--- clínica. A equipe do IMED (imed.pacientes.ver) só com uma justificativa em código ("quebra de vidro").
+-- clínica. A equipe do IMED (imed.pacientes.ver) só com um dos 4 motivos da decisão 4.2-f ("quebra de vidro"); cada
+-- motivo fica numa linha própria do access_log.
 create or replace function public.agenda_requests(p_clinic uuid, p_when text default null, p_justification text default null)
 returns jsonb
 language plpgsql volatile
@@ -307,7 +345,7 @@ begin
   if public.clinic_perm_scope(p_clinic, 'pedidos.ver') = 'clinica' then
     v_scope := 'clinica';
   elsif public.imed_has('imed.pacientes.ver') then
-    if p_justification is null or p_justification !~ '^[a-z][a-z0-9_]{2,59}$' or p_justification ~ '[0-9]{4,}' then
+    if not private.agenda_justification_ok(p_justification) then
       return jsonb_build_object('status', 'justification_required');
     end if;
     v_scope := 'central';
@@ -338,6 +376,74 @@ begin
                                       case when v_scope = 'central' then p_justification end);
   end if;
   return jsonb_build_object('status', 'ok', 'scope', v_scope, 'timezone', v_tz, 'today', v_today, 'requests', v_rows);
+end $$;
+
+-- Detalhe de um agendamento (3.4, 20261103181553_agenda_painel_parte_1): a MESMA função, com uma troca só — a equipe
+-- do IMED abre só com um dos 4 motivos da decisão 4.2-f (antes valia qualquer código no formato certo). A volta põe a
+-- da 3.4, letra por letra.
+create or replace function public.agenda_request_detail(p_id uuid, p_justification text default null)
+returns jsonb
+language plpgsql volatile
+security definer
+set search_path = ''
+as $$
+declare
+  r public.appointment_requests;
+  v_scope text;
+  v_full boolean;
+begin
+  if auth.uid() is null then return jsonb_build_object('status', 'forbidden'); end if;
+  select * into r from public.appointment_requests a where a.id = p_id;
+  if not found or r.clinic_id is null then return jsonb_build_object('status', 'not_found'); end if;
+  v_scope := public.clinic_perm_scope(r.clinic_id, 'agenda.pacientes');
+  if v_scope = 'propria' and not private.agenda_request_on(r.id, private.agenda_own_resources(r.clinic_id)) then
+    v_scope := null;
+  end if;
+  if v_scope is null or v_scope not in ('clinica', 'propria') then
+    if public.imed_has('imed.pacientes.ver') then
+      if not private.agenda_justification_ok(p_justification) then
+        return jsonb_build_object('status', 'justification_required');
+      end if;
+      v_scope := 'central';
+    else
+      return jsonb_build_object('status', 'forbidden');
+    end if;
+  end if;
+  -- reserva expirada: some do painel da clínica (como na leitura direta); fica só para a equipe do IMED
+  if r.status = 'expired' and v_scope <> 'central' then
+    return jsonb_build_object('status', 'not_found');
+  end if;
+  v_full := v_scope in ('clinica', 'central');
+  perform private.agenda_log_access('agenda_request_detail', r.clinic_id, r.id, v_scope,
+                                    case when v_scope = 'central' then p_justification end);
+  return jsonb_build_object(
+    'status', 'ok', 'scope', v_scope, 'id', r.id, 'clinic_id', r.clinic_id, 'request_status', r.status,
+    'version', r.version, 'agenda', r.uses_resources, 'channel', r.channel, 'created_at', r.created_at,
+    'exam_code', r.exam_code, 'preferred_date', r.preferred_date, 'preferred_period', r.preferred_period,
+    'slot_start', r.slot_start, 'slot_end', r.slot_end, 'hold_expires_at', r.hold_expires_at,
+    'cancel_reason', r.cancel_reason, 'cancelled_by', r.cancelled_by, 'cancelled_at', r.cancelled_at,
+    'anonymized', r.anonymized_at is not null,
+    'patient', jsonb_build_object(
+      'name', r.patient_name,
+      'phone', case when v_full then r.patient_phone end,
+      'email', case when v_full then r.patient_email end,
+      'for_other', r.for_other, 'other_name', r.other_name, 'relationship', r.relationship, 'other_minor', r.other_minor,
+      'notes', case when v_full then r.notes end),
+    'items', coalesce((select jsonb_agg(jsonb_build_object(
+                         'id', i.id, 'seq', i.seq, 'procedure_id', i.procedure_id, 'procedure', p.name,
+                         'exam_code', i.exam_code, 'starts_at', i.starts_at, 'ends_at', i.ends_at, 'status', i.status,
+                         'version', i.version, 'price_cents', i.price_cents,
+                         'resources', (select coalesce(jsonb_agg(jsonb_build_object('id', rs.id, 'name', rs.name, 'kind', rs.kind)
+                                                                 order by o.group_no), '[]'::jsonb)
+                                       from agenda.occupancy o join agenda.resources rs on rs.id = o.resource_id
+                                       where o.item_id = i.id and (o.active or o.release_reason in ('concluido', 'faltou'))))
+                       order by i.seq)
+                       from agenda.appointment_items i join agenda.procedures p on p.id = i.procedure_id
+                       where i.request_id = r.id), '[]'::jsonb),
+    'notes', case when v_full then coalesce((select jsonb_agg(jsonb_build_object('id', n.id, 'kind', n.kind, 'text', n.text,
+                                                                             'created_at', n.created_at) order by n.created_at)
+                                         from agenda.notes n where n.request_id = r.id and n.deleted_at is null), '[]'::jsonb)
+                  else '[]'::jsonb end);
 end $$;
 
 /* ===================== 4. Bloquear mesmo assim ===================== */
@@ -453,6 +559,11 @@ begin
     return jsonb_build_object('status', 'affected_changed', 'items', v_hits, 'confirm', v_fp);
   end if;
   if exists (select 1 from jsonb_array_elements(v_hits) y where not (y ->> 'can_move')::boolean) then
+    -- a lista também volta com os nomes: a leitura fica registrada, como na prévia (o código da prévia não é preso
+    -- à pessoa nem ao dia: quem confirma pode não ser quem viu a prévia)
+    if v_pac and exists (select 1 from jsonb_array_elements(v_hits) y where y ->> 'kind' = 'agendamento') then
+      perform private.agenda_log_access('agenda_block_force', p_clinic, null, 'bloqueio');
+    end if;
     return jsonb_build_object('status', 'cannot_move', 'items', v_hits);
   end if;
   begin
@@ -660,6 +771,8 @@ create or replace trigger appointment_items_fecha_conflitos
   for each row
   when (old.status is distinct from new.status or old.starts_at is distinct from new.starts_at)
   execute function private.agenda_conflicts_close();
+-- como as guardas da agenda (3.1): vale SEMPRE, também com session_replication_role = replica (000_catalogo confere)
+alter table agenda.appointment_items enable always trigger appointment_items_fecha_conflitos;
 
 /* ===================== 7. Remarcar pela clínica: as alternativas do slot_taken ===================== */
 -- A MESMA função da 3.3 (20261103053814_agenda_operacao_parte_2), com uma linha a mais: quando o horário escolhido

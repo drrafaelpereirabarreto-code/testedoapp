@@ -403,7 +403,7 @@ values (current_date, 'a3100000-0000-4000-8000-000000000001', 'c3100000-0000-400
 select lives_ok($$ insert into agenda.access_log (day, user_id, clinic_id, fn, request_id, scope)
                    values (current_date, 'a3100000-0000-4000-8000-000000000001', 'c3100000-0000-4000-8000-000000000001',
                            'agenda_request_detail', 'b3100000-0000-4000-8000-000000000001', 'detalhe')
-                   on conflict (day, user_id, clinic_id, fn, request_id, scope)
+                   on conflict on constraint access_log_uq
                    do update set reads = agenda.access_log.reads + 1, last_at = now() $$,
                 'registro de acesso: a mesma leitura no mesmo dia soma (upsert)');
 select is((select reads from agenda.access_log where fn = 'agenda_request_detail'), 2, 'registro de acesso: reads = 2');

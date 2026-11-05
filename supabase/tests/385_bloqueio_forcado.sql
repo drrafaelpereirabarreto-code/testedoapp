@@ -3,7 +3,7 @@
 --   - agenda_block_force sem o código: a prévia (quem seria atingido e um código), sem gravar nada (só o access_log);
 --   - com o código certo: os pacientes vão para remarcação (TODOS os recursos do item soltos, inclusive a sala), um
 --     conflito "Para remarcar" por item, os "só ocupar" do período saem, o bloqueio é gravado; código velho ou errado:
---     affected_changed; alguém já presente: cannot_move; a conferência adiada (I2) passa no fim;
+--     affected_changed; alguém já presente: cannot_move (com nomes: fica no access_log); a conferência adiada (I2) passa no fim;
 --   - depois: voltar ao horário de antes dá slot_taken (o bloqueio está lá); remarcar fecha o conflito SOZINHO
 --     (gatilho, com auditoria), e também cancelar (pela clínica ou pelo próprio paciente), cancelar um exame e voltar
 --     ao horário de antes (só o conflito do bloqueio; o de grade que mudou continua);
@@ -13,7 +13,7 @@
 --   - permissões: recepção e gestor sim; profissional, financeiro e outra clínica não; equipe do IMED sem nomes.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test; nomes fictícios.
 begin;
-select plan(59);
+select plan(60);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -216,12 +216,18 @@ select set_config('teste.previa2', public.agenda_block_force(pg_temp.a(), pg_tem
 select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'items'), j #>> '{items,0,can_move}', j #>> '{items,0,status}')
            from (select current_setting('teste.previa2')::jsonb as j) x),
           'confirm_required|1|false|checked_in', 'prévia por cima de quem já chegou: não pode sair');
-select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'items'))
+select pg_temp.entrar('postgres');
+select set_config('teste.lidas', (select coalesce(sum(reads), 0)::text from agenda.access_log
+                                  where user_id = pg_temp.u(2) and fn = 'agenda_block_force'), true);
+select pg_temp.como(2);
+select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'items'), j #>> '{items,0,patient}' is not null)
            from (select public.agenda_block_force(pg_temp.a(), pg_temp.id('usg1'), current_setting('teste.h0')::timestamptz,
                           current_setting('teste.h0')::timestamptz + interval '30 minutes', 'bloqueio', null,
                           current_setting('teste.previa2')::jsonb ->> 'confirm') as j) x),
-          'cannot_move|1', 'mesmo com o código: cannot_move');
+          'cannot_move|1|t', 'mesmo com o código: cannot_move (a lista volta com o nome curto)');
 select pg_temp.entrar('postgres');
+select is((select coalesce(sum(reads), 0) from agenda.access_log where user_id = pg_temp.u(2) and fn = 'agenda_block_force'),
+          current_setting('teste.lidas')::bigint + 1, 'cannot_move com nomes também fica no access_log (como a prévia)');
 select is((select concat_ws('|', count(*), (select a.status from public.appointment_requests a where a.id = pg_temp.id('a5')))
            from public.clinic_blocks where clinic_id = pg_temp.a() and removed_at is null), '1|checked_in', '... nada gravado');
 

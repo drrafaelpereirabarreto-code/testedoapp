@@ -3,11 +3,12 @@
 --     agenda_request_detail, agenda_history, agenda_dashboard, agenda_dashboard_financeiro, conflitos;
 --   - cada papel vê o que a matriz do §12 manda: recepção vê tudo da clínica; profissional só a própria agenda e sem
 --     telefone; financeiro só o financeiro; a equipe do IMED vê a grade sem nomes e abre dado de paciente só com
---     justificativa; leitura de dado de paciente fica em agenda.access_log (repetida soma);
+--     justificativa (desde a 4.2, só um dos 4 motivos da decisão 4.2-f); leitura de dado de paciente fica em
+--     agenda.access_log (repetida soma; outro motivo no mesmo dia, outra linha);
 --   - preço "a partir de" em clinic_exams; set_my_clinic_exams e update_my_clinic por permissão.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test; nomes fictícios.
 begin;
-select plan(53);
+select plan(56);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -162,11 +163,19 @@ select is(public.agenda_request_detail(pg_temp.id('b1')) ->> 'status', 'justific
           'detalhe: a equipe do IMED precisa de justificativa ("quebra de vidro")');
 select is(public.agenda_request_detail(pg_temp.id('b1'), 'Suporte ao paciente') ->> 'status', 'justification_required',
           'detalhe: justificativa só em código');
-select is(public.agenda_request_detail(pg_temp.id('b1'), 'paciente_pediu_ajuda') #>> '{patient,phone}', '11988887777',
+select is(public.agenda_request_detail(pg_temp.id('b1'), 'paciente_pediu_ajuda') ->> 'status', 'justification_required',
+          'detalhe (4.2): código fora dos 4 motivos da decisão 4.2-f não abre, mesmo no formato certo');
+select is(public.agenda_request_detail(pg_temp.id('b1'), 'pedido_do_paciente') #>> '{patient,phone}', '11988887777',
           'detalhe: com a justificativa, abre');
 select pg_temp.entrar('postgres');
 select is((select justification_code from agenda.access_log where user_id = pg_temp.u(6) and fn = 'agenda_request_detail'),
-          'paciente_pediu_ajuda', 'access_log guarda a justificativa da equipe do IMED');
+          'pedido_do_paciente', 'access_log guarda a justificativa da equipe do IMED');
+select pg_temp.como(6);
+select is(public.agenda_request_detail(pg_temp.id('b1'), 'auditoria') ->> 'status', 'ok', 'detalhe: o mesmo agendamento, no mesmo dia, com outro motivo');
+select pg_temp.entrar('postgres');
+select is((select string_agg(justification_code || ':' || reads, ',' order by justification_code) from agenda.access_log
+           where user_id = pg_temp.u(6) and fn = 'agenda_request_detail'),
+          'auditoria:1,pedido_do_paciente:1', 'access_log (4.2): cada motivo numa linha própria (o segundo não some dentro do primeiro)');
 select pg_temp.como(6);
 select pg_temp.como(2);
 select is((select concat_ws('|', h ->> 'to', h ->> 'actor_kind', h ->> 'origin')

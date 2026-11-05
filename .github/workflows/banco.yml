@@ -72,6 +72,10 @@ env:
   # Última migração que JÁ está aplicada na produção (supabase_migrations.schema_migrations de lá; conferido pelo
   # conector em 02/11/2026). As migrações com volta até ela formam o banco "P", igual ao da produção de hoje; as mais
   # novas ainda esperam a aprovação do dono. Troque ao aplicar uma migração nova na produção.
+  # Migração em partes aplicadas em DIAS DIFERENTES (ex.: <versão>_agenda_leitura_parte_1 e _parte_2, fase 4.2): cada
+  # parte tem a própria volta; ao aplicar uma parte, renomeie-a (e a volta) com a versão gravada, renomeie as partes
+  # seguintes (e as voltas) para versões provisórias DEPOIS dela e só então troque esta versão. Parte com versão menor
+  # ou igual à da parte anterior reprova ("Partes fora de ordem"): ela entraria em "P" como se já estivesse na produção.
   ULTIMA_NA_PRODUCAO: '20261105030413'
   # Porta do banco local (supabase/config.toml, [db] port) e a senha fixa que a CLI usa no banco local.
   DB_VIGIA: 'postgresql://postgres:postgres@127.0.0.1:54322/postgres?connect_timeout=2'
@@ -174,6 +178,17 @@ jobs:
           done
           if [ ${#sem_volta[@]} -gt 0 ]; then
             echo "::error title=Migração nova sem volta::${sem_volta[*]} - escreva supabase/volta/<mesmo nome>.sql (arquitetura §14: toda migração nova tem volta testada aqui)"
+            exit 1
+          fi
+          # Partes de uma mesma migração (<versão>_<nome>_parte_<n>.sql) em ordem: cada parte com versão MAIOR que a da
+          # parte anterior. Pega a parte aplicada na produção e renomeada sem renomear as seguintes: a seguinte, com o
+          # nome provisório antigo, ficaria antes dela e entraria no banco "P" como se já estivesse na produção.
+          fora_de_ordem=$(for m in supabase/migrations/*_parte_*.sql; do basename "$m"; done \
+            | sed -nE 's/^([0-9]+)_(.+)_parte_([0-9]+)\.sql$/\2 \3 \1/p' | sort -k1,1 -k2,2n \
+            | awk '$1 == nome && $3 + 0 <= versao + 0 { printf "%s%s_parte_%s (%s) não vem depois da parte %s (%s)", sep, $1, $2, $3, parte, versao; sep = "; " }
+                   { nome = $1; parte = $2; versao = $3 }')
+          if [ -n "$fora_de_ordem" ]; then
+            echo "::error title=Partes fora de ordem::$fora_de_ordem - ao aplicar uma parte na produção, renomeie as partes seguintes (e as voltas) para versões depois dela"
             exit 1
           fi
           : > "$RUNNER_TEMP/com-volta.txt"

@@ -11,7 +11,11 @@
 --   O paciente continua lendo os próprios pedidos (policy "paciente ve seus pedidos", intacta), cancelando
 --   (cancel_request) e acompanhando (request_status, agenda_my_booking): são funções, não leitura direta. O pedido
 --   pelo site (INSERT das 23 colunas) não muda.
--- Pode rodar de novo sem erro e sem mudar nada. Volta: supabase/volta/<versão>_agenda_leitura_parte_2.sql.
+-- Pode rodar de novo sem erro e sem mudar nada. Volta: supabase/volta/<versão>_agenda_leitura_parte_2.sql (só o
+-- fechamento; a parte 1 tem a volta dela).
+-- Nome provisório. Quando a parte 1 for aplicada na produção, este arquivo e a volta dele passam para uma versão
+-- provisória DEPOIS da versão gravada da parte 1 (o banco.yml reprova a parte 2 antes da parte 1); quando esta parte
+-- for aplicada, ganham a versão que o conector gravar, e ULTIMA_NA_PRODUCAO no banco.yml muda junto.
 --
 -- Conferir na produção depois desta parte (só leitura; tem de dar true):
 --   select (select qual from pg_policies where tablename = 'appointment_requests' and policyname = 'clinica ve pedidos para ela') = 'false'

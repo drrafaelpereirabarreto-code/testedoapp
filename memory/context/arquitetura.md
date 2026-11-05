@@ -174,7 +174,9 @@ node tests/e2e-perto.mjs   # e e2e-inicio, e2e-local, e2e-conta, e2e-clinica
 - **Nunca** use `supabase/` com a produção: nada de `supabase link`, `config push`, `db push` ou `migration up --linked`
   (o `config.toml` é de TESTE: gravaria `site_url` de 127.0.0.1 e outros valores locais na produção). Migração na
   produção só pelo conector, aprovada pelo dono; depois, renomear o arquivo (e a volta) com a versão gravada e só então
-  juntar o ramo na `main`.
+  juntar o ramo na `main`. Migração em partes aplicadas em dias diferentes (4.2: `agenda_leitura_parte_1` e `_2`): cada
+  parte tem a própria volta; ao aplicar uma parte, renomear também as seguintes (e as voltas) para versões provisórias
+  depois dela, e só então trocar `ULTIMA_NA_PRODUCAO` (o `banco.yml` reprova "Partes fora de ordem").
 - **Impressão digital** (`tests/banco/catalogo.sql`, só SELECT): uma linha por objeto (função, tabela, policy,
   job...) com hash da definição normalizada. O resumo por tipo sai no "Resumo do banco" para F0 e F1. Para conferir a
   produção: rodar no conector o SELECT de resumo

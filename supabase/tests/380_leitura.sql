@@ -3,10 +3,11 @@
 --     (horários do balcão e da remarcação, com o "agora" recuado da antecedência), agenda_blocks (bloqueios por função),
 --     agenda_requests (a aba Pedidos, com registro de quem leu) e agenda_attend (chegada, atendimento, concluído e
 --     falta; o profissional só na própria agenda);
---   - cada papel vê o que a matriz do §12 manda; ninguém de outra clínica; a equipe do IMED com justificativa.
+--   - cada papel vê o que a matriz do §12 manda; ninguém de outra clínica; a equipe do IMED só com um dos 4 motivos
+--     da decisão 4.2-f, cada motivo numa linha própria do access_log.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test; nomes fictícios.
 begin;
-select plan(58);
+select plan(62);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -261,12 +262,27 @@ select pg_temp.como(6);
 select is(public.agenda_requests(pg_temp.a()) ->> 'status', 'justification_required', 'agenda_requests: a equipe do IMED precisa do motivo');
 select is(public.agenda_requests(pg_temp.a(), null, 'tel 11999998888') ->> 'status', 'justification_required',
           'agenda_requests: motivo só em código (sem texto livre nem números longos)');
+select is(public.agenda_requests(pg_temp.a(), null, 'abc') ->> 'status', 'justification_required',
+          'agenda_requests: só os 4 motivos da decisão 4.2-f (um código qualquer no formato certo não abre)');
 select is((select concat_ws('|', j ->> 'status', j ->> 'scope', jsonb_array_length(j -> 'requests'))
            from (select public.agenda_requests(pg_temp.a(), null, 'suporte_clinica') as j) x), 'ok|central|2',
           'agenda_requests: com o motivo, a equipe do IMED vê a lista');
 select pg_temp.entrar('postgres');
 select is((select justification_code from agenda.access_log where user_id = pg_temp.u(6) and fn = 'agenda_requests'), 'suporte_clinica',
           'agenda_requests: o motivo da equipe fica registrado');
+-- a mesma pessoa, a mesma lista, o mesmo dia, OUTRO motivo (duas vezes): uma linha por motivo
+select pg_temp.como(6);
+select is(concat_ws('|', public.agenda_requests(pg_temp.a(), null, 'auditoria') ->> 'status',
+                    public.agenda_requests(pg_temp.a(), null, 'auditoria') ->> 'status'), 'ok|ok',
+          'agenda_requests: a mesma lista de novo, com outro motivo');
+select pg_temp.entrar('postgres');
+select is((select string_agg(justification_code || ':' || reads, ',' order by justification_code) from agenda.access_log
+           where user_id = pg_temp.u(6) and fn = 'agenda_requests' and clinic_id = pg_temp.a()),
+          'auditoria:2,suporte_clinica:1',
+          'access_log: cada motivo numa linha própria (o segundo não some dentro do primeiro); o mesmo motivo repetido só soma');
+select ok((select pg_get_constraintdef(c.oid) from pg_constraint c
+           where c.conrelid = 'agenda.access_log'::regclass and c.conname = 'access_log_uq') like '%scope, justification_code)',
+          'access_log: a chave da leitura do dia inclui o motivo');
 
 /* ===================== agenda_attend ===================== */
 select pg_temp.como(2);
