@@ -186,7 +186,7 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
         const procs = s === 'propria' ? db.procedures.filter((p) => p.groups.some((g) => g.resource_ids.some((x) => own().includes(x)))) : db.procedures;
         const c = (perm) => (s === 'central' ? true : pr[perm] === 'clinica');
         return json(route, { status: 'ok', scope: s, clinic_id: C1, timezone: db.tz, agenda_mode: 'nativa', active: true, online: false,
-          can: { marcar: c('agenda.marcar'), remarcar: c('agenda.remarcar'), cancelar: c('agenda.cancelar'), bloquear: c('agenda.bloquear'), atender: s === 'central' || !!pr['agenda.atender'], pacientes: s !== 'central' && !!pr['agenda.pacientes'], conflitos: c('conflitos.resolver') },
+          can: { marcar: c('agenda.marcar'), remarcar: c('agenda.remarcar'), cancelar: c('agenda.cancelar'), bloquear: c('agenda.bloquear'), atender: s === 'central' ? db.imedOperar !== false : !!pr['agenda.atender'], pacientes: s !== 'central' && !!pr['agenda.pacientes'], conflitos: c('conflitos.resolver') },
           unit: db.unit, national_holidays_until: db.national ?? '2027-12-31',
           resources: res.map(({ member, ...r }) => ({ ...r, mine: member === USER })), procedures: procs });
       }
@@ -1133,6 +1133,115 @@ await scenario('pacote com dois exames: "Cancelar este exame" cancela só aquele
   assert.equal(await page.locator(`#agDet [data-act="cancelar"][data-item="${pac.items[0].id}"]`).count(), 1, 'o ultrassom ainda pode ser cancelado');
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+await scenario('clique duplo em "Chegou": uma chamada só, botões desligados enquanto espera, sem aviso de "outra pessoa"', async () => {
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: [booking({ start: sp(HOJE, '10:30') })], delay: { agenda_attend: 700 } } });
+  await abrirAgenda(page);
+  const b = page.locator('#agMain [data-act="atender"][data-k="chegou"]');
+  await b.dblclick();
+  assert.equal(await b.getAttribute('aria-disabled'), 'true', 'desligado enquanto a resposta não chega');
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.k), 'chegou', 'o foco fica no botão');
+  await page.waitForFunction(() => /Paciente presente/.test(document.querySelector('#agMain').textContent));
+  assert.equal(calls(log, 'agenda_attend').length, 1, 'uma chamada só');
+  assert.doesNotMatch(await page.textContent('#agMsg'), /Outra pessoa/);
+  assert.equal(db.requests[0].items[0].status, 'checked_in', 'não passou para "Em atendimento" sem querer');
+  assert.equal(await page.locator('#agMain [data-act="atender"][aria-disabled="true"]').count(), 0, 'depois da resposta, os botões voltam');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pergunta "Sim, …" com a situação mudada por outra pessoa: some ao reler e não manda situação inválida', async () => {
+  const { page, db, log, errors, context } = await newPage(browser, { now: '2026-11-04T12:16:00Z', db: { requests: [booking({ name: 'Maria Lopes Teste', start: sp(HOJE, '09:00') })] } });
+  await abrirAgenda(page);
+  await page.click('[data-act="atender"][data-k="faltou"]');
+  assert.equal(await focusId(page), 'agAskSim');
+  // outra recepção registra a chegada; esta aba relê
+  const r = db.requests[0]; r.items[0].status = 'checked_in'; r.status = 'checked_in'; r.version += 1; db.version += 1;
+  await page.click('[data-act="atualizar"]');
+  await page.waitForFunction(() => /Paciente presente/.test(document.querySelector('#agMain').textContent));
+  assert.equal(await page.locator('#agAskSim').count(), 0, 'a pergunta velha sai da tela');
+  assert.equal(calls(log, 'agenda_attend').length, 0, 'nada enviado');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Desfazer falta" sem o horário livre: texto próprio (falta não se remarca) e atalho para "Novo agendamento"', async () => {
+  const { page, db, errors, context } = await newPage(browser, { db: { requests: [booking({ start: sp(HOJE, '09:00'), status: 'no_show' })] } });
+  await abrirAgenda(page);
+  await page.click('[data-act="atender"][data-k="desfazer"]');
+  await page.selectOption('#agAskMotivo', 'chegou_atrasado');
+  db.once.agenda_attend = { status: 'slot_taken' };
+  await page.click('#agAskSim');
+  await page.waitForFunction(() => /a falta não pode ser desfeita/.test(document.querySelector('#agMsg').textContent));
+  assert.doesNotMatch(await page.textContent('#agMsg'), /Remarque/, 'não manda remarcar o que não se remarca');
+  assert.equal(await focusId(page), 'agMsgBtn');
+  assert.equal((await page.textContent('#agMsgBtn')).trim(), 'Novo agendamento');
+  await page.click('#agMsgBtn');
+  assert.equal(await focusId(page), 'bkT', 'abre o novo agendamento');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('"Atualizar" sem internet não diz "Agenda atualizada"; com internet, diz', async () => {
+  const { page, db, errors, context } = await newPage(browser, { db: { requests: dia1() } });
+  await abrirAgenda(page);
+  db.failNet.agenda_view = 1;
+  await page.click('#agAtualizar');
+  await page.waitForFunction(() => /Não foi possível carregar a agenda agora/.test(document.querySelector('#agMain').textContent));
+  assert.doesNotMatch(await page.textContent('#agMsg'), /Agenda atualizada/);
+  assert.match(await page.textContent('#agMsg'), /Não foi possível/);
+  await page.click('#agMain [data-act="atualizar"]');
+  await page.waitForFunction(() => /Agenda atualizada/.test(document.querySelector('#agMsg').textContent));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('virou o dia com a página aberta: "Hoje" relê o dia novo ao voltar à aba e ao redesenhar (filtro), sem mostrar a lista de ontem', async () => {
+  const dois = () => [booking({ name: 'Maria Souza Lima', start: sp(HOJE, '22:00') }), booking({ name: 'Rui Mota Teste', start: sp(AMANHA, '08:30') })];
+  const QUARTA_2350 = '2026-11-05T02:50:00Z'; const QUINTA_0745 = '2026-11-05T10:45:00Z';
+  {
+    const { page, db, log, errors, context } = await newPage(browser, { now: QUARTA_2350, db: { requests: dois() } });
+    await abrirAgenda(page);
+    assert.match(await page.textContent('#agTitulo'), /Hoje, quarta-feira, 4 de novembro/);
+    // quinta, 07:45: a aba volta a ficar visível, sem mudança de versão
+    await context.clock.setFixedTime(new Date(QUINTA_0745));
+    db.now = Date.parse(QUINTA_0745);
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await page.waitForFunction(() => /Hoje, quinta-feira, 5 de novembro/.test(document.querySelector('#agTitulo').textContent));
+    assert.equal(calls(log, 'agenda_view').at(-1).body.p_from, AMANHA);
+    assert.match(await page.textContent('#agMain'), /Rui T\./);
+    assert.doesNotMatch(await page.textContent('#agMain'), /Maria/, 'nada de ontem');
+    assert.match(await page.textContent('#agMsg'), /Virou o dia/);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  const { page, db, log, errors, context } = await newPage(browser, { now: QUARTA_2350, db: { requests: dois() } });
+  await abrirAgenda(page);
+  await context.clock.setFixedTime(new Date(QUINTA_0745));
+  db.now = Date.parse(QUINTA_0745);
+  await page.check('#agFCancel');   // redesenha a lista: relê em vez de filtrar a de ontem pela data nova
+  await page.waitForFunction(() => /Rui T\./.test(document.querySelector('#agMain').textContent));
+  assert.equal(calls(log, 'agenda_view').at(-1).body.p_from, AMANHA);
+  assert.doesNotMatch(await page.textContent('#agMain'), /Nenhum agendamento hoje/);
+  assert.match(await page.textContent('#agTitulo'), /Hoje, quinta-feira, 5 de novembro/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('equipe do IMED sem operar a agenda (suporte, auditoria): sem "Concluído"; com operar, aparece', async () => {
+  for (const [operar, n] of [[false, 0], [true, 1]]) {
+    const { page, errors, context } = await newPage(browser, { role: null, admin: true, db: { requests: [booking({ start: sp(HOJE, '09:00') })], imedOperar: operar } });
+    await page.goto(`${BASE}painel.html`);
+    await page.waitForSelector('#clinicPick');
+    await page.selectOption('#clinicPick', C1);
+    await page.waitForSelector('#tab-agenda');
+    await page.click('#tab-agenda');
+    await page.waitForSelector('#agMain .ag-lista');
+    assert.equal(await page.locator('#agMain [data-act="atender"][data-k="concluido"]').count(), n, `operar=${operar}`);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
 });
 
 await scenario('profissional: só a aba Agenda, só a coluna dele, sem marcar/bloquear/cancelar; detalhe sem telefone; Chegou chama agenda_attend', async () => {

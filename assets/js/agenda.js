@@ -34,6 +34,7 @@ let watching = false;
 // Balcão: chave de reenvio de cada par (clínica, exame, horário) que ficou sem resposta (erro de rede). Fica fora de S
 // para valer também depois de trocar de aba e voltar (a agenda é desenhada de novo).
 const deskKeys = new Map();
+let viradaTimer = null;
 
 export async function renderAgenda(box, ctx) {
   const cid = ctx.clinic.id;
@@ -44,6 +45,7 @@ export async function renderAgenda(box, ctx) {
     day: null, data: null, free: null, month: null, blocks: null, conflicts: [], version: null, updatedAt: null,
     f: { proc: '', res: '', canal: '', cancel: false }, listMode: false, det: null, ask: null, form: null,
     bk: null, oc: null, bl: null, remOpen: false, busca: null, monthAll: false, seq: 0,
+    busy: new Set(),   // itens com chamada de atendimento (ou "voltar ao horário") em andamento
   };
   const me = S;
   box.innerHTML = loading('Carregando a agenda…');
@@ -71,6 +73,7 @@ export async function renderAgenda(box, ctx) {
   S.day = A.dayIn(S.tz, Date.now());
   if (ctx.focus?.day && /^\d{4}-\d{2}-\d{2}$/.test(ctx.focus.day)) { S.day = ctx.focus.day; S.view = 'dia'; }
   shell();
+  agendarVirada();
   if (!watching) {
     watching = true;
     document.addEventListener('visibilitychange', onVisible);
@@ -100,6 +103,7 @@ const procName = (id) => S.cat?.procedures?.find((p) => p.id === id)?.name || ''
 const resources = () => S.cat?.resources || S.data?.resources || [];
 const resName = (id) => resources().find((r) => r.id === id)?.name || '';
 const today = () => A.dayIn(S.tz, Date.now());
+const podeMarcar = () => canDo('marcar') && !S.missing.catalog && !S.missing.desk && S.cat?.active !== false;
 
 // ---------- carga ----------
 function rangeOf() {
@@ -115,6 +119,7 @@ async function loadView({ quiet = false } = {}) {
   const same = () => S === me && S.seq === seq && S.box.isConnected && !!$('#agRoot', S.box);
   if (!quiet) { const m = $('#agMain'); if (m) { m.setAttribute('aria-busy', 'true'); m.classList.add('ag-busy'); } }
   const jobs = [];
+  let carregado = null;
   const conflicts = showRemarcar() && S.view !== 'mes' && S.view !== 'bloqueios'
     ? rpc('agenda_conflicts', { p_clinic: cid }).catch((err) => { if (isMissingFn(err)) S.missing.conflicts = true; return null; }) : null;
   try {
@@ -124,6 +129,7 @@ async function loadView({ quiet = false } = {}) {
       jobs.push(S.missing.blocks ? null : rpc('agenda_blocks', { p_clinic: cid }).catch((err) => { if (isMissingFn(err)) { S.missing.blocks = true; return null; } throw err; }));
     } else {
       const { from, days } = rangeOf();
+      carregado = { from, view: S.view };
       jobs.push(rpc('agenda_view', { p_clinic: cid, p_from: from, p_days: days }));
       jobs.push(S.missing.free || S.missing.catalog ? null : rpc('agenda_free', { p_clinic: cid, p_from: from, p_days: days })
         .catch((err) => { if (isMissingFn(err)) { S.missing.free = true; return null; } return null; }));
@@ -143,6 +149,7 @@ async function loadView({ quiet = false } = {}) {
       S.tz = a.timezone || S.tz;
       S.version = a.version;
       S.free = b?.status === 'ok' ? b : null;
+      S.loaded = carregado;   // o dia (e a visão) dos dados na memória: "Hoje" relê quando vira o dia
     }
     if (k?.status === 'ok') S.conflicts = (k.conflicts || []).filter((c) => A.REMARCAR_KINDS.includes(c.kind) && ['aberto', 'em_andamento'].includes(c.status));
     S.updatedAt = Date.now();
@@ -158,15 +165,40 @@ async function loadView({ quiet = false } = {}) {
   if (S.det) drawDetail();
   const m = $('#agMain');
   if (m) { m.removeAttribute('aria-busy'); m.classList.remove('ag-busy'); }
+  return !S.loadError;   // false: a área principal mostra o erro (quem chamou não diz "atualizada")
+}
+
+// "Hoje" mostra o dia de HOJE no fuso da clínica: a página aberta de um dia para o outro relê sozinha.
+const virouODia = () => S.view === 'hoje' && S.loaded?.view === 'hoje' && S.loaded.from !== today();
+async function lerHojeDeNovo() {
+  if (S.virando) return;
+  S.virando = true;
+  try {
+    const ok = await loadView({ quiet: true });
+    if (ok) msg(`Virou o dia: a agenda de hoje (${A.fmtDayLong(today())}) foi carregada.`, 'info');
+  } finally { S.virando = false; }
+}
+// Na meia-noite do fuso da clínica (e de novo a cada dia): "Hoje" relê; nas outras visões, o título ("Hoje, …") muda.
+function agendarVirada() {
+  clearTimeout(viradaTimer);
+  const me = S;
+  if (!me) return;
+  const prox = Date.parse(A.localToUtc(A.addDaysTo(today(), 1), '00:00', S.tz));
+  viradaTimer = setTimeout(() => {
+    if (S !== me || !S.box.isConnected || !$('#agRoot', S.box)) return;
+    if (virouODia()) lerHojeDeNovo(); else { drawTop(); drawMain(); }
+    agendarVirada();
+  }, Math.min(Math.max(prox - Date.now() + 2000, 1000), 2 ** 31 - 1));
 }
 
 async function onVisible() {
   if (document.visibilityState !== 'visible' || !S?.box.isConnected || !$('#agRoot', S.box) || S.version == null) return;
+  if (virouODia()) { await lerHojeDeNovo(); agendarVirada(); return; }   // virou o dia com a página fechada
   try {
     const v = await rpc('agenda_version', { p_clinic: S.clinicId });
     if (v?.status === 'ok' && Number(v.version) !== Number(S.version) && S?.box.isConnected && $('#agRoot', S.box)) {
-      await loadView({ quiet: true });
-      msg('A agenda mudou enquanto esta página estava fechada: já está atualizada.', 'info');
+      const ok = await loadView({ quiet: true });
+      if (ok) msg('A agenda mudou enquanto esta página estava fechada: já está atualizada.', 'info');
     }
   } catch { /* sem internet agora: a próxima ação relê */ }
 }
@@ -190,10 +222,11 @@ function shell() {
   drawSearch();
 }
 
-function msg(text, kind = 'ok') {
+// botao: { act, label } — um atalho logo abaixo do aviso (ex.: "Novo agendamento"), pelo mesmo data-act da tela.
+function msg(text, kind = 'ok', botao = null) {
   const m = $('#agMsg');
   if (!m) { toast(text); return; }
-  m.innerHTML = text ? note(esc(text), kind) : '';
+  m.innerHTML = text ? `${note(esc(text), kind)}${botao ? `<div class="cl-actions"><button type="button" class="btn btn-ghost btn-sm" data-act="${esc(botao.act)}" id="agMsgBtn">${esc(botao.label)}</button></div>` : ''}` : '';
 }
 
 // ---------- barra de cima ----------
@@ -224,7 +257,7 @@ function drawTop() {
   const views = VIEWS.filter(([k]) => !(k === 'bloqueios' && isProf()));
   const nav = ['dia', 'semana', 'mes'].includes(S.view);
   const tzn = A.tzNote(S.tz, Intl.DateTimeFormat().resolvedOptions().timeZone, Date.now());
-  const deskOk = canDo('marcar') && !S.missing.catalog && !S.missing.desk && S.cat?.active !== false;
+  const deskOk = podeMarcar();
   const grade = ['dia', 'semana'].includes(S.view) && wide();
   const notes = [];
   if (S.missing.catalog) notes.push(note('Esta parte da agenda ainda não está disponível. Por enquanto aparece só a grade dos agendamentos.', 'warn'));
@@ -390,7 +423,11 @@ function drawMain() {
   const free = S.missing.free && !S.missing.catalog ? note('Horários livres indisponíveis no momento.', 'warn') : '';
   const fer = holidayNotes();
   const lim = limitNote();
-  if (S.view === 'hoje') { m.innerHTML = `${free}${fer}${lim}${listHtml(today(), { attend: true })}`; return; }
+  if (S.view === 'hoje') {
+    if (virouODia()) { m.innerHTML = loading('Virou o dia: carregando a agenda de hoje…'); lerHojeDeNovo(); return; }
+    m.innerHTML = `${free}${fer}${lim}${listHtml(today(), { attend: true })}`;
+    return;
+  }
   if (S.view === 'dia') { m.innerHTML = `${free}${fer}${lim}${wide() && !S.listMode ? dayGridHtml() : listHtml(S.day, { attend: true })}`; return; }
   m.innerHTML = `${free}${fer}${lim}${wide() && !S.listMode ? weekGridHtml() : weekListHtml()}`;
 }
@@ -447,17 +484,30 @@ function itemButton(it, { compact = false, extra = '' } = {}) {
     </button>`;
 }
 
+// As ações de atendimento do item AGORA, com a permissão de verdade (a mesma regra dos botões).
+const attendActs = (it) => A.attendActions(it, unit(), Date.now(), S.tz, { scope: S.scope, can: { atender: canDo('atender') && !(isProf() && S.missing.attend) } });
+const attendActionFor = (it, key) => attendActs(it).find((a) => a.key === key) || null;
+
 function attendButtons(it, where) {
-  const acts = A.attendActions(it, unit(), Date.now(), S.tz, { scope: S.scope, can: { atender: canDo('atender') && !(isProf() && S.missing.attend) } });
+  const acts = attendActs(it);
   if (!acts.length) return '';
-  return `<div class="ag-acoes" role="group" aria-label="Atendimento: ${esc(it.patient || 'paciente')}, ${esc(A.timeIn(S.tz, it.starts_at))}">
-    ${acts.map((a) => `<span class="ag-acao"><button type="button" class="btn ${a.key === 'faltou' || a.key === 'desfazer' || (a.key === 'concluido' && it.status === 'confirmed') ? 'btn-ghost' : 'btn-primary'} btn-sm" data-act="atender" data-item="${esc(it.id)}" data-k="${a.key}" data-w="${where}"${a.enabled ? '' : ` disabled aria-describedby="agh-${where}-${esc(it.id)}-${a.key}"`}>${esc(a.label)}</button>${a.hint ? `<small class="ag-hint" id="agh-${where}-${esc(it.id)}-${a.key}">${esc(a.hint)}</small>` : ''}</span>`).join('')}
+  const ocupado = S.busy.has(it.id);
+  return `<div class="ag-acoes" role="group" aria-label="Atendimento: ${esc(it.patient || 'paciente')}, ${esc(A.timeIn(S.tz, it.starts_at))}"${ocupado ? ' aria-busy="true"' : ''}>
+    ${acts.map((a) => `<span class="ag-acao"><button type="button" class="btn ${a.key === 'faltou' || a.key === 'desfazer' || (a.key === 'concluido' && it.status === 'confirmed') ? 'btn-ghost' : 'btn-primary'} btn-sm" data-act="atender" data-item="${esc(it.id)}" data-k="${a.key}" data-w="${where}"${a.enabled ? (ocupado ? ' aria-disabled="true"' : '') : ` disabled aria-describedby="agh-${where}-${esc(it.id)}-${a.key}"`}>${esc(a.label)}</button>${a.hint ? `<small class="ag-hint" id="agh-${where}-${esc(it.id)}-${a.key}">${esc(a.hint)}</small>` : ''}</span>`).join('')}
   </div>`;
+}
+
+// Enquanto a chamada de um item está em andamento, os botões dele (e o "Sim" da pergunta) ficam desligados SEM sair
+// da tela (aria-disabled: o foco fica onde está; o clique é ignorado). O desenho seguinte já vem sem a marca.
+function markBusy(itemId) {
+  for (const b of $$(`[data-act="atender"][data-item="${CSS.escape(itemId)}"]:not([disabled])`)) b.setAttribute('aria-disabled', 'true');
+  if (S.ask?.itemId === itemId) $('#agAskSim')?.setAttribute('aria-disabled', 'true');
 }
 
 function askHtml(it, where) {
   const a = S.ask;
   if (!a || a.itemId !== it.id || a.where !== where) return '';
+  if (!attendActionFor(it, a.key)) { S.ask = null; return ''; }   // a situação mudou: a pergunta velha sai
   const nome = it.patient || 'o paciente';
   const quando = `${A.fmtDDMM(A.dayIn(S.tz, Date.parse(it.starts_at)))}, ${A.timeIn(S.tz, it.starts_at)}`;
   if (a.key === 'concluido') {
@@ -1104,16 +1154,23 @@ async function call(fn, args) {
 }
 const statusMsg = (r, ctx = {}) => (r.status === 'error' ? r.message : A.actionText(r.status, { ...ctx, ...r }));
 
-async function doAttend(item, key, where, reason = null) {
-  const act = A.attendActions(item, unit(), Date.now(), S.tz, { scope: S.scope, can: { atender: true } }).find((a) => a.key === key)
-    || { status: key === 'desfazer' ? 'checked_in' : key, hint: '' };
+// act: a ação conferida AGORA (attendActionFor). Uma chamada por item até a resposta: o segundo clique do clique duplo
+// (ou o "Sim" repetido) é ignorado, em vez de mandar a mesma versão de novo e voltar version_conflict.
+async function doAttend(item, act, where, reason = null) {
+  if (!act || S.busy.has(item.id)) return;
+  S.busy.add(item.id);
+  markBusy(item.id);
   const args = { p_id: item.request_id, p_status: act.status, p_version: item.request_version ?? null, p_item: item.id };
   if (reason) args.p_reason = reason;
-  let r = await call(S.missing.attend ? 'agenda_set_status' : 'agenda_attend', args);
-  if (r.status === 'missing_fn' && !S.missing.attend) { S.missing.attend = true; r = await call('agenda_set_status', args); }
+  let r;
+  try {
+    r = await call(S.missing.attend ? 'agenda_set_status' : 'agenda_attend', args);
+    if (r.status === 'missing_fn' && !S.missing.attend) { S.missing.attend = true; r = await call('agenda_set_status', args); }
+  } finally { S.busy.delete(item.id); }
   if (r.status === 'lost') return;
   S.ask = null;
   if (r.status === 'ok') {
+    S.ultimoOk = { itemId: item.id, at: Date.now() };
     const nome = item.patient || 'Paciente';
     const texto = `${nome}: ${A.clinicStatusLabel(r.request_status === 'confirmed' ? 'confirmed' : act.status)}.`;
     if (S.det?.data) await loadDetail();
@@ -1124,12 +1181,18 @@ async function doAttend(item, key, where, reason = null) {
     prox?.focus();
     return;
   }
-  const texto = r.status === 'slot_taken' ? A.ACTION_TEXT.slot_taken_back : statusMsg(r, { hint: act.hint });
-  if (['version_conflict', 'not_found', 'transition_not_allowed'].includes(r.status)) { if (S.det?.data) await loadDetail(); await loadView({ quiet: true }); }
+  // "Desfazer falta" sem o horário livre: um item com falta não se remarca; o atalho é um novo agendamento
+  const naoVolta = r.status === 'slot_taken' && act.key === 'desfazer';
+  // version_conflict logo depois de um ok DESTA aba no mesmo item: não foi "outra pessoa"
+  const daqui = r.status === 'version_conflict' && S.ultimoOk?.itemId === item.id && Date.now() - S.ultimoOk.at < 15000;
+  const texto = naoVolta ? A.ACTION_TEXT.slot_taken_no_show : r.status === 'slot_taken' ? A.ACTION_TEXT.slot_taken_back
+    : daqui ? 'Este agendamento acabou de ser atualizado por esta tela. A agenda foi relida: confira a situação antes de continuar.'
+      : statusMsg(r, { hint: act.hint });
+  if (['version_conflict', 'not_found', 'transition_not_allowed', 'slot_taken'].includes(r.status)) { if (S.det?.data) await loadDetail(); await loadView({ quiet: true }); }
   else drawMain();
   if (S.det) drawDetail();
-  msg(texto, 'err');
-  ($(`[data-act="abrir"][data-item="${CSS.escape(item.id)}"]`) || $('#agDetT') || $('#agTitulo'))?.focus();
+  msg(texto, 'err', naoVolta && podeMarcar() ? { act: 'novo', label: 'Novo agendamento' } : null);
+  ((naoVolta && $('#agMsgBtn')) || $(`[data-act="abrir"][data-item="${CSS.escape(item.id)}"]`) || $('#agDetT') || $('#agTitulo'))?.focus();
 }
 
 function itemFromDetail(itemId) {
@@ -1570,7 +1633,12 @@ function onClick(e) {
   const id = t.dataset.item;
   const handlers = {
     config: () => S.ctx.goTab('config'),
-    atualizar: async () => { await loadView(); msg('Agenda atualizada.', 'ok'); ($('#agAtualizar') || $('#agTitulo'))?.focus(); },
+    atualizar: async () => {
+      const ok = await loadView();
+      if (ok) msg('Agenda atualizada.', 'ok');
+      else if (ok === false) msg(S.loadError || 'Não foi possível atualizar a agenda agora.', 'err');
+      ($('#agAtualizar') || $('#agTitulo'))?.focus();
+    },
     ant: () => nav(-1), prox: () => nav(1),
     hojebtn: () => { S.day = today(); drawTop(); drawMain(); loadView(); $('[data-act="hojebtn"]')?.focus(); },
     modo: () => { S.listMode = !S.listMode; drawTop(); drawMain(); $('#agModo')?.focus(); },
@@ -1587,24 +1655,32 @@ function onClick(e) {
     'abrir-dia': () => { S.day = t.dataset.dia; S.view = 'dia'; drawTop(); drawRemarcar(); drawMain(); loadView(); $('#agTitulo')?.focus(); },
     'mes-todos': () => { S.monthAll = !S.monthAll; drawMain(); $('[data-act="mes-todos"]')?.focus(); },
     atender: () => {
+      if (S.busy.has(id) || t.getAttribute('aria-disabled') === 'true') return;   // chamada do item em andamento: ignora
       const where = t.dataset.w;
       const item = where === 'd' ? itemFromDetail(id) : findItem(id);
       if (!item) return;
-      const acts = A.attendActions(item, unit(), Date.now(), S.tz, { scope: S.scope, can: { atender: true } });
-      const a = acts.find((x) => x.key === t.dataset.k);
-      if (!a) return;
+      const a = attendActionFor(item, t.dataset.k);
+      if (!a || !a.enabled) return;
       if (a.confirm) { S.ask = { itemId: id, key: a.key, where, origin: t }; if (where === 'd') drawDetail(); else drawMain(); ($('#agAskMotivo') || $('#agAskSim'))?.focus(); return; }
-      doAttend(item, a.key, where);
+      doAttend(item, a, where);
     },
     sim: () => {
-      const a = S.ask; if (!a) return;
+      const a = S.ask; if (!a || S.busy.has(a.itemId) || t.getAttribute('aria-disabled') === 'true') return;
       const item = a.where === 'd' ? itemFromDetail(a.itemId) : findItem(a.itemId);
-      if (!item) return;
+      // a ação de AGORA (a agenda pode ter sido relida com a pergunta na tela): se não existe mais, nada é enviado
+      const act = item && attendActionFor(item, a.key);
+      if (!act || !act.enabled) {
+        S.ask = null;
+        if (a.where === 'd') drawDetail(); else drawMain();
+        msg(act?.hint ? A.actionText('too_early', { hint: act.hint }) : A.ACTION_TEXT.status_changed, 'err');
+        ($(`[data-act="abrir"][data-item="${CSS.escape(a.itemId)}"]`) || $('#agDetT') || $('#agTitulo'))?.focus();
+        return;
+      }
       if (a.key === 'desfazer') {
         a.reason = $('#agAskMotivo').value;
         if (!a.reason) { a.err = A.ACTION_TEXT.reason_required; if (a.where === 'd') drawDetail(); else drawMain(); $('#agAskMotivo').setAttribute('aria-invalid', 'true'); $('#agAskMotivo').focus(); return; }
       }
-      doAttend(item, a.key, a.where, a.key === 'desfazer' ? a.reason : null);
+      doAttend(item, act, a.where, a.key === 'desfazer' ? a.reason : null);
     },
     'voltar-ask': () => { const a = S.ask; S.ask = null; if (a?.where === 'd') drawDetail(); else drawMain(); $(`[data-act="atender"][data-item="${CSS.escape(a.itemId)}"][data-k="${a.key}"]`)?.focus(); },
     'just-ok': () => {
@@ -1648,8 +1724,8 @@ function onClick(e) {
     'rm-fechar': () => { const it = S.det.rm?.itemId; S.det.sub = null; S.det.rm = null; drawDetail(); $(`[data-act="remarcar"][data-item="${CSS.escape(it || '')}"]`)?.focus(); },
     'voltar-horario': async () => {
       const item = itemFromDetail(id);
-      if (!item || S.busyItem === item.id) return;   // clique duplo: uma chamada só
-      S.busyItem = item.id;
+      if (!item || S.busy.has(item.id)) return;   // clique duplo: uma chamada só
+      S.busy.add(item.id);
       try {
         const r = await call('agenda_set_status', { p_id: item.request_id, p_status: 'confirmed', p_version: item.request_version, p_item: item.id });
         if (r.status === 'lost') return;
@@ -1661,7 +1737,7 @@ function onClick(e) {
           if (S.det) S.det.msg = [r.status === 'slot_taken' ? A.ACTION_TEXT.slot_taken_back : statusMsg(r), 'err'];
           if (['version_conflict', 'not_found', 'transition_not_allowed'].includes(r.status)) { await loadDetail(); await loadView({ quiet: true }); }
         }
-      } finally { S.busyItem = null; }
+      } finally { S.busy.delete(item.id); }
       drawDetail(); $('#agDetT')?.focus();
     },
     cancelar: () => { S.det.sub = 'cancelar'; S.det.cn = { itemId: id, reason: '' }; S.det.msg = null; drawDetail(); $('#cnMotivo')?.focus(); },

@@ -313,6 +313,7 @@ main[tabindex="-1"]:focus{outline:none}
 .ag-remacts{display:flex;flex-wrap:wrap;gap:6px}
 .ag-main{min-width:0}
 .ag-busy{opacity:.6}
+.ag .btn[aria-disabled="true"]{opacity:.6;cursor:progress}
 .ag-vazio{padding:8px 0}
 .ag-hgrupo{display:grid;gap:6px}
 .ag-hh{font-size:15px;color:var(--ink);font-variant-numeric:tabular-nums;margin-top:6px}
