@@ -4,11 +4,16 @@
 --   - com o código certo: os pacientes vão para remarcação (TODOS os recursos do item soltos, inclusive a sala), um
 --     conflito "Para remarcar" por item, os "só ocupar" do período saem, o bloqueio é gravado; código velho ou errado:
 --     affected_changed; alguém já presente: cannot_move; a conferência adiada (I2) passa no fim;
---   - depois: voltar ao horário de antes dá slot_taken (o bloqueio está lá); remarcar e resolver o conflito funciona;
+--   - depois: voltar ao horário de antes dá slot_taken (o bloqueio está lá); remarcar fecha o conflito SOZINHO
+--     (gatilho, com auditoria), e também cancelar (pela clínica ou pelo próprio paciente), cancelar um exame e voltar
+--     ao horário de antes (só o conflito do bloqueio; o de grade que mudou continua);
+--   - o que JÁ COMEÇOU (o exame em andamento) não é atingido nem impede: o fechamento do recurso começa quando ele
+--     termina; o mesmo "mesmo assim" reenviado não grava outro bloqueio;
+--   - remarcar pela clínica com antecedência mínima: as alternativas do slot_taken são as da clínica (agora − antecedência);
 --   - permissões: recepção e gestor sim; profissional, financeiro e outra clínica não; equipe do IMED sem nomes.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test; nomes fictícios.
 begin;
-select plan(40);
+select plan(59);
 
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null)
 returns void language plpgsql as $$
@@ -25,7 +30,7 @@ end $$;
 create function pg_temp.u(p_n integer) returns uuid language sql immutable as $$
   select ('a3385000-0000-4000-8000-' || lpad(p_n::text, 12, '0'))::uuid $$;
 create function pg_temp.email(p_n integer) returns text language sql immutable as $$
-  select (array['dona', 'recepcao', 'gestor', 'prof', 'fin', 'donab', 'admin'])[p_n] || '.forcado@exemplo.test' $$;
+  select (array['dona', 'recepcao', 'gestor', 'prof', 'fin', 'donab', 'admin', 'paciente'])[p_n] || '.forcado@exemplo.test' $$;
 create function pg_temp.como(p_n integer) returns void language sql as $$
   select pg_temp.entrar('authenticated', pg_temp.u(p_n), pg_temp.email(p_n)) $$;
 create function pg_temp.a() returns uuid language sql immutable as $$ select 'c3385000-0000-4000-8000-000000000001'::uuid $$;
@@ -51,7 +56,7 @@ create function pg_temp.blocos() returns integer language sql stable as $$
 insert into auth.users (instance_id, id, aud, role, email, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
 select '00000000-0000-0000-0000-000000000000', pg_temp.u(n), 'authenticated', 'authenticated', pg_temp.email(n), now(),
        '{"provider": "email", "providers": ["email"]}', '{}', now(), now()
-from generate_series(1, 7) n;
+from generate_series(1, 8) n;
 insert into public.admin_emails (email) values (pg_temp.email(7));
 insert into public.clinics (id, name, kind, address_line, city, state, location, status, accepts_online_booking, is_demo)
 select c.id, c.nome, 'imagem', 'Rua do Bloqueio, ' || c.n, 'São Paulo', 'SP',
@@ -191,9 +196,19 @@ select is((select concat_ws('|', j ->> 'status', j ->> 'request_status')
            from (select public.agenda_reschedule(pg_temp.id('a1'), jsonb_build_array(jsonb_build_object('seq', 1, 'starts_at', pg_temp.t(1, '13:00'))),
                                                  null, gen_random_uuid()) as j) x),
           'ok|confirmed', 'remarcar para amanhã às 13:00: confirmado de novo');
-select is(public.agenda_conflict_resolve((select (k ->> 'id')::uuid from jsonb_array_elements(public.agenda_conflicts(pg_temp.a()) -> 'conflicts') k
-                                          where (k ->> 'item_id')::uuid = pg_temp.id('i1')), 'resolvido', 'remarcado') ->> 'status',
-          'ok', 'e o conflito sai da lista "Para remarcar" (resolvido: remarcado)');
+select ok(not exists (select 1 from jsonb_array_elements(public.agenda_conflicts(pg_temp.a()) -> 'conflicts') k
+                      where (k ->> 'item_id')::uuid = pg_temp.id('i1')),
+          'e o conflito sai SOZINHO da lista "Para remarcar" (sem a tela chamar agenda_conflict_resolve)');
+select pg_temp.entrar('postgres');
+select set_config('teste.k1', (select k.id::text from agenda.conflicts k where k.item_id = pg_temp.id('i1')), true);
+select is((select concat_ws('|', k.status, k.resolution_code, k.resolved_by = pg_temp.u(2),
+                            (select concat_ws('/', count(*), max(l.origin), max(l.actor_kind), max(l.reason_code), bool_and((l.new_value ->> 'automatico')::boolean))
+                             from agenda.audit_log l where l.action = 'conflito_resolvido' and l.object_id = k.id::text))
+           from agenda.conflicts k where k.id = pg_temp.id('k1')),
+          'resolvido|remarcado|t|1/painel/clinica/remarcado/t', 'resolvido: remarcado, por quem remarcou, com auditoria (automático)');
+select pg_temp.como(2);
+select is(public.agenda_conflict_resolve(pg_temp.id('k1'), 'resolvido', 'remarcado') ->> 'status', 'already_closed',
+          'resolver de novo pela tela: already_closed (a tela trata como resolvido)');
 
 /* ===================== Alguém já presente: não sai ===================== */
 select set_config('teste.previa2', public.agenda_block_force(pg_temp.a(), pg_temp.id('usg1'), current_setting('teste.h0')::timestamptz,
@@ -226,6 +241,117 @@ select is((select concat_ws('|', i.status, (select count(*) from agenda.occupanc
                              where b.clinic_id = pg_temp.a() and b.resource_id is null and o.active))
            from agenda.appointment_items i where i.id = pg_temp.id('i4')),
           'reschedule_requested|0|3', 'o eletro sem recurso e o fechamento nos 3 recursos da clínica');
+
+/* ===================== Saem sozinhos da lista: paciente cancela, voltar ao horário de antes, cancelar um exame ===================== */
+-- o pedido do João (a2) passa a ser da conta de um paciente, que cancela pelo site
+select pg_temp.entrar('postgres');
+update public.appointment_requests set user_id = pg_temp.u(8) where id = pg_temp.id('a2');
+select pg_temp.como(8);
+select is(public.cancel_request(pg_temp.id('a2')), 'ok', 'o próprio paciente cancela pela conta (estava para remarcar)');
+select pg_temp.entrar('postgres');
+select is((select concat_ws('|', k.status, k.resolution_code,
+                            (select concat_ws('/', l.origin, l.actor_kind) from agenda.audit_log l
+                             where l.action = 'conflito_resolvido' and l.object_id = k.id::text))
+           from agenda.conflicts k where k.item_id = pg_temp.id('i2') and k.kind = 'bloqueio_sobre_agendamento'),
+          'resolvido|cancelado|app/paciente', 'o conflito do João fecha sozinho: cancelado, pelo paciente');
+-- a Ana (a3, combinado) também tem um conflito de grade que mudou; tirado o bloqueio, volta ao horário de antes
+insert into agenda.conflicts (clinic_id, kind, request_id, item_id, details)
+values (pg_temp.a(), 'grade_mudou', pg_temp.id('a3'), pg_temp.id('i3'), jsonb_build_object('teste', true));
+select set_config('teste.blk', (select b.id::text from public.clinic_blocks b where b.clinic_id = pg_temp.a()
+                                and b.resource_id = pg_temp.id('usg1') and b.kind = 'manutencao' and b.removed_at is null), true);
+select pg_temp.como(2);
+select is(public.agenda_block_remove(pg_temp.id('blk')) ->> 'status', 'ok', 'a recepção tira o bloqueio de manutenção');
+select is(public.agenda_set_status(pg_temp.id('a3'), 'confirmed', null, null, pg_temp.id('i3')) ->> 'status', 'ok',
+          'voltar ao horário de antes (a sala e o aparelho de novo)');
+select pg_temp.entrar('postgres');
+select is((select string_agg(k.kind || ':' || k.status || coalesce(':' || k.resolution_code, ''), ',' order by k.kind)
+           from agenda.conflicts k where k.item_id = pg_temp.id('i3')),
+          'bloqueio_sobre_agendamento:resolvido:mantido,grade_mudou:aberto',
+          'o do bloqueio fecha (mantido); o da grade que mudou continua aberto (o horário é o mesmo)');
+-- o eletro do Rui (a4, para remarcar pelo bloqueio da clínica inteira): cancelar só este exame
+select pg_temp.como(2);
+select is(public.agenda_set_status(pg_temp.id('a4'), 'cancelled', 'clinica_indisponivel', null, pg_temp.id('i4')) ->> 'status', 'ok',
+          'cancelar o exame (agenda_set_status com o item)');
+select pg_temp.entrar('postgres');
+select is((select concat_ws('|', k.status, k.resolution_code) from agenda.conflicts k where k.item_id = pg_temp.id('i4')),
+          'resolvido|cancelado', 'o conflito do Rui fecha sozinho: cancelado');
+
+/* ===================== O que já começou não é atingido nem impede ===================== */
+-- Eva e Gil na Sala 2 (eletro); o exame da Eva "já começou" há 10 minutos (correção pelo SQL, só no teste: o relógio
+-- do banco não anda dentro da transação) e ela está presente; o do Gil é daqui a mais de 1 hora.
+select pg_temp.como(2);
+select set_config('teste.hs', (select min((s ->> 'start')::timestamptz)
+                               from jsonb_array_elements(public.agenda_desk_slots(pg_temp.a(), pg_temp.id('cons'), pg_temp.hoje(), pg_temp.hoje() + 1) -> 'slots') s
+                               where (s ->> 'start')::timestamptz >= now() + interval '5 minutes')::text, true);
+select set_config('teste.e1', pg_temp.balcao('cons', current_setting('teste.hs')::timestamptz, 'Eva Duarte Forçado'), true);
+select set_config('teste.e2', pg_temp.balcao('cons', current_setting('teste.hs')::timestamptz + interval '1 hour', 'Gil Prado Forçado'), true);
+select pg_temp.entrar('postgres');
+select set_config('imed.origin', 'sql', true), set_config('imed.reason', 'teste_agenda', true);
+update agenda.appointment_items i set starts_at = now() - interval '10 minutes', ends_at = now() + interval '20 minutes',
+       local_start = (now() - interval '10 minutes') at time zone 'America/Sao_Paulo'
+where i.request_id = pg_temp.id('e1');
+update agenda.occupancy o set during = tstzrange(now() - interval '10 minutes', now() + interval '20 minutes', '[)')
+where o.item_id = pg_temp.item('e1') and o.active;
+update public.appointment_requests a set slot_start = now() - interval '10 minutes', slot_end = now() + interval '20 minutes'
+where a.id = pg_temp.id('e1');
+select set_config('imed.origin', '', true), set_config('imed.reason', '', true);
+select pg_temp.como(2);
+select is(public.agenda_attend(pg_temp.id('e1'), 'checked_in') ->> 'status', 'ok', 'a Eva chegou (o exame dela já começou)');
+-- bloqueio pedido desde 1 hora atrás ("dia inteiro" de hoje) até daqui a 4 horas, na Sala 2
+select set_config('teste.previa4', public.agenda_block_force(pg_temp.a(), pg_temp.id('sala'), now() - interval '1 hour',
+                                     now() + interval '4 hours', 'bloqueio')::text, true);
+select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'items'), j #>> '{items,0,request_id}' = current_setting('teste.e2'))
+           from (select current_setting('teste.previa4')::jsonb as j) x),
+          'confirm_required|1|t', 'prévia: só o Gil; a Eva, que já começou, não aparece (nem como "não pode sair")');
+select is((select concat_ws('|', j ->> 'status', j ->> 'moved')
+           from (select public.agenda_block_force(pg_temp.a(), pg_temp.id('sala'), now() - interval '1 hour', now() + interval '4 hours',
+                          'bloqueio', null, current_setting('teste.previa4')::jsonb ->> 'confirm') as j) x),
+          'ok|1', 'quem já começou não impede: bloqueado, só o Gil vai para remarcar');
+select pg_temp.entrar('postgres');
+select is((select concat_ws('|', (select i.status from agenda.appointment_items i where i.request_id = pg_temp.id('e1')),
+                            (select count(*) from agenda.occupancy o where o.item_id = pg_temp.item('e1') and o.active),
+                            (select i.status from agenda.appointment_items i where i.request_id = pg_temp.id('e2')))),
+          'checked_in|1|reschedule_requested', 'a Eva continua presente, com a sala; o Gil vai para remarcação');
+select is((select concat_ws('|', count(*), bool_and(lower(o.during) = now() + interval '20 minutes'), bool_and(upper(o.during) = now() + interval '4 hours'),
+                            bool_and(b.starts_at = now() - interval '1 hour'))
+           from agenda.occupancy o join public.clinic_blocks b on b.id = o.block_id
+           where b.clinic_id = pg_temp.a() and b.resource_id = pg_temp.id('sala') and b.removed_at is null and o.active),
+          '1|t|t|t', 'o fechamento da sala começa quando o exame da Eva termina; o bloqueio guarda o período pedido');
+-- a resposta do "mesmo assim" se perdeu e a tela manda de novo: nada novo
+select pg_temp.como(2);
+select is((select concat_ws('|', j ->> 'status', j ->> 'replay', j ->> 'moved')
+           from (select public.agenda_block_force(pg_temp.a(), pg_temp.id('sala'), now() - interval '1 hour', now() + interval '4 hours',
+                          'bloqueio', null, current_setting('teste.previa4')::jsonb ->> 'confirm') as j) x),
+          'ok|true|0', 'o mesmo "mesmo assim" de novo: ok (replay), sem gravar outro bloqueio');
+select pg_temp.entrar('postgres');
+select is((select count(*)::integer from public.clinic_blocks b
+           where b.clinic_id = pg_temp.a() and b.resource_id = pg_temp.id('sala') and b.removed_at is null), 1, '... um bloqueio só na sala');
+
+/* ===================== Remarcar pela clínica: alternativas com o "agora" da clínica ===================== */
+-- Consulta com a Dra. (profissional), com 10 horas de antecedência para o paciente. Ivo e Léa marcados pelo balcão;
+-- remarcar o Ivo para o horário da Léa: slot_taken, e as alternativas são as que a clínica pode marcar (desde agora).
+select pg_temp.como(1);
+select set_config('teste.pro', public.agenda_procedure_save(pg_temp.a(), jsonb_build_object(
+  'exam_code', 'eco', 'name', 'Consulta com a Dra.', 'duration_min', 30,
+  'requirements', jsonb_build_array(jsonb_build_object('resource_kind', 'profissional', 'options',
+    jsonb_build_array(jsonb_build_object('resource_id', pg_temp.id('dra'))))))) ->> 'id', true);
+select is(public.agenda_unit_save(pg_temp.a(), '{"min_notice_min": 600}') ->> 'status', 'ok', 'a unidade passa a pedir 10 horas de antecedência');
+select pg_temp.como(2);
+select set_config('teste.t1', (select min((s ->> 'start')::timestamptz)
+                               from jsonb_array_elements(public.agenda_desk_slots(pg_temp.a(), pg_temp.id('pro'), pg_temp.hoje(), pg_temp.hoje() + 1) -> 'slots') s
+                               where (s ->> 'start')::timestamptz >= now() + interval '3 hours')::text, true);
+select set_config('teste.t2', (select min((s ->> 'start')::timestamptz)
+                               from jsonb_array_elements(public.agenda_desk_slots(pg_temp.a(), pg_temp.id('pro'), pg_temp.hoje(), pg_temp.hoje() + 1) -> 'slots') s
+                               where (s ->> 'start')::timestamptz >= now() + interval '5 hours')::text, true);
+select set_config('teste.g1', pg_temp.balcao('pro', current_setting('teste.t1')::timestamptz, 'Ivo Ramos Forçado'), true);
+select set_config('teste.g2', pg_temp.balcao('pro', current_setting('teste.t2')::timestamptz, 'Léa Moura Forçado'), true);
+select is((select concat_ws('|', j ->> 'status', jsonb_array_length(j -> 'alternatives') > 0,
+                            (j #>> '{alternatives,0}')::timestamptz < now() + interval '10 hours')
+           from (select public.agenda_reschedule(pg_temp.id('g1'), jsonb_build_array(jsonb_build_object('seq', 1, 'starts_at', current_setting('teste.t2'))),
+                                                 null, gen_random_uuid()) as j) x),
+          'slot_taken|t|t', 'horário pego: as alternativas da clínica começam antes das 10 horas de antecedência (como "Ver horários")');
+select pg_temp.como(1);
+select is(public.agenda_unit_save(pg_temp.a(), '{"min_notice_min": 0}') ->> 'status', 'ok', 'antecedência de volta a zero');
 
 /* ===================== Permissões e erros ===================== */
 select pg_temp.como(4);
