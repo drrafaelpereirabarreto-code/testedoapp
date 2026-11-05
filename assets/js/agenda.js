@@ -347,6 +347,10 @@ function drawRemarcar() {
             ${podeResolver && canDo('remarcar') ? `<button type="button" class="btn btn-primary btn-sm" data-act="conf-remarcar" data-k="${esc(k.id)}">Remarcar<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>` : ''}
             ${podeResolver && canDo('cancelar') ? `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-cancelar" data-k="${esc(k.id)}">Cancelar<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>` : ''}
             ${podeResolver && k.kind === 'grade_mudou' ? `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-manter" data-k="${esc(k.id)}">Manter este horário</button>` : ''}
+            ${podeResolver ? (S.remAsk === k.id
+              ? `<span class="ag-ask" role="group" aria-labelledby="agkT-${esc(k.id)}"><span id="agkT-${esc(k.id)}">Tirar da lista sem remarcar por aqui? Use quando o paciente já foi remarcado ou avisado por outro caminho.</span>
+                <button type="button" class="btn btn-primary btn-sm" data-act="conf-tirar-sim" data-k="${esc(k.id)}" id="agkSim">Sim, tirar da lista</button><button type="button" class="btn btn-ghost btn-sm" data-act="conf-tirar-nao" data-k="${esc(k.id)}">Voltar</button></span>`
+              : `<button type="button" class="btn btn-ghost btn-sm" data-act="conf-tirar" data-k="${esc(k.id)}">Tirar da lista<span class="sr"> o exame de ${esc(quando ? A.fmtWhen(S.tz, quando) : '')}</span></button>`) : ''}
           </span></li>`;
       }).join('')}</ul>
     </section>`;
@@ -995,6 +999,7 @@ function detailItemHtml(it, r) {
   const unplaced = !(it.resources || []).length;
   const view = { id: it.id, request_id: r.id, status: it.status, starts_at: it.starts_at, ends_at: it.ends_at, patient: A.shortName(r.patient?.for_other ? r.patient?.other_name : r.patient?.name), procedure: it.procedure };
   const manage = A.manageActions(it, { scope: S.scope, can: { remarcar: canDo('remarcar'), cancelar: canDo('cancelar') }, unplaced });
+  const pacote = (r.items || []).length > 1;   // pacote: o botão de cada exame cancela SÓ aquele exame
   return `<li class="ag-li ag-tom-${tag.tone}" id="agd-${esc(it.id)}">
       <div class="ag-ev ag-ev-fixo"><span class="ag-hora">${esc(A.fmtWhen(S.tz, it.starts_at))}–${esc(A.timeIn(S.tz, it.ends_at))}</span>
         <span class="ag-nome">${esc(it.procedure || examName(it.exam_code))}</span>
@@ -1004,7 +1009,7 @@ function detailItemHtml(it, r) {
       ${manage.length ? `<div class="ag-acoes" role="group" aria-label="Agendamento de ${esc(it.procedure || '')}">
         ${manage.includes('remarcar') ? `<button type="button" class="btn btn-ghost btn-sm" data-act="remarcar" data-item="${esc(it.id)}">${icon('fa-calendar-days')}Remarcar</button>` : ''}
         ${manage.includes('voltar') ? `<button type="button" class="btn btn-ghost btn-sm" data-act="voltar-horario" data-item="${esc(it.id)}">${icon('fa-rotate')}Voltar ao horário de antes</button>` : ''}
-        ${manage.includes('cancelar') ? `<button type="button" class="btn btn-danger btn-sm" data-act="cancelar" data-item="${esc(it.id)}">${icon('fa-ban')}Cancelar agendamento</button>` : ''}
+        ${manage.includes('cancelar') ? `<button type="button" class="btn btn-danger btn-sm" data-act="cancelar" data-item="${esc(it.id)}">${icon('fa-ban')}${pacote ? 'Cancelar este exame' : 'Cancelar agendamento'}</button>` : ''}
       </div>` : ''}
     </li>`;
 }
@@ -1020,11 +1025,12 @@ function requestStatusHtml(r) {
 
 function cancelHtml() {
   const c = S.det.cn || {};
-  return `<section class="ag-sub-sec" aria-labelledby="cnT"><h4 class="ag-sub" id="cnT" tabindex="-1">Cancelar agendamento</h4>
+  const titulo = cancelaExame() ? `Cancelar o exame ${itemFromDetail(c.itemId)?.procedure || ''}`.trim() : 'Cancelar agendamento';
+  return `<section class="ag-sub-sec" aria-labelledby="cnT"><h4 class="ag-sub" id="cnT" tabindex="-1">${esc(titulo)}</h4>
     <div class="cl-field"><label class="cl-lbl" for="cnMotivo">Motivo</label><select id="cnMotivo" aria-describedby="cnMotivoErr"${c.err ? ' aria-invalid="true"' : ''}><option value="">Escolha o motivo</option>${opts(A.CANCEL_REASONS, c.reason)}</select><span class="cl-err" id="cnMotivoErr">${esc(c.err || '')}</span></div>
     ${c.ask ? `<div class="ag-ask" role="group" aria-labelledby="cnAskT"><p id="cnAskT">${esc(c.ask)}</p>
       <div class="cl-actions"><button type="button" class="btn btn-danger btn-sm" id="cnSim" data-act="cn-sim"${c.sending ? ' disabled' : ''}>Sim, cancelar</button><button type="button" class="btn btn-ghost btn-sm" data-act="cn-voltar">Voltar</button></div></div>`
-      : `<div class="cl-actions"><button type="button" class="btn btn-danger btn-sm" id="cnOk" data-act="cn-ok">Cancelar agendamento</button><button type="button" class="btn btn-ghost btn-sm" data-act="cn-fechar">Não cancelar</button></div>`}
+      : `<div class="cl-actions"><button type="button" class="btn btn-danger btn-sm" id="cnOk" data-act="cn-ok">${cancelaExame() ? 'Cancelar este exame' : 'Cancelar agendamento'}</button><button type="button" class="btn btn-ghost btn-sm" data-act="cn-fechar">Não cancelar</button></div>`}
   </section>`;
 }
 
@@ -1045,13 +1051,25 @@ function rescheduleHtml() {
   </section>`;
 }
 
+// Só remarca o que ainda pode ser remarcado (confirmado ou remarcação solicitada): um exame cancelado, concluído ou
+// com falta não abre o formulário (o banco recusaria com transition_not_allowed). Devolve se abriu.
 function startReschedule(itemId) {
   const it = S.det?.data?.items.find((x) => x.id === itemId);
-  if (!it) return;
+  if (!it) return false;
+  if (!['confirmed', 'reschedule_requested'].includes(it.status)) {
+    S.det.sub = null; S.det.rm = null;
+    S.det.msg = [`Este exame não pode ser remarcado: a situação dele é “${A.clinicStatusLabel(it.status) || it.status}”.`, 'err'];
+    return false;
+  }
   const d = A.dayIn(S.tz, Date.parse(it.starts_at));
   S.det.sub = 'remarcar';
   S.det.rm = { itemId, day: d >= today() ? d : today(), res: null, slot: '', key: null };
+  return true;
 }
+
+// Pacote (mais de um exame no agendamento): "Cancelar" cancela SÓ o exame escolhido (agenda_set_status com o item);
+// agendamento de um exame: o agendamento inteiro (agenda_cancel), como antes.
+const cancelaExame = () => (S.det?.data?.items || []).length > 1;
 
 // ---------- ações ----------
 // O catálogo (exames, aparelhos, salas, profissionais) de novo: depois de um not_found de exame ou recurso que outra
@@ -1122,24 +1140,49 @@ function itemFromDetail(itemId) {
     procedure: it.procedure, patient: A.shortName(r.patient?.for_other ? r.patient?.other_name : r.patient?.name) };
 }
 
-async function resolveConflict(code) {
-  const k = S.det?.conflict;
-  if (!k) return true;
-  const r = await call('agenda_conflict_resolve', { p_id: k, p_status: 'resolvido', p_code: code });
-  return r.status === 'ok' || r.status === 'already_closed';
+// Depois de remarcar, cancelar ou voltar ao horário de antes — pela lista "Para remarcar", pela grade, pela lista do
+// dia, pela busca ou por "Ver na agenda" —, o item sai da lista "Para remarcar". O banco já fecha sozinho (gatilho da
+// 4.2); isto cobre o banco antigo: com a agenda já relida, fecha o que AINDA estiver aberto para os itens.
+// "mantido" (voltar ao horário de antes) fecha só o conflito do bloqueio: o de grade que mudou continua valendo.
+async function resolveConflicts(itemIds, code) {
+  const abertos = (S.conflicts || []).filter((k) => itemIds.includes(k.item_id) && (code !== 'mantido' || k.kind === 'bloqueio_sobre_agendamento'));
+  const fechados = [];
+  for (const k of abertos) {
+    const r = await call('agenda_conflict_resolve', { p_id: k.id, p_status: 'resolvido', p_code: code });
+    if (['ok', 'already_closed', 'not_found'].includes(r.status)) fechados.push(k.id);
+  }
+  if (fechados.length) { S.conflicts = S.conflicts.filter((k) => !fechados.includes(k.id)); drawRemarcar(); }
+  return fechados.length === abertos.length;
 }
 
 async function doCancel() {
   const d = S.det; const c = d.cn;
   c.sending = true; drawDetail();
   const item = itemFromDetail(c.itemId);
-  const r = await call('agenda_cancel', { p_id: d.id, p_reason: c.reason, p_version: d.data.version });
+  const exame = cancelaExame();
+  const itens = exame ? [c.itemId] : d.data.items.map((x) => x.id);
+  const r = exame
+    ? await call('agenda_set_status', { p_id: d.id, p_status: 'cancelled', p_reason: c.reason, p_version: d.data.version, p_item: c.itemId })
+    : await call('agenda_cancel', { p_id: d.id, p_reason: c.reason, p_version: d.data.version });
   if (r.status === 'lost') return;
   if (r.status === 'ok') {
-    const resolvido = await resolveConflict('cancelado');
-    const texto = `Agendamento de ${item?.patient || 'paciente'} cancelado.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
-    S.det = null;
     await loadView({ quiet: true });
+    const resolvido = await resolveConflicts(itens, 'cancelado');
+    const fim = resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.';
+    if (exame) {
+      // pacote: os outros exames continuam; o detalhe fica aberto, com a situação nova
+      const texto = `Exame ${item?.procedure ? `${item.procedure} ` : ''}de ${item?.patient || 'paciente'} cancelado. Os outros exames continuam marcados.${fim}`;
+      d.sub = null; d.cn = null;
+      await loadDetail();
+      if (S.det === d) d.msg = [texto, resolvido ? 'ok' : 'warn'];
+      drawDetail();
+      msg(texto, resolvido ? 'ok' : 'warn');
+      toast(texto);
+      $('#agDetT')?.focus();
+      return;
+    }
+    const texto = `Agendamento de ${item?.patient || 'paciente'} cancelado.${fim}`;
+    S.det = null;
     drawDetail(); drawMain();
     msg(texto, resolvido ? 'ok' : 'warn');
     toast(texto);
@@ -1148,7 +1191,7 @@ async function doCancel() {
   }
   c.sending = false; c.ask = null;
   d.msg = [statusMsg(r), 'err'];
-  if (['version_conflict', 'not_found', 'already_cancelled', 'not_cancellable'].includes(r.status)) { await loadDetail(); await loadView({ quiet: true }); }
+  if (['version_conflict', 'not_found', 'already_cancelled', 'not_cancellable', 'transition_not_allowed'].includes(r.status)) { await loadDetail(); await loadView({ quiet: true }); }
   drawDetail();
   $('#cnMotivo')?.focus();
 }
@@ -1167,11 +1210,11 @@ async function doReschedule() {
   if (r.status === 'lost') return;
   m.sending = false;
   if (r.status === 'ok') {
-    const resolvido = await resolveConflict('remarcado');
-    const texto = `${r.replay ? A.ACTION_TEXT.replay : 'Remarcado'}: ${it.procedure || 'exame'} para ${A.fmtWhen(S.tz, m.slot)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
     d.sub = null; d.rm = null;
     await loadDetail();
     await loadView({ quiet: true });
+    const resolvido = await resolveConflicts([m.itemId], 'remarcado');
+    const texto = `${r.replay ? A.ACTION_TEXT.replay : 'Remarcado'}: ${it.procedure || 'exame'} para ${A.fmtWhen(S.tz, m.slot)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`;
     d.msg = [texto, resolvido ? 'ok' : 'warn'];
     drawDetail();
     msg(texto, resolvido ? 'ok' : 'warn');
@@ -1576,7 +1619,12 @@ function onClick(e) {
       if (r.status === 'ok') S.det.hist = r.history || []; else S.det.msg = [statusMsg(r), 'err'];
       drawDetail(); ($('#agHistT') || $('[data-act="historico"]'))?.focus();
     },
-    remarcar: () => { startReschedule(id); S.det.msg = null; drawDetail(); $('#rmT')?.focus(); },
+    remarcar: () => {
+      S.det.msg = null;
+      const ok = startReschedule(id);
+      drawDetail();
+      (ok ? $('#rmT') : $('#agDetT'))?.focus();
+    },
     'rm-ver': async () => {
       const m = S.det.rm; m.day = $('#rmDia').value || today(); m.slot = ''; m.key = null;
       const it = S.det.data.items.find((x) => x.id === m.itemId);
@@ -1600,15 +1648,20 @@ function onClick(e) {
     'rm-fechar': () => { const it = S.det.rm?.itemId; S.det.sub = null; S.det.rm = null; drawDetail(); $(`[data-act="remarcar"][data-item="${CSS.escape(it || '')}"]`)?.focus(); },
     'voltar-horario': async () => {
       const item = itemFromDetail(id);
-      const r = await call('agenda_set_status', { p_id: item.request_id, p_status: 'confirmed', p_version: item.request_version, p_item: item.id });
-      if (r.status === 'ok') {
-        const resolvido = await resolveConflict('mantido');
-        await loadDetail(); await loadView({ quiet: true });
-        S.det.msg = [`Voltou ao horário de antes: ${A.fmtWhen(S.tz, item.starts_at)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`, 'ok'];
-      } else {
-        S.det.msg = [r.status === 'slot_taken' ? A.ACTION_TEXT.slot_taken_back : statusMsg(r), 'err'];
-        if (['version_conflict', 'not_found'].includes(r.status)) await loadDetail();
-      }
+      if (!item || S.busyItem === item.id) return;   // clique duplo: uma chamada só
+      S.busyItem = item.id;
+      try {
+        const r = await call('agenda_set_status', { p_id: item.request_id, p_status: 'confirmed', p_version: item.request_version, p_item: item.id });
+        if (r.status === 'lost') return;
+        if (r.status === 'ok') {
+          await loadDetail(); await loadView({ quiet: true });
+          const resolvido = await resolveConflicts([item.id], 'mantido');
+          if (S.det) S.det.msg = [`Voltou ao horário de antes: ${A.fmtWhen(S.tz, item.starts_at)}.${resolvido ? '' : ' Não foi possível tirar da lista Para remarcar agora; tente de novo.'}`, resolvido ? 'ok' : 'warn'];
+        } else {
+          if (S.det) S.det.msg = [r.status === 'slot_taken' ? A.ACTION_TEXT.slot_taken_back : statusMsg(r), 'err'];
+          if (['version_conflict', 'not_found', 'transition_not_allowed'].includes(r.status)) { await loadDetail(); await loadView({ quiet: true }); }
+        }
+      } finally { S.busyItem = null; }
       drawDetail(); $('#agDetT')?.focus();
     },
     cancelar: () => { S.det.sub = 'cancelar'; S.det.cn = { itemId: id, reason: '' }; S.det.msg = null; drawDetail(); $('#cnMotivo')?.focus(); },
@@ -1616,7 +1669,10 @@ function onClick(e) {
       const c = S.det.cn; c.reason = $('#cnMotivo').value;
       if (!c.reason) { c.err = A.ACTION_TEXT.reason_required; drawDetail(); $('#cnMotivo').focus(); return; }
       const item = itemFromDetail(c.itemId);
-      c.err = ''; c.ask = `Cancelar o agendamento de ${item?.patient || 'paciente'} (${A.fmtWhen(S.tz, item?.starts_at)})? O horário fica livre para outro paciente.`;
+      c.err = '';
+      c.ask = cancelaExame()
+        ? `Cancelar o exame ${item?.procedure || ''} de ${item?.patient || 'paciente'} (${A.fmtWhen(S.tz, item?.starts_at)})? Só este exame: os outros do agendamento continuam marcados. O horário fica livre para outro paciente.`
+        : `Cancelar o agendamento de ${item?.patient || 'paciente'} (${A.fmtWhen(S.tz, item?.starts_at)})? O horário fica livre para outro paciente.`;
       drawDetail(); $('#cnSim')?.focus();
     },
     'cn-sim': () => doCancel(),
@@ -1678,17 +1734,60 @@ function onClick(e) {
       msg(r.status === 'ok' ? 'Horário mantido: saiu da lista Para remarcar.' : statusMsg(r), r.status === 'ok' ? 'ok' : 'err');
       ($('#agRemT') || $('#agTitulo'))?.focus();
     },
+    // "Tirar da lista": qualquer tipo de conflito (também o do bloqueio), com confirmação na própria linha
+    'conf-tirar': () => { S.remAsk = t.dataset.k; drawRemarcar(); $('#agkSim')?.focus(); },
+    'conf-tirar-nao': () => { const k = S.remAsk; S.remAsk = null; drawRemarcar(); $(`[data-act="conf-tirar"][data-k="${CSS.escape(k || '')}"]`)?.focus(); },
+    'conf-tirar-sim': async () => {
+      const k = t.dataset.k;
+      const r = await call('agenda_conflict_resolve', { p_id: k, p_status: 'descartado', p_code: 'tirado_da_lista' });
+      if (r.status === 'lost') return;
+      S.remAsk = null;
+      const ok = ['ok', 'already_closed', 'not_found'].includes(r.status);
+      await loadView({ quiet: true });
+      msg(ok ? 'Saiu da lista Para remarcar.' : statusMsg(r), ok ? 'ok' : 'err');
+      ($('#agRemT') || $('#agTitulo'))?.focus();
+    },
   };
   handlers[act]?.();
+}
+
+// O que ficou na lista "Para remarcar" mas já foi resolvido por outro caminho (banco antigo, sem o gatilho da 4.2):
+// o código com que sai da lista, ou null se ainda precisa de remarcação.
+function conflictDone(k, it) {
+  const st = it?.status;
+  if (!it || st === 'cancelled') return 'cancelado';
+  if (st === 'completed') return 'concluido';
+  if (st === 'no_show') return 'faltou';
+  if (st === 'expired') return 'expirado';
+  if (k.kind === 'bloqueio_sobre_agendamento' && st !== 'reschedule_requested') return 'remarcado';
+  return null;
 }
 
 async function confAct(kid, sub) {
   const k = (S.conflicts || []).find((x) => x.id === kid);
   if (!k) return;
   await openDetail(k.request_id, { itemId: k.item_id, origin: `[data-act="conf-ver"][data-k="${kid}"]`, conflict: kid, sub: sub === 'remarcar' ? 'remarcar' : null });
-  if (!S.det?.data) return;
-  if (sub === 'remarcar') { if (!S.det.rm) startReschedule(k.item_id); drawDetail(); $('#rmT')?.focus(); }
-  if (sub === 'cancelar') { S.det.sub = 'cancelar'; S.det.cn = { itemId: k.item_id, reason: '' }; drawDetail(); $('#cnMotivo')?.focus(); }
+  const d = S.det;
+  if (!d?.data) return;
+  const it = d.data.items.find((x) => x.id === k.item_id);
+  const feito = conflictDone(k, it);
+  if (feito) {
+    // já remarcado, cancelado ou atendido: nada de Remarcar nem Cancelar por aqui; sai da lista
+    d.sub = null; d.rm = null; d.cn = null;
+    const r = canDo('conflitos') ? await call('agenda_conflict_resolve', { p_id: kid, p_status: 'resolvido', p_code: feito }) : { status: 'forbidden' };
+    const saiu = ['ok', 'already_closed', 'not_found'].includes(r.status);
+    if (saiu) { S.conflicts = (S.conflicts || []).filter((x) => x.id !== kid); drawRemarcar(); }
+    if (S.det !== d) return;
+    d.msg = [`Este exame não está mais para remarcar${it ? ` (situação: ${A.clinicStatusLabel(it.status)})` : ''}.${saiu ? ' Saiu da lista Para remarcar.' : ''}`, 'info'];
+    drawDetail(); $('#agDetT')?.focus();
+    return;
+  }
+  if (sub === 'remarcar') { const ok = d.rm ? true : startReschedule(k.item_id); drawDetail(); (ok ? $('#rmT') : $('#agDetT'))?.focus(); }
+  if (sub === 'cancelar') {
+    const pode = A.manageActions(it, { scope: S.scope, can: { remarcar: canDo('remarcar'), cancelar: canDo('cancelar') } }).includes('cancelar');
+    if (!pode) { d.msg = [`Este exame não pode ser cancelado: a situação dele é “${A.clinicStatusLabel(it.status)}”.`, 'err']; drawDetail(); $('#agDetT')?.focus(); return; }
+    d.sub = 'cancelar'; d.cn = { itemId: k.item_id, reason: '' }; drawDetail(); $('#cnMotivo')?.focus();
+  }
 }
 
 function nav(dir) {

@@ -122,6 +122,14 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
     }
     return out;
   };
+  // o gatilho da 4.2: o item que sai da remarcação (por qualquer caminho) fecha os conflitos dele; semGatilho = banco antigo
+  const fecharConflitos = (itemId, code) => {
+    if (db.semGatilho) return;
+    for (const k of db.conflicts) {
+      if (k.item_id === itemId && ['aberto', 'em_andamento'].includes(k.status) && (code !== 'mantido' || k.kind === 'bloqueio_sobre_agendamento')) { k.status = 'resolvido'; k.resolution_code = code; }
+    }
+  };
+  const soma = (req) => { const vivos = req.items.filter((i) => i.status !== 'cancelled'); return vivos.length ? vivos[0].status : 'cancelled'; };
   const transition = (req, item, to, reason) => {
     const ini = Date.parse(item.starts_at);
     const u = db.unit;
@@ -129,14 +137,19 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
     const ok = { 'confirmed>checked_in': () => db.now >= ini - u.checkin_before_min * 60000 || 'too_early', 'checked_in>in_service': () => true, 'in_service>completed': () => true,
       'confirmed>completed': () => db.now >= ini || 'too_early', 'confirmed>no_show': () => db.now >= ini + u.no_show_after_min * 60000 || 'too_early',
       'no_show>checked_in': () => (scope() === 'propria' ? 'transition_not_allowed' : !reason ? 'reason_required' : true),
-      'reschedule_requested>confirmed': () => (occupied(item.resources[0] || USG, ini, Date.parse(item.ends_at), item.id) ? 'slot_taken' : true) };
+      'reschedule_requested>confirmed': () => (occupied(item.resources[0] || USG, ini, Date.parse(item.ends_at), item.id) ? 'slot_taken' : true),
+      'confirmed>cancelled': () => (!reason ? 'reason_required' : true), 'reschedule_requested>cancelled': () => (!reason ? 'reason_required' : true),
+      'checked_in>cancelled': () => (!reason ? 'reason_required' : true) };
     const f = ok[`${from}>${to}`];
     if (!f) return { status: 'transition_not_allowed', from };
     const v = f();
     if (v !== true) return { status: v, ...(v === 'transition_not_allowed' ? { from } : {}) };
     item.status = to; item.version += 1;
     if (to === 'confirmed' && !item.resources.length) item.resources = [USG];
-    req.status = to; req.version += 1;
+    if (to === 'cancelled') item.resources = [];
+    req.status = soma(req); req.version += 1;
+    const code = { cancelled: 'cancelado', completed: 'concluido', no_show: 'faltou' }[to] || (from === 'reschedule_requested' && to === 'confirmed' ? 'mantido' : null);
+    if (code) fecharConflitos(item.id, code);
     hist(req, from, to, reason);
     touch();
     return { status: 'ok', request_status: to, version: req.version };
@@ -225,6 +238,7 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
       case 'rpc/agenda_conflict_resolve': {
         const k = db.conflicts.find((x) => x.id === body.p_id);
         if (!k) return json(route, { status: 'not_found' });
+        if (!['aberto', 'em_andamento'].includes(k.status)) return json(route, { status: 'already_closed' });
         k.status = body.p_status; k.resolution_code = body.p_code; touch();
         return json(route, { status: 'ok' });
       }
@@ -289,7 +303,7 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
         if (!r) return json(route, { status: 'not_found' });
         if (!body.p_reason) return json(route, { status: 'reason_required' });
         if (body.p_version != null && body.p_version !== r.version) return json(route, { status: 'version_conflict', version: r.version });
-        r.status = 'cancelled'; r.cancel_reason = body.p_reason; r.version += 1; r.items.forEach((i) => { i.status = 'cancelled'; i.resources = []; }); touch();
+        r.status = 'cancelled'; r.cancel_reason = body.p_reason; r.version += 1; r.items.forEach((i) => { i.status = 'cancelled'; i.resources = []; fecharConflitos(i.id, 'cancelado'); }); touch();
         return json(route, { status: 'ok' });
       }
       case 'rpc/agenda_reschedule': {
@@ -300,7 +314,7 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
         const dur = Date.parse(it.ends_at) - Date.parse(it.starts_at);
         it.starts_at = body.p_items[0].starts_at; it.ends_at = new Date(Date.parse(it.starts_at) + dur).toISOString(); it.status = 'confirmed';
         it.resources = it.resources.length ? it.resources : db.procedures.find((p) => p.id === it.procedure_id).groups[0].resource_ids;
-        r.status = 'confirmed'; r.slot_start = it.starts_at; r.version += 1; touch();
+        r.status = 'confirmed'; r.slot_start = it.starts_at; r.version += 1; fecharConflitos(it.id, 'remarcado'); touch();
         const out = { status: 'ok', id: r.id, request_status: 'confirmed', items: [{ seq: it.seq, starts_at: it.starts_at, ends_at: it.ends_at }] };
         db.keys[body.p_key] = out;
         return json(route, out);
@@ -720,7 +734,7 @@ await scenario('remarcar: dia, horários com p_request e p_item, confirmação "
   await context.close();
 });
 
-await scenario('bloquear com afetados: lista com nomes curtos, "Bloquear mesmo assim", Para remarcar e remarcar resolve o conflito', async () => {
+await scenario('bloquear com afetados: lista com nomes curtos, "Bloquear mesmo assim", Para remarcar e remarcar tira da lista', async () => {
   const reqs = [booking({ name: 'Maria Souza Lima', start: sp(AMANHA, '09:00') }), booking({ name: 'Otávio Reis Teste', phone: '11944443333', start: sp(AMANHA, '10:00'), channel: 'clinica_telefone' })];
   const { page, db, log, errors, context } = await newPage(browser, { db: { requests: reqs, busy: [{ id: 'bbbbbbbb-0000-4000-8000-000000000902', starts_at: sp(AMANHA, '11:00'), ends_at: sp(AMANHA, '11:30'), reason_code: 'agenda_propria', resources: [USG] }] } });
   await abrirAgenda(page);
@@ -757,9 +771,9 @@ await scenario('bloquear com afetados: lista com nomes curtos, "Bloquear mesmo a
   await page.check('input[name="rmSlot"]');
   await page.click('#rmOk');
   await page.waitForFunction(() => /Remarcado/.test(document.querySelector('#agMsg').textContent));
-  const k = calls(log, 'agenda_conflict_resolve').at(-1).body;
-  assert.equal(k.p_status, 'resolvido');
-  assert.equal(k.p_code, 'remarcado');
+  // o banco fecha o conflito na remarcação (gatilho da 4.2): sai da lista sem a tela chamar agenda_conflict_resolve
+  assert.equal(calls(log, 'agenda_conflict_resolve').length, 0);
+  assert.equal(db.conflicts.filter((x) => x.status === 'resolvido' && x.resolution_code === 'remarcado').length, 1);
   assert.match(await page.textContent('#agRemT'), /Para remarcar \(1\)/);
   assert.deepEqual(errors, []);
   await context.close();
@@ -1010,6 +1024,113 @@ await scenario('exame, aparelho ou sala desativado por outra pessoa: o texto cer
   await page.click('#blOk');
   assert.equal(calls(log, 'agenda_block_add').length, n, 'sem escolher de novo, não manda nada');
   assert.equal(db.blocks.length, 0);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('Para remarcar: remarcar por outro caminho (a busca) tira o item da lista sem a tela chamar nada; "Tirar da lista" com confirmação', async () => {
+  const reqs = [booking({ name: 'Maria Souza Lima', start: sp(AMANHA, '09:00') }), booking({ name: 'Otávio Reis Teste', phone: '11944443333', start: sp(AMANHA, '10:00') })];
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: reqs } });
+  await abrirAgenda(page);
+  await page.click('#agBloquear');
+  await page.selectOption('#blAlvo', USG);
+  await page.fill('#blFrom', AMANHA);
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  await page.click('#blForcar');
+  await page.waitForSelector('#agRemT');
+  assert.match(await page.textContent('#agRemT'), /Para remarcar \(2\)/);
+  // a recepção acha a Maria pela busca (não pela lista "Para remarcar") e remarca
+  await page.fill('#agBuscaQ', 'Maria');
+  await page.click('#agBuscaOk');
+  await page.waitForSelector('#agBuscaRes [data-act="abrir"]');
+  await page.click('#agBuscaRes [data-act="abrir"]');
+  await page.waitForSelector('#agDet [data-act="remarcar"]');
+  await page.click('#agDet [data-act="remarcar"]');
+  await page.fill('#rmDia', AMANHA);
+  db.deskSlots = [{ start: sp(AMANHA, '15:00'), end: sp(AMANHA, '15:30') }];
+  await page.click('#rmVer');
+  await page.check('input[name="rmSlot"]');
+  await page.click('#rmOk');
+  await page.waitForFunction(() => /Remarcado/.test(document.querySelector('#agMsg').textContent));
+  await page.waitForFunction(() => /Para remarcar \(1\)/.test(document.querySelector('#agRemT')?.textContent || ''));
+  assert.equal(calls(log, 'agenda_conflict_resolve').length, 0, 'o banco fecha sozinho: a tela não precisa chamar');
+  // "Tirar da lista" o Otávio (bloqueio): pergunta na própria linha
+  const kOtavio = db.conflicts.find((k) => k.request_id === reqs[1].id).id;
+  await page.click('#agDetFechar');
+  await page.click(`[data-act="conf-tirar"][data-k="${kOtavio}"]`);
+  assert.equal(await focusId(page), 'agkSim');
+  assert.match(await page.textContent('#agRem'), /Tirar da lista sem remarcar por aqui\?/);
+  await page.click(`[data-act="conf-tirar-nao"]`);
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.act), 'conf-tirar', 'Voltar devolve o foco');
+  await page.click(`[data-act="conf-tirar"][data-k="${kOtavio}"]`);
+  await page.click('#agkSim');
+  await page.waitForFunction(() => /Saiu da lista Para remarcar/.test(document.querySelector('#agMsg').textContent));
+  assert.deepEqual(calls(log, 'agenda_conflict_resolve').at(-1).body, { p_id: kOtavio, p_status: 'descartado', p_code: 'tirado_da_lista' });
+  assert.equal(await page.locator('#agRemT').count(), 0, 'a lista some');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('banco sem o gatilho: o que o paciente já cancelou sai da lista sem "Cancelar" de novo; remarcar pela busca fecha o conflito do item', async () => {
+  const reqs = [booking({ name: 'Maria Souza Lima', start: sp(AMANHA, '09:00'), status: 'reschedule_requested', res: [] }),
+    booking({ name: 'Otávio Reis Teste', phone: '11944443333', start: sp(AMANHA, '10:00'), status: 'cancelled', res: [] })];
+  const conflicts = reqs.map((r) => ({ id: nid('ffffffff'), kind: 'bloqueio_sobre_agendamento', request_id: r.id, item_id: r.items[0].id, starts_at: r.items[0].starts_at, procedure_id: P_USG,
+    details: { starts_at: r.items[0].starts_at, procedure_id: P_USG }, status: 'aberto', created_at: NOW }));
+  const { page, log, errors, context } = await newPage(browser, { db: { requests: reqs, conflicts, semGatilho: true } });
+  await abrirAgenda(page);
+  await page.waitForSelector('#agRemT');
+  assert.match(await page.textContent('#agRemT'), /Para remarcar \(2\)/);
+  // Otávio: "Cancelar" na lista, mas o paciente já tinha cancelado pela conta
+  await page.click(`[data-act="conf-cancelar"][data-k="${conflicts[1].id}"]`);
+  await page.waitForFunction(() => /não está mais para remarcar \(situação: Cancelado\)\. Saiu da lista Para remarcar/.test(document.querySelector('#agDetMsg')?.textContent || ''));
+  assert.equal(calls(log, 'agenda_cancel').length + calls(log, 'agenda_set_status').length, 0, 'nada é cancelado de novo');
+  assert.equal(await page.locator('#cnMotivo').count(), 0, 'sem o formulário de cancelar');
+  assert.deepEqual(calls(log, 'agenda_conflict_resolve').at(-1).body, { p_id: conflicts[1].id, p_status: 'resolvido', p_code: 'cancelado' });
+  assert.match(await page.textContent('#agRemT'), /Para remarcar \(1\)/);
+  // Maria: remarcada pelo detalhe aberto da busca → a tela fecha o conflito dela pelo item
+  await page.click('#agDetFechar');
+  await page.fill('#agBuscaQ', 'Maria');
+  await page.click('#agBuscaOk');
+  await page.waitForSelector('#agBuscaRes [data-act="abrir"]');
+  await page.click('#agBuscaRes [data-act="abrir"]');
+  await page.waitForSelector('#agDet [data-act="remarcar"]');
+  await page.click('#agDet [data-act="remarcar"]');
+  await page.fill('#rmDia', AMANHA);
+  await page.click('#rmVer');
+  await page.check(`input[name="rmSlot"][value="${sp(AMANHA, '15:00')}"]`);
+  await page.click('#rmOk');
+  await page.waitForFunction(() => /Remarcado/.test(document.querySelector('#agMsg').textContent));
+  assert.deepEqual(calls(log, 'agenda_conflict_resolve').at(-1).body, { p_id: conflicts[0].id, p_status: 'resolvido', p_code: 'remarcado' });
+  await page.waitForFunction(() => !document.querySelector('#agRemT'));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('pacote com dois exames: "Cancelar este exame" cancela só aquele (agenda_set_status com o item); a pergunta diz isso', async () => {
+  const pac = booking({ name: 'Rita Teles Teste', start: sp(AMANHA, '09:00') });
+  pac.items.push({ id: nid('iiiiiiii'), seq: 2, procedure_id: P_ECO, procedure: 'Ecocardiograma', exam_code: 'eco', starts_at: sp(AMANHA, '10:00'), ends_at: sp(AMANHA, '10:20'),
+    status: 'confirmed', version: 1, price_cents: null, resources: [DRA] });
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: [pac] } });
+  await abrirAgenda(page);
+  await page.fill('#agBuscaQ', 'Rita');
+  await page.click('#agBuscaOk');
+  await page.waitForSelector('#agBuscaRes [data-act="abrir"]');
+  await page.click('#agBuscaRes [data-act="abrir"]');
+  await page.waitForSelector('#agDet .ag-itens');
+  assert.deepEqual(await page.$$eval('#agDet [data-act="cancelar"]', (b) => b.map((x) => x.textContent.trim())), ['Cancelar este exame', 'Cancelar este exame']);
+  await page.click(`#agDet [data-act="cancelar"][data-item="${pac.items[1].id}"]`);
+  assert.match(await page.textContent('#cnT'), /Cancelar o exame Ecocardiograma/);
+  await page.selectOption('#cnMotivo', 'paciente_desistiu');
+  await page.click('#cnOk');
+  assert.match(await page.textContent('#cnAskT'), /Cancelar o exame Ecocardiograma de Rita T\. \(qui\., 05\/11 às 10:00\)\? Só este exame: os outros do agendamento continuam marcados/);
+  await page.click('#cnSim');
+  await page.waitForFunction(() => /Os outros exames continuam marcados/.test(document.querySelector('#agMsg').textContent));
+  assert.deepEqual(calls(log, 'agenda_set_status').at(-1).body, { p_id: pac.id, p_status: 'cancelled', p_reason: 'paciente_desistiu', p_version: 1, p_item: pac.items[1].id });
+  assert.equal(calls(log, 'agenda_cancel').length, 0, 'não cancela o agendamento inteiro');
+  assert.deepEqual(db.requests[0].items.map((i) => i.status), ['confirmed', 'cancelled']);
+  assert.equal(await focusId(page), 'agDetT', 'o detalhe continua aberto');
+  assert.equal(await page.locator(`#agDet [data-act="cancelar"][data-item="${pac.items[0].id}"]`).count(), 1, 'o ultrassom ainda pode ser cancelado');
   assert.deepEqual(errors, []);
   await context.close();
 });
