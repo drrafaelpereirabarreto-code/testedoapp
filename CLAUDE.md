@@ -55,9 +55,20 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
 - 03/11 (no ar): **prontuário, fase 2 do Workspace** (`memory/projects/imed-workspace-arquitetura.md`) — migração `20261103045051_prontuario` (schemas `prontuario`/`catalogo` fechados, funções `ws_*` e `cat_cid_buscar`, registro com versão, finalizado imutável com hash encadeado, adendo, trilhas inclusive negados; CID-10 do DATASUS carregada pelo workflow `cid10.yml` → ramo `dados/cid10`); tela da consulta em 3 colunas (`ws-layout.js`, `ws-prontuario.js`, `ws-core.js`, `ws.css`), botões "Mostrar" no celular; testes `ws-core.test.mjs`, `e2e-prontuario.mjs`, pgTAP `200_prontuario.sql`. Falta: identidade do paciente/TCLE v3 (histórico entre consultas), MFA, âncora externa do hash, modelos.
 - 04/11 (no ar): **mapa 3D do topo com os prédios reais** — MapLibre GL JS 6.16.0 do próprio site (`assets/vendor/maplibre`) + ladrilhos gratuitos do OpenFreeMap (prédios do OpenStreetMap com a altura da camada), luz, sombras, claro/escuro, pinos e rótulos dos locais reais; sem ladrilhos ou WebGL 2 → versão leve (detalhes em `memory/context/arquitetura.md`).
 - 05/11 (no ar): **entrada com senha** — o dono saiu da conta em 03/11 e ficou sem acesso porque o site só entrava por link no e-mail e o e-mail do Supabase Auth está parado (SMTP/Resend sem domínio verificado, limite de 2 e-mails/h). Agora todo quadro de entrada tem "Entrar com senha" e "Esqueci a senha" (`assets/js/entrada-senha.js`), a página `definir-senha.html` define/troca a senha (link de recuperação ou já logado), `auth.js` ganhou `signInWithPassword`, `recover`, `setPassword` (link `type=recovery` em qualquer página leva para `definir-senha.html`); migração `20261105030413_entrada_senha` (`is_imed_admin`, `private.agenda_secure_session` e `vincular_admin` aceitam sessão por senha; anônima continua barrada); Edge Function `link-admin` (fonte em `supabase/functions/link-admin/`) gera link `magiclink` ou `recovery` sem e-mail. Links de recuperação enviados pelo Gmail do dono em 05/11; teste `tests/e2e-senha.mjs`.
+- 05/11, noite (**só no ramo `ci/agenda-4-3`**, não publicado): **iMed Agenda 4.3** — atualização automática do painel
+  (`assets/js/tempo-real.js`: canal privado do Realtime com o token da pessoa + consulta periódica de `agenda_version`,
+  15 s/5 s, pausa com a aba escondida; `imed:token` no `auth.js`; CSP do `painel.html` com `wss:`), a agenda e a aba Pedidos
+  releem sozinhas sem perder o que a pessoa digita, bloco "Precisa de atenção" e visão "Resumo" (painéis operacional e
+  financeiro) na aba Agenda; migração provisória `20261105190000_agenda_aviso_pedido` (gatilho: pedido novo do site sobe a
+  versão) **não aplicada**. Na produção o Realtime ainda não grava (sem partição em `realtime.messages`): vale a consulta
+  periódica. Publicar: juntar na `main`, subir `VERSION` no `sw.js` e aplicar a migração (depende do dono; ver pendências).
 - **Próximo:** fases do iMed Agenda acima; Turnstile e TURN; domínio próprio antes do 1º documento real.
 
 ## Pendências que dependem do Dr. Rafael
+- **iMed Agenda 4.3** (ramo `ci/agenda-4-3`): autorizar a publicação e a migração provisória `agenda_aviso_pedido` (só um
+  gatilho aditivo, com volta); no Supabase, em Realtime → Settings, **desligar "Allow public access"** (o painel entra no canal
+  com o token da pessoa) e conferir se `realtime.messages` ganhou partições depois da 1ª conexão (até lá o aviso fica só no
+  log e o painel se vira com a consulta periódica).
 - **iMed Agenda 4.2, parte 2** (`supabase/migrations/20261105050258_agenda_leitura_parte_2.sql`): autorizar o fechamento da leitura direta (a clínica passa a ler pedidos, horários e bloqueios só pelas funções, com registro de quem leu) uns dias depois de usar a aba Agenda do painel e confirmar que está tudo certo. Nada é apagado; tem volta própria.
 - Razão social e CNPJ do IMED → `sobre.html` (hoje "em atualização"). Termos de uso: pedir revisão de um advogado.
 - Comprar domínio (ex.: imed.com.br; dá para ver na Hostinger) → trocar `siteUrl` em `assets/js/config.js`.
