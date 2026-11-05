@@ -1,0 +1,32 @@
+# Sonda temporária: mede fontes de prédios (OSM/OpenFreeMap, Overture, VIDA). Apagar do ramo no fim.
+name: Sonda prédios
+on:
+  push:
+    branches: [site/mapa-predios]
+    paths: ['.github/workflows/sonda-predios.yml', '.github/sonda-predios/**']
+permissions:
+  contents: read
+jobs:
+  sonda:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Instalar leitores
+        working-directory: .github/sonda-predios
+        run: npm install --no-save --no-package-lock --no-audit --no-fund pmtiles@4 @mapbox/vector-tile@1 pbf@3
+      - name: Medir
+        working-directory: .github/sonda-predios
+        run: node sonda.mjs
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: sonda-predios
+          path: .github/sonda-predios/sonda-predios.json
+          if-no-files-found: ignore
