@@ -31,6 +31,9 @@ const waHref = (phone) => { const d = onlyDigits(phone); return /^[1-9]{2}9\d{8}
 // ctx: { clinic, perms, admin, lost(), goTab(id), focus: { requestId, day } | null }
 let S = null;
 let watching = false;
+// Balcão: chave de reenvio de cada par (clínica, exame, horário) que ficou sem resposta (erro de rede). Fica fora de S
+// para valer também depois de trocar de aba e voltar (a agenda é desenhada de novo).
+const deskKeys = new Map();
 
 export async function renderAgenda(box, ctx) {
   const cid = ctx.clinic.id;
@@ -701,18 +704,37 @@ function blocksViewHtml() {
     ${pode || (!S.blocks && canDo('bloquear')) ? blockFormHtml() : ''}`;
 }
 
+// "Hoje, dia inteiro" começa agora (agenda-core, blockRangeTz): a tela diz isso ao lado do dia.
+function blHojeTexto() {
+  const b = S.bl;
+  if (!b || b.modo !== 'day' || !/^\d{4}-\d{2}-\d{2}$/.test(b.from || '') || b.from > today()) return '';
+  const r = A.blockRangeTz({ kind: 'day', from: b.from, to: b.to }, S.tz);
+  return r.fromNow ? `Hoje o bloqueio começa agora (${A.timeIn(S.tz, r.starts)}): o que já começou não é atingido.` : '';
+}
+function drawBlHoje() {
+  const p = $('#blHoje');
+  if (!p) return;
+  const t = blHojeTexto();
+  p.textContent = t;
+  p.hidden = !t;
+}
+
 function blockFormHtml() {
   if (!S.bl) S.bl = { alvo: '', tipo: 'bloqueio', modo: 'day', from: '', to: '', start: '', end: '', motivo: '' };
   const b = S.bl;
   const res = resources().filter((r) => r.active !== false);
   const dia = today();
+  const hoje = blHojeTexto();
   const f = (id, label, type, value, extra = '') => `<div class="cl-field" id="${id}Box"><label class="cl-lbl" for="${id}">${label}</label>
-      <input id="${id}" type="${type}" value="${esc(value)}" aria-describedby="${id}Err" ${extra}><span class="cl-err" id="${id}Err"></span></div>`;
+      <input id="${id}" type="${type}" value="${esc(value)}" aria-describedby="${id}Err${id === 'blFrom' ? ' blHoje' : ''}" ${extra}><span class="cl-err" id="${id}Err"></span></div>`;
   return `<form id="blForm" class="ac-form ag-form" novalidate aria-labelledby="blFormT">
       <h4 id="blFormT" tabindex="-1">${icon('fa-lock')}Bloquear horário</h4>
       <div class="cl-grid">
         <div class="cl-field"><label class="cl-lbl" for="blAlvo">O que bloquear</label>
-          <select id="blAlvo"><option value="">A clínica inteira</option>${opts(res.map((r) => [r.id, r.name]), b.alvo)}</select></div>
+          <select id="blAlvo" aria-describedby="blAlvoErr">${b.alvo && !res.some((r) => r.id === b.alvo)
+            // o item escolhido foi desativado: fica marcado "escolha de novo" (nunca vira "A clínica inteira" sozinho)
+            ? `<option value="${esc(b.alvo)}" selected disabled>Escolha de novo</option>` : ''}<option value="">A clínica inteira</option>${opts(res.map((r) => [r.id, r.name]), b.alvo)}</select>
+          <span class="cl-err" id="blAlvoErr"></span></div>
         <div class="cl-field"><label class="cl-lbl" for="blTipo">Tipo</label><select id="blTipo">${opts(A.BLOCK_KINDS, b.tipo)}</select></div>
       </div>
       <fieldset class="cl-fs ag-mt"><legend class="sr">Período</legend>
@@ -727,21 +749,28 @@ function blockFormHtml() {
         <div class="cl-field full"><label class="cl-lbl" for="blMotivo">Motivo <small>(opcional; só a clínica vê; não escreva dados de pacientes)</small></label>
           <input id="blMotivo" type="text" maxlength="120" autocomplete="off" value="${esc(b.motivo)}"></div>
       </div>
+      <p class="cl-help" id="blHoje"${hoje ? '' : ' hidden'}>${esc(hoje)}</p>
       <div class="cl-actions"><button class="btn btn-primary" type="submit" id="blOk">Bloquear</button>
         ${S.view !== 'bloqueios' ? '<button class="btn btn-ghost" type="button" data-act="fechar-form">Fechar</button>' : ''}</div>
       <div id="blAfet">${affectedHtml()}</div>
     </form>`;
 }
 
+const BL_MUDOU = '<p class="cl-note warn" role="status" id="blMudou">Você mudou o bloqueio depois de ver quem seria atingido. Clique em “Bloquear” para conferir de novo.</p>';
+
 function affectedHtml() {
   const a = S.bl?.afet;
-  if (!a) return '';
+  if (!a) return S.bl?.mudou ? BL_MUDOU : '';
   const ag = a.items.filter((x) => x.kind === 'agendamento');
   const oc = a.items.filter((x) => x.kind === 'ocupado');
   const presos = a.items.some((x) => !x.can_move);
   const linha = (x) => `<li class="ag-tom-${x.kind === 'ocupado' ? 'vermelho' : A.statusTag(x.status).tone}"><b>${esc(A.fmtWhen(S.tz, x.starts_at))}</b> · ${esc(x.kind === 'ocupado' ? 'Só ocupar' : x.procedure || 'Exame')}${x.patient ? ` · ${esc(x.patient)}` : ''}${x.channel ? ` · ${esc(A.CHANNEL_LABEL[x.channel] || '')}` : ''} · ${icon(x.kind === 'ocupado' ? 'fa-hand' : A.statusTag(x.status).icon)}${esc(x.kind === 'ocupado' ? 'Ocupado' : A.clinicStatusLabel(x.status))}</li>`;
+  // O título diz QUAL bloqueio (período e alvo) a lista confere: o "mesmo assim" grava exatamente este.
+  const g = a.args || {};
+  const qual = g.p_starts ? `Bloqueio de ${A.blockWhenTz({ starts_at: g.p_starts, ends_at: g.p_ends }, S.tz)} ${g.p_resource ? `em ${resName(g.p_resource) || 'um recurso'}` : 'na clínica inteira'}: ` : '';
+  const quanto = A.actionText('confirm_required', { items: a.items });
   return `<section class="ag-afet" aria-labelledby="blAfetT">
-      <h4 id="blAfetT" tabindex="-1">${icon('fa-triangle-exclamation')}${esc(A.actionText('confirm_required', { items: a.items }))}</h4>
+      <h4 id="blAfetT" tabindex="-1">${icon('fa-triangle-exclamation')}${esc(qual ? `${qual}${quanto.replace(/^Este bloqueio /, '')}` : quanto)}</h4>
       ${a.aviso ? `<p class="cl-note warn">${esc(a.aviso)}</p>` : ''}
       <ul class="ag-afetlista">${a.items.map(linha).join('')}</ul>
       ${presos ? `<p class="cl-note err" role="alert">${esc(A.ACTION_TEXT.cannot_move)}</p>`
@@ -767,7 +796,8 @@ function deskFormHtml() {
   const b = S.bk;
   if (b.done) {
     return `<section class="ac-form ag-form ag-feito" aria-labelledby="bkFeito"><p id="bkFeito" class="cl-note ok" tabindex="-1" role="status">${esc(b.done)}</p>
-      <div class="cl-actions"><button type="button" class="btn btn-primary btn-sm" data-act="novo">${icon('fa-calendar-plus')}Novo agendamento</button>
+      <div class="cl-actions">${b.doneId ? `<button type="button" class="btn btn-ghost btn-sm" data-act="abrir" data-req="${esc(b.doneId)}" id="bkVerAg">Ver o agendamento</button>` : ''}
+        <button type="button" class="btn btn-primary btn-sm" data-act="novo">${icon('fa-calendar-plus')}Novo agendamento</button>
         <button type="button" class="btn btn-ghost btn-sm" data-act="fechar-form">Fechar</button></div></section>`;
   }
   const procs = S.cat?.procedures || [];
@@ -846,7 +876,7 @@ function openForm(kind) {
   S.det = null; S.ask = null;
   if (kind === 'novo') {
     const proc = S.f.proc || (S.cat?.procedures?.length === 1 ? S.cat.procedures[0].id : '');
-    S.bk = { proc, day: S.view === 'dia' && S.day >= today() ? S.day : today(), res: null, slot: '', key: null, name: '', phone: '', email: '', forOther: false, otherName: '', relationship: '', otherMinor: false, authorize: false, channel: 'clinica_telefone', consent: false, errs: {} };
+    S.bk = { proc, day: S.view === 'dia' && S.day >= today() ? S.day : today(), res: null, slot: '', name: '', phone: '', email: '', forOther: false, otherName: '', relationship: '', otherMinor: false, authorize: false, channel: 'clinica_telefone', consent: false, errs: {} };
   } else if (kind === 'ocupar') {
     S.oc = { res: S.f.res || '', day: S.view === 'dia' && S.day >= today() ? S.day : today(), start: '', end: '', reason: 'agenda_propria', errs: {} };
   } else if (kind === 'bloquear') {
@@ -1024,6 +1054,28 @@ function startReschedule(itemId) {
 }
 
 // ---------- ações ----------
+// O catálogo (exames, aparelhos, salas, profissionais) de novo: depois de um not_found de exame ou recurso que outra
+// pessoa desativou, para os seletores da tela não oferecerem o que não existe mais.
+async function reloadCatalog() {
+  const r = await call('agenda_catalog', { p_clinic: S.clinicId });
+  if (r.status !== 'ok') return false;
+  S.cat = r; S.tz = r.timezone || S.tz;
+  if (r.scope) S.scope = r.scope;
+  return true;
+}
+
+// not_found no bloqueio = o aparelho, a sala ou o profissional foi desativado ou arquivado.
+async function blockGone() {
+  await reloadCatalog();
+  if (S.ctx.lost() || !S.bl) return;
+  await loadView({ quiet: true });
+  redrawBlockForm();
+  const er = $('#blAlvoErr');
+  if (er) { er.textContent = A.ACTION_TEXT.not_found_resource; $('#blAlvo')?.setAttribute('aria-invalid', 'true'); }
+  msg(A.ACTION_TEXT.not_found_resource, 'err');
+  $('#blAlvo')?.focus();
+}
+
 async function call(fn, args) {
   try { return await rpc(fn, args); } catch (err) {
     if (isMissingFn(err)) return { status: 'missing_fn' };
@@ -1147,24 +1199,45 @@ async function doDeskBook() {
     el?.focus();
     return;
   }
-  if (!b.key) b.key = uuid();
+  // Chave de reenvio por par (exame, horário): a MESMA enquanto a tentativa com esse par ficou sem resposta (erro de
+  // rede), inclusive depois de "Ver horários" ou de fechar e abrir o formulário; nova depois de qualquer resposta.
+  const par = `${S.clinicId}|${b.proc}|${b.slot}`;
+  const key = deskKeys.get(par) || uuid();
   b.sending = true; drawForms();
   const payload = A.deskPayload({ ...b, guardianConsent: b.authorize, otherConsent: b.authorize });
-  const r = await call('agenda_desk_book', { p_clinic: S.clinicId, p_items: [{ procedure_id: b.proc, starts_at: b.slot }], p_patient: payload, p_channel: b.channel, p_key: b.key });
+  const r = await call('agenda_desk_book', { p_clinic: S.clinicId, p_items: [{ procedure_id: b.proc, starts_at: b.slot }], p_patient: payload, p_channel: b.channel, p_key: key });
   if (r.status === 'lost') return;
   b.sending = false;
+  if (r.status === 'network') {
+    // pode ter gravado: relê a agenda ANTES de deixar marcar outro horário (o reenvio no mesmo horário não duplica)
+    deskKeys.set(par, key);
+    await loadView({ quiet: true });
+    if (S.ctx.lost()) return;
+    b.msg = [A.ACTION_TEXT.network_desk, 'err'];
+    drawForms();
+    $('#bkOk')?.focus();
+    return;
+  }
+  deskKeys.delete(par);
   if (r.status === 'ok') {
-    const proc = S.cat?.procedures?.find((x) => x.id === b.proc)?.name || 'exame';
-    const curto = (b.forOther ? b.otherName : b.name).trim().split(/\s+/);
-    const nome = curto.length > 1 ? `${curto[0]} ${curto.at(-1).charAt(0)}.` : curto[0];
-    b.done = `${r.replay ? `${A.ACTION_TEXT.replay} ` : ''}Agendado: ${nome}, ${proc}, ${A.fmtWhen(S.tz, r.slot_start || b.slot)}.`;
+    // o que o BANCO gravou (no reenvio, o nome digitado agora pode não ser o gravado: a chave não inclui o paciente)
+    const it0 = r.items?.[0] || {};
+    const proc = S.cat?.procedures?.find((x) => x.id === (it0.procedure_id || b.proc))?.name || 'exame';
+    const quando = A.fmtWhen(S.tz, r.slot_start || it0.starts_at || b.slot);
+    if (r.replay) b.done = `Este agendamento já tinha sido registrado: ${proc}, ${quando}. Abra o agendamento para conferir o paciente.`;
+    else {
+      const curto = (b.forOther ? b.otherName : b.name).trim().split(/\s+/);
+      const nome = curto.length > 1 ? `${curto[0]} ${curto.at(-1).charAt(0)}.` : curto[0];
+      b.done = `Agendado: ${nome}, ${proc}, ${quando}.`;
+    }
+    b.doneId = r.id || null;
     drawForms();
     await loadView({ quiet: true });
     toast(b.done);
     $('#bkFeito')?.focus();
     return;
   }
-  if (A.needsNewKey(r.status)) b.key = null;
+  if (r.status === 'not_found') return deskGone();
   if (r.status === 'slot_taken') {
     b.alts = (r.alternatives || []).slice(0, 5);
     b.slot = '';
@@ -1196,14 +1269,28 @@ async function deskSlots() {
   b.errs = {};
   if (!b.proc) { b.errs.bkProc = 'Escolha o exame.'; drawForms(); $('#bkProc').focus(); return; }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(b.day || '')) b.day = today();
-  b.slot = ''; b.key = null;
+  b.slot = '';
   b.loading = true; b.res = null; b.alts = null; drawForms();
   const r = await call('agenda_desk_slots', { p_clinic: S.clinicId, p_procedure: b.proc, p_from: b.day });
+  if (r.status === 'lost') return;
   b.loading = false;
   if (r.status === 'missing_fn') { S.missing.desk = true; S.form = null; drawForms(); drawTop(); msg('Horários livres indisponíveis no momento.', 'warn'); return; }
+  if (r.status === 'not_found') return deskGone();
   if (r.status === 'ok') b.res = r; else b.msg = [statusMsg(r), 'err'];
   drawForms();
   ($('input[name="bkSlot"]') || $('#bkSemHorario') || $('#bkVer'))?.focus();
+}
+
+// not_found no balcão = o exame foi desativado por outra pessoa: relê o catálogo e pede para escolher de novo.
+async function deskGone() {
+  const b = S.bk;
+  await reloadCatalog();
+  if (S.ctx.lost() || S.bk !== b) return;
+  if (!(S.cat?.procedures || []).some((x) => x.id === b.proc)) b.proc = '';
+  b.slot = ''; b.res = null; b.alts = null; b.loading = false; b.sending = false; b.msg = null;
+  b.errs = { bkProc: A.ACTION_TEXT.not_found_exam };
+  drawForms();
+  $('#bkProc')?.focus();
 }
 
 async function doBusy() {
@@ -1240,6 +1327,16 @@ async function doBusy() {
     $('#agTitulo')?.focus();
     return;
   }
+  if (r.status === 'not_found') {
+    // o aparelho, a sala ou o profissional foi desativado: relê o catálogo e a agenda e pede para escolher de novo
+    await reloadCatalog();
+    await loadView({ quiet: true });
+    if (S.ctx.lost() || S.oc !== o) return;
+    if (!resources().some((x) => x.id === o.res && x.active !== false)) o.res = '';
+    o.errs = { ocRec: A.ACTION_TEXT.not_found_resource };
+    drawForms(); $('#ocRec')?.focus();
+    return;
+  }
   o.msg = [r.status === 'slot_taken' ? 'Esse horário já está ocupado ou bloqueado. Escolha outro.' : statusMsg(r), 'err'];
   drawForms(); $('#ocOk')?.focus();
 }
@@ -1257,24 +1354,79 @@ function redrawBlockForm(focusSel) {
   if (focusSel) $(focusSel)?.focus();
 }
 
+// Os argumentos do bloqueio a partir do formulário: o MESMO cálculo na prévia e no "mesmo assim".
+function blockArgs() {
+  const b = S.bl;
+  const r = A.blockRangeTz({ kind: b.modo, from: b.from, to: b.modo === 'part' ? '' : b.to, start: b.start, end: b.end }, S.tz);
+  return { ...r, args: r.starts ? { p_clinic: S.clinicId, p_resource: b.alvo || null, p_starts: r.starts, p_ends: r.ends, p_kind: b.tipo, p_reason: b.motivo || null } : null };
+}
+
+// Mudou o formulário depois da prévia: a lista de afetados (e o "mesmo assim") sai; é preciso conferir de novo.
+function blockFormChanged() {
+  const b = S.bl;
+  if (!b?.afet) return;
+  b.afet = null; b.mudou = true;
+  const box = $('#blAfet');
+  if (box) box.innerHTML = affectedHtml();
+}
+
+// Depois de um erro de rede o bloqueio PODE ter sido gravado (bloqueio não tem chave de reenvio e o banco aceita
+// bloqueio sobre bloqueio). Procura um igual: mesmo alvo, início, fim e tipo. null = não deu para conferir.
+async function blockSaved(args) {
+  if (S.missing.blocks) return null;
+  const r = await call('agenda_blocks', { p_clinic: S.clinicId, p_from: A.dayIn(S.tz, Date.parse(args.p_starts)), p_to: A.dayIn(S.tz, Date.parse(args.p_ends) - 60000) });
+  if (r.status === 'missing_fn') { S.missing.blocks = true; return null; }
+  if (r.status !== 'ok') return null;
+  return (r.blocks || []).find((x) => A.sameBlock({ p_resource: x.resource_id, p_kind: x.kind, p_starts: x.starts_at, p_ends: x.ends_at }, args)) || false;
+}
+
+async function blockNetwork(args, forced) {
+  const b = S.bl;
+  b.netPending = args;
+  const ja = await blockSaved(args);
+  if (S.ctx.lost()) return;
+  if (ja) return blockDone(forced ? null : 0, 0, true);
+  await loadView({ quiet: true });
+  redrawBlockForm();
+  msg(A.ACTION_TEXT.network_block, 'err');
+  ($('#blForcar') || $('#blOk'))?.focus();
+}
+
+// A tentativa anterior com estes dados ficou sem resposta: antes de mandar de novo, confere se já está gravado.
+async function blockPending(args) {
+  const b = S.bl;
+  if (!b.netPending || !A.sameBlock(b.netPending, args)) return 'enviar';
+  const ja = await blockSaved(args);
+  if (ja === null) return 'sem_rede';
+  b.netPending = null;
+  return ja ? 'ja_salvo' : 'enviar';
+}
+
 async function doBlock() {
   const b = S.bl;
   readBlock();
-  b.afet = null;
-  const { errs, starts, ends } = A.blockRangeTz({ kind: b.modo, from: b.from, to: b.modo === 'part' ? '' : b.to, start: b.start, end: b.end }, S.tz);
+  b.afet = null; b.mudou = false;
+  const { errs, args } = blockArgs();
+  if (b.alvo && !resources().some((r) => r.id === b.alvo && r.active !== false)) errs.blAlvo = A.ACTION_TEXT.not_found_resource;
   redrawBlockForm();
   let first = null;
-  for (const id of ['blFrom', 'blTo', 'blStart', 'blEnd']) {
+  for (const id of ['blAlvo', 'blFrom', 'blTo', 'blStart', 'blEnd']) {
     const el = $(`#${id}`); const er = $(`#${id}Err`);
     if (er) er.textContent = errs[id] || '';
     if (el) { if (errs[id]) { el.setAttribute('aria-invalid', 'true'); first ||= el; } else el.removeAttribute('aria-invalid'); }
   }
   if (first) { first.focus(); return; }
-  b.args = { p_clinic: S.clinicId, p_resource: b.alvo || null, p_starts: starts, p_ends: ends, p_kind: b.tipo, p_reason: b.motivo || null };
+  b.args = args;
   const btn = $('#blOk'); if (btn) { btn.disabled = true; btn.textContent = 'Bloqueando…'; }
+  const antes = await blockPending(b.args);
+  if (S.ctx.lost()) return;
+  if (antes === 'ja_salvo') return blockDone(0, 0, true);
+  if (antes === 'sem_rede') { redrawBlockForm('#blOk'); msg(A.ACTION_TEXT.network_block, 'err'); return; }
   const r = await call('agenda_block_add', b.args);
   if (r.status === 'lost') return;
   if (r.status === 'ok') return blockDone(0);
+  if (r.status === 'network') return blockNetwork(b.args, false);
+  if (r.status === 'not_found') return blockGone();
   if (r.status === 'has_appointments') {
     if (!(canDo('remarcar') || isCentral()) || S.missing.force) {
       redrawBlockForm('#blOk');
@@ -1282,12 +1434,16 @@ async function doBlock() {
       return;
     }
     const p = await call('agenda_block_force', { ...b.args, p_confirm: null });
+    if (p.status === 'lost') return;
     if (p.status === 'missing_fn') { S.missing.force = true; redrawBlockForm('#blOk'); msg('Há pacientes marcados nesse período. Remarque ou cancele esses agendamentos antes de bloquear.', 'err'); return; }
     if (p.status === 'confirm_required' || p.status === 'affected_changed') {
-      b.afet = { items: p.items || [], confirm: p.confirm };
+      // Só o que já começou estava no período (o banco não mexe nele): ninguém a avisar, bloqueia direto.
+      if (!(p.items || []).length && p.confirm) return doForce(p.confirm);
+      b.afet = { items: p.items || [], confirm: p.confirm, args: b.args };
       redrawBlockForm('#blAfetT');
       return;
     }
+    if (p.status === 'not_found') return blockGone();
     redrawBlockForm('#blOk');
     msg(statusMsg(p), 'err');
     return;
@@ -1296,38 +1452,59 @@ async function doBlock() {
   msg(statusMsg(r, { canConfig: canConfig() }), 'err');
 }
 
-async function doForce() {
+// code: o código da prévia. Sem código = o botão "Bloquear mesmo assim": vale só se o formulário ainda é o da prévia
+// (senão, a prévia é refeita com o que está na tela, em vez de gravar o período, o alvo ou o tipo antigos).
+async function doForce(code = null) {
   const b = S.bl;
+  if (!code) {
+    readBlock();
+    const cur = blockArgs();
+    if (!cur.args || !A.sameBlock(cur.args, b.afet?.args)) { b.afet = null; return doBlock(); }
+    b.args = { ...b.afet.args, p_reason: cur.args.p_reason };
+    code = b.afet.confirm;
+  }
   const btn = $('#blForcar'); if (btn) { btn.disabled = true; btn.textContent = 'Bloqueando…'; }
-  const r = await call('agenda_block_force', { ...b.args, p_confirm: b.afet.confirm });
+  const antes = await blockPending(b.args);
+  if (S.ctx.lost()) return;
+  if (antes === 'ja_salvo') return blockDone(null, 0, true);
+  if (antes === 'sem_rede') { redrawBlockForm('#blForcar'); msg(A.ACTION_TEXT.network_block, 'err'); return; }
+  const r = await call('agenda_block_force', { ...b.args, p_confirm: code });
   if (r.status === 'lost') return;
-  if (r.status === 'ok') return blockDone(r.moved || 0, r.busy_removed || 0);
+  if (r.status === 'ok') return blockDone(r.moved || 0, r.busy_removed || 0, !!r.replay);
+  if (r.status === 'network') return blockNetwork(b.args, true);
   if (r.status === 'affected_changed') {
-    b.afet = { items: r.items || [], confirm: r.confirm, aviso: A.ACTION_TEXT.affected_changed };
+    b.afet = { items: r.items || [], confirm: r.confirm, aviso: A.ACTION_TEXT.affected_changed, args: b.args };
     if (!r.confirm) {
       const p = await call('agenda_block_force', { ...b.args, p_confirm: null });
-      b.afet = { items: p.items || [], confirm: p.confirm, aviso: A.ACTION_TEXT.affected_changed };
+      if (p.status === 'lost') return;
+      b.afet = { items: p.items || [], confirm: p.confirm, aviso: A.ACTION_TEXT.affected_changed, args: b.args };
     }
     redrawBlockForm('#blAfetT');
     return;
   }
-  if (r.status === 'cannot_move') { b.afet = { items: r.items || b.afet.items, confirm: null }; redrawBlockForm('#blAfetT'); return; }
-  redrawBlockForm('#blNao');
+  if (r.status === 'cannot_move') { b.afet = { items: r.items || b.afet?.items || [], confirm: null, args: b.args }; redrawBlockForm('#blAfetT'); return; }
+  if (r.status === 'not_found') return blockGone();
+  redrawBlockForm();
   msg(statusMsg(r), 'err');
+  ($('#blNao') || $('#blOk'))?.focus();
 }
 
-async function blockDone(moved, busy = 0) {
-  const texto = moved ? `Bloqueio salvo. ${moved === 1 ? '1 paciente foi' : `${moved} pacientes foram`} para a lista Para remarcar.${busy ? ` ${busy === 1 ? '1 horário “só ocupar” foi retirado.' : `${busy} horários “só ocupar” foram retirados.`}` : ''}`
-    : 'Bloqueio salvo. Nesse período nenhum horário é oferecido.';
+// moved: quantos foram para "Para remarcar" (null = não se sabe: o bloqueio foi achado já gravado depois de um erro de
+// rede no "mesmo assim"); replay: o bloqueio já estava salvo (nada novo foi gravado agora).
+async function blockDone(moved, busy = 0, replay = false) {
+  const remarcar = moved == null || moved > 0;
+  const texto = replay ? `${A.ACTION_TEXT.block_replay}${moved == null ? ' Se havia pacientes no período, eles estão na lista Para remarcar.' : ''}`
+    : moved ? `Bloqueio salvo. ${moved === 1 ? '1 paciente foi' : `${moved} pacientes foram`} para a lista Para remarcar.${busy ? ` ${busy === 1 ? '1 horário “só ocupar” foi retirado.' : `${busy} horários “só ocupar” foram retirados.`}` : ''}`
+      : 'Bloqueio salvo. Nesse período nenhum horário é oferecido.';
   S.bl = null;
   if (S.form === 'bloquear') S.form = null;
-  if (moved) { S.view = S.view === 'bloqueios' || S.view === 'mes' || S.view === 'semana' ? 'hoje' : S.view; S.remOpen = true; }
+  if (remarcar) { S.view = S.view === 'bloqueios' || S.view === 'mes' || S.view === 'semana' ? 'hoje' : S.view; S.remOpen = true; }
   drawForms();
   drawTop();
   await loadView({ quiet: true });
   msg(texto, 'ok');
   toast(texto);
-  ((moved && $('#agRemT')) || $('#agBlT') || $('#agTitulo'))?.focus();
+  ((remarcar && $('#agRemT')) || $('#agBlT') || $('#agTitulo'))?.focus();
 }
 
 // ---------- eventos ----------
@@ -1357,7 +1534,7 @@ function onClick(e) {
     novo: () => openForm('novo'), ocupar: () => openForm('ocupar'), bloquear: () => openForm('bloquear'),
     'fechar-form': () => { const k = S.form; S.form = null; drawForms(); ($(k === 'novo' ? '#agNovo' : k === 'ocupar' ? '#agOcupar' : '#agBloquear') || $('#agTitulo'))?.focus(); },
     abrir: () => {
-      if (t.dataset.req) { openDetail(t.dataset.req, { origin: `#agBuscaRes [data-req="${t.dataset.req}"]` }); return; }
+      if (t.dataset.req) { openDetail(t.dataset.req, { origin: t.id ? `#${t.id}` : `#agBuscaRes [data-req="${t.dataset.req}"]` }); return; }
       const it = findItem(id);
       if (!it) return;
       openDetail(it.request_id, { itemId: it.id, origin: `[data-act="abrir"][data-item="${it.id}"]` });
@@ -1406,6 +1583,15 @@ function onClick(e) {
       drawDetail();
       const r = await loadSlots(m, { p_clinic: S.clinicId, p_procedure: it.procedure_id, p_from: m.day, p_to: null, p_request: S.det.id, p_item: m.itemId });
       m.loading = false;
+      if (r.status === 'lost') return;
+      if (r.status === 'not_found') {
+        // o agendamento sumiu (loadDetail mostra isso) ou o exame dele foi desativado (não há horário por aqui)
+        await reloadCatalog();
+        await loadDetail();
+        if (S.det?.data) { S.det.sub = null; S.det.rm = null; S.det.msg = [A.ACTION_TEXT.not_found_resched, 'err']; }
+        drawDetail(); $('#agDetT')?.focus();
+        return;
+      }
       if (r.status === 'ok') m.res = r; else S.det.msg = [statusMsg(r), 'err'];
       drawDetail(); ($('input[name="rmSlot"]') || $('#rmVer'))?.focus();
     },
@@ -1462,7 +1648,7 @@ function onClick(e) {
       S.det.askFree = false; S.det.msg = [statusMsg(r), 'err']; drawDetail(); $('#agLiberar')?.focus();
     },
     'bk-ver': () => deskSlots(),
-    'bk-alt': () => { S.bk.slot = t.dataset.t; S.bk.key = uuid(); S.bk.alts = null; doDeskBook(); },
+    'bk-alt': () => { S.bk.slot = t.dataset.t; S.bk.alts = null; doDeskBook(); },
     'bl-rm': () => { S.blRm = t.dataset.id; drawMain(); $('#agBlRmSim')?.focus(); },
     'bl-rm-nao': () => { S.blRm = null; drawMain(); $(`[data-act="bl-rm"][data-id="${CSS.escape(t.dataset.id)}"]`)?.focus(); },
     'bl-rm-sim': async () => {
@@ -1482,7 +1668,7 @@ function onClick(e) {
       drawMain(); msg(statusMsg(r), 'err');
     },
     'bl-forcar': () => doForce(),
-    'bl-nao': () => { S.bl.afet = null; redrawBlockForm('#blFrom'); },
+    'bl-nao': () => { S.bl.afet = null; S.bl.mudou = false; redrawBlockForm('#blFrom'); },
     'conf-ver': () => confAct(t.dataset.k, null),
     'conf-remarcar': () => confAct(t.dataset.k, 'remarcar'),
     'conf-cancelar': () => confAct(t.dataset.k, 'cancelar'),
@@ -1525,16 +1711,31 @@ function onChange(e) {
     return;
   }
   if (t.id === 'agData' && /^\d{4}-\d{2}-\d{2}$/.test(t.value)) { S.day = t.value; S.det = null; drawTop(); drawDetail(); drawMain(); $('#agData')?.focus(); loadView(); return; }
-  if (t.name === 'bkSlot') { S.bk.slot = t.value; S.bk.key = uuid(); S.bk.alts = null; if (S.bk.errs) delete S.bk.errs.bkSlot; return; }
+  if (t.name === 'bkSlot') { S.bk.slot = t.value; S.bk.alts = null; if (S.bk.errs) delete S.bk.errs.bkSlot; return; }
   if (t.id === 'bkOutra' || t.id === 'bkMenor') { readDesk(); drawForms(); $(`#${t.id}`)?.focus(); return; }
-  if (t.id === 'bkProc' || t.id === 'bkDia') { readDesk(); S.bk.res = null; S.bk.slot = ''; S.bk.key = null; S.bk.alts = null; drawForms(); $(`#${t.id}`)?.focus(); return; }
+  if (t.id === 'bkProc' || t.id === 'bkDia') { readDesk(); S.bk.res = null; S.bk.slot = ''; S.bk.alts = null; if (S.bk.errs) delete S.bk.errs.bkProc; drawForms(); $(`#${t.id}`)?.focus(); return; }
   if (t.name === 'rmSlot') { S.det.rm.slot = t.value; S.det.rm.key = uuid(); S.det.rm.alts = null; drawDetail(); $(`input[name="rmSlot"][value="${CSS.escape(t.value)}"]`)?.focus(); return; }
-  if (t.name === 'blModo') { readBlock(); S.bl.modo = t.value; redrawBlockForm(`input[name="blModo"][value="${t.value}"]`); return; }
+  if (t.name === 'blModo') {
+    readBlock(); S.bl.modo = t.value;
+    if (S.bl.afet) { S.bl.afet = null; S.bl.mudou = true; }
+    redrawBlockForm(`input[name="blModo"][value="${t.value}"]`);
+    return;
+  }
+  if (S.bl && t.closest?.('#blForm')) blockInput(t);
+}
+
+// Formulário de bloqueio: mudar o alvo, o tipo ou o período depois da prévia tira a lista de afetados e o
+// "Bloquear mesmo assim" (o motivo não muda quem é atingido); o dia escolhido atualiza o aviso de "hoje".
+function blockInput(t) {
+  if (t.id !== 'blMotivo') blockFormChanged();
+  if (t.id === 'blFrom' || t.id === 'blTo') { readBlock(); drawBlHoje(); }
+  if (t.id === 'blAlvo' && t.getAttribute('aria-invalid')) { t.removeAttribute('aria-invalid'); const er = $('#blAlvoErr'); if (er) er.textContent = ''; }
 }
 
 function onInput(e) {
   const t = e.target;
   if (t.id === 'agBuscaQ' && t.getAttribute('aria-invalid')) { t.removeAttribute('aria-invalid'); $('#agBuscaErr').textContent = ''; }
+  if (S.bl && t.name !== 'blModo' && t.closest?.('#blForm')) blockInput(t);
 }
 
 function onSubmit(e) {

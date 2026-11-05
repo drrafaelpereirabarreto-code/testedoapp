@@ -65,6 +65,7 @@ const nid = (p) => `${p}-0000-4000-8000-${String(++seq).padStart(12, '0')}`;
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'apikey, authorization, content-type, prefer, x-client-info', 'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS' };
 const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body), headers: CORS });
+const jsonOut = json;
 const short = (n) => { const w = String(n || '').trim().split(/\s+/); return w.length > 1 ? `${w[0]} ${w.at(-1)[0]}.` : w[0]; };
 
 // Um agendamento (cabeçalho + itens) como o banco guarda.
@@ -148,6 +149,10 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
     const body = req.postData() ? JSON.parse(req.postData()) : null;
     log.push({ path: rest, method: req.method(), body, q: url.searchParams });
     const fn = rest.replace('rpc/', '');
+    // resposta perdida: o banco grava, mas a resposta não chega (erro de rede depois de gravar)
+    const perdida = db.lostReply?.[fn] > 0;
+    if (perdida) db.lostReply[fn] -= 1;
+    const json = (r, b, s = 200) => (perdida ? r.abort('failed') : jsonOut(r, b, s));
     if (['appointment_requests', 'clinic_blocks', 'clinic_schedules'].includes(rest)) db.directReads.push(rest);
     if (db.failNet[fn] > 0) { db.failNet[fn] -= 1; return route.abort('failed'); }
     if (db.missing.has(fn)) return json(route, { code: 'PGRST202', message: `Could not find the function public.${fn}` }, 404);
@@ -306,11 +311,17 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
         db.lastBlock = body;
         const ini = Date.parse(body.p_starts); const fim = Date.parse(body.p_ends);
         const hitRes = (resIds) => (body.p_resource ? resIds.includes(body.p_resource) : true);
+        // agenda_block_force (4.2): o período conta a partir de agora e o que JÁ COMEÇOU não é atingido (nem impede);
+        // agenda_block_add (3.2) olha o período inteiro, como o banco de verdade.
+        const forcar = fn === 'agenda_block_force';
+        const desde = forcar ? Math.max(ini, db.now) : ini;
+        const futuro = (x) => !forcar || Date.parse(x.starts_at) > db.now;
+        const ativo = (it) => ['hold', 'awaiting_payment', 'confirmed', 'checked_in', 'in_service', 'reschedule_requested'].includes(it.status) && it.resources.length;
         const hits = [
-          ...db.requests.flatMap((r) => r.items.filter((it) => it.resources.length && hitRes(it.resources) && Date.parse(it.starts_at) < fim && Date.parse(it.ends_at) > ini && it.status !== 'cancelled')
+          ...db.requests.flatMap((r) => r.items.filter((it) => ativo(it) && hitRes(it.resources) && Date.parse(it.starts_at) < fim && Date.parse(it.ends_at) > desde && futuro(it))
             .map((it) => ({ kind: 'agendamento', item_id: it.id, request_id: r.id, busy_id: null, seq: it.seq, status: it.status, request_version: r.version, starts_at: it.starts_at, ends_at: it.ends_at,
               procedure_id: it.procedure_id, procedure: it.procedure, channel: r.channel, patient: scope() === 'clinica' ? short(r.patient_name) : null, can_move: ['confirmed', 'reschedule_requested'].includes(it.status) }))),
-          ...db.busy.filter((b) => hitRes(b.resources) && Date.parse(b.starts_at) < fim && Date.parse(b.ends_at) > ini)
+          ...db.busy.filter((b) => hitRes(b.resources) && Date.parse(b.starts_at) < fim && Date.parse(b.ends_at) > desde && futuro(b))
             .map((b) => ({ kind: 'ocupado', item_id: null, request_id: null, busy_id: b.id, seq: null, status: null, request_version: null, starts_at: b.starts_at, ends_at: b.ends_at, procedure_id: null, procedure: null, channel: null, patient: null, can_move: true })),
         ];
         const code = `c${hits.map((h) => `${h.item_id || h.busy_id}:${h.status}:${h.request_version}`).join('|').length}${hits.length}`.padEnd(64, '0');
@@ -321,6 +332,9 @@ async function newPage(browser, { mobile = false, width = 1024, role = 'receptio
           return json(route, { status: 'ok', id });
         }
         if (!body.p_confirm) return json(route, { status: 'confirm_required', items: hits, confirm: code });
+        // o mesmo bloqueio (alvo, início, fim e tipo) já gravado: não grava outro (reenvio depois de erro de rede)
+        const igual = db.blocks.find((b) => (b.resource_id || null) === (body.p_resource || null) && b.kind === body.p_kind && Date.parse(b.starts_at) === ini && Date.parse(b.ends_at) === fim);
+        if (igual) return json(route, { status: 'ok', id: igual.id, moved: 0, busy_removed: 0, replay: true });
         if (body.p_confirm !== code) return json(route, { status: 'affected_changed', items: hits, confirm: code });
         if (hits.some((h) => !h.can_move)) return json(route, { status: 'cannot_move', items: hits });
         const id = nid('kkkkkkkk');
@@ -772,6 +786,230 @@ await scenario('affected_changed troca a lista (foco no título) e cannot_move n
   await page.click('#blNao');
   assert.equal(await focusId(page), 'blFrom');
   assert.equal(calls(log, 'agenda_block_force').filter((c) => c.body.p_confirm).length, 2);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('bloqueio: mudar o período, o alvo ou o modo depois da prévia tira a lista e o "mesmo assim"; grava o que está na tela', async () => {
+  const reqs = [booking({ name: 'Maria Souza Lima', start: sp(AMANHA, '09:00') }), booking({ name: 'Otávio Reis Teste', phone: '11944443333', start: sp(AMANHA, '10:00') })];
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: reqs } });
+  await abrirAgenda(page);
+  await page.click('#agBloquear');
+  await page.selectOption('#blAlvo', USG);
+  await page.check('input[name="blModo"][value="part"]');
+  await page.fill('#blFrom', AMANHA);
+  await page.fill('#blStart', '08:00');
+  await page.fill('#blEnd', '12:00');
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  assert.match(await page.textContent('#blAfetT'), /Bloqueio de qui\., 05\/11, das 08:00 às 12:00 em Aparelho de Ultrassom <b>1<\/b>: atinge 2 agendamentos\./, 'o título diz o período e o alvo');
+  // muda o fim para poupar o das 10:00: a lista e o botão somem, com o aviso
+  await page.fill('#blEnd', '09:30');
+  assert.equal(await page.locator('#blForcar').count(), 0, 'sem "mesmo assim" depois de mudar');
+  assert.match(await page.textContent('#blAfet'), /Você mudou o bloqueio/);
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  assert.match(await page.textContent('#blAfetT'), /das 08:00 às 09:30 em .*: atinge 1 agendamento\./);
+  // o motivo não muda quem é atingido: a lista fica
+  await page.fill('#blMotivo', 'Troca da sonda');
+  assert.equal(await page.locator('#blForcar').count(), 1, 'o motivo não tira a lista');
+  // valor trocado sem evento (preenchimento automático): o "mesmo assim" confere o formulário e refaz a prévia
+  const gravados = () => calls(log, 'agenda_block_force').filter((c) => c.body.p_confirm).length;
+  await page.evaluate(() => { document.querySelector('#blEnd').value = '11:00'; });
+  await page.click('#blForcar');
+  await page.waitForFunction(() => /das 08:00 às 11:00/.test(document.querySelector('#blAfetT')?.textContent || ''));
+  assert.equal(gravados(), 0, 'nada gravado com o período da prévia velha');
+  assert.equal(await focusId(page), 'blAfetT');
+  // trocar o alvo e trocar o modo também tiram a lista
+  await page.selectOption('#blAlvo', '');
+  assert.equal(await page.locator('#blForcar').count(), 0, 'trocar o alvo tira a lista');
+  await page.selectOption('#blAlvo', USG);
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  await page.check('input[name="blModo"][value="day"]');
+  assert.equal(await page.locator('#blForcar').count(), 0, 'trocar o modo tira a lista');
+  await page.check('input[name="blModo"][value="part"]');
+  await page.fill('#blEnd', '09:30');
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  await page.click('#blForcar');
+  await page.waitForSelector('#agRemT');
+  const f = calls(log, 'agenda_block_force').filter((c) => c.body.p_confirm).at(-1).body;
+  assert.deepEqual([f.p_resource, f.p_starts, f.p_ends, f.p_kind, f.p_reason], [USG, '2026-11-05T11:00:00.000Z', '2026-11-05T12:30:00.000Z', 'bloqueio', 'Troca da sonda'], 'grava o que está na tela');
+  assert.equal(gravados(), 1);
+  assert.deepEqual(db.requests.map((r) => r.items[0].status), ['reschedule_requested', 'confirmed'], 'o das 10:00 não foi atingido');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('bloqueio de hoje, dia inteiro: começa agora; quem já começou não é atingido nem impede; só ele no período → bloqueia direto', async () => {
+  // quarta, 10:00: Maria às 09:00 (ninguém marcou "Concluído"), João 09:45–10:15 em atendimento, Rui às 11:00
+  const dia = () => [booking({ name: 'Maria Souza Lima', start: sp(HOJE, '09:00') }), booking({ name: 'João Pedro Teste', start: sp(HOJE, '09:45'), status: 'in_service' })];
+  {
+    const { page, db, log, errors, context } = await newPage(browser, { db: { requests: [...dia(), booking({ name: 'Rui Mota Teste', start: sp(HOJE, '11:00') })] } });
+    await abrirAgenda(page);
+    await page.click('#agBloquear');
+    await page.selectOption('#blAlvo', USG);
+    await page.fill('#blFrom', HOJE);
+    assert.match(await page.textContent('#blHoje'), /Hoje o bloqueio começa agora \(10:00\): o que já começou não é atingido/);
+    await page.click('#blOk');
+    await page.waitForSelector('#blForcar');
+    assert.equal(calls(log, 'agenda_block_add').at(-1).body.p_starts, '2026-11-04T13:00:00.000Z', 'começa agora (10:00), não às 00:00');
+    assert.match(await page.textContent('#blAfetT'), /Bloqueio de qua\., 04\/11, das 10:00 até o fim do dia em .*: atinge 1 agendamento\./);
+    assert.match(await page.textContent('#blAfet'), /Rui T\./);
+    assert.doesNotMatch(await page.textContent('#blAfet'), /Maria|João/, 'quem já começou não aparece');
+    await page.click('#blForcar');
+    await page.waitForSelector('#agRemT');
+    assert.deepEqual(db.requests.map((r) => r.items[0].status), ['confirmed', 'in_service', 'reschedule_requested']);
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // só quem já começou está no período: não há quem avisar, bloqueia sem perguntar
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: dia() } });
+  await abrirAgenda(page);
+  await page.click('#agBloquear');
+  await page.selectOption('#blAlvo', USG);
+  await page.fill('#blFrom', HOJE);
+  await page.click('#blOk');
+  await page.waitForFunction(() => /Bloqueio salvo/.test(document.querySelector('#agMsg').textContent));
+  assert.equal(calls(log, 'agenda_block_add').at(-1).body.p_starts, '2026-11-04T13:00:00.000Z');
+  assert.equal(calls(log, 'agenda_block_force').filter((c) => c.body.p_confirm).length, 1, 'gravou com o código da prévia vazia');
+  assert.equal(db.blocks.length, 1);
+  assert.deepEqual(db.requests.map((r) => r.items[0].status), ['confirmed', 'in_service'], 'ninguém foi para remarcar');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('bloqueio sem resposta do servidor: confere se já foi salvo e não grava outro (Bloquear e "mesmo assim")', async () => {
+  {
+    // "Bloquear": grava, a resposta se perde e a conferência também falha; ao tentar de novo, acha o bloqueio
+    const { page, db, log, errors, context } = await newPage(browser, { db: { lostReply: { agenda_block_add: 1 } } });
+    await abrirAgenda(page);
+    await page.click('[data-view="bloqueios"]');
+    await page.waitForSelector('#blForm');
+    await page.fill('#blFrom', AMANHA);
+    db.failNet.agenda_blocks = 1;
+    await page.click('#blOk');
+    await page.waitForFunction(() => /O bloqueio pode já ter sido salvo/.test(document.querySelector('#agMsg').textContent));
+    assert.equal(db.blocks.length, 1, 'gravou (só a resposta se perdeu)');
+    await page.click('#blOk');
+    await page.waitForFunction(() => /Este bloqueio já tinha sido salvo/.test(document.querySelector('#agMsg').textContent));
+    assert.equal(db.blocks.length, 1, 'não gravou outro');
+    assert.equal(calls(log, 'agenda_block_add').length, 1, 'nem chamou de novo');
+    assert.deepEqual(errors, []);
+    await context.close();
+  }
+  // "mesmo assim": grava (o paciente vai para remarcar), a resposta se perde; a tela acha o bloqueio e mostra a lista
+  const { page, db, log, errors, context } = await newPage(browser, { db: { requests: [booking({ start: sp(AMANHA, '09:00') })] } });
+  await abrirAgenda(page);
+  await page.click('#agBloquear');
+  await page.fill('#blFrom', AMANHA);
+  await page.click('#blOk');
+  await page.waitForSelector('#blForcar');
+  db.lostReply = { agenda_block_force: 1 };
+  await page.click('#blForcar');
+  await page.waitForFunction(() => /Este bloqueio já tinha sido salvo\. Se havia pacientes no período, eles estão na lista Para remarcar/.test(document.querySelector('#agMsg').textContent));
+  assert.equal(db.blocks.length, 1);
+  assert.equal(calls(log, 'agenda_block_force').filter((c) => c.body.p_confirm).length, 1);
+  assert.match(await page.textContent('#agRemT'), /Para remarcar \(1\)/);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('balcão sem resposta do servidor: aviso e agenda relida; a mesma chave no mesmo horário depois de "Ver horários"; o reenvio mostra o que o banco gravou', async () => {
+  const slots = [{ start: sp(HOJE, '11:00'), end: sp(HOJE, '11:30') }, { start: sp(HOJE, '11:30'), end: sp(HOJE, '12:00') }]; // aparelho com 2 vagas
+  const { page, db, log, errors, context } = await newPage(browser, { db: { lostReply: { agenda_desk_book: 1 }, deskSlots: slots } });
+  await abrirAgenda(page);
+  await page.click('#agNovo');
+  await page.selectOption('#bkProc', P_USG);
+  await page.click('#bkVer');
+  await page.waitForSelector('input[name="bkSlot"]');
+  await page.check(`input[name="bkSlot"][value="${sp(HOJE, '11:00')}"]`);
+  await page.fill('#bkNome', 'Paciente Teste Um');
+  await page.fill('#bkFone', '11955554444');
+  await page.check('#bkConsent');
+  const vistas = calls(log, 'agenda_view').length;
+  await page.click('#bkOk');
+  await page.waitForFunction(() => /O agendamento pode já ter sido gravado/.test(document.querySelector('#bkMsg')?.textContent || ''));
+  assert.ok(calls(log, 'agenda_view').length > vistas, 'relê a agenda');
+  assert.equal(db.requests.length, 1, 'gravou (só a resposta se perdeu)');
+  await page.waitForFunction(() => /Paciente U\./.test(document.querySelector('#agMain').textContent));
+  // "Ver horários" de novo e o MESMO horário, com outro nome digitado: a mesma chave, nada duplicado
+  await page.click('#bkVer');
+  await page.waitForSelector('input[name="bkSlot"]');
+  await page.check(`input[name="bkSlot"][value="${sp(HOJE, '11:00')}"]`);
+  await page.fill('#bkNome', 'Outro Nome Digitado');
+  await page.click('#bkOk');
+  await page.waitForSelector('#bkFeito');
+  const k = calls(log, 'agenda_desk_book').map((c) => c.body.p_key);
+  assert.equal(k.length, 2);
+  assert.equal(k[0], k[1], 'a mesma chave para o mesmo exame e horário');
+  assert.equal(db.requests.length, 1, 'um agendamento só');
+  assert.match(await page.textContent('#bkFeito'), /já tinha sido registrado: Ultrassom de abdome <b>total<\/b>, qua\., 04\/11 às 11:00\. Abra o agendamento para conferir o paciente\./);
+  assert.doesNotMatch(await page.textContent('#bkFeito'), /Outro/, 'não mostra o nome digitado agora');
+  await page.click('#bkVerAg');
+  await page.waitForSelector('#agDet .ag-dl');
+  assert.match(await page.textContent('#agDetT'), /Paciente Teste Um/, 'o gravado');
+  await page.click('#agDetFechar');
+  assert.equal(await focusId(page), 'bkVerAg', 'o foco volta ao botão');
+  // depois de uma resposta, outro horário vai com outra chave
+  await page.click('#agForms [data-act="novo"]');
+  await page.selectOption('#bkProc', P_USG);
+  await page.click('#bkVer');
+  await page.waitForSelector('input[name="bkSlot"]');
+  await page.check(`input[name="bkSlot"][value="${sp(HOJE, '11:30')}"]`);
+  await page.fill('#bkNome', 'Paciente Teste Dois');
+  await page.fill('#bkFone', '11955553333');
+  await page.check('#bkConsent');
+  await page.click('#bkOk');
+  await page.waitForSelector('#bkFeito');
+  assert.notEqual(calls(log, 'agenda_desk_book').at(-1).body.p_key, k[0]);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+await scenario('exame, aparelho ou sala desativado por outra pessoa: o texto certo, o catálogo relido e o seletor sem ele', async () => {
+  const { page, db, log, errors, context } = await newPage(browser);
+  await abrirAgenda(page);
+  // "só ocupar" no aparelho que acabou de ser desativado
+  await page.click('#agOcupar');
+  await page.selectOption('#ocRec', USG);
+  await page.fill('#ocIni', '14:00');
+  await page.fill('#ocFim', '15:00');
+  db.resources = db.resources.filter((r) => r.id !== USG);
+  db.once.agenda_desk_busy = { status: 'not_found' };
+  const cats = calls(log, 'agenda_catalog').length;
+  await page.click('#ocOk');
+  await page.waitForFunction(() => /não está mais ativo/.test(document.querySelector('#ocRecErr')?.textContent || ''));
+  assert.ok(calls(log, 'agenda_catalog').length > cats, 'relê o catálogo');
+  assert.equal(await page.locator(`#ocRec option[value="${USG}"]`).count(), 0, 'o aparelho saiu do seletor');
+  assert.equal(await focusId(page), 'ocRec');
+  assert.doesNotMatch(await page.textContent('#agRoot'), /agendamento não existe mais/);
+  // balcão com o exame desativado
+  await page.click('#agForms [data-act="fechar-form"]');
+  await page.click('#agNovo');
+  await page.selectOption('#bkProc', P_ECO);
+  db.procedures = db.procedures.filter((x) => x.id !== P_ECO);
+  db.once.agenda_desk_slots = { status: 'not_found' };
+  await page.click('#bkVer');
+  await page.waitForFunction(() => /O exame escolhido não está mais ativo/.test(document.querySelector('#bkProcErr')?.textContent || ''));
+  assert.equal(await page.locator(`#bkProc option[value="${P_ECO}"]`).count(), 0, 'o exame saiu do seletor');
+  assert.equal(await focusId(page), 'bkProc');
+  // bloqueio de uma sala que foi desativada: "Escolha de novo" (nunca vira "A clínica inteira" sozinho)
+  await page.click('#agForms [data-act="fechar-form"]');
+  await page.click('#agBloquear');
+  await page.selectOption('#blAlvo', SALA);
+  await page.fill('#blFrom', AMANHA);
+  db.resources = db.resources.filter((r) => r.id !== SALA);
+  db.once.agenda_block_add = { status: 'not_found' };
+  await page.click('#blOk');
+  await page.waitForFunction(() => /não está mais ativo/.test(document.querySelector('#blAlvoErr')?.textContent || ''));
+  assert.equal(await page.$eval('#blAlvo', (s) => s.selectedOptions[0].textContent), 'Escolha de novo');
+  assert.equal(await focusId(page), 'blAlvo');
+  const n = calls(log, 'agenda_block_add').length;
+  await page.click('#blOk');
+  assert.equal(calls(log, 'agenda_block_add').length, n, 'sem escolher de novo, não manda nada');
+  assert.equal(db.blocks.length, 0);
   assert.deepEqual(errors, []);
   await context.close();
 });

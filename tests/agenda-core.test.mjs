@@ -316,6 +316,8 @@ test('botões de atendimento: janela de chegada, tolerância, concluído direto 
   assert.deepEqual(acts('no_show', '10:00', { scope: 'propria' }), [], 'o profissional não desfaz a falta');
   assert.deepEqual(acts('confirmed', '09:30', { scope: 'propria' }).map((a) => a.key), ['chegou', 'concluido', 'faltou'], 'na própria agenda');
   assert.deepEqual(acts('confirmed', '09:30', { scope: 'central' }).map((a) => a.key), ['concluido'], 'a equipe do IMED: só concluído depois do início');
+  assert.deepEqual(acts('confirmed', '09:30', { scope: 'central', can: { atender: false } }), [], 'equipe do IMED sem operar a agenda (suporte, auditoria): nada (operacao-11)');
+  assert.deepEqual(acts('confirmed', '09:30', { scope: 'clinica', can: { atender: false } }), [], 'clínica sem atender: nada');
   assert.deepEqual(acts('cancelled', '09:30'), []);
   assert.deepEqual(A.manageActions({ status: 'confirmed' }, { scope: 'clinica', can: { remarcar: true, cancelar: true } }), ['remarcar', 'cancelar']);
   assert.deepEqual(A.manageActions({ status: 'reschedule_requested' }, { scope: 'clinica', can: { remarcar: true, cancelar: true }, unplaced: true }), ['remarcar', 'voltar', 'cancelar']);
@@ -413,6 +415,27 @@ test('bloqueio no fuso da clínica (dias inteiros ou algumas horas)', () => {
   assert.match(A.blockRangeTz({ kind: 'day', from: '' }, 'America/Sao_Paulo', now).errs.blFrom, /Escolha o dia/);
   assert.equal(A.blockWhenTz({ starts_at: '2026-12-24T03:00:00Z', ends_at: '2026-12-27T03:00:00Z' }, 'America/Sao_Paulo'), 'qui., 24/12 até sáb., 26/12 (dias inteiros)');
   assert.equal(A.blockWhenTz({ starts_at: '2026-11-05T11:00:00Z', ends_at: '2026-11-05T15:00:00Z' }, 'America/Sao_Paulo'), 'qui., 05/11, das 08:00 às 12:00');
+  // dia inteiro que começa HOJE: começa agora (de 5 em 5 minutos, para baixo), não às 00:00 (operacao-3)
+  const t1502 = Date.parse('2026-11-04T18:02:30Z'); // 15:02 em São Paulo
+  r = A.blockRangeTz({ kind: 'day', from: '2026-11-04', to: '' }, 'America/Sao_Paulo', t1502);
+  assert.deepEqual([r.starts, r.ends, r.fromNow], ['2026-11-04T18:00:00.000Z', '2026-11-05T03:00:00.000Z', true]);
+  r = A.blockRangeTz({ kind: 'day', from: '2026-11-04', to: '2026-11-06' }, 'America/Sao_Paulo', t1502);
+  assert.deepEqual([r.starts, r.ends, r.fromNow], ['2026-11-04T18:00:00.000Z', '2026-11-07T03:00:00.000Z', true]);
+  r = A.blockRangeTz({ kind: 'day', from: '2026-11-03', to: '2026-11-05' }, 'America/Sao_Paulo', t1502);
+  assert.equal(r.starts, '2026-11-04T18:00:00.000Z', 'primeiro dia que já passou: também começa agora');
+  assert.equal(A.blockRangeTz({ kind: 'day', from: '2026-11-05' }, 'America/Sao_Paulo', t1502).fromNow, false, 'amanhã: dia inteiro de verdade');
+  r = A.blockRangeTz({ kind: 'part', from: '2026-11-04', start: '08:00', end: '18:00' }, 'America/Sao_Paulo', t1502);
+  assert.deepEqual([r.starts, r.fromNow], ['2026-11-04T11:00:00.000Z', false], 'algumas horas: o que foi digitado (o banco não mexe no que já começou)');
+  assert.equal(A.blockWhenTz({ starts_at: '2026-11-04T18:00:00Z', ends_at: '2026-11-05T03:00:00Z' }, 'America/Sao_Paulo'), 'qua., 04/11, das 15:00 até o fim do dia');
+  assert.equal(A.blockWhenTz({ starts_at: '2026-11-04T18:00:00Z', ends_at: '2026-11-07T03:00:00Z' }, 'America/Sao_Paulo'), 'qua., 04/11 às 15:00 até sex., 06/11 (fim do dia)');
+  assert.equal(A.blockWhenTz({ starts_at: '2026-11-04T18:00:00Z', ends_at: '2026-11-05T13:00:00Z' }, 'America/Sao_Paulo'), 'qua., 04/11 15:00 até qui., 05/11 10:00');
+  // o mesmo bloqueio (prévia e "mesmo assim"): alvo, início, fim e tipo; o motivo não conta (operacao-2)
+  const g = { p_resource: 'r1', p_kind: 'manutencao', p_starts: '2026-11-05T11:00:00.000Z', p_ends: '2026-11-05T15:00:00.000Z', p_reason: 'a' };
+  assert.equal(A.sameBlock(g, { ...g, p_reason: 'b', p_starts: '2026-11-05T11:00:00Z' }), true);
+  assert.equal(A.sameBlock(g, { ...g, p_ends: '2026-11-05T12:30:00.000Z' }), false, 'outro fim');
+  assert.equal(A.sameBlock(g, { ...g, p_resource: null }), false, 'outro alvo');
+  assert.equal(A.sameBlock(g, { ...g, p_kind: 'folga' }), false, 'outro tipo');
+  assert.equal(A.sameBlock(g, null), false);
 });
 
 test('respostas das funções da agenda: todo status tem texto; chave de reenvio nova só com resposta do banco', () => {

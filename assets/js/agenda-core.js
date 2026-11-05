@@ -580,7 +580,7 @@ export function attendActions(item, unit, now, tz, { scope = 'clinica', can: c =
   }
   if (st === 'checked_in' && atende) push({ key: 'atendimento', status: 'in_service', label: 'Em atendimento' });
   if (st === 'in_service' && atende) push({ key: 'concluido', status: 'completed', label: 'Concluído', confirm: true });
-  if (st === 'confirmed' && (atende || scope === 'central')) {
+  if (st === 'confirmed' && c.atender !== false && (atende || scope === 'central')) {
     const ok = now >= ini;
     push({ key: 'concluido', status: 'completed', label: 'Concluído', confirm: true, enabled: ok, hint: ok ? '' : `Concluído a partir das ${hora(ini)}` });
   }
@@ -690,10 +690,12 @@ export function noSlotsText(r, { canConfig = false, day = '' } = {}) {
 
 // ---------- bloqueios ----------
 // Bloqueio digitado (dias inteiros ou algumas horas de um dia) → início e fim no FUSO DA CLÍNICA.
+// Dia inteiro que começa hoje (ou antes): começa AGORA, arredondado para baixo de 5 em 5 minutos (fromNow), e não às
+// 00:00 — os exames da manhã já aconteceram. O que já começou não é atingido (o banco confere de novo).
 export function blockRangeTz({ kind, from, to, start, end }, tz, now = Date.now()) {
   const errs = {};
   const D = /^\d{4}-\d{2}-\d{2}$/;
-  let starts = null; let ends = null;
+  let starts = null; let ends = null; let fromNow = false;
   if (!D.test(from || '')) errs.blFrom = 'Escolha o dia.';
   if (kind === 'part') {
     if (Number.isNaN(toMin(start))) errs.blStart = 'Escolha o horário de início.';
@@ -705,18 +707,26 @@ export function blockRangeTz({ kind, from, to, start, end }, tz, now = Date.now(
     if (!D.test(last)) errs.blTo = 'Escolha o último dia.';
     else if (last < from) errs.blTo = 'O último dia precisa ser igual ou depois do primeiro.';
     else if (last > addDaysTo(from, 364)) errs.blTo = 'Use até 365 dias em cada bloqueio.';
-    else { starts = localToUtc(from, '00:00', tz); ends = localToUtc(addDaysTo(last, 1), '00:00', tz); }
+    else {
+      starts = localToUtc(from, '00:00', tz); ends = localToUtc(addDaysTo(last, 1), '00:00', tz);
+      const agora = Math.floor(now / 300000) * 300000;
+      if (Date.parse(starts) < agora) { starts = new Date(agora).toISOString(); fromNow = true; }
+    }
   }
-  if (ends && Date.parse(ends) <= now) { errs[kind === 'part' ? 'blEnd' : to ? 'blTo' : 'blFrom'] = 'Esse período já passou.'; starts = ends = null; }
-  return { errs, starts, ends };
+  if (ends && Date.parse(ends) <= now) { errs[kind === 'part' ? 'blEnd' : to ? 'blTo' : 'blFrom'] = 'Esse período já passou.'; starts = ends = null; fromNow = false; }
+  return { errs, starts, ends, fromNow };
 }
+// Os dados de dois bloqueios são os mesmos (alvo, início, fim e tipo)? O motivo não conta: não muda quem é atingido.
+export const sameBlock = (a, b) => !!a && !!b && (a.p_resource || null) === (b.p_resource || null) && a.p_kind === b.p_kind
+  && Date.parse(a.p_starts) === Date.parse(b.p_starts) && Date.parse(a.p_ends) === Date.parse(b.p_ends);
 // Período de um bloqueio por extenso, no fuso da clínica.
 export function blockWhenTz(b, tz) {
   const d1 = dayIn(tz, Date.parse(b.starts_at)); const t1 = timeIn(tz, b.starts_at);
   const d2 = dayIn(tz, Date.parse(b.ends_at)); const t2 = timeIn(tz, b.ends_at);
-  if (t1 === '00:00' && t2 === '00:00') {
+  if (t2 === '00:00' && d2 > d1) {
     const last = addDaysTo(d2, -1);
-    return last <= d1 ? `${fmtDayShort(d1)} (dia inteiro)` : `${fmtDayShort(d1)} até ${fmtDayShort(last)} (dias inteiros)`;
+    if (t1 === '00:00') return last <= d1 ? `${fmtDayShort(d1)} (dia inteiro)` : `${fmtDayShort(d1)} até ${fmtDayShort(last)} (dias inteiros)`;
+    return last <= d1 ? `${fmtDayShort(d1)}, das ${t1} até o fim do dia` : `${fmtDayShort(d1)} às ${t1} até ${fmtDayShort(last)} (fim do dia)`;
   }
   if (d1 === d2) return `${fmtDayShort(d1)}, das ${t1} às ${t2}`;
   return `${fmtDayShort(d1)} ${t1} até ${fmtDayShort(d2)} ${t2}`;
@@ -745,6 +755,10 @@ export const ACTION_TEXT = {
   invalid_status: 'Situação inválida. Atualize a agenda e tente de novo.',
   slot_taken: 'Esse horário acabou de ser ocupado. Escolha outro.',
   slot_taken_back: 'O horário não está mais livre. Remarque para outro horário.',
+  // "Desfazer falta" (não compareceu → presente) quando o horário já foi usado: um item com falta não se remarca.
+  slot_taken_no_show: 'O horário já foi usado por outro paciente, então a falta não pode ser desfeita. Para atender esta pessoa hoje, faça um novo agendamento.',
+  // A situação mudou enquanto a pergunta "Sim, …" estava na tela (outra pessoa, outra aba): nada foi enviado.
+  status_changed: 'A situação deste agendamento mudou. A agenda foi atualizada: confira e tente de novo.',
   already_cancelled: 'Este agendamento já estava cancelado.',
   not_cancellable: 'Este agendamento não pode mais ser cancelado.',
   idempotency_conflict: 'Este envio já foi usado para outro horário. Escolha o horário de novo e confirme.',
@@ -767,6 +781,14 @@ export const ACTION_TEXT = {
   not_online: 'Esta clínica ainda não marca horário pelo site.',
   expired: 'A reserva venceu.',
   network: 'Não foi possível falar com o servidor. Confira a internet e tente de novo.',
+  // Sem resposta do servidor numa gravação: pode ter gravado. A tela relê antes de deixar tentar de novo.
+  network_block: 'Não foi possível falar com o servidor. O bloqueio pode já ter sido salvo: confira na lista se ele já aparece antes de tentar de novo.',
+  network_desk: 'Não foi possível falar com o servidor. O agendamento pode já ter sido gravado: a agenda foi atualizada, confira antes de marcar outro horário. Para tentar de novo no mesmo horário, clique em “Confirmar agendamento” (não grava duas vezes).',
+  block_replay: 'Este bloqueio já tinha sido salvo.',
+  // not_found que NÃO é de agendamento: exame, aparelho, sala ou profissional desativado por outra pessoa.
+  not_found_exam: 'O exame escolhido não está mais ativo (a configuração da agenda mudou). A lista de exames foi atualizada: escolha de novo.',
+  not_found_resource: 'O aparelho, a sala ou o profissional escolhido não está mais ativo (a configuração da agenda mudou). A lista foi atualizada: escolha de novo.',
+  not_found_resched: 'O exame deste agendamento não está mais ativo na configuração da agenda, então não há horários para remarcar por aqui. Cancele ou peça a quem configura a agenda para reativar o exame.',
 };
 export function actionText(status, ctx = {}) {
   if (status === 'transition_not_allowed' && ctx.from) {
