@@ -146,7 +146,8 @@ await scenario('definir-senha sem sessão: pede o link de recuperação, valida 
   // O servidor de e-mail falhou (como na produção sem SMTP): aviso honesto, com o caminho do "Fale com o IMED".
   db.recoverStatus = 500; db.recoverBody = { code: 500, error_code: 'unexpected_failure', msg: 'Error sending recovery email' };
   await page.click('#recBtn');
-  await page.waitForSelector('#recMsg:not(.ok):not([hidden])');
+  // "Enviando…" aparece antes da resposta: espera a mensagem final (no CI a resposta simulada demora mais).
+  await page.waitForFunction(() => /Não foi possível/.test(document.querySelector('#recMsg').textContent));
   assert.match(await page.textContent('#recMsg'), /Não foi possível enviar o e-mail agora.*Fale com o IMED/);
   assert.deepEqual(errors, []);
   await context.close();
@@ -174,7 +175,7 @@ await scenario('link de recuperação: salva a senha (PUT /auth/v1/user), confer
   db.putStatus = 422;
   await page.fill('#senha2', SENHA_CERTA);
   await page.click('#senhaBtn');
-  await page.waitForSelector('#senhaMsg:not([hidden])');
+  await page.waitForFunction(() => /fraca demais/.test(document.querySelector('#senhaMsg').textContent));
   assert.match(await page.textContent('#senhaMsg'), /fraca demais/);
   db.putStatus = 200;
   await page.click('#senhaBtn');
