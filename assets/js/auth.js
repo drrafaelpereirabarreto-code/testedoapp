@@ -1,4 +1,5 @@
-// Conta no IMED (pacientes e clínicas): login por link mágico enviado por e-mail, pelo Supabase Auth.
+// Conta no IMED (pacientes e clínicas): login por link mágico enviado por e-mail, pelo Supabase Auth, ou com e-mail e
+// senha (quem definiu uma senha em definir-senha.html; a equipe do IMED entra assim quando o e-mail não chega).
 // Sem biblioteca: fala direto com a API REST do Supabase. A sessão fica no localStorage deste navegador.
 // Cabeçalhos pela regra única do site (IMED_CONFIG.supabaseHeaders, em config.js): a chave publishable vai só em
 // "apikey"; "Authorization: Bearer" leva só o token da pessoa logada. Sem conta, vai só a chave.
@@ -43,20 +44,65 @@ export async function signIn(email, back = location.href.split('#')[0]) {
   await call(`/auth/v1/otp?redirect_to=${encodeURIComponent(back)}`, { method: 'POST', body: { email: e, create_user: true } });
 }
 
+// Entra com e-mail e senha (quem já definiu uma senha). Erro: .status 400 e .code 'invalid_credentials' quando a
+// senha está errada ou a conta não tem senha; 429 quando houve muitas tentativas.
+export async function signInWithPassword(email, password) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw Object.assign(new Error('E-mail inválido'), { code: 'invalid_email' });
+  if (!password) throw Object.assign(new Error('Senha em branco'), { code: 'empty_password' });
+  try {
+    const t = await call('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: e, password } });
+    return store(t);
+  } catch (err) {
+    err.code = err.data?.error_code || err.data?.code || err.code;
+    throw err;
+  }
+}
+
+// Endereço da página de definir senha, na mesma pasta do site desta página.
+export const passwordPageUrl = () => location.origin + location.pathname.replace(/[^/]*$/, 'definir-senha.html');
+
+// Manda o link de recuperação de senha. Ao clicar, a pessoa volta para `back` já com a sessão aberta e define a senha.
+export async function recover(email, back = passwordPageUrl()) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) throw Object.assign(new Error('E-mail inválido'), { code: 'invalid_email' });
+  await call(`/auth/v1/recover?redirect_to=${encodeURIComponent(back)}`, { method: 'POST', body: { email: e } });
+}
+
+// Define ou troca a senha da conta que está logada (mínimo de 8 caracteres, conferido aqui e no Supabase).
+export async function setPassword(password) {
+  const p = String(password || '');
+  if (p.length < 8) throw Object.assign(new Error('Senha curta'), { code: 'weak_password' });
+  const tok = await token();
+  if (!tok) throw Object.assign(new Error('Sem sessão'), { code: 'no_session', status: 401 });
+  try {
+    const u = await call('/auth/v1/user', { method: 'PUT', body: { password: p }, token: tok });
+    const s = read();
+    if (s && u?.id) write({ ...s, user: { id: u.id, email: u.email } });
+  } catch (err) {
+    err.code = err.data?.error_code || err.data?.code || err.code;
+    throw err;
+  }
+}
+
 // Ao voltar do link do e-mail, a sessão vem no endereço (#access_token=...). Guarda e limpa o endereço.
 // Devolve 'ok', 'error' (com a mensagem em .message) ou null quando não há nada para tratar.
+// Link de recuperação de senha (type=recovery) aberto em qualquer página do site: guarda a sessão e leva para
+// definir-senha.html (devolve 'ok' com recovery: true; a página pode ignorar, pois já está saindo).
 export async function handleRedirect() {
   const h = new URLSearchParams(location.hash.slice(1));
   if (!h.has('access_token') && !h.has('error') && !h.has('error_description')) return null;
   history.replaceState(history.state, '', location.pathname + location.search);
-  if (!h.has('access_token')) return { status: 'error', message: h.get('error_description') || 'O link expirou ou já foi usado. Peça outro.' };
+  const recovery = h.get('type') === 'recovery';
+  if (!h.has('access_token')) return { status: 'error', recovery, message: h.get('error_description') || 'O link expirou ou já foi usado. Peça outro.' };
   const t = { access_token: h.get('access_token'), refresh_token: h.get('refresh_token'), expires_in: h.get('expires_in') };
   try {
     const u = await call('/auth/v1/user', { token: t.access_token });
     store({ ...t, user: u });
-    return { status: 'ok' };
+    if (recovery && !/\/definir-senha\.html$/.test(location.pathname)) location.replace(passwordPageUrl() + '#definir');
+    return { status: 'ok', recovery };
   } catch {
-    return { status: 'error', message: 'Não foi possível confirmar a entrada. Peça outro link.' };
+    return { status: 'error', recovery, message: recovery ? 'Não foi possível abrir o link de senha. Peça outro.' : 'Não foi possível confirmar a entrada. Peça outro link.' };
   }
 }
 

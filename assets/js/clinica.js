@@ -1,6 +1,7 @@
 // Peças comuns das páginas da clínica (reivindicar.html e painel.html): escapar texto, validar
 // CPF/CNPJ e telefone, formatar datas, mostrar avisos e o quadro de entrada com link por e-mail.
 import * as auth from './auth.js';
+import { montarSenha } from './entrada-senha.js';
 import { EXAMS, KINDS, PERIODS, statusLabel, onlyDigits, maskPhone, isValidPhone, isValidEmail, telHref } from './geo-core.js';
 
 export { auth, EXAMS, KINDS, PERIODS, statusLabel, onlyDigits, maskPhone, isValidPhone, isValidEmail, telHref };
@@ -88,7 +89,7 @@ export function parsePrice(v) {
 export const centsToInput = (c) => (c == null ? '' : (c / 100).toFixed(2).replace('.', ','));
 
 // Quando a renovação da entrada falha, auth.js apaga a sessão: a pessoa precisa pedir outro link.
-export const EXPIRED = 'Sua entrada expirou. Peça um novo link abaixo.';
+export const EXPIRED = 'Sua entrada expirou. Entre de novo abaixo (link por e-mail ou senha).';
 export const sessionLost = (err) => !auth.user() && (err?.status === 401 || err?.status === 403 || err?.data?.code === '42501' || /JWT/i.test(String(err?.data?.message || err?.message || '')));
 
 // Mensagem do banco em linguagem simples.
@@ -97,7 +98,7 @@ export function friendlyError(err, fallback = 'Não foi possível concluir agora
   const msg = String(err?.data?.message || err?.message || '');
   if (err?.name === 'TimeoutError' || err?.name === 'AbortError') return 'O servidor demorou para responder. Confira a internet e tente de novo.';
   if (sessionLost(err)) return EXPIRED;
-  if (err?.status === 401 || /JWT/i.test(msg)) return 'Sua entrada expirou. Saia e entre de novo com o link por e-mail.';
+  if (err?.status === 401 || /JWT/i.test(msg)) return 'Sua entrada expirou. Saia e entre de novo (link por e-mail ou senha).';
   if (code === '23514') return 'Algum dado não está no formato aceito. Confira os campos e tente de novo.';
   if (code === '42501' || err?.status === 403) return 'Sua conta não tem permissão para isso.';
   return fallback;
@@ -123,8 +124,9 @@ export async function finishLogin() {
   return r.status === 'ok' ? { kind: 'ok', text: 'Pronto, você entrou.' } : { kind: 'err', text: r.message };
 }
 
-// Quadro "Entrar com e-mail" / "Você entrou como ...". onChange é chamado ao sair.
-export function renderAuth(box, { back, intro, onSignOut }) {
+// Quadro "Entrar com e-mail" / "Você entrou como ...". onSignOut é chamado ao sair; onSignIn, quando a pessoa entra
+// com a senha (sem recarregar a página). Sem onSignIn, a página recarrega.
+export function renderAuth(box, { back, intro, onSignOut, onSignIn }) {
   const u = auth.user();
   if (u) {
     box.innerHTML = `<div class="cl-who"><span><i class="fa-solid fa-circle-user" aria-hidden="true"></i>Você entrou como <b>${esc(u.email)}</b></span>
@@ -143,12 +145,13 @@ export function renderAuth(box, { back, intro, onSignOut }) {
     </form>`;
   const form = $('form', box);
   const msg = $('#loginMsg', box);
+  montarSenha({ form, email: () => $('#loginEmail', box).value, msg, depois: () => (onSignIn ? onSignIn() : location.reload()) });
   form.onsubmit = async (e) => {
     e.preventDefault();
     const email = $('#loginEmail', box).value.trim();
     msg.className = 'cl-msg';
     if (!isValidEmail(email)) { msg.textContent = 'Digite um e-mail válido, como voce@clinica.com.br.'; msg.classList.add('err'); $('#loginEmail', box).focus(); return; }
-    const btn = $('button', form);
+    const btn = $('button[type="submit"]', form);
     btn.disabled = true;
     msg.textContent = 'Enviando…';
     try {

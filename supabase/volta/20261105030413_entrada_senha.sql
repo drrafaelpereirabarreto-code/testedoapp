@@ -1,0 +1,126 @@
+-- VOLTA da migração supabase/migrations/<mesmo nome>.sql (entrada com senha; só se for preciso desfazer).
+-- Tem o mesmo nome da migração: se ela for renomeada, renomeie esta também. Devolve as quatro funções ao que eram
+-- antes (sessão com senha recusada de novo; a lista de páginas do contador sem definir-senha.html). Nenhum dado muda.
+
+select set_config('lock_timeout', '5s', true), set_config('statement_timeout', '120s', true);
+
+create or replace function public.is_imed_admin()
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (
+           select 1
+           from public.admin_emails a
+           join auth.users u on u.id = auth.uid()
+           where a.email = lower(coalesce(auth.jwt() ->> 'email', ''))
+             and (a.user_id is null or a.user_id = u.id)
+             and lower(u.email) = a.email
+             and u.email_confirmed_at is not null
+             and u.deleted_at is null
+             and (u.banned_until is null or u.banned_until <= now())
+             and not coalesce(u.is_anonymous, false)
+             and coalesce(u.phone, '') = ''
+             and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider <> 'email')
+         )
+     and not exists (
+           select 1
+           from jsonb_array_elements(case when jsonb_typeof(auth.jwt() -> 'amr') = 'array' then auth.jwt() -> 'amr' else '[]'::jsonb end) m
+           where coalesce(m ->> 'method', m #>> '{}') in ('password', 'anonymous')
+         );
+$$;
+revoke all on function public.is_imed_admin() from public, anon;
+grant execute on function public.is_imed_admin() to authenticated;
+
+create or replace function private.agenda_secure_session()
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (
+           select 1
+           from auth.users u
+           where u.id = auth.uid()
+             and u.email is not null
+             and lower(u.email) = lower(coalesce(auth.jwt() ->> 'email', ''))
+             and u.email_confirmed_at is not null
+             and u.deleted_at is null
+             and (u.banned_until is null or u.banned_until <= now())
+             and not coalesce(u.is_anonymous, false)
+             and coalesce(u.phone, '') = ''
+             and not exists (select 1 from auth.identities i where i.user_id = u.id and i.provider <> 'email')
+         )
+     and not exists (
+           select 1
+           from jsonb_array_elements(case when jsonb_typeof(auth.jwt() -> 'amr') = 'array' then auth.jwt() -> 'amr' else '[]'::jsonb end) m
+           where coalesce(m ->> 'method', m #>> '{}') in ('password', 'anonymous')
+         );
+$$;
+revoke all on function private.agenda_secure_session() from public, anon, authenticated;
+
+create or replace function private.vincular_admin()
+returns table (conta uuid, criada_em timestamptz, ultima_entrada timestamptz, resultado text)
+language plpgsql
+set search_path = ''
+as $$
+declare
+  a record;
+  u auth.users;
+  n integer;
+begin
+  for a in select e.email from public.admin_emails e where e.user_id is null order by e.email loop
+    conta := null; criada_em := null; ultima_entrada := null;
+    select count(*) into n from auth.users x where lower(x.email) = a.email and x.deleted_at is null;
+    if n <> 1 then
+      resultado := case when n = 0 then 'sem conta: o admin precisa entrar no painel.html pelo link do e-mail'
+                        else 'mais de uma conta com o e-mail do admin: confira em Authentication > Users' end;
+      return next;
+      continue;
+    end if;
+    select x.* into u from auth.users x where lower(x.email) = a.email and x.deleted_at is null;
+    conta := u.id; criada_em := u.created_at; ultima_entrada := u.last_sign_in_at;
+    if u.email_confirmed_at is null or coalesce(u.is_anonymous, false) or coalesce(u.phone, '') <> ''
+       or exists (select 1 from auth.identities i where i.user_id = u.id and i.provider <> 'email') then
+      resultado := 'não vinculada: e-mail não confirmado, conta anônima, com celular ou com outro login ligado';
+    elsif exists (select 1 from auth.sessions s join auth.mfa_amr_claims c on c.session_id = s.id
+                  where s.user_id = u.id and c.authentication_method in ('password', 'anonymous')) then
+      resultado := 'não vinculada: a conta já abriu sessão com senha ou como anônima; confira em Authentication > Users';
+    elsif not exists (select 1 from auth.sessions s join auth.mfa_amr_claims c on c.session_id = s.id
+                      where s.user_id = u.id and c.authentication_method in ('otp', 'magiclink', 'email/signup')) then
+      resultado := 'não vinculada: nenhuma sessão aberta pelo link do e-mail (o admin precisa entrar e continuar conectado)';
+    else
+      update public.admin_emails e set user_id = u.id where e.email = a.email and e.user_id is null;
+      resultado := 'vinculada';
+    end if;
+    return next;
+  end loop;
+end $$;
+revoke all on function private.vincular_admin() from public, anon, authenticated;
+
+create or replace function private.visit_path(p_path text)
+returns text
+language sql
+stable
+set search_path = ''
+as $$
+  with c as (select regexp_replace(btrim(left(coalesce(p_path, ''), 200)), '/index\.html$', '/') as p)
+  select case
+    when char_length(p) not between 1 and 120 or p ~ '[0-9]{5}' then null
+    -- Páginas fixas do site (lista fechada, gerada por scripts/aplicar-visitas.mjs --sql).
+    when p = any (array[
+      '/', '/404', '/acessibilidade.html', '/cidades/', '/como-funciona.html', '/conta.html',
+      '/contato.html', '/documento.html', '/exames/', '/exames/densitometria-ossea.html',
+      '/exames/ecocardiograma.html', '/exames/eletrocardiograma.html', '/exames/mamografia.html',
+      '/exames/raio-x.html', '/exames/ressonancia-magnetica.html', '/exames/tomografia.html',
+      '/exames/ultrassom.html', '/gestao.html', '/local.html', '/medico.html', '/painel.html',
+      '/para-medicos.html', '/parceiros.html', '/perto.html', '/privacidade.html', '/reivindicar.html',
+      '/sobre.html', '/teleconsulta.html', '/termo-teleconsulta.html', '/termos.html']) then p
+    -- Página de cidade: só de um município que existe (mesmo nome sem acento do gerador das cidades).
+    when p ~ '^/cidades/[a-z]{2}/[a-z0-9]+(-[a-z0-9]+)*/((diagnostico-por-imagem|laboratorios|clinicas|hospitais)\.html)?$'
+         and exists (select 1 from public.municipalities m
+                     where m.uf = upper(split_part(p, '/', 3)) and private.visit_slug(m.name) = split_part(p, '/', 4)) then p
+    else null
+  end
+  from c;
+$$;
+revoke all on function private.visit_path(text) from public, anon, authenticated;

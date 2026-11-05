@@ -1223,7 +1223,7 @@ await scenario('entrada vencida: volta para o quadro de entrar sem mostrar nada'
   const { page, log, errors, context } = await newPage(browser, { logged: true, expired: true, db: { failRefresh: true } });
   await page.goto(`${BASE}gestao.html`);
   await page.waitForSelector('#flash .cl-note.warn');
-  assert.match(norm(await page.textContent('#flash')), /Sua entrada expirou\. Peça um novo link abaixo\./);
+  assert.match(norm(await page.textContent('#flash')), /Sua entrada expirou\. Entre de novo abaixo \(link por e-mail ou senha\)\./);
   assert.equal(await page.getAttribute('#flash', 'aria-live'), 'polite', 'o aviso é lido mesmo com o foco indo para o e-mail');
   assert.equal(await page.evaluate(() => document.activeElement?.id), 'loginEmail');
   await page.waitForSelector('#loginEmail');

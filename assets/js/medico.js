@@ -7,6 +7,7 @@
 // monta, o médico gera o PDF, assina fora com o certificado ICP-Brasil e envia o PDF assinado (regras em tele-docs.js).
 // Dados de pacientes ficam só na memória da página (nada vai para o localStorage).
 import * as A from './auth.js';
+import { montarSenha } from './entrada-senha.js';
 import * as T from './tele-core.js';
 import * as D from './tele-docs.js';
 
@@ -92,7 +93,7 @@ function lostSession(err) {
   if ((code === 'sem_permissao' || code === 'sem_login') && !A.user()) {
     resetAll();
     renderAuth();
-    flash('Sua entrada expirou. Peça um novo link abaixo.', 'warn');
+    flash('Sua entrada expirou. Entre de novo abaixo (link por e-mail ou senha).', 'warn');
     return true;
   }
   return false;
@@ -109,12 +110,13 @@ function renderAuth() {
     return;
   }
   box.innerHTML = `<form class="md-login" id="loginForm" novalidate>
-      <p>Entre com o seu e-mail. Mandamos um link de entrada; não precisa de senha. Use sempre o mesmo e-mail.</p>
+      <p>Entre com o seu e-mail. Mandamos um link de entrada; se você já definiu uma senha, pode entrar com ela. Use sempre o mesmo e-mail.</p>
       <div class="fld"><label for="loginEmail">Seu e-mail</label>
         <div class="md-loginrow"><input id="loginEmail" type="email" autocomplete="email" inputmode="email" maxlength="254" required aria-describedby="loginMsg" placeholder="voce@exemplo.com">
         <button class="btn btn-coral" type="submit" id="loginBtn">Receber link</button></div></div>
       <p class="tl-msg" id="loginMsg" aria-live="polite"></p>
     </form>`;
+  montarSenha({ form: $('#loginForm'), email: () => $('#loginEmail').value, msg: $('#loginMsg'), depois: () => { renderAuth(); flash('Pronto, você entrou.', 'ok'); loadMe(); } });
   $('#loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('#loginEmail').value.trim();
@@ -2792,5 +2794,5 @@ else if (back?.status === 'error') flash(back.message, 'warn');
 renderAuth();
 if (A.user()) {
   if (await A.token()) loadMe();
-  else { renderAuth(); flash('Sua entrada expirou. Peça um novo link abaixo.', 'warn'); }
+  else { renderAuth(); flash('Sua entrada expirou. Entre de novo abaixo (link por e-mail ou senha).', 'warn'); }
 }

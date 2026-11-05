@@ -360,6 +360,9 @@ const PAGES = [
   { name: 'Minha conta', url: 'conta.html', open: async (p) => { await p.waitForSelector('.ct-order'); await waitIdle(p); } },
   { name: 'Minha conta (com login)', url: 'conta.html', session: true, open: async (p) => { await p.waitForSelector('#signedIn:not([hidden])'); await p.waitForSelector('.ct-order'); await waitIdle(p); } },
   { name: 'Minha conta · avaliar', url: `conta.html#pedido-${ID2}`, open: async (p) => { await p.waitForSelector(`#rv-${ID2}:not([hidden])`); await waitIdle(p); } },
+  { name: 'Minha conta · entrar com senha', url: 'conta.html', open: async (p) => { await p.waitForSelector('.ct-order'); await p.click('.es-abrir'); await p.waitForSelector('#senhaCampos:not([hidden])'); await waitIdle(p); } },
+  { name: 'Definir senha', url: 'definir-senha.html', open: async (p) => { await p.waitForSelector('#semSessao:not([hidden])'); } },
+  { name: 'Definir senha (com login)', url: 'definir-senha.html', session: true, open: async (p) => { await p.waitForSelector('#comSessao:not([hidden])'); } },
   { name: 'Área da clínica', url: 'painel.html', open: async (p) => { await p.waitForSelector('#authBox input'); } },
   ...PAINEL_TABS.map((tab) => ({
     name: `Área da clínica · ${tab}`, url: 'painel.html', session: true, admin: true, member: true,

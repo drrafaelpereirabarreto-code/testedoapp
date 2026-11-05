@@ -80,8 +80,9 @@ export const inWhen = (r, when, today) => {
 function renderAccount() {
   renderAuth($('#authBox'), {
     back: () => `${location.origin}${location.pathname}`,
-    intro: 'Entre com o <b>mesmo e-mail usado no pedido de cadastro</b> da clínica. Enviamos um link de entrada; não precisa de senha.',
+    intro: 'Entre com o <b>mesmo e-mail usado no pedido de cadastro</b> da clínica. Enviamos um link de entrada; se você já definiu uma senha, pode entrar com ela.',
     onSignOut: () => { state.clinics = []; state.lists = {}; state.agenda = null; state.priceOk = {}; app().innerHTML = ''; renderAccount(); toast('Você saiu da sua conta.'); },
+    onSignIn: () => { $('#flash').innerHTML = note('Pronto, você entrou.', 'ok'); renderAccount(); loadAll(); },
   });
 }
 

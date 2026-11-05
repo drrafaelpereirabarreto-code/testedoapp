@@ -1258,7 +1258,7 @@ await scenario('entrada vencida sem renovação: mostra de novo o pedido de link
   await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('imed_session')); s.expires_at = 1; localStorage.setItem('imed_session', JSON.stringify(s)); });
   await page.click('#claimBtn');
   await page.waitForSelector('#loginEmail');
-  assert.match(await page.textContent('#flash'), /Sua entrada expirou\. Peça um novo link abaixo\./);
+  assert.match(await page.textContent('#flash'), /Sua entrada expirou\. Entre de novo abaixo \(link por e-mail ou senha\)\./);
   assert.doesNotMatch(await page.textContent('#authBox'), /Você entrou como/);
   assert.ok(await page.isHidden('#s3'));
   assert.ok(await page.isVisible('#s2'));
@@ -1272,7 +1272,7 @@ await scenario('entrada vencida sem renovação: mostra de novo o pedido de link
   await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('imed_session')); s.expires_at = 1; localStorage.setItem('imed_session', JSON.stringify(s)); });
   await page.locator('.rq').first().locator('button[data-st="contacted"]').click();
   await page.waitForSelector('#loginEmail');
-  assert.match(await page.textContent('#flash'), /Sua entrada expirou\. Peça um novo link abaixo\./);
+  assert.match(await page.textContent('#flash'), /Sua entrada expirou\. Entre de novo abaixo \(link por e-mail ou senha\)\./);
   assert.equal(await page.textContent('#app'), '');
   assert.equal(await page.evaluate(() => document.activeElement.id), 'loginEmail');
   assert.deepEqual(errors, []);

@@ -3,13 +3,13 @@
 --     financeiro só o financeiro; gestor sem integração e sem mexer nos donos);
 --   - has_clinic_perm: permissão pelo papel na clínica (dono e staff de hoje), nunca em outra clínica;
 --   - imed_has: o dono (is_imed_admin) tem todas; a equipe (private.imed_staff), só as do papel ativo e só com conta
---     e sessão seguras (e-mail confirmado, sessão pelo link, sem senha, celular ou login anônimo); suporte sem dado
+--     e sessão seguras (e-mail confirmado, sessão pelo link ou com senha, sem celular ou login anônimo); suporte sem dado
 --     de paciente; papel revogado não vale; is_imed_admin continua só do dono;
 --   - a referência agenda.status_transitions é a máquina de estados do §5 (permissões que existem, regras de horário,
 --     motor completo onde volta a ocupar horário).
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
 begin;
-select plan(58);
+select plan(59);
 
 -- Troca de papel como o PostgREST faz (role + request.jwt.claims). p_amr: como a sessão foi aberta.
 create function pg_temp.entrar(p_papel text, p_usuario uuid default null, p_email text default null, p_amr text default 'otp')
@@ -177,7 +177,10 @@ select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000007', '
 select ok(not public.imed_has('imed.agenda.monitor'), 'papel revogado não vale');
 
 select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000005', 'operacao.papeis@exemplo.test', 'password');
-select ok(not public.imed_has('imed.agenda.monitor'), 'sessão aberta com senha não vale (só o link do e-mail)');
+select ok(public.imed_has('imed.agenda.monitor'), 'sessão aberta com senha vale (entrada com senha, 05/11)');
+
+select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000005', 'operacao.papeis@exemplo.test', 'anonymous');
+select ok(not public.imed_has('imed.agenda.monitor'), 'sessão anônima não vale');
 
 select pg_temp.entrar('authenticated', 'a1100000-0000-4000-8000-000000000005', 'outro.email@exemplo.test');
 select ok(not public.imed_has('imed.agenda.monitor'), 'sessão com e-mail diferente do da conta não vale');

@@ -1,7 +1,7 @@
 -- Equipe da clínica (iMed Agenda, fase 3.4; arquitetura §12, R2-21):
 --   - convite por e-mail (equipe.gerenciar): papel válido, e-mail válido, quem já é da equipe, convite repetido
 --     atualiza o papel; o gestor não convida nem mexe em dono;
---   - aceitar: só o mesmo e-mail, confirmado, com sessão pelo link (senha não); preso à conta; uma vez só; vencido não;
+--   - aceitar: só o mesmo e-mail, confirmado, com sessão pelo link ou com senha (anônima não); preso à conta; uma vez só; vencido não;
 --   - trocar papel e remover: o último dono nunca é rebaixado nem sai; o financeiro não gerencia a equipe;
 --   - auditoria sem e-mail.
 -- Tudo é desfeito no fim (rollback). E-mails no domínio reservado .test.
@@ -60,8 +60,8 @@ select is(public.agenda_invite(pg_temp.c(), 'y.equipe@exemplo.test', 'reception'
 select pg_temp.como(4);
 select is(jsonb_array_length(public.agenda_my_invites() -> 'invites'), 0, 'outra pessoa não vê o convite');
 select is(public.agenda_invite_accept(current_setting('teste.i1')::uuid) ->> 'status', 'not_found', 'nem aceita o convite de outro e-mail');
-select pg_temp.como(3, 'password');
-select is(public.agenda_invite_accept(current_setting('teste.i1')::uuid) ->> 'status', 'forbidden', 'entrou com senha: não aceita (só pelo link)');
+select pg_temp.como(3, 'anonymous');
+select is(public.agenda_invite_accept(current_setting('teste.i1')::uuid) ->> 'status', 'forbidden', 'sessão anônima: não aceita (só link do e-mail ou senha)');
 select pg_temp.como(3);
 select is((select concat_ws('|', jsonb_array_length(j -> 'invites'), j #>> '{invites,0,role}', j #>> '{invites,0,clinic_name}')
            from (select public.agenda_my_invites() as j) x), '1|professional|Clínica da Equipe', 'o convidado vê o próprio convite');

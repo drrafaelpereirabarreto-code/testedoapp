@@ -3,6 +3,7 @@
 // Contrato do aparelho: localStorage 'imed_appts' (mais novo primeiro), gravado pela busca (perto.js).
 import * as A from './auth.js';
 import * as T from './confianca.js';
+import { montarSenha } from './entrada-senha.js';
 
 const CFG = window.IMED_CONFIG || {};
 const SITE = CFG.siteUrl || new URL('./', location.href).href;
@@ -425,6 +426,7 @@ function renderAccount() {
 }
 
 function bindAccount() {
+  montarSenha({ form: $('loginForm'), email: () => $('email').value, msg: $('loginMsg'), depois: async () => { renderAccount(); flash('Pronto, você entrou. Seus pedidos aparecem abaixo.', 'ok'); await refresh(); } });
   $('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('email').value.trim();

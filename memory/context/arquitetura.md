@@ -8,7 +8,9 @@
 | `perto.html` + `assets/js/perto.js` | Busca por localização/CEP: mapa, lista, filtros, detalhes, pedido |
 | `assets/js/geo-core.js` | Regras puras (normalizar, filtrar, ordenar, pedido) — testadas em `tests/geo-core.test.mjs` |
 | `assets/js/exames-nomes.js` | Dicionário de nomes de exames (nome popular, sigla, uma letra errada → código da busca; "eco" e doença sozinha perguntam). Baixado só quando a pessoa digita (início, busca e área do médico); testes em `tests/exames-nomes.test.mjs` |
-| `assets/js/auth.js` | Login por link mágico (Supabase Auth via REST) para conta, painel e reivindicação |
+| `assets/js/auth.js` | Login por link mágico ou por e-mail e senha (Supabase Auth via REST) para conta, painel, reivindicação, médico e gestão: `signIn` (otp), `signInWithPassword`, `recover` (link de recuperação → `definir-senha.html`), `setPassword` (PUT /auth/v1/user), `handleRedirect` (link `type=recovery` em qualquer página leva para `definir-senha.html#definir`) |
+| `assets/js/entrada-senha.js` | Bloco "Entrar com senha" / "Esqueci a senha" posto no fim de cada quadro de entrada (`clinica.js` `renderAuth` com `onSignIn`, `medico.js`, `conta.js`); estilo injetado uma vez (`#es-css`); nunca guarda a senha |
+| `definir-senha.html` + `assets/js/definir-senha.js` | Definir ou trocar a senha: com sessão (link de recuperação ou já logado) pede a senha 2 vezes (mín. 8) e salva; sem sessão pede o link de recuperação. `noindex`. Teste: `tests/e2e-senha.mjs` (também no `e2e-a11y`) |
 | `parceiros.html` | Cadastro de clínicas/médicos parceiros (`partner_leads`) |
 | `painel.html` + `assets/js/painel.js` | Área da clínica. Quem sou por `agenda_me` (só os próprios vínculos; banco sem a função: `clinic_members` filtrado pelo `user_id`); abas por permissão (`agenda-core.js` `clinicTabs`): Pedidos, Agenda, Dados, Exames e preços, Equipe; convites para a conta (`agenda_my_invites`/`_accept`) no topo. Profissional e financeiro ainda sem abas (4.2/4.3) |
 | `assets/js/agenda-config.js` + `agenda-core.js` | iMed Agenda 4.1: aba Agenda (configuração rápida que cria unidade, recursos, procedimentos e regras de verdade; unidade e fuso; modalidade com compromisso; horários da unidade; aparelhos/salas/profissionais; exames com grupos e preço com conferência L11; conferir horários livres por `agenda_slots`) e aba Equipe (convites, papéis, último dono). Mudança que tira agendamento do lugar mostra quantos e pede "Salvar mesmo assim" (`p_confirm`). Bloqueios da unidade continuam no `painel.js` (`add_my_block`). Regras puras testadas em `tests/agenda-core.test.mjs`; tela em `tests/e2e-agenda-config.mjs` (1024 e 390 px, teclado, tema escuro, relógio fixo). MFA desligado: **decisão 17 pendente do dono** (quando decidir, entra no `auth.js` e as funções de equipe/integração passam a exigir `aal2`) |
@@ -106,10 +108,18 @@
   conferência de clínica, `cnes_last_update(p_city)`, `track` (contador agregado em `private.*_daily`), `admin_stats`.
 - pg_cron: `imed-fila-importacao` (a cada minuto, 2 cidades) e `imed-atualizacao-mensal`. A fila tem 316 cidades
   (capitais, grandes e as de ~100 mil habitantes ou mais); `imported_cities()` → `scripts/cidades.json` → `node scripts/gerar-cidades.mjs`.
-- Segurança (migração `20261030074604_seguranca`): `is_imed_admin` só vale para a conta certa, com e-mail confirmado,
-  login só por e-mail e sessão aberta pelo link (nunca senha/anônimo); depois da 1ª entrada do admin rode
-  `select * from private.vincular_admin();`. `submit_review` usa `is true` (sem brecha de nulo). Quem mexer nessas
-  funções mantém as regras.
+- Segurança (migração `20261030074604_seguranca`, mudada em `20261105030413_entrada_senha`): `is_imed_admin` só vale
+  para a conta certa, com e-mail confirmado, só provedor e-mail (sem Google etc.), sem celular, não anônima; a sessão
+  pode ser pelo link do e-mail (otp/magiclink/recovery) OU por senha (desde 05/11; sessão anônima continua recusada).
+  O mesmo vale para `private.agenda_secure_session` (`imed_has`, convites da equipe). Depois da 1ª entrada do admin
+  rode `select * from private.vincular_admin();`. `submit_review` usa `is true` (sem brecha de nulo). Quem mexer nessas
+  funções mantém as regras. pgTAP: `110_papeis.sql` e `340_equipe.sql` (senha vale, anônimo não).
+- Acesso da equipe sem e-mail (05/11): o Auth do Supabase não envia e-mail (SMTP/Resend sem domínio verificado →
+  500 em `/otp` e `/recover`; sem SMTP, 2 e-mails/h). A Edge Function `link-admin` (`supabase/functions/link-admin/`,
+  `verify_jwt=false`, só com `x-imed-token` de `private.app_tokens` e só para `public.admin_emails`) gera o link
+  `magiclink` ou `recovery` (`redirect_to` só dentro do site) via `auth/v1/admin/generate_link`; chamada pelo SQL com
+  pg_net (receita no cabeçalho do arquivo), link lido em `net._http_response` (apagar depois) e mandado por fora
+  (Gmail do dono). O Site URL do Auth ainda é `http://localhost:3000`: link sem `redirect_to` cai lá (aconteceu em 03/11).
 
 ## Limitações conhecidas do ambiente do Claude
 - A sessão na nuvem não acessa supabase.co, IBGE, CNES nem Photon diretamente; usar o conector Supabase (SQL/MCP).

@@ -241,8 +241,9 @@ function render() {
   $('#s2').hidden = !(state.place || logged);
   renderAuth($('#authBox'), {
     back: backUrl,
-    intro: 'Enviamos um link de entrada para o seu e-mail; não precisa de senha. Use um e-mail que você acessa no dia a dia: é com ele que você vai entrar na área da clínica.',
+    intro: 'Enviamos um link de entrada para o seu e-mail (ou entre com a sua senha, se já definiu uma). Use um e-mail que você acessa no dia a dia: é com ele que você vai entrar na área da clínica.',
     onSignOut: () => { toast('Você saiu da sua conta.'); render(); },
+    onSignIn: () => { toast('Pronto, você entrou.'); render(); },
   });
   $('#s3').hidden = !(state.place && logged) || state.submitted;
   $('#claimDone').hidden = !(state.submitted && logged);
