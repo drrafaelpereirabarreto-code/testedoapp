@@ -1,0 +1,106 @@
+@import "tailwindcss";
+
+/* Paleta escura do painel. */
+@theme {
+  --color-fundo: #0d0f12;
+  --color-painel: #15181d;
+  --color-painel-2: #1b1f26;
+  --color-borda: #262b34;
+  --color-texto: #eceef1;
+  --color-texto-2: #a9b0bb;
+  --color-texto-3: #7a828f;
+  --color-destaque: #3987e5;
+  --color-destaque-forte: #5a9df0;
+  --color-quente: #ff7a45;
+  --color-bom: #2fbf71;
+  --color-alerta: #e0a200;
+  --color-ruim: #e66767;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-fundo);
+  color: var(--color-texto);
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-destaque-forte);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.campo {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--color-borda);
+  background: var(--color-painel-2);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--color-texto);
+}
+
+.campo::placeholder {
+  color: var(--color-texto-3);
+}
+
+.botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 10px;
+  padding: 0.55rem 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: var(--color-destaque);
+  color: #fff;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.botao:hover {
+  background: var(--color-destaque-forte);
+}
+
+.botao:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.botao-sec {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 10px;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border: 1px solid var(--color-borda);
+  background: var(--color-painel-2);
+  color: var(--color-texto);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.botao-sec:hover {
+  border-color: var(--color-texto-3);
+}
+
+.texto-anuncio {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
