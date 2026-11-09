@@ -19,8 +19,11 @@ import {
   temMeta,
 } from "./fontes";
 import { analisarAnuncio, temIA } from "./ia";
+import { guardarMidiaDoDia } from "./midia";
+import { produtosParaConferir } from "./oportunidades";
+import { enviarResumo } from "./resumo";
 import type { AnuncioNormalizado } from "./normalizar";
-import { calcularPontuacao, tendencia } from "./pontuacao";
+import { calcularPontuacao, faseProduto, tendencia } from "./pontuacao";
 import { chaveDestino, diasEntre, hojeISO, jsonSeguro, slug, somarDias } from "./util";
 
 type Param = string | number | null;
@@ -36,7 +39,15 @@ export interface ResumoColeta {
 /** Guarda os anúncios coletados hoje. Devolve quantos vieram e quantos são novos. */
 export async function salvarAnuncios(lista: AnuncioNormalizado[], hoje = hojeISO()): Promise<{ total: number; novos: number }> {
   const unicos = new Map<string, AnuncioNormalizado>();
-  for (const a of lista) if (!unicos.has(a.id)) unicos.set(a.id, a);
+  // O mesmo anúncio pode aparecer na busca do Brasil e na dos EUA: guarda todos os países.
+  const paisesPorAnuncio = new Map<string, Set<string>>();
+  for (const a of lista) {
+    if (!unicos.has(a.id)) unicos.set(a.id, a);
+    if (a.pais) {
+      if (!paisesPorAnuncio.has(a.id)) paisesPorAnuncio.set(a.id, new Set());
+      paisesPorAnuncio.get(a.id)!.add(a.pais);
+    }
+  }
   if (unicos.size === 0) return { total: 0, novos: 0 };
 
   const ids = [...unicos.keys()];
@@ -87,6 +98,15 @@ export async function salvarAnuncios(lista: AnuncioNormalizado[], hoje = hojeISO
         a.biblioteca_url, hoje, hoje,
       ],
     ]);
+  }
+  for (const [id, paises] of paisesPorAnuncio) {
+    for (const pais of paises) {
+      comandos.push([
+        `INSERT INTO anuncio_paises (anuncio_id, pais, ultima_vez) VALUES (?, ?, ?)
+         ON CONFLICT (anuncio_id, pais) DO UPDATE SET ultima_vez = excluded.ultima_vez`,
+        [id, pais, hoje],
+      ]);
+    }
   }
   await emLote(comandos);
   return { total: unicos.size, novos: ids.filter((id) => !existentes.has(id)).length };
@@ -323,16 +343,16 @@ export async function atualizarProdutos(hoje = hojeISO()): Promise<void> {
   const nomePorId = new Map<string, { nome: string; categoria: string | null }>();
   for (const n of nomes) if (!nomePorId.has(n.produto_id)) nomePorId.set(n.produto_id, { nome: n.produto_nome, categoria: n.categoria });
 
-  const historico = await todos<{ produto_id: string; dia: string; anuncios_ativos: number }>(
-    "SELECT produto_id, dia, anuncios_ativos FROM historico_produto WHERE dia >= ? AND dia <= ?",
+  const historico = await todos<{ produto_id: string; dia: string; anuncios_ativos: number; anunciantes: number }>(
+    "SELECT produto_id, dia, anuncios_ativos, anunciantes FROM historico_produto WHERE dia >= ? AND dia <= ?",
     [somarDias(hoje, -10), somarDias(hoje, -2)],
   );
   const alvo = somarDias(hoje, -7);
-  const antes = new Map<string, { dia: string; n: number }>();
+  const antes = new Map<string, { dia: string; n: number; anunciantes: number }>();
   for (const h of historico) {
     const atual = antes.get(h.produto_id);
     if (!atual || Math.abs(diasEntre(h.dia, alvo)) < Math.abs(diasEntre(atual.dia, alvo))) {
-      antes.set(h.produto_id, { dia: h.dia, n: Number(h.anuncios_ativos) });
+      antes.set(h.produto_id, { dia: h.dia, n: Number(h.anuncios_ativos), anunciantes: Number(h.anunciantes) });
     }
   }
 
@@ -340,18 +360,46 @@ export async function atualizarProdutos(hoje = hojeISO()): Promise<void> {
   for (const g of grupos) {
     const info = nomePorId.get(g.produto_id) ?? { nome: g.produto_id, categoria: null };
     const tend = tendencia(Number(g.n_ativos), antes.get(g.produto_id)?.n ?? null);
+    const anunciantesAntes = antes.get(g.produto_id)?.anunciantes ?? null;
+    const f = faseProduto({
+      anunciantes: Number(g.n_anunciantes),
+      anunciantesAntes,
+      anunciosAtivos: Number(g.n_ativos),
+      tendencia: tend,
+      diasMax: Number(g.max_dias),
+    });
+
     comandos.push([
-      `INSERT INTO produtos (id, nome, categoria, primeira_vez, ultima_vez, anuncios_ativos, anunciantes, dias_max, pontuacao_max, tendencia)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO produtos (id, nome, categoria, primeira_vez, ultima_vez, anuncios_ativos, anunciantes, dias_max, pontuacao_max,
+        tendencia, fase, fase_motivo, anunciantes_antes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT (id) DO UPDATE SET nome = excluded.nome, categoria = COALESCE(excluded.categoria, produtos.categoria),
         ultima_vez = excluded.ultima_vez, anuncios_ativos = excluded.anuncios_ativos, anunciantes = excluded.anunciantes,
-        dias_max = excluded.dias_max, pontuacao_max = excluded.pontuacao_max, tendencia = excluded.tendencia`,
-      [g.produto_id, info.nome, info.categoria, hoje, hoje, g.n_ativos, g.n_anunciantes, g.max_dias, g.max_pontos, tend],
+        dias_max = excluded.dias_max, pontuacao_max = excluded.pontuacao_max, tendencia = excluded.tendencia,
+        fase = excluded.fase, fase_motivo = excluded.fase_motivo, anunciantes_antes = excluded.anunciantes_antes`,
+      [g.produto_id, info.nome, info.categoria, hoje, hoje, g.n_ativos, g.n_anunciantes, g.max_dias, g.max_pontos, tend,
+        f.fase, f.motivo, anunciantesAntes],
     ]);
     comandos.push([
       `INSERT INTO historico_produto (produto_id, dia, anuncios_ativos, anunciantes) VALUES (?, ?, ?, ?)
        ON CONFLICT (produto_id, dia) DO UPDATE SET anuncios_ativos = excluded.anuncios_ativos, anunciantes = excluded.anunciantes`,
       [g.produto_id, hoje, g.n_ativos, g.n_anunciantes],
+    ]);
+  }
+
+  // Produto por país (para a página "Oportunidades").
+  const porPais = await todos<{ produto_id: string; pais: string; n_ativos: number; n_anunciantes: number }>(
+    `SELECT a.produto_id, ap.pais, COUNT(*) AS n_ativos, COUNT(DISTINCT a.pagina_id) AS n_anunciantes
+     FROM anuncios a JOIN anuncio_paises ap ON ap.anuncio_id = a.id AND ap.ultima_vez = ?
+     WHERE a.ultima_vez = ? AND a.ativo = 1 AND a.produto_id IS NOT NULL
+     GROUP BY a.produto_id, ap.pais`,
+    [hoje, hoje],
+  );
+  for (const r of porPais) {
+    comandos.push([
+      `INSERT INTO produto_pais (produto_id, pais, dia, anuncios_ativos, anunciantes) VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (produto_id, pais, dia) DO UPDATE SET anuncios_ativos = excluded.anuncios_ativos, anunciantes = excluded.anunciantes`,
+      [r.produto_id, r.pais, hoje, r.n_ativos, r.n_anunciantes],
     ]);
   }
   await emLote(comandos);
@@ -366,6 +414,40 @@ async function terminar(id: string, status: string, mensagem: string, extra: { t
 }
 
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type Extra = { produto_id: string; pais: string; termo: string };
+
+/**
+ * Depois da coleta: anota os produtos conferidos no seu país, guarda os criativos fortes e manda o resumo.
+ * Nada aqui derruba a coleta: um erro só vira um aviso na mensagem.
+ */
+async function posColeta(dia: string, prazo: number, extras: Extra[]): Promise<string> {
+  const avisos: string[] = [];
+  try {
+    await emLote(
+      extras.map((e) => [
+        `INSERT INTO verificacoes (produto_id, pais, dia) VALUES (?, ?, ?)
+         ON CONFLICT (produto_id, pais) DO UPDATE SET dia = excluded.dia`,
+        [e.produto_id, e.pais, dia],
+      ]),
+    );
+  } catch (e) {
+    avisos.push(`Conferência no seu país: ${e instanceof Error ? e.message : e}`);
+  }
+  try {
+    const n = await guardarMidiaDoDia(dia, prazo);
+    if (n) avisos.push(`${n} criativos guardados.`);
+  } catch (e) {
+    avisos.push(`Guardar criativos: ${e instanceof Error ? e.message : e}`);
+  }
+  try {
+    const r = await enviarResumo({ dia });
+    if (r.mensagem && r.enviado) avisos.push(r.mensagem);
+  } catch (e) {
+    avisos.push(`Resumo: ${e instanceof Error ? e.message : e}`);
+  }
+  return avisos.length ? " " + avisos.join(" ") : "";
+}
 
 /**
  * Roda (ou continua) a coleta de hoje.
@@ -384,8 +466,8 @@ export async function executarColeta(opcoes: { forcar?: boolean; limiteMs?: numb
     limiteVelha,
   ]);
 
-  let coleta = await um<{ id: string; execucao_id: string | null; dia: string }>(
-    "SELECT id, execucao_id, dia FROM coletas WHERE status = 'rodando' ORDER BY inicio DESC LIMIT 1",
+  let coleta = await um<{ id: string; execucao_id: string | null; dia: string; extras: string | null }>(
+    "SELECT id, execucao_id, dia, extras FROM coletas WHERE status = 'rodando' ORDER BY inicio DESC LIMIT 1",
   );
 
   if (!coleta) {
@@ -394,7 +476,12 @@ export async function executarColeta(opcoes: { forcar?: boolean; limiteMs?: numb
       // Já coletou hoje: só aproveita o tempo para terminar análises pendentes.
       const analisados = await analisarPendentes(hoje, prazo, cfg.iaMaxPorDia);
       if (analisados) await atualizarProdutos(hoje);
-      return { status: "pulada", mensagem: `A coleta de hoje já foi feita.${analisados ? ` ${analisados} análises novas.` : ""}`, analisados };
+      const extra = await posColeta(hoje, prazo, []);
+      return {
+        status: "pulada",
+        mensagem: `A coleta de hoje já foi feita.${analisados ? ` ${analisados} análises novas.` : ""}${extra}`,
+        analisados,
+      };
     }
     if (!temApify() && !temMeta()) {
       return {
@@ -403,17 +490,19 @@ export async function executarColeta(opcoes: { forcar?: boolean; limiteMs?: numb
       };
     }
     const id = randomUUID();
-    const buscas = montarBuscas(cfg);
+    // Além das palavras-chave, confere no seu país os produtos que estão fortes lá fora.
+    const extras = await produtosParaConferir(hoje).catch(() => []);
+    const buscas = montarBuscas(cfg, extras);
     if (buscas.length === 0) return { status: "erro", mensagem: "Cadastre pelo menos uma palavra-chave em Configurações." };
 
     if (temApify()) {
       try {
         const execucao = await iniciarApify(buscas, cfg.limitePorBusca);
         await executar(
-          "INSERT INTO coletas (id, dia, inicio, status, fonte, execucao_id, mensagem) VALUES (?, ?, ?, 'rodando', 'apify', ?, ?)",
-          [id, hoje, new Date().toISOString(), execucao, `${buscas.length} buscas enviadas ao Apify`],
+          "INSERT INTO coletas (id, dia, inicio, status, fonte, execucao_id, mensagem, extras) VALUES (?, ?, ?, 'rodando', 'apify', ?, ?, ?)",
+          [id, hoje, new Date().toISOString(), execucao, `${buscas.length} buscas enviadas ao Apify`, JSON.stringify(extras)],
         );
-        coleta = { id, execucao_id: execucao, dia: hoje };
+        coleta = { id, execucao_id: execucao, dia: hoje, extras: JSON.stringify(extras) };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         await executar("INSERT INTO coletas (id, dia, inicio, fim, status, fonte, mensagem) VALUES (?, ?, ?, ?, 'erro', 'apify', ?)", [
@@ -432,7 +521,9 @@ export async function executarColeta(opcoes: { forcar?: boolean; limiteMs?: numb
         await recalcular(hoje);
         const analisados = await analisarPendentes(hoje, prazo, cfg.iaMaxPorDia);
         await atualizarProdutos(hoje);
-        const msg = total ? `${total} anúncios pela API do Meta` : "A API do Meta não devolveu anúncios (fora da UE ela só traz anúncios políticos).";
+        const extra = await posColeta(hoje, prazo, []);
+        const msg =
+          (total ? `${total} anúncios pela API do Meta.` : "A API do Meta não devolveu anúncios (fora da UE ela só traz anúncios políticos).") + extra;
         await terminar(id, "concluida", msg, { total, novos, analisados });
         return { status: "concluida", mensagem: msg, total, novos, analisados };
       } catch (e) {
@@ -450,15 +541,17 @@ export async function executarColeta(opcoes: { forcar?: boolean; limiteMs?: numb
       const s = await situacaoApify(atual.execucao_id!);
       if (s.status === "SUCCEEDED") {
         await executar("UPDATE coletas SET status = 'processando' WHERE id = ?", [atual.id]);
-        let lista = await resultadosApify(s, montarBuscas(cfg));
+        const extras = jsonSeguro<Extra[]>(atual.extras, []);
+        let lista = await resultadosApify(s, montarBuscas(cfg, extras));
         if (temMeta()) lista = lista.concat(await coletarMeta(cfg).catch(() => []));
         const dia = atual.dia;
         const { total, novos } = await salvarAnuncios(lista, dia);
         await recalcular(dia);
         const analisados = await analisarPendentes(dia, prazo, cfg.iaMaxPorDia);
         await atualizarProdutos(dia);
+        const extra = total ? await posColeta(dia, prazo, extras) : "";
         const msg = total
-          ? `${total} anúncios coletados (${novos} novos), ${analisados} analisados pela IA.`
+          ? `${total} anúncios coletados (${novos} novos), ${analisados} analisados pela IA.${extra}`
           : "O Apify terminou mas não trouxe anúncios. Teste outras palavras-chave ou outro robô (APIFY_ACTOR).";
         await terminar(atual.id, "concluida", msg, { total, novos, analisados });
         return { status: "concluida", mensagem: msg, total, novos, analisados };

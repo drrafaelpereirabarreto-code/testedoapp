@@ -147,3 +147,33 @@ export function BotaoAnalisar({ id, refazer = false }: { id: string; refazer?: b
     </div>
   );
 }
+
+/** "Criar roteiro completo" para uma das 3 ideias da IA. */
+export function BotaoRoteiro({ id, ideia }: { id: string; ideia: number }) {
+  const router = useRouter();
+  const [rodando, setRodando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  async function criar() {
+    setRodando(true);
+    setErro(null);
+    const r = await fetch("/api/roteiro", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ideia }),
+    }).catch(() => null);
+    const j = (await r?.json().catch(() => ({}))) as { ok?: boolean; erro?: string } | undefined;
+    setRodando(false);
+    if (j?.ok) {
+      router.refresh();
+      setTimeout(() => document.getElementById("roteiros")?.scrollIntoView({ behavior: "smooth" }), 400);
+    } else setErro(j?.erro ?? "Não deu certo. Tente de novo.");
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <button type="button" onClick={criar} disabled={rodando} className="botao-sec text-xs">
+        {rodando ? "Escrevendo… (até 1 minuto)" : "🎬 Criar roteiro completo"}
+      </button>
+      {erro && <p className="text-xs text-ruim">{erro}</p>}
+    </div>
+  );
+}

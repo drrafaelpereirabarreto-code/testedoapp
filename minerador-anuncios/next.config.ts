@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pg"],
   images: { unoptimized: true },
   poweredByHeader: false,
+  // Não leva para o servidor os dados locais nem os testes.
+  outputFileTracingExcludes: { "*": ["dados/**", "tests/**", "scripts/**", "README.md"] },
 };
 
 export default nextConfig;

@@ -10,15 +10,47 @@ export interface Configuracao {
   anunciantes: string[]; // IDs de páginas do Facebook para acompanhar sempre
   limitePorBusca: number;
   iaMaxPorDia: number;
+  /** País onde você vende (página "Oportunidades"). */
+  paisAlvo: string;
+  /** Quantos produtos fortes lá fora o robô confere todo dia no seu país (busca pelo nome do produto). */
+  verificarOportunidades: number;
+  /** Guardar cópia dos criativos: quantos por dia e a partir de qual pontuação. */
+  guardarMidiaPorDia: number;
+  guardarMidiaPontuacao: number;
+  guardarVideos: boolean;
+  /** Resumo diário. */
+  resumoAtivo: boolean;
+  resumoQuantidade: number;
+  telegramChatId: string;
+  ultimoResumo: string;
 }
 
 export const PADRAO: Configuracao = {
-  palavrasChave: ["frete grátis", "últimas unidades", "compre agora", "ebook", "curso"],
+  // "BR: ..." busca só no Brasil; "US: ..." só nos EUA; sem prefixo, em todos os países marcados.
+  palavrasChave: [
+    "BR: frete grátis",
+    "BR: últimas unidades",
+    "BR: compre agora",
+    "BR: ebook",
+    "BR: curso",
+    "US: free shipping",
+    "US: limited stock",
+    "US: shop now",
+  ],
   paises: ["BR", "US"],
   idioma: "",
   anunciantes: [],
   limitePorBusca: Number(process.env.APIFY_LIMITE_POR_BUSCA) || 50,
   iaMaxPorDia: Number(process.env.IA_MAX_POR_DIA) || 30,
+  paisAlvo: "BR",
+  verificarOportunidades: 5,
+  guardarMidiaPorDia: 40,
+  guardarMidiaPontuacao: 55,
+  guardarVideos: true,
+  resumoAtivo: true,
+  resumoQuantidade: 10,
+  telegramChatId: "",
+  ultimoResumo: "",
 };
 
 export const PAISES: Record<string, string> = {
@@ -82,4 +114,11 @@ export function lerLista(texto: string): string[] {
         .filter(Boolean),
     ),
   );
+}
+
+/** Separa "US: free shipping" em país "US" e termo "free shipping". Sem prefixo, país = null (todos). */
+export function lerPalavraChave(linha: string): { pais: string | null; termo: string } {
+  const m = /^([A-Za-z]{2})\s*:\s*(.+)$/.exec(linha.trim());
+  if (m && m[1].toUpperCase() in PAISES) return { pais: m[1].toUpperCase(), termo: m[2].trim() };
+  return { pais: null, termo: linha.trim() };
 }

@@ -58,6 +58,13 @@ export default async function Hoje({ searchParams }: { searchParams: Promise<Rec
       )}
 
       <Filtros valores={filtros} paises={paises} />
+      {total > 0 && (
+        <div className="-mt-2 flex justify-end">
+          <a href={`/api/exportar?tipo=anuncios&${new URLSearchParams(Object.entries(await searchParams).filter(([, v]) => typeof v === "string") as string[][])}`} className="text-sm text-destaque-forte underline">
+            ⬇ Baixar estes anúncios em planilha
+          </a>
+        </div>
+      )}
 
       <GradeAnuncios
         itens={itens}

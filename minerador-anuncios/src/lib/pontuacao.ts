@@ -90,3 +90,85 @@ export function tendencia(hoje: number, antes: number | null): number {
   if (antes === null) return 0;
   return Math.round(((hoje - antes) / Math.max(1, antes)) * 1000) / 1000;
 }
+
+// ---------------------------------------------------------------------------
+// Termômetro de saturação: em que fase o produto está.
+// ---------------------------------------------------------------------------
+
+export type Fase = "comecando" | "escalando" | "saturado" | "queda" | "estavel";
+
+export const FASES: Record<Fase, { rotulo: string; dica: string }> = {
+  comecando: { rotulo: "🌱 Começando", dica: "Poucos anunciantes e anúncios recentes: bom momento para testar." },
+  escalando: { rotulo: "🚀 Escalando", dica: "Cada vez mais anúncios no ar: o produto está vendendo." },
+  saturado: { rotulo: "🧱 Saturado", dica: "Muita gente vendendo: só entre com um ângulo ou oferta bem diferente." },
+  queda: { rotulo: "📉 Em queda", dica: "Os anúncios estão saindo do ar." },
+  estavel: { rotulo: "➖ Estável", dica: "Sem grandes mudanças nos últimos dias." },
+};
+
+export interface SinaisProduto {
+  anunciantes: number;
+  /** Anunciantes ~7 dias atrás (null = ainda sem histórico). */
+  anunciantesAntes: number | null;
+  anunciosAtivos: number;
+  /** Variação dos anúncios ativos em ~7 dias (0.5 = +50%). */
+  tendencia: number;
+  /** Dias no ar do anúncio mais antigo do produto. */
+  diasMax: number;
+}
+
+export const LIMITES_FASE = { saturadoAnunciantes: 10, saturadoRapido: 6, comecandoAnunciantes: 2, comecandoDias: 30 };
+
+export function faseProduto(s: SinaisProduto): { fase: Fase; motivo: string } {
+  const L = LIMITES_FASE;
+  const crescAnunciantes =
+    s.anunciantesAntes !== null && s.anunciantesAntes > 0 ? (s.anunciantes - s.anunciantesAntes) / s.anunciantesAntes : 0;
+  if (s.anunciantes >= L.saturadoAnunciantes) {
+    return { fase: "saturado", motivo: `${s.anunciantes} anunciantes vendendo o mesmo produto` };
+  }
+  if (s.anunciantes >= L.saturadoRapido && crescAnunciantes >= 0.5) {
+    return {
+      fase: "saturado",
+      motivo: `Anunciantes subiram de ${s.anunciantesAntes} para ${s.anunciantes} em uma semana (a concorrência está chegando rápido)`,
+    };
+  }
+  if (s.anunciantes <= L.comecandoAnunciantes && s.diasMax <= L.comecandoDias) {
+    return {
+      fase: "comecando",
+      motivo: `Só ${s.anunciantes} anunciante${s.anunciantes === 1 ? "" : "s"} e o anúncio mais antigo tem ${s.diasMax} dias`,
+    };
+  }
+  if (s.tendencia >= 0.2) {
+    return { fase: "escalando", motivo: `Anúncios ativos subiram ${Math.round(s.tendencia * 100)}% em ~7 dias` };
+  }
+  if (s.tendencia <= -0.3) {
+    return { fase: "queda", motivo: `Anúncios ativos caíram ${Math.round(-s.tendencia * 100)}% em ~7 dias` };
+  }
+  if (s.anunciosAtivos >= 10) {
+    return { fase: "escalando", motivo: `${s.anunciosAtivos} anúncios ativos ao mesmo tempo` };
+  }
+  return { fase: "estavel", motivo: "Sem grandes mudanças nos últimos dias" };
+}
+
+// ---------------------------------------------------------------------------
+// Oportunidade: forte lá fora, pouca ou nenhuma concorrência no seu país.
+// ---------------------------------------------------------------------------
+
+export interface SinaisOportunidade {
+  foraAnuncios: number;
+  foraAnunciantes: number;
+  pontuacaoMax: number;
+  tendencia: number;
+  alvoAnunciantes: number;
+}
+
+/** Nota de 0 a 100. Zero quando já há concorrência demais no país-alvo. */
+export function notaOportunidade(s: SinaisOportunidade): number {
+  if (s.foraAnuncios <= 0 || s.alvoAnunciantes > 2) return 0;
+  const forca =
+    0.5 * Math.min(100, s.pontuacaoMax) +
+    25 * Math.min(1, Math.log(1 + s.foraAnuncios) / Math.log(31)) +
+    15 * Math.min(1, s.foraAnunciantes / 5) +
+    10 * Math.max(0, Math.min(1, s.tendencia));
+  const concorrencia = s.alvoAnunciantes === 0 ? 1 : s.alvoAnunciantes === 1 ? 0.75 : 0.5;
+  return Math.round(forca * concorrencia);
+}

@@ -9,7 +9,15 @@ descobre **quais produtos e ofertas estão escalando** e mostra tudo num painel 
 - **Por mês**: arquivo com os campeões de cada mês.
 - **Detalhe do anúncio**: imagem ou vídeo, texto completo com botão **Copiar texto**, link da página de destino e da
   Biblioteca, gráficos de evolução, análise da IA (promessa, gancho, oferta, chamada) e **3 ideias de anúncio original**.
-- **Favoritos**: salve anúncios e escreva anotações.
+- **🌎 Oportunidades**: produtos fortes lá fora (EUA, Europa…) com pouca ou nenhuma concorrência no Brasil. Todo dia o
+  robô confere no Brasil, pelo nome, os mais promissores.
+- **Termômetro de saturação**: cada produto ganha um selo — 🌱 Começando, 🚀 Escalando, 🧱 Saturado, 📉 Em queda ou ➖ Estável.
+- **💾 Criativos guardados**: as imagens e vídeos dos anúncios fortes e dos favoritos ficam salvos (os links do Facebook expiram).
+- **📲 Resumo diário** no Telegram e/ou por e-mail depois de cada coleta.
+- **🪝 Biblioteca de ganchos**: as primeiras frases dos vencedores, por nicho, com botão de copiar.
+- **🎬 Roteiro completo**: de uma das 3 ideias da IA para roteiro em cenas, legenda, títulos e pedido de imagem para o Canva.
+- **Favoritos**: salve anúncios e escreva anotações. **Duas pessoas** podem usar, cada uma com login e favoritos próprios.
+- **⬇ Planilha**: baixe anúncios, produtos e oportunidades para abrir no Excel.
 - **Filtros**: país, categoria, plataforma, mínimo de dias no ar, mínimo de anúncios ativos e palavra-chave.
 
 ---
@@ -32,6 +40,26 @@ O histórico de cada dia fica guardado no banco, por isso os gráficos e o "cres
 
 > Atenção: o sistema só enxerga os anúncios que a coleta trouxe. Com 50 anúncios por busca, um anunciante com 300
 > anúncios aparece com menos. Para acompanhar um anunciante inteiro, cadastre a página dele em Configurações.
+
+### Termômetro de saturação
+
+| Selo | Quando aparece |
+|---|---|
+| 🌱 Começando | até 2 anunciantes e o anúncio mais antigo com até 30 dias — bom momento para testar |
+| 🚀 Escalando | anúncios ativos subiram 20%+ em ~7 dias, ou 10+ anúncios ativos ao mesmo tempo |
+| 🧱 Saturado | 10+ anunciantes, ou 6+ anunciantes e +50% de anunciantes numa semana |
+| 📉 Em queda | anúncios ativos caíram 30%+ em ~7 dias |
+| ➖ Estável | nenhum dos casos acima |
+
+### Oportunidades (nota de 0 a 100)
+
+Soma a força do produto lá fora (pontuação, anúncios, anunciantes e crescimento) e desconta a concorrência no país onde
+você vende: 0 anunciantes aqui = nota cheia; 1 = 75%; 2 = 50%; 3 ou mais = não é oportunidade. "0 anunciantes" quer dizer
+que **a coleta não encontrou** ninguém; por isso o robô procura no Brasil, pelo nome, as melhores oportunidades todo dia
+(configurável em Configurações) e a página tem o botão "Procurar no Brasil" para você conferir.
+
+Para aparecerem oportunidades, a coleta precisa trazer anúncios de outro país: as palavras-chave aceitam o país na frente
+(`US: free shipping` busca só nos EUA; `BR: frete grátis` só no Brasil).
 
 ---
 
@@ -105,6 +133,25 @@ clique em **Atualizar**. A primeira coleta leva de 1 a 5 minutos.
 
 O botão **Atualizar** no topo do site faz a coleta na hora, quando você quiser.
 
+### Passo 5b — Duas pessoas (você e sua esposa)
+
+No `.env`, troque `SENHA_ACESSO` por `USUARIOS=rafael:senha-do-rafael,esposa:senha-dela`. Na tela de entrada aparece
+"Quem é você?". Cada um tem os seus favoritos e anotações, e em **Favoritos → De todos** vocês veem o que o outro salvou.
+
+### Passo 5c — Resumo diário no celular (grátis)
+
+- **Telegram**: no Telegram, fale com **@BotFather**, mande `/newbot` e siga as perguntas. Coloque o token em
+  `TELEGRAM_BOT_TOKEN`. Abra o seu robô, mande um "oi" e clique em **Configurações → Conectar meu Telegram**.
+- **E-mail**: crie conta grátis em <https://resend.com>, crie uma chave e coloque `RESEND_API_KEY` e `RESUMO_EMAIL`
+  (o e-mail da sua conta no Resend; para mandar para outros e-mails é preciso verificar um domínio lá).
+- Coloque `SITE_URL` (o endereço do seu site) para os links do resumo abrirem o painel.
+
+### Passo 5d — Guardar criativos
+
+No seu computador ou servidor, as cópias vão para `dados/midia/` sozinhas. Na Vercel, abra o projeto → **Storage →
+Create → Blob** e ligue ao projeto (a Vercel cria `BLOB_READ_WRITE_TOKEN` sozinha). O plano grátis tem espaço limitado:
+em Configurações você escolhe quantos guardar por dia e se guarda vídeos.
+
 ---
 
 ## Passo 6 — Colocar no ar (para acessar do celular, de qualquer lugar)
@@ -158,6 +205,10 @@ Com a configuração padrão: 5 palavras-chave × 2 países × até 50 anúncios
 | Vercel Hobby | grátis | US$ 0 |
 | Supabase / Neon (plano grátis) | grátis até 500 MB | US$ 0 |
 | API oficial do Meta (opcional) | grátis | US$ 0 |
+| Conferir oportunidades no Brasil | 5 buscas a mais por dia no Apify | ~US$ 5 (no máximo) |
+| Roteiro completo (Opus 5.5) | por clique | ~US$ 0,05 a 0,10 cada |
+| Telegram / Resend (resumo) | grátis | US$ 0 |
+| Vercel Blob (criativos) | grátis até o limite do plano Hobby | US$ 0 no começo |
 
 **Total**: de **~US$ 1** (Apify grátis + Haiku) a **~US$ 45** (padrão com Opus). O site mostra em Configurações o
 máximo de anúncios por dia e o custo do Apify com os seus números. Para gastar menos com a IA:

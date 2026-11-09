@@ -100,11 +100,53 @@ export const SCHEMA: string[] = [
     erro TEXT
   )`,
 
-  `CREATE TABLE IF NOT EXISTS favoritos (
-    anuncio_id TEXT PRIMARY KEY,
+  // Favoritos de cada pessoa (uso a dois: cada um tem os seus).
+  `CREATE TABLE IF NOT EXISTS favoritos_usuarios (
+    usuario TEXT NOT NULL,
+    anuncio_id TEXT NOT NULL,
     nota TEXT,
     criado_em TEXT,
-    atualizado_em TEXT
+    atualizado_em TEXT,
+    PRIMARY KEY (usuario, anuncio_id)
+  )`,
+
+  // Em quais países cada anúncio apareceu (o mesmo anúncio pode rodar no Brasil e nos EUA).
+  `CREATE TABLE IF NOT EXISTS anuncio_paises (
+    anuncio_id TEXT NOT NULL,
+    pais TEXT NOT NULL,
+    ultima_vez TEXT NOT NULL,
+    PRIMARY KEY (anuncio_id, pais)
+  )`,
+  `CREATE INDEX IF NOT EXISTS anuncio_paises_dia ON anuncio_paises (ultima_vez, pais)`,
+
+  // Produto por país e por dia (base da página "Oportunidades").
+  `CREATE TABLE IF NOT EXISTS produto_pais (
+    produto_id TEXT NOT NULL,
+    pais TEXT NOT NULL,
+    dia TEXT NOT NULL,
+    anuncios_ativos INTEGER NOT NULL DEFAULT 0,
+    anunciantes INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (produto_id, pais, dia)
+  )`,
+
+  // Roteiros completos criados pela IA a partir de uma ideia.
+  `CREATE TABLE IF NOT EXISTS roteiros (
+    id TEXT PRIMARY KEY,
+    anuncio_id TEXT NOT NULL,
+    ideia INTEGER NOT NULL,
+    usuario TEXT,
+    conteudo TEXT NOT NULL,
+    modelo TEXT,
+    criado_em TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS roteiros_anuncio ON roteiros (anuncio_id)`,
+
+  // Quando cada produto foi conferido no seu país (busca pelo nome do produto na Biblioteca).
+  `CREATE TABLE IF NOT EXISTS verificacoes (
+    produto_id TEXT NOT NULL,
+    pais TEXT NOT NULL,
+    dia TEXT NOT NULL,
+    PRIMARY KEY (produto_id, pais)
   )`,
 
   `CREATE TABLE IF NOT EXISTS coletas (
@@ -125,4 +167,15 @@ export const SCHEMA: string[] = [
     chave TEXT PRIMARY KEY,
     valor TEXT
   )`,
+];
+
+// Colunas novas em tabelas que já existem. Cada comando roda uma vez; se a coluna já existe, o erro é ignorado.
+export const MIGRACOES: string[] = [
+  `ALTER TABLE anuncios ADD COLUMN imagem_salva TEXT`,
+  `ALTER TABLE anuncios ADD COLUMN video_salvo TEXT`,
+  `ALTER TABLE anuncios ADD COLUMN midia_tentativa TEXT`,
+  `ALTER TABLE produtos ADD COLUMN fase TEXT`,
+  `ALTER TABLE produtos ADD COLUMN fase_motivo TEXT`,
+  `ALTER TABLE produtos ADD COLUMN anunciantes_antes INTEGER`,
+  `ALTER TABLE coletas ADD COLUMN extras TEXT`,
 ];

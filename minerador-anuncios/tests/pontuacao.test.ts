@@ -50,3 +50,35 @@ test("tendência", () => {
   assert.equal(tendencia(5, 10), -0.5);
   assert.equal(tendencia(5, null), 0);
 });
+
+import { faseProduto, notaOportunidade } from "../src/lib/pontuacao";
+
+const p0 = { anunciantes: 1, anunciantesAntes: null, anunciosAtivos: 3, tendencia: 0, diasMax: 10 };
+
+test("fase: poucos anunciantes e anúncios recentes = começando", () => {
+  assert.equal(faseProduto(p0).fase, "comecando");
+});
+
+test("fase: muitos anunciantes = saturado", () => {
+  assert.equal(faseProduto({ ...p0, anunciantes: 12, diasMax: 90 }).fase, "saturado");
+});
+
+test("fase: concorrência chegando rápido = saturado", () => {
+  assert.equal(faseProduto({ ...p0, anunciantes: 7, anunciantesAntes: 4, diasMax: 60 }).fase, "saturado");
+  assert.equal(faseProduto({ ...p0, anunciantes: 7, anunciantesAntes: 6, diasMax: 60 }).fase, "estavel");
+});
+
+test("fase: crescendo = escalando; caindo = em queda", () => {
+  assert.equal(faseProduto({ ...p0, anunciantes: 4, diasMax: 60, tendencia: 0.5 }).fase, "escalando");
+  assert.equal(faseProduto({ ...p0, anunciantes: 4, diasMax: 60, tendencia: -0.5 }).fase, "queda");
+});
+
+test("oportunidade: sem concorrência no Brasil vale mais; com 3+ anunciantes não é oportunidade", () => {
+  const base = { foraAnuncios: 20, foraAnunciantes: 4, pontuacaoMax: 80, tendencia: 0.5 };
+  const zero = notaOportunidade({ ...base, alvoAnunciantes: 0 });
+  const um = notaOportunidade({ ...base, alvoAnunciantes: 1 });
+  assert.ok(zero > um && um > 0);
+  assert.ok(zero <= 100);
+  assert.equal(notaOportunidade({ ...base, alvoAnunciantes: 3 }), 0);
+  assert.equal(notaOportunidade({ ...base, foraAnuncios: 0, alvoAnunciantes: 0 }), 0);
+});

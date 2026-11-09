@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BotaoAnalisar, BotaoCopiar, Favorito } from "@/components/Botoes";
+import { BotaoAnalisar, BotaoCopiar, BotaoRoteiro, Favorito } from "@/components/Botoes";
 import { GradeAnuncios } from "@/components/CartaoAnuncio";
 import Grafico from "@/components/Grafico";
 import Midia from "@/components/Midia";
 import { PLATAFORMAS, corPontuacao } from "@/components/rotulos";
-import { anuncioCompleto } from "@/lib/consultas";
+import { anuncioCompleto, roteirosDoAnuncio, type RoteiroSalvo } from "@/lib/consultas";
+import { nomeBonito } from "@/lib/usuario";
+import { variosUsuarios } from "@/lib/sessao";
 import { PESOS } from "@/lib/pontuacao";
 import { temIA } from "@/lib/ia";
 import { formatarData } from "@/lib/util";
@@ -29,6 +31,10 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
   const dados = await anuncioCompleto(id);
   if (!dados) notFound();
   const { anuncio: a, historico, doAnunciante, irmaos } = dados;
+  const roteiros = await roteirosDoAnuncio(id);
+  // Cópia guardada vence o link do Facebook (que expira).
+  const imagemSalva = s(a.imagem_salva);
+  const videoSalvo = s(a.video_salvo);
 
   const texto = s(a.texto);
   const titulo = s(a.titulo);
@@ -51,9 +57,9 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
         {/* Criativo */}
         <div className="flex flex-col gap-3">
           <Midia
-            imagem={s(a.imagem_url)}
-            video={s(a.video_url)}
-            capa={s(a.video_capa)}
+            imagem={imagemSalva ?? s(a.imagem_url)}
+            video={videoSalvo ?? s(a.video_url)}
+            capa={imagemSalva ?? s(a.video_capa)}
             alt={`Criativo do anúncio de ${s(a.pagina_nome) ?? "anunciante"}`}
             biblioteca={s(a.biblioteca_url) ?? undefined}
             tocarVideo
@@ -68,12 +74,15 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
                 ↗ Página de destino
               </a>
             )}
-            {s(a.video_url) && (
-              <a href={s(a.video_url)!} target="_blank" rel="noreferrer" download className="botao-sec">
+            {(videoSalvo ?? s(a.video_url)) && (
+              <a href={(videoSalvo ?? s(a.video_url))!} target="_blank" rel="noreferrer" download className="botao-sec">
                 ⬇ Baixar vídeo
               </a>
             )}
           </div>
+          {(imagemSalva || videoSalvo) && (
+            <p className="text-xs text-bom">💾 Criativo guardado: não some quando o link do Facebook expirar.</p>
+          )}
         </div>
 
         {/* Dados */}
@@ -211,6 +220,11 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
                     </p>
                     <p className="texto-anuncio text-texto-2">{i.roteiro}</p>
                     <p className="text-xs text-texto-3">🎬 {i.visual}</p>
+                    {temIA() && (
+                      <div className="mt-auto pt-1">
+                        <BotaoRoteiro id={id} ideia={n} />
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -225,6 +239,17 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
           </div>
         )}
       </section>
+
+      {roteiros.length > 0 && (
+        <section id="roteiros" className="flex flex-col gap-3" aria-labelledby="titulo-roteiros">
+          <h2 id="titulo-roteiros" className="text-lg font-bold">
+            🎬 Seus roteiros
+          </h2>
+          {roteiros.map((r) => (
+            <CartaoRoteiro key={r.id} r={r} varios={variosUsuarios()} />
+          ))}
+        </section>
+      )}
 
       {/* Evolução */}
       <section className="flex flex-col gap-3" aria-labelledby="evolucao">
@@ -255,5 +280,97 @@ export default async function Anuncio({ params }: { params: Promise<{ id: string
         </section>
       )}
     </div>
+  );
+}
+
+function textoRoteiro(c: RoteiroSalvo["conteudo"]): string {
+  return [
+    c.titulo,
+    c.formato,
+    "",
+    "ROTEIRO",
+    ...c.cenas.map((x) => `[${x.tempo}] ${x.imagem}\nFala: ${x.fala}${x.texto_na_tela ? `\nNa tela: ${x.texto_na_tela}` : ""}`),
+    "",
+    "LEGENDA",
+    c.legenda,
+    "",
+    "TÍTULOS",
+    ...c.titulos.map((t) => `- ${t}`),
+    "",
+    `CHAMADA: ${c.chamada}`,
+    "",
+    "PEDIDO DE IMAGEM",
+    c.pedido_imagem,
+  ].join("\n");
+}
+
+function CartaoRoteiro({ r, varios }: { r: RoteiroSalvo; varios: boolean }) {
+  const c = r.conteudo;
+  return (
+    <article className="flex flex-col gap-4 rounded-2xl border border-borda bg-painel p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="font-bold">{c.titulo}</h3>
+          <p className="text-xs text-texto-3">
+            Ideia {r.ideia + 1} · {c.formato} · {new Date(r.criado_em).toLocaleString("pt-BR")}
+            {varios && r.usuario ? ` · por ${nomeBonito(r.usuario)}` : ""}
+          </p>
+        </div>
+        <BotaoCopiar texto={textoRoteiro(c)} rotulo="Copiar roteiro" />
+      </div>
+      <ol className="flex flex-col gap-2">
+        {c.cenas.map((x, i) => (
+          <li key={i} className="grid gap-1 rounded-xl bg-painel-2 p-3 text-sm sm:grid-cols-[4.5rem_1fr]">
+            <span className="font-bold tabular-nums text-destaque-forte">{x.tempo}</span>
+            <div className="flex flex-col gap-1">
+              <p className="text-texto-2">🎥 {x.imagem}</p>
+              <p>🗣️ {x.fala}</p>
+              {x.texto_na_tela && <p className="text-texto-2">🔤 Na tela: {x.texto_na_tela}</p>}
+            </div>
+          </li>
+        ))}
+      </ol>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl bg-painel-2 p-3 text-sm">
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <h4 className="font-semibold">Legenda do anúncio</h4>
+            <BotaoCopiar texto={c.legenda} rotulo="Copiar" />
+          </div>
+          <p className="texto-anuncio text-texto-2">{c.legenda}</p>
+          <p className="mt-2 text-xs text-texto-3">Botão: {c.chamada}</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <div className="rounded-xl bg-painel-2 p-3 text-sm">
+            <h4 className="mb-1 font-semibold">Títulos</h4>
+            <ul className="list-disc pl-5 text-texto-2">
+              {c.titulos.map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl bg-painel-2 p-3 text-sm">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <h4 className="font-semibold">Pedido de imagem (Canva / IA)</h4>
+              <BotaoCopiar texto={c.pedido_imagem} rotulo="Copiar" />
+            </div>
+            <p className="text-texto-2">{c.pedido_imagem}</p>
+          </div>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="text-sm">
+          <h4 className="mb-1 font-semibold">Dicas para gravar</h4>
+          <ul className="list-disc pl-5 text-texto-2">
+            {c.dicas_gravacao.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-alerta/40 bg-alerta/10 p-3 text-sm text-alerta">
+          <h4 className="mb-1 font-semibold">⚠️ Cuidados com as regras do Meta</h4>
+          <p>{c.cuidados}</p>
+        </div>
+      </div>
+    </article>
   );
 }

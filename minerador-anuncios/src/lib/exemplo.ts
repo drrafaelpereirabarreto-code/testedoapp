@@ -2,7 +2,7 @@
 // São anúncios inventados (anunciantes "Loja Exemplo"), marcados com fonte = 'exemplo'
 // e com um aviso amarelo no topo do site. Apague em Configurações ou com "npm run exemplo:apagar".
 
-import { emLote, executar, todos } from "./db";
+import { emLote, executar, todos, um } from "./db";
 import { atualizarProdutos, recalcular, salvarAnuncios } from "./coleta";
 import { normalizarApify } from "./normalizar";
 import { hojeISO, slug, somarDias } from "./util";
@@ -15,6 +15,8 @@ interface ProdutoEx {
   gancho: string;
   oferta: string;
   textos: string[];
+  /** País de cada anunciante de exemplo (ex.: ["US","US","BR"]). Padrão: 1 a 3 anunciantes no Brasil. */
+  anunciantes?: Array<"BR" | "US">;
 }
 
 const PRODUTOS: ProdutoEx[] = [
@@ -88,6 +90,44 @@ const PRODUTOS: ProdutoEx[] = [
     textos: [
       "Parece fone de R$ 1.500, custa uma fração disso. 🎧 Bateria de 30 horas e cancelamento de ruído.\n\n60% OFF só hoje",
     ],
+    anunciantes: ["BR", "BR", "BR", "BR", "BR", "BR", "BR", "BR", "BR", "BR", "BR", "US"],
+  },
+  {
+    nome: "Escova removedora de pelos de pets",
+    categoria: "pets",
+    cor: "#2a78d6",
+    promessa: "Tirar os pelos do sofá e da roupa em segundos, sem refil",
+    gancho: "Your couch is covered in pet hair?",
+    oferta: "Buy 2, get 1 free",
+    textos: [
+      "Your couch is covered in pet hair? 🐶 One swipe and it's gone. No refills, no batteries.\n\nBuy 2, get 1 FREE",
+      "The pet hair remover everyone is talking about. Free shipping today only.",
+    ],
+    anunciantes: ["US", "US", "US", "US"],
+  },
+  {
+    nome: "Luminária de pôr do sol",
+    categoria: "casa",
+    cor: "#eb6834",
+    promessa: "Deixar o quarto aconchegante e bonito para fotos",
+    gancho: "This $20 lamp changed my room",
+    oferta: "50% off + free shipping",
+    textos: [
+      "This $20 lamp changed my room 🌅 Sunset vibes every night.\n\n50% OFF + free shipping",
+    ],
+    anunciantes: ["US", "US", "US", "BR"],
+  },
+  {
+    nome: "Garrafa de água com marcador de horário",
+    categoria: "fitness",
+    cor: "#1baf7a",
+    promessa: "Beber a quantidade certa de água no dia sem precisar lembrar",
+    gancho: "I never drank enough water until this",
+    oferta: "Limited stock, 40% off",
+    textos: [
+      "I never drank enough water until this bottle 💧 Time markers keep you on track all day.\n\nLimited stock — 40% OFF",
+    ],
+    anunciantes: ["US", "US"],
   },
   {
     nome: "Kit de massinha educativa",
@@ -125,6 +165,7 @@ export async function carregarExemplos(dias = 14): Promise<number> {
   interface Anunciante {
     pagina: string;
     nome: string;
+    pais: "BR" | "US";
     produto: ProdutoEx;
     inicio: number; // quantos dias atrás começou
     base: number; // anúncios ativos no início
@@ -133,12 +174,13 @@ export async function carregarExemplos(dias = 14): Promise<number> {
   const anunciantes: Anunciante[] = [];
   let n = 0;
   for (const p of PRODUTOS) {
-    const qtd = 1 + Math.floor(r() * 3);
-    for (let i = 0; i < qtd; i++) {
+    const lista = p.anunciantes ?? Array.from({ length: 1 + Math.floor(r() * 3) }, () => "BR" as const);
+    for (const pais of lista) {
       n++;
       anunciantes.push({
         pagina: String(900000000000 + n),
-        nome: `Loja Exemplo ${String.fromCharCode(64 + n)}`,
+        nome: pais === "US" ? `Example Store ${n}` : `Loja Exemplo ${n}`,
+        pais,
         produto: p,
         inicio: 10 + Math.floor(r() * 80),
         base: 1 + Math.floor(r() * 4),
@@ -150,7 +192,7 @@ export async function carregarExemplos(dias = 14): Promise<number> {
   let total = 0;
   for (let d = dias - 1; d >= 0; d--) {
     const dia = somarDias(hoje, -d);
-    const itens: unknown[] = [];
+    const itens: Array<{ item: unknown; pais: string }> = [];
     for (const a of anunciantes) {
       const ativos = Math.max(1, Math.round(a.base + a.crescimento * (dias - 1 - d)));
       const pr = a.produto;
@@ -160,7 +202,7 @@ export async function carregarExemplos(dias = 14): Promise<number> {
         const inicioAnuncio = somarDias(hoje, -(a.inicio - k * 3 > 1 ? a.inicio - k * 3 : 1));
         if (inicioAnuncio > dia) continue;
         const plataformas = plataformasTodas.slice(0, 1 + ((k + Number(a.pagina.slice(-1))) % 4));
-        itens.push({
+        itens.push({ pais: a.pais, item: {
           ad_archive_id: id,
           page_id: a.pagina,
           page_name: a.nome,
@@ -171,16 +213,16 @@ export async function carregarExemplos(dias = 14): Promise<number> {
           snapshot: {
             body: { text: texto },
             title: pr.nome,
-            cta_text: pr.categoria === "infoproduto" ? "Saiba mais" : "Comprar agora",
+            cta_text: a.pais === "US" ? "Shop now" : pr.categoria === "infoproduto" ? "Saiba mais" : "Comprar agora",
             link_url: `https://loja-exemplo-${a.pagina.slice(-2)}.invalid/${slug(pr.nome)}?utm_source=fb`,
             display_format: "IMAGE",
             images: [{ original_image_url: imagemSvg(pr.nome, pr.cor) }],
           },
-        });
+        } });
       }
     }
     const lista = itens
-      .map((i) => normalizarApify(i, { fonte: "exemplo", pais: "BR", palavraChave: "exemplo" }))
+      .map((i) => normalizarApify(i.item, { fonte: "exemplo", pais: i.pais, palavraChave: "exemplo" }))
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
       .map((x) => ({ ...x, criativo_chave: `ex-${x.pagina_id}-${Number(x.id.slice(-3)) % 2}` }));
     const { total: t } = await salvarAnuncios(lista, dia);
@@ -214,11 +256,39 @@ export async function carregarExemplos(dias = 14): Promise<number> {
     await emLote(comandos);
     await atualizarProdutos(dia);
   }
+  // Uma das oportunidades aparece como "já conferida no Brasil".
+  await executar(
+    "INSERT INTO verificacoes (produto_id, pais, dia) VALUES (?, 'BR', ?) ON CONFLICT (produto_id, pais) DO UPDATE SET dia = excluded.dia",
+    [slug("Escova removedora de pelos de pets"), hoje],
+  );
   await executar(
     "INSERT INTO coletas (id, dia, inicio, fim, status, fonte, total, mensagem) VALUES (?, ?, ?, ?, 'concluida', 'exemplo', ?, ?) ON CONFLICT (id) DO NOTHING",
     ["exemplo", hoje, new Date().toISOString(), new Date().toISOString(), total, "Dados de exemplo carregados"],
   );
   return total;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __mineradorDemo: Promise<void> | undefined;
+}
+
+/**
+ * Versão de demonstração (DEMO=1): se o banco estiver vazio, carrega os exemplos sozinho.
+ * Usado no link de demonstração; no uso normal não faz nada.
+ */
+export async function carregarDemoSePreciso(): Promise<void> {
+  if (process.env.DEMO !== "1") return;
+  if (!globalThis.__mineradorDemo) {
+    globalThis.__mineradorDemo = (async () => {
+      const r = await um<{ n: number }>("SELECT COUNT(*) AS n FROM anuncios");
+      if (Number(r?.n ?? 0) === 0) await carregarExemplos();
+    })().catch((e) => {
+      globalThis.__mineradorDemo = undefined;
+      throw e;
+    });
+  }
+  await globalThis.__mineradorDemo;
 }
 
 export async function apagarExemplos(): Promise<void> {
@@ -231,11 +301,14 @@ export async function apagarExemplos(): Promise<void> {
   for (const a of ads) {
     comandos.push(["DELETE FROM analises WHERE anuncio_id = ?", [a.id]]);
     comandos.push(["DELETE FROM historico_anuncio WHERE anuncio_id = ?", [a.id]]);
-    comandos.push(["DELETE FROM favoritos WHERE anuncio_id = ?", [a.id]]);
+    comandos.push(["DELETE FROM favoritos_usuarios WHERE anuncio_id = ?", [a.id]]);
+    comandos.push(["DELETE FROM anuncio_paises WHERE anuncio_id = ?", [a.id]]);
+    comandos.push(["DELETE FROM roteiros WHERE anuncio_id = ?", [a.id]]);
   }
   for (const p of paginas) comandos.push(["DELETE FROM historico_anunciante WHERE pagina_id = ?", [p]]);
   comandos.push(["DELETE FROM anuncios WHERE fonte = 'exemplo'", []]);
   comandos.push(["DELETE FROM coletas WHERE fonte = 'exemplo'", []]);
+  for (const p of produtos) comandos.push(["DELETE FROM verificacoes WHERE produto_id = ?", [p]]);
   await emLote(comandos);
   // Produtos que ficaram sem nenhum anúncio real.
   for (const p of produtos) {
@@ -243,6 +316,7 @@ export async function apagarExemplos(): Promise<void> {
     if (resta.length === 0) {
       await executar("DELETE FROM produtos WHERE id = ?", [p]);
       await executar("DELETE FROM historico_produto WHERE produto_id = ?", [p]);
+      await executar("DELETE FROM produto_pais WHERE produto_id = ?", [p]);
     }
   }
 }

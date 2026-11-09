@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { SCHEMA } from "./schema";
+import { MIGRACOES, SCHEMA } from "./schema";
 
 type Linha = Record<string, unknown>;
 type Param = string | number | null;
@@ -25,7 +25,10 @@ declare global {
 }
 
 function caminhoSqlite(): string {
-  return process.env.SQLITE_ARQUIVO || path.join(process.cwd(), "dados", "minerador.db");
+  if (process.env.SQLITE_ARQUIVO) return process.env.SQLITE_ARQUIVO;
+  // Na Vercel só a pasta /tmp aceita gravação (e é apagada de tempos em tempos): serve só para a demonstração.
+  if (process.env.VERCEL) return "/tmp/minerador.db";
+  return path.join(process.cwd(), "dados", "minerador.db");
 }
 
 async function abrirSqlite(): Promise<Motor> {
@@ -108,6 +111,13 @@ async function abrir(): Promise<Motor> {
   const motor = url && /^postgres(ql)?:\/\//.test(url) ? await abrirPostgres(url) : await abrirSqlite();
   // Cria as tabelas que faltam (seguro rodar sempre).
   for (const comando of SCHEMA) await motor.exec(comando);
+  for (const comando of MIGRACOES) {
+    try {
+      await motor.exec(comando);
+    } catch {
+      /* coluna já existe */
+    }
+  }
   return motor;
 }
 

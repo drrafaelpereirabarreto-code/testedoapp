@@ -2,7 +2,7 @@
 //  1) Apify (principal): um robô abre a Biblioteca de Anúncios e devolve os anúncios.
 //  2) API oficial do Meta (opcional): só traz dados completos de anúncios políticos fora da UE.
 
-import type { Configuracao } from "./config";
+import { lerPalavraChave, type Configuracao } from "./config";
 import { normalizarApify, normalizarMeta, type AnuncioNormalizado } from "./normalizar";
 
 const APIFY = "https://api.apify.com/v2";
@@ -13,12 +13,24 @@ export interface Busca {
   palavraChave: string | null;
 }
 
-/** Monta os links de busca da Biblioteca de Anúncios (palavra-chave x país, e anunciantes acompanhados). */
-export function montarBuscas(c: Configuracao): Busca[] {
+/**
+ * Monta os links de busca da Biblioteca de Anúncios: palavra-chave x país, anunciantes acompanhados
+ * e (opcional) termos extras, como os nomes de produtos a conferir no seu país.
+ */
+export function montarBuscas(c: Configuracao, extras: Array<{ pais: string; termo: string }> = []): Busca[] {
   const buscas: Busca[] = [];
   const paises = c.paises.length ? c.paises : ["BR"];
+  const termos = [
+    ...c.palavrasChave.map(lerPalavraChave),
+    ...extras.map((e) => ({ pais: e.pais, termo: e.termo })),
+  ];
+  const vistos = new Set<string>();
   for (const pais of paises) {
-    for (const termo of c.palavrasChave) {
+    for (const { pais: soPais, termo } of termos) {
+      if (soPais && soPais !== pais) continue;
+      const chave = `${pais}|${termo.toLowerCase()}`;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
       const exata = /^".*"$/.test(termo);
       const q = termo.replace(/^"|"$/g, "");
       const p = new URLSearchParams({
@@ -153,7 +165,9 @@ export async function coletarMeta(c: Configuracao): Promise<AnuncioNormalizado[]
     "ad_delivery_stop_time", "publisher_platforms", "languages",
   ].join(",");
   for (const pais of c.paises) {
-    for (const termo of c.palavrasChave) {
+    for (const linha of c.palavrasChave) {
+      const { pais: soPais, termo } = lerPalavraChave(linha);
+      if (soPais && soPais !== pais) continue;
       const p = new URLSearchParams({
         search_terms: termo.replace(/^"|"$/g, ""),
         ad_reached_countries: JSON.stringify([pais]),

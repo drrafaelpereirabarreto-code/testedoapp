@@ -176,3 +176,80 @@ function descreverErro(e: unknown): string {
   if (e instanceof Anthropic.APIError) return `Erro da Anthropic (${e.status ?? "?"}): ${e.message.slice(0, 200)}`;
   return e instanceof Error ? e.message : String(e);
 }
+
+// ---------------------------------------------------------------------------
+// Roteiro completo: da ideia ao anúncio pronto para gravar.
+// ---------------------------------------------------------------------------
+
+const Roteiro = z.object({
+  titulo: z.string(),
+  formato: z.string().describe("Ex.: Reels/Stories vertical 9:16, 30 segundos"),
+  cenas: z
+    .array(
+      z.object({
+        tempo: z.string().describe("Ex.: 0–3s"),
+        imagem: z.string().describe("O que aparece na tela / o que filmar"),
+        fala: z.string().describe("O que a pessoa fala (narração)"),
+        texto_na_tela: z.string().describe("Legenda grande sobreposta; vazio se não houver"),
+      }),
+    )
+    .describe("4 a 8 cenas"),
+  legenda: z.string().describe("Texto do anúncio (o que vai acima do vídeo), com quebras de linha e emojis moderados"),
+  titulos: z.array(z.string()).describe("3 títulos curtos para o anúncio"),
+  chamada: z.string().describe("Chamada para ação / texto do botão"),
+  pedido_imagem: z
+    .string()
+    .describe("Pedido detalhado para criar a imagem ou a capa num gerador de imagem ou no Canva, em português"),
+  dicas_gravacao: z.array(z.string()).describe("3 a 5 dicas práticas de gravação para um iniciante, com celular"),
+  cuidados: z.string().describe("Cuidados com as regras de anúncios do Meta para este produto (promessas, antes/depois etc.)"),
+});
+
+export type ResultadoRoteiro = z.infer<typeof Roteiro>;
+
+const SISTEMA_ROTEIRO = `Você é um roteirista de anúncios de resposta direta para Facebook e Instagram, ajudando um iniciante brasileiro.
+
+Você recebe um anúncio vencedor (só como referência de estratégia) e uma ideia de anúncio original. Escreva o anúncio completo e pronto para produzir a partir da IDEIA:
+- Roteiro em cenas com tempo, o que filmar, a fala e o texto na tela. O gancho tem de prender nos 3 primeiros segundos.
+- Texto do anúncio (legenda), 3 títulos e a chamada para ação.
+- Um pedido detalhado para criar a imagem/capa no Canva ou num gerador de imagem.
+- Dicas simples para gravar com o celular e os cuidados com as regras de anúncios do Meta.
+
+Tudo tem de ser ORIGINAL: não copie frases, nomes, marcas, imagens nem depoimentos do anúncio de referência. Não invente depoimentos, números, estudos ou resultados; não prometa cura, emagrecimento garantido ou ganho garantido. Escreva em português do Brasil, simples e direto.`;
+
+export async function criarRoteiro(
+  a: EntradaAnalise & { produto_nome: string | null },
+  ideia: { titulo: string; gancho: string; roteiro: string; visual: string },
+): Promise<{ ok: boolean; roteiro?: ResultadoRoteiro; erro?: string; modelo: string }> {
+  const modelo = modeloIA();
+  if (!temIA()) return { ok: false, erro: "Falta a ANTHROPIC_API_KEY no .env", modelo };
+  const texto = [
+    montarTexto(a, []),
+    "",
+    "<produto>",
+    a.produto_nome ?? "não identificado",
+    "</produto>",
+    "",
+    "<ideia_escolhida>",
+    `Título: ${ideia.titulo}`,
+    `Gancho: ${ideia.gancho}`,
+    `Roteiro: ${ideia.roteiro}`,
+    `Visual: ${ideia.visual}`,
+    "</ideia_escolhida>",
+  ].join("\n");
+  try {
+    const usarFallback = MODELOS_COM_FALLBACK.has(modelo);
+    const resposta = await anthropic().beta.messages.parse({
+      model: modelo,
+      max_tokens: 16000,
+      system: SISTEMA_ROTEIRO,
+      messages: [{ role: "user", content: texto }],
+      output_config: { effort: "medium", format: betaZodOutputFormat(Roteiro) },
+      ...(usarFallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
+    });
+    if (resposta.stop_reason === "refusal") return { ok: false, erro: "A IA não quis escrever este roteiro (recusa de segurança).", modelo };
+    if (resposta.stop_reason === "max_tokens" || !resposta.parsed_output) return { ok: false, erro: "A resposta da IA veio incompleta.", modelo };
+    return { ok: true, roteiro: resposta.parsed_output, modelo: resposta.model ?? modelo };
+  } catch (e) {
+    return { ok: false, erro: descreverErro(e), modelo };
+  }
+}

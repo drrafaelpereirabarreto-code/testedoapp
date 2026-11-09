@@ -1,5 +1,7 @@
 import Link from "next/link";
+import SeloFase from "@/components/Fase";
 import Midia from "@/components/Midia";
+import { FASES } from "@/lib/pontuacao";
 import { tendenciaTexto } from "@/components/rotulos";
 import { rankingProdutos } from "@/lib/consultas";
 import { CATEGORIAS } from "@/lib/ia";
@@ -11,16 +13,26 @@ export default async function Produtos({ searchParams }: { searchParams: Promise
   const categoria = sp.categoria || undefined;
   const q = sp.q?.trim() || undefined;
   const dias = Number(sp.periodo) || 7;
-  const produtos = await rankingProdutos({ categoria, q, dias });
+  const fase = sp.fase && sp.fase in FASES ? sp.fase : undefined;
+  const produtos = await rankingProdutos({ categoria, q, dias, fase });
+  const consulta = new URLSearchParams(Object.entries({ categoria, q, periodo: String(dias), fase }).filter(([, v]) => v) as string[][]);
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="text-2xl font-bold">Ranking de produtos</h1>
         <p className="text-sm text-texto-2">
           A IA junta anúncios do mesmo produto, mesmo de anunciantes diferentes. Quanto mais anúncios ativos e mais
-          anunciantes vendendo, mais o produto está sendo escalado.
+          anunciantes vendendo, mais o produto está sendo escalado. O selo mostra a fase: 🌱 começando, 🚀 escalando, 🧱
+          saturado.
         </p>
+      </div>
+      {produtos.length > 0 && (
+        <a href={`/api/exportar?tipo=produtos&${consulta}`} className="botao-sec">
+          ⬇ Baixar planilha
+        </a>
+      )}
       </div>
 
       <form method="get" className="flex flex-wrap items-end gap-3 rounded-2xl border border-borda bg-painel p-4">
@@ -35,6 +47,17 @@ export default async function Produtos({ searchParams }: { searchParams: Promise
             {CATEGORIAS.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-texto-2">
+          Fase
+          <select name="fase" defaultValue={fase ?? ""} className="campo">
+            <option value="">Todas</option>
+            {Object.entries(FASES).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.rotulo}
               </option>
             ))}
           </select>
@@ -70,7 +93,9 @@ export default async function Produtos({ searchParams }: { searchParams: Promise
                   <Midia imagem={p.imagem_url} alt={p.nome} className="h-14 w-14 shrink-0 rounded-xl" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{p.nome}</p>
-                    <p className="text-xs text-texto-3">{p.categoria ?? "—"}</p>
+                    <p className="flex flex-wrap items-center gap-2 text-xs text-texto-3">
+                      {p.categoria ?? "—"} <SeloFase fase={p.fase} motivo={p.fase_motivo} />
+                    </p>
                   </div>
                   <dl className="grid w-full shrink-0 grid-cols-4 gap-x-4 gap-y-1 text-xs sm:w-auto sm:text-right">
                     <div>

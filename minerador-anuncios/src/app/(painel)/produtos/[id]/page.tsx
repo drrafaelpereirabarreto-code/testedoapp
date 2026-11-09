@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { GradeAnuncios } from "@/components/CartaoAnuncio";
+import SeloFase from "@/components/Fase";
 import Grafico from "@/components/Grafico";
+import { PAISES } from "@/lib/config";
+import { FASES, type Fase } from "@/lib/pontuacao";
 import { tendenciaTexto } from "@/components/rotulos";
 import { produto } from "@/lib/consultas";
 import { formatarData } from "@/lib/util";
@@ -12,7 +15,7 @@ export default async function Produto({ params }: { params: Promise<{ id: string
   const { id } = await params;
   const dados = await produto(decodeURIComponent(id));
   if (!dados) notFound();
-  const { produto: p, anuncios, historico } = dados;
+  const { produto: p, anuncios, historico, paises } = dados;
   const t = tendenciaTexto(p.tendencia);
 
   return (
@@ -40,7 +43,24 @@ export default async function Produto({ params }: { params: Promise<{ id: string
           </div>
         ))}
       </dl>
-      <p className={`text-sm font-semibold ${t.classe}`}>Tendência em 7 dias: {t.texto}</p>
+      <div className="flex flex-col gap-2 rounded-2xl border border-borda bg-painel p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <SeloFase fase={p.fase} grande />
+          <span className={`text-sm font-semibold ${t.classe}`}>Tendência em 7 dias: {t.texto}</span>
+        </div>
+        {p.fase_motivo && <p className="text-sm text-texto-2">{p.fase_motivo}.</p>}
+        {p.fase && p.fase in FASES && <p className="text-sm text-texto-3">{FASES[p.fase as Fase].dica}</p>}
+        {paises.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1 text-xs">
+            {paises.map((x) => (
+              <span key={x.pais} className="rounded-lg bg-painel-2 px-2 py-1">
+                {PAISES[x.pais] ?? x.pais}: <strong>{x.anuncios_ativos}</strong> anúncios · <strong>{x.anunciantes}</strong>{" "}
+                anunciante{Number(x.anunciantes) === 1 ? "" : "s"}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="grid gap-3 md:grid-cols-2">
         <Grafico titulo="Anúncios ativos por dia" pontos={historico.map((h) => ({ dia: h.dia, valor: Number(h.anuncios_ativos) }))} />
         <Grafico titulo="Anunciantes por dia" pontos={historico.map((h) => ({ dia: h.dia, valor: Number(h.anunciantes) }))} />
