@@ -69,4 +69,7 @@ Dr. Rafael Pereira Barreto Silva, médico, **CRM-SP 266930**, dono e responsáve
 - Segurança: manter "Confirm email" ligado; depois de o sócio (mohamad) entrar com a senha, rodar `select * from private.vincular_admin();` (o dono já está vinculado); 2FA no Supabase e no GitHub; backup (plano Pro, custo).
 - Teleconsulta: inscrição da empresa no CRM (CREMESP) com diretor técnico antes de atender; certificado digital ICP-Brasil para assinar documentos; advogado revisar termo e textos; aprovar médicos em `medico.html` só depois de conferir identidade e CRM.
 
+## Outro projeto (pessoal, não é o IMED)
+- **Minerador de Anúncios** (09/11): pasta `minerador-anuncios/` só no ramo `claude/eloquent-noether-y48ywi` (não vai para a `main`/Pages). Next.js 16, coleta da Biblioteca de Anúncios do Meta pelo Apify, Pontuação de Escala, análise com Claude; guia em `minerador-anuncios/README.md`. Ideal: mudar para um repositório privado próprio.
+
 → Detalhes técnicos: `memory/context/arquitetura.md` · Histórico: `memory/projects/`
